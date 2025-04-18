@@ -7,3 +7,6 @@ def welcome(request):
 
 def login_test_view(request):
     return render(request, 'main/registration/login.html')
+
+def index(request):
+    return render(request, 'main/index.html')
