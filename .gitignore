@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.sqlite3
+
+# Virtual Envs
+venv/
+env/
+django/
+
+# VS Code
+.vscode/
+
+# Django secret
+*.log
+*.pot
+*.pyc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Migrations (선택)
+*/migrations/__pycache__/
+*/migrations/*.py[cod]
