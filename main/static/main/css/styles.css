@@ -34,12 +34,25 @@ body {
   margin-right: auto;
 }
 
+.menu {
+  display: flex;
+  flex: 1;
+  justify-content: space-between;  /* 버튼 사이 고르게 정렬 */
+  gap: 0; /* 버튼 사이 여백 없게 하려면 */
+  width: 100%;
+  max-width: 600px;  /* 필요에 따라 조절 가능 */
+}
+
 .menu button {
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  margin: 0 4px;
-  background-color: #fff;
-  height: 48px;
+  flex: 1;                    /* 각 버튼이 같은 너비를 가지도록 */
+  background: none;
+  border: none;
+  font-size: 14px;
+  text-align: center;
+  line-height: 1.2;
+  padding: 4px;
+  white-space: pre-line;      /* 줄바꿈 허용 */
+  cursor: pointer;
 }
 
 .main {
