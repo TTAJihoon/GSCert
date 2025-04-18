@@ -27,10 +27,10 @@
       <aside class="sidebar">
         <div class="checkbox-group">
           <div class="checkbox-row">
-            <label><input type="checkbox" checked> 시험 이력 조회</label>
+            <label><input type="checkbox" name="queryType" value="history" onclick="onlyOne(this)"> 시험 이력 조회</label>
           </div>
           <div class="checkbox-row">
-            <label><input type="checkbox"> 유사 시험 조회</label>
+            <label><input type="checkbox" name="queryType" value="similar" onclick="onlyOne(this)"> 유사 시험 조회</label>
           </div>
         </div>
 
@@ -52,11 +52,11 @@
           <input type="text" placeholder="예시: PDF 프로그램">
         </div>
 
-        <button class="search-btn">검색</button>
+        <button class="search-btn" onclick="handleSearch()">검색</button>
       </aside>
 
       <!-- 중앙/우측 컨텐츠 영역 -->
-      <section class="content">
+      <section class="content" id="result-area">
         <!-- Placeholder for dynamic content loaded via 메뉴 클릭 -->
         <div class="placeholder">※ 여기에 메뉴 클릭 시 내용 표시</div>
       </section>
