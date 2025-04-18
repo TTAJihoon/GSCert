@@ -16,10 +16,12 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.urls import path, include
+from . import views  # 아래에서 작성할 redirect_view
 
 urlpatterns = [
     path('admin/', admin.site.urls),
-    path('', include('main.urls')),            # 메인 앱 url
+    path('', views.redirect_view, name='root-redirect'),
+    #path('', include('main.urls')),            # 메인 앱 url
     path('accounts/', include('django.contrib.auth.urls')),  # 로그인/로그아웃
 ]
 
