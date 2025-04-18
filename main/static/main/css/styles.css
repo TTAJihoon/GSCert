@@ -35,11 +35,11 @@ body {
 }
 
 .menu button {
-  background: none;
-  border: none;
-  margin: 0 8px;
-  font-size: 16px;
-  cursor: pointer;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  margin: 0 4px;
+  background-color: #fff;
+  height: 48px;
 }
 
 .main {
