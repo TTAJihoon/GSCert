@@ -119,6 +119,34 @@ body {
   font-size: 16px;
   margin-top: 20px;
   cursor: pointer;
+  transition: transform 0.1s, background-color 0.3s;
+}
+
+.search-btn:active {
+  transform: scale(0.98);
+  background-color: #1a5dcc;
+}
+
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+.info-table th, .info-table td {
+  border: 1px solid #ccc;
+  padding: 8px;
+  text-align: center;
+}
+
+.document-icons {
+  margin-top: 10px;
+}
+
+.document-icons img {
+  width: 24px;
+  margin-right: 8px;
+  cursor: pointer;
 }
 
 .content {
