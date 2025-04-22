@@ -1,6 +1,6 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
-from .views import login_test_view
+from main.views.login import login_test_view
 from . import views
 
 urlpatterns = [
