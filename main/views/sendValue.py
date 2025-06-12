@@ -1,6 +1,5 @@
 from django.shortcuts import render
-import subprocess
-import os
+from .ollama_handler import run_ollama_model  # 내부 모듈에서 함수 가져오기
 
 def chat_gpt(request):
     if request.method == 'POST':
@@ -10,16 +9,10 @@ def chat_gpt(request):
         q4 = request.POST.get('endDate', '')
         q5 = request.POST.get('comment', '')
 
-        # ollama 파이썬 파일 경로
-        file_path = os.path.join('C:/GSCert/myproject/main/views/chatbot', 'chatbot.py')
-        try:
-            result = subprocess.run(
-                ['python', file_path, q1, q2, q3, q4, q5],
-                capture_output=True,
-                text=True,
-                check=True
-            )
-            return render(request, 'index.html', {'response': result.stdout})
-        except subprocess.CalledProcessError as e:
-            return render(request, 'index.html', {'response': f"에러 발생: {e.stderr}"})
+        # 내부 모듈 함수 호출
+        result = run_ollama_model(q1, q2, q3, q4, q5)
+
+       # 결과를 index.html에 출력
+        return render(request, 'index.html', {'response': result})
+        
     return render(request, 'index.html')
