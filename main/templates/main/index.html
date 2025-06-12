@@ -27,7 +27,7 @@
       <div class="main">
         <!-- 좌측 패널 -->
         <aside class="sidebar">
-          <form method="post">
+          <form method="post" action="{% url 'chatbot' %}">
             {% csrf_token %}
             <div class="checkbox-group">
               <div class="checkbox-row">
@@ -63,7 +63,8 @@
         <!-- 중앙/우측 컨텐츠 영역 -->
         <section class="content" id="result-area">
           <!-- Placeholder for dynamic content loaded via 메뉴 클릭 -->
-          <div class="placeholder">※ 여기에 메뉴 클릭 시 내용 표시</div>
+          <!-- <div class="placeholder">※ 여기에 메뉴 클릭 시 내용 표시</div> -->
+          {{ response|safe }}
         </section>
       </div>
     </div>
