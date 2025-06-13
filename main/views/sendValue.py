@@ -32,6 +32,13 @@ def GS_history(q1):
         }
         results.append(result)
     return results
+
+def history_search(request):
+    if request.method == 'POST':
+        q1 = request.POST.get('company', '')  # ← 회사명
+        tables = GS_history(q1)
+        return render(request, 'index.html', {'response_tables': tables})
+    return render(request, 'index.html')
     
 def chat_gpt(request):
     if request.method == 'POST':
