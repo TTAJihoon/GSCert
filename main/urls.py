@@ -3,7 +3,7 @@ from django.urls import path
 from main.views.login import login_test_view
 from main.views.login import welcome
 from main.views.login import index
-from main.views.chatbot import chat_gpt
+from main.views.sendValue import chat_gpt
 from . import views
 
 urlpatterns = [
