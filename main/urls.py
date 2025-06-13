@@ -12,4 +12,5 @@ urlpatterns = [
     path('index/', index),
     path('test-login/', login_test_view),
     path('chatbot/', chat_gpt, name='chatbot'),
+    path('search-history/', search_history, name='history'),
 ]
