@@ -6,7 +6,7 @@ def run_ollama_model(q1, q2, q3, q4, model="gemma3"):
     try:
         response = chat(
             model=model,
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
             stream=False
         )
         return response['message']['content']
