@@ -3,10 +3,10 @@ from django.shortcuts import render
 
 @login_required
 def welcome(request):
-    return render(request, 'main/welcome.html')
+    return render(request, 'welcome.html')
 
 def login_test_view(request):
-    return render(request, 'main/registration/login.html')
+    return render(request, 'registration/login.html')
 
 def index(request):
-    return render(request, 'main/index.html')
+    return render(request, 'index.html')
