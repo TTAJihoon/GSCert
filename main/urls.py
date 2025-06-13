@@ -7,7 +7,7 @@ from main.views.sendValue import chat_gpt
 from . import views
 
 urlpatterns = [
-    path('accounts/login/', auth_views.LoginView.as_view(template_name='main/registration/login.html'), name='login'),
+    path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('welcome/', welcome),
     path('index/', index),
     path('test-login/', login_test_view),
