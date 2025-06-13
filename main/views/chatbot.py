@@ -2,16 +2,6 @@ import os
 from django.conf import settings
 from ollama import generate
 
-# ✅ 서버 시작 시 1회만 파일 읽기
-try:
-    REFERENCE_FILE_PATH = os.path.join(settings.BASE_DIR, 'main', 'data', 'reference.csv')
-    with open(REFERENCE_FILE_PATH, 'r', encoding='utf-8') as f:
-        FILE_CONTEXT = f.read()
-    print("[INFO] reference.csv loaded once into memory.")
-except FileNotFoundError:
-    FILE_CONTEXT = "[오류] reference.csv 파일을 찾을 수 없습니다."
-    print("[ERROR] reference.csv 파일 없음")
-
 def run_ollama_with_reference(q1, q2, q3, q4, q5):
     user_input = "\n".join([q1, q2, q3, q4, q5])
 
