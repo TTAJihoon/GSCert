@@ -7,7 +7,7 @@ def run_ollama_model(q1, q2, q3, q4, model="gemma3"):
         print("[DEBUG] prompt:", prompt)
         response = generate(
             model=model,
-            messages=prompt
+            prompt=prompt
         )
         print("[DEBUG] response:", response)
         return response['message']['content']
