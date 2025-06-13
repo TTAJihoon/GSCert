@@ -33,7 +33,7 @@ def GS_history(q1):
         results.append(result)
     return results
 
-def history_search(request):
+def search_history(request):
     if request.method == 'POST':
         q1 = request.POST.get('company', '')  # ← 회사명
         tables = GS_history(q1)
