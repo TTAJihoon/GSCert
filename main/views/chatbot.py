@@ -6,7 +6,7 @@ def run_ollama_model(q1, q2, q3, q4, q5):
     try:
         print("[DEBUG] prompt:", prompt)
         response = generate(
-            model="gemma3,
+            model="gemma3",
             prompt=prompt
         )
         print("[DEBUG] response:", response)
