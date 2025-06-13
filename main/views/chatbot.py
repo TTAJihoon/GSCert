@@ -5,7 +5,7 @@ def run_ollama_model(q1, q2, q3, q4, model="gemma3"):
 
     try:
         print("[DEBUG] prompt:", prompt)
-        response = chat(
+        response = generate(
             model=model,
             messages=[{"role": "user", "content": prompt}],
             stream=False
