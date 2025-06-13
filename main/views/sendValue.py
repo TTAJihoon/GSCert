@@ -1,5 +1,5 @@
 from django.shortcuts import render
-from .ollama_handler import run_ollama_model  # 내부 모듈에서 함수 가져오기
+from .chatbot  import run_ollama_model  # 내부 모듈에서 함수 가져오기
 
 def chat_gpt(request):
     if request.method == 'POST':
