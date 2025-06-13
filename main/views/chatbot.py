@@ -10,7 +10,7 @@ def run_ollama_model(q1, q2, q3, q4, q5):
             prompt=prompt
         )
         print("[DEBUG] response:", response)
-        return response['message']['content']
+        return response.get("response", "[응답 없음]")
     except Exception as e:
         print("[ERROR]", e)
         return f"Ollama 처리 중 오류 발생: {str(e)}"
