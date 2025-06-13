@@ -4,6 +4,7 @@ from main.views.login import login_test_view
 from main.views.login import welcome
 from main.views.login import index
 from main.views.sendValue import chat_gpt
+from main.views.sendValue import search_history
 from . import views
 
 urlpatterns = [
