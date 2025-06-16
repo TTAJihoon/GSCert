@@ -189,10 +189,10 @@ body {
 
 .icon-cell {
   display: flex;
-  justify-content: space-around;
+  justify-content: center;
   align-items: center;
-  gap: 12px;
-  padding: 8px;
+  gap: 20px;
+  height: 100%;  /* 세로 정렬 */
 }
 
 .doc-icon {
