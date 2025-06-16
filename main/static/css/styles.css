@@ -127,6 +127,12 @@ body {
   background-color: #1a5dcc;
 }
 
+.scroll-container {
+  max-height: 600px;         /* ✅ 표시 가능한 최대 높이 지정 */
+  overflow-y: auto;          /* ✅ 세로 스크롤만 표시 */
+  padding-right: 10px;
+}
+
 .info-table {
   width: 100%;
   border-collapse: collapse;
@@ -162,6 +168,9 @@ body {
 
 .result-table {
   margin-bottom: 30px;
+  border: 3px solid black;   /* ✅ 검정 외곽선 */
+  border-radius: 10px;
+  overflow: hidden;
 }
 
 .info-table {
@@ -179,6 +188,7 @@ body {
   text-align: center;
   word-break: break-word;
   font-size: 14px;
+  vertical-align: middle;
 }
 
 .info-table .header-row {
@@ -189,9 +199,10 @@ body {
 
 .icon-cell {
   display: flex;
+  flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
   height: 100%;  /* 세로 정렬 */
 }
 
