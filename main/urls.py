@@ -14,4 +14,5 @@ urlpatterns = [
     path('test-login/', login_test_view),
     path('chatbot/', chat_gpt, name='chatbot'),
     path('search-history/', search_history, name='history'),
+    path('reload-reference/', sendValue.reload_reference_view, name='reload_reference'),
 ]
