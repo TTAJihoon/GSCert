@@ -2,7 +2,7 @@ import os
 import pandas as pd
 from django.conf import settings
 from django.shortcuts import render
-from .chatbot  import run_ollama_model  # 내부 모듈에서 함수 가져오기
+from .chatbot  import run_ollama_with_reference  # 내부 모듈에서 함수 가져오기
 
 # 1. reference.csv 파일을 메모리에 로딩 (초기 1회)
 REFERENCE_PATH = os.path.join(settings.BASE_DIR, 'main', 'data', 'reference.csv')
