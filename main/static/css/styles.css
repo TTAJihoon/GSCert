@@ -159,3 +159,44 @@ body {
   color: #666;
   font-size: 18px;
 }
+
+.result-table {
+  margin-bottom: 30px;
+}
+
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-radius: 10px;
+  overflow: hidden;
+  table-layout: fixed;
+}
+
+.info-table th,
+.info-table td {
+  border: 1px solid #ccc;
+  padding: 12px;
+  text-align: center;
+  word-break: break-word;
+  font-size: 14px;
+}
+
+.info-table .header-row {
+  background-color: #b3b3b3; /* 회색 */
+  font-weight: bold;
+  color: white;
+}
+
+.icon-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  padding: 8px;
+}
+
+.icon-cell img {
+  width: 32px;
+  height: 32px;
+}
