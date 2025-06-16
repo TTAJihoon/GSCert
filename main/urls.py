@@ -3,7 +3,7 @@ from django.urls import path
 from main.views.login import login_test_view
 from main.views.login import welcome
 from main.views.login import index
-from main.views.sendValue import chat_gpt
+from main.views.sendValue import GS_history
 from main.views.sendValue import search_history
 from main.views.sendValue import reload_reference_view
 from . import views
@@ -13,7 +13,7 @@ urlpatterns = [
     path('welcome/', welcome),
     path('index/', index),
     path('test-login/', login_test_view),
-    path('chatbot/', chat_gpt, name='chatbot'),
+    path('GS_history/', GS-history, name='chatbot'),
     path('search-history/', search_history, name='history'),
     path('reload-reference/', reload_reference_view, name='reload_reference'),
 ]
