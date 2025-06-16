@@ -5,6 +5,7 @@ from main.views.login import welcome
 from main.views.login import index
 from main.views.sendValue import chat_gpt
 from main.views.sendValue import search_history
+from main.views.sendValue import reload_reference_view
 from . import views
 
 urlpatterns = [
@@ -14,5 +15,5 @@ urlpatterns = [
     path('test-login/', login_test_view),
     path('chatbot/', chat_gpt, name='chatbot'),
     path('search-history/', search_history, name='history'),
-    path('reload-reference/', sendValue.reload_reference_view, name='reload_reference'),
+    path('reload-reference/', reload_reference_view, name='reload_reference'),
 ]
