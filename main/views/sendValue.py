@@ -48,7 +48,10 @@ def GS_history(q1):
 
 def search_history(request):
     if request.method == 'POST':
-        q1 = request.POST.get('company', '')  # ← 회사명
+        q1 = request.POST.get('company', '')
+        if not q1.strip():
+            return render(request, 'index.html', {'response': '회사명을 입력해주세요.'})
+
         tables = GS_history(q1)
         return render(request, 'index.html', {'response_tables': tables})
     return render(request, 'index.html')
