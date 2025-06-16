@@ -62,9 +62,20 @@
 
         <!-- 중앙/우측 컨텐츠 영역 -->
         <section class="content" id="result-area">
-          <!-- Placeholder for dynamic content loaded via 메뉴 클릭 -->
-          <!-- <div class="placeholder">※ 여기에 메뉴 클릭 시 내용 표시</div> -->
-          {{ response|safe }}
+          {% if response %}
+            <p>{{ response }}</p>
+          {% endif %}
+
+          {% for table in response_tables %}
+            <table class="info-table">
+              <tr><th>회사명</th><td>{{ table.a4 }}</td></tr>
+              <tr><th>제품명</th><td>{{ table.a5 }}</td></tr>
+              <tr><th>인증번호</th><td>{{ table.a2 }}</td></tr>
+              <tr><th>제품설명</th><td colspan="3">{{ table.a9 }}</td></tr>
+            </table>
+          {% empty %}
+            <p>검색 결과가 없습니다.</p>
+          {% endfor %}
         </section>
       </div>
     </div>
