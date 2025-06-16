@@ -1,12 +1,21 @@
-import os
 import pandas as pd
-from django.conf import settings
 from django.shortcuts import render
-from .chatbot  import run_ollama_with_reference  # 내부 모듈에서 함수 가져오기
+from .chatbot import run_ollama_with_reference, reload_reference_context
+from main.utils.constants import REFERENCE_PATH
 
-# 1. reference.csv 파일을 메모리에 로딩 (초기 1회)
-REFERENCE_PATH = os.path.join(settings.BASE_DIR, 'main', 'data', 'reference.csv')
-REFERENCE_DF = pd.read_csv(REFERENCE_PATH, skiprows=3)
+# 전역 DataFrame
+REFERENCE_DF = None
+
+def reload_reference_dataframe():
+    global REFERENCE_DF
+    try:
+        REFERENCE_DF = pd.read_csv(REFERENCE_PATH, skiprows=3)
+        print("[INFO] REFERENCE_DF reloaded.")
+    except Exception as e:
+        print("[ERROR] DataFrame reload 실패:", e)
+
+# 초기 1회 로딩
+reload_reference_dataframe()
 
 def GS_history(q1):
     # 회사명 열 기준으로 부분 일치 검색 (NaN 방지)
@@ -55,3 +64,10 @@ def chat_gpt(request):
         return render(request, 'index.html', {'response': result})
         
     return render(request, 'index.html')
+
+def reload_reference_view(request):
+    reload_reference_context()
+    reload_reference_dataframe()
+    return render(request, 'index.html', {
+        'response': 'reference.csv 파일이 다시 로드되었습니다.'
+    })
