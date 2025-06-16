@@ -13,7 +13,7 @@ urlpatterns = [
     path('welcome/', welcome),
     path('index/', index),
     path('test-login/', login_test_view),
-    path('GS_history/', GS-history, name='chatbot'),
+    path('GS_history/', GS_history, name='chatbot'),
     path('search-history/', search_history, name='history'),
     path('reload-reference/', reload_reference_view, name='reload_reference'),
 ]
