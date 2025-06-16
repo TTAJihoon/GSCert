@@ -18,8 +18,12 @@ def reload_reference_dataframe():
 reload_reference_dataframe()
 
 def GS_history(q1):
-    # 회사명 열 기준으로 부분 일치 검색 (NaN 방지)
-    matches = REFERENCE_DF[REFERENCE_DF['회사명'].fillna('').str.contains(q1, case=False)]
+    if not isinstance(q1, str) or not q1.strip():
+        return []  # 또는 raise ValidationError("회사명을 입력하세요.")
+
+    matches = REFERENCE_DF[
+        REFERENCE_DF['회사명'].fillna('').str.contains(q1, case=False)
+    ]
 
     results = []
     for _, row in matches.iterrows():
