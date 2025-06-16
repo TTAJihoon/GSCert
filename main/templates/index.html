@@ -68,10 +68,56 @@
 
           {% for table in response_tables %}
             <table class="info-table">
-              <tr><th>회사명</th><td>{{ table.a4 }}</td></tr>
-              <tr><th>제품명</th><td>{{ table.a5 }}</td></tr>
-              <tr><th>인증번호</th><td>{{ table.a2 }}</td></tr>
-              <tr><th>제품설명</th><td colspan="3">{{ table.a9 }}</td></tr>
+              <!-- 상단 헤더 -->
+              <tr class="header-row">
+                <th>회사명</th>
+                <th>인증일자</th>
+                <th>인증번호</th>
+                <th>시험번호</th>
+                <th>시험WD</th>
+                <th colspan="1">관련 문서 다운로드</th> <!-- 고정 -->
+              </tr>
+
+              <!-- 실제 데이터 -->
+              <tr>
+                <td>{{ t.a4 }}</td>
+                <td>{{ t.a3 }}</td>
+                <td>{{ t.a2 }}</td>
+                <td>{{ t.a7 }}</td>
+                <td>{{ t.a10 }}</td>
+                <td class="icon-cell" rowspan="5">
+                  <img src="{% static 'main/images/word_icon.png' %}" alt="결과서"/>
+                  <div>결과서</div>
+                  <img src="{% static 'main/images/excel1_icon.png' %}" alt="기능 리스트"/>
+                  <div>기능 리스트</div>
+                  <img src="{% static 'main/images/excel2_icon.png' %}" alt="결합 리포트"/>
+                  <div>결합 리포트</div>
+                </td>
+              </tr>
+
+              <tr class="header-row">
+                <th>제품명</th>
+                <th colspan="4">제품 개요</th>
+              </tr>
+              <tr>
+                <td>{{ t.a5 }}</td>
+                <td colspan="4">{{ t.a9 }}</td>
+              </tr>
+
+              <tr class="header-row">
+                <th>분류</th>
+                <th>재계약 여부</th>
+                <th>간소화 여부</th>
+                <th>수수료</th>
+                <th>***</th>
+              </tr>
+              <tr>
+                <td>{{ t.a8 }}</td>
+                <td>{{ t.a11 }}</td>
+                <td>{{ t.a12 }}</td>
+                <td>{{ t.a13 }}</td>
+                <td>{{ t.a14 }}</td>
+              </tr>
             </table>
           {% empty %}
             <p>검색 결과가 없습니다.</p>
