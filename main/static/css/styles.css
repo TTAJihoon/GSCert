@@ -189,14 +189,20 @@ body {
 
 .icon-cell {
   display: flex;
-  flex-direction: column;
+  justify-content: space-around;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
+  gap: 12px;
   padding: 8px;
 }
 
-.icon-cell img {
+.doc-icon {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 12px;
+}
+
+.doc-icon img {
   width: 32px;
   height: 32px;
 }
