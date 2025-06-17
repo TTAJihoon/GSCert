@@ -17,12 +17,26 @@ def reload_reference_dataframe():
 # 초기 1회 로딩
 reload_reference_dataframe()
 
-def GS_history(q1):
-    if not isinstance(q1, str) or not q1.strip():
+def search_history(request):
+    if request.method == 'POST':
+        selected = request.POST.get('selectType')  # ← 라디오 버튼 값
+        company = request.POST.get('company', '')
+        if selected == 'history':
+            if not isinstance(company, str) or not q1.strip():
+                return render(request, 'index.html', {'response': '회사명을 입력해주세요.'})
+
+            tables = GS_history(company)
+            return render(request, 'index.html', {'response_tables': tables})
+        elif selected == 'similar':
+            tables = ----------------------------------------------------------------------------------
+    return render(request, 'index.html')
+    
+def GS_history(company):
+    if not isinstance(company, str) or not company.strip():
         return []  # 또는 raise ValidationError("회사명을 입력하세요.")
 
     matches = REFERENCE_DF[
-        REFERENCE_DF['회사명'].fillna('').str.contains(q1, case=False)
+        REFERENCE_DF['회사명'].fillna('').str.contains(company, case=False)
     ]
 
     results = []
@@ -45,16 +59,6 @@ def GS_history(q1):
         }
         results.append(result)
     return results
-
-def search_history(request):
-    if request.method == 'POST':
-        q1 = request.POST.get('company', '')
-        if not isinstance(q1, str) or not q1.strip():
-            return render(request, 'index.html', {'response': '회사명을 입력해주세요.'})
-
-        tables = GS_history(q1)
-        return render(request, 'index.html', {'response_tables': tables})
-    return render(request, 'index.html')
     
 def chat_gpt(request):
     if request.method == 'POST':
