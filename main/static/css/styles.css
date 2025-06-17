@@ -40,7 +40,7 @@ body {
   justify-content: space-between;  /* 버튼 사이 고르게 정렬 */
   gap: 0; /* 버튼 사이 여백 없게 하려면 */
   width: 100%;
-  max-width: 600px;  /* 필요에 따라 조절 가능 */
+  max-width: 1500px;  /* 필요에 따라 조절 가능 */
 }
 
 .menu button {
@@ -90,7 +90,7 @@ body {
 }
 
 .input-group input[type="text"] {
-  background-color: #d9d9d9;
+  background-color: white;
   border: none;
   padding: 8px;
   width: 100%;
@@ -104,7 +104,7 @@ body {
 }
 
 .date-range input[type="date"] {
-  background-color: #d9d9d9;
+  background-color: #white;
   border: none;
   padding: 6px;
   width: 48%;
