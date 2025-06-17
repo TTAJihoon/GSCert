@@ -26,7 +26,7 @@ def search_history(request):
         endDate = request.POST.get('endDate', '')
         comment = request.POST.get('comment', '')
         if selected == 'history':
-            if not isinstance(company, str) or not q1.strip():
+            if not isinstance(company, str) or not company.strip():
                 return render(request, 'index.html', {'response': '회사명을 입력해주세요.'})
 
             tables = GS_history(company)
