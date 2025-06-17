@@ -64,75 +64,89 @@
         <!-- 중앙/우측 컨텐츠 영역 -->
         <section class="content" id="result-area">
           <div class="scroll-container">
-<!--            {% if selected_type == 'similar' %}-->
+
+            {# ===== "유사 시험 조회" 선택 시 Ollama 응답 표시 ===== #}
+            {% if selected_type == 'similar' %}
               {% if response %}
-                <p>{{ response }}</p>
+                <div class="ollama-response">
+                  <p>{{ response }}</p>
+                </div>
+              {% else %}
+                <p>AI 응답이 없습니다.</p>
               {% endif %}
 
-<!--            {% elif selected_type == 'history' %}-->
-              {% for table in response_tables %}
-                <table class="info-table">
-                  <!-- 상단 헤더 -->
-                  <tr class="header-row">
-                    <th>회사명</th>
-                    <th>인증일자</th>
-                    <th>인증번호</th>
-                    <th>시험번호</th>
-                    <th>시험WD</th>
-                    <th>관련 문서 다운로드</th>
-                  </tr>
+            {# ===== "시험 이력 조회" 선택 시 표 표시 ===== #}
+            {% elif selected_type == 'history' %}
+              {% if response_tables %}
+                {% for table in response_tables %}
+                  <table class="info-table">
+                          <!-- 상단 헤더 -->
+                          <tr class="header-row">
+                            <th>회사명</th>
+                            <th>인증일자</th>
+                            <th>인증번호</th>
+                            <th>시험번호</th>
+                            <th>시험WD</th>
+                            <th>관련 문서 다운로드</th>
+                          </tr>
 
-                  <!-- 실제 데이터 -->
-                  <tr>
-                    <td>{{ table.a4 }}</td>
-                    <td>{{ table.a3 }}</td>
-                    <td>{{ table.a2 }}</td>
-                    <td>{{ table.a7 }}</td>
-                    <td>{{ table.a10 }}</td>
-                    <td class="icon-cell" rowspan="5">
-                      <div class="doc-icon">
-                        <img src="{% static 'images/word.jpg' %}" alt="결과서" />
-                        <div>결과서</div>
-                      </div>
-                      <div class="doc-icon">
-                        <img src="{% static 'images/excel.jpg' %}" alt="기능 리스트" />
-                        <div>기능 리스트</div>
-                      </div>
-                      <div class="doc-icon">
-                        <img src="{% static 'images/excel.jpg' %}" alt="결함 리포트" />
-                        <div>결함 리포트</div>
-                      </div>
-                    </td>
-                  </tr>
-
-                  <tr class="header-row">
-                    <th>제품명</th>
-                    <th colspan="4">제품 개요</th>
-                  </tr>
-                  <tr>
-                    <td>{{ table.a5 }}</td>
-                    <td colspan="4">{{ table.a9 }}</td>
-                  </tr>
+                          <!-- 실제 데이터 -->
+                          <tr>
+                            <td>{{ table.a4 }}</td>
+                            <td>{{ table.a3 }}</td>
+                            <td>{{ table.a2 }}</td>
+                            <td>{{ table.a7 }}</td>
+                            <td>{{ table.a10 }}</td>
+                            <td class="icon-cell" rowspan="5">
+                              <div class="doc-icon">
+                                <img src="{% static 'images/word.jpg' %}" alt="결과서" />
+                                <div>결과서</div>
+                              </div>
+                              <div class="doc-icon">
+                                <img src="{% static 'images/excel.jpg' %}" alt="기능 리스트" />
+                                <div>기능 리스트</div>
+                              </div>
+                              <div class="doc-icon">
+                                <img src="{% static 'images/excel.jpg' %}" alt="결함 리포트" />
+                                <div>결함 리포트</div>
+                              </div>
+                            </td>
+                          </tr>
+        
+                          <tr class="header-row">
+                            <th>제품명</th>
+                            <thcolspan="4">제품 개요</th>
+                          </tr>
+                          <tr>
+                            <td>{{ table.a5 }}</td>
+                            <td colspan="4">{{ table.a9 }}</td>
+                          </tr>        
   
-                  <tr class="header-row">
-                    <th>분류</th>
-                    <th>재계약 여부</th>
-                    <th>특이사항</th>
-                    <th>시작/종료 날짜</th>
-                    <th>시험원</th>
-                  </tr>
-                  <tr>
-                    <td>{{ table.a8 }}</td>
-                    <td>{{ table.a11 }}</td>
-                    <td>{{ table.a12 }}</td>
-                    <td>{{ table.a13 }}</td>
-                    <td>{{ table.a14 }}</td>
-                  </tr>
-                </table>
-              {% empty %}
+                          <tr class="header-row">
+                            <th>분류</th>
+                            <th>재계약 여부</th>
+                            <th>특이사항</th>
+                            <th>시작/종료 날짜</th>
+                            <th>시험원</th>
+                          </tr>
+                          <tr>
+                            <td>{{ table.a8 }}</td>
+                            <td>{{ table.a11 }}</td>
+                            <td>{{ table.a12 }}</td>
+                            <td>{{ table.a13 }}</td>
+                            <td>{{ table.a14 }}</td>
+                          </tr>
+                        </table>
+                {% endfor %}
+              {% else %}
                 <p>검색 결과가 없습니다.</p>
-              {% endfor %}
-<!--            {% endif %}-->
+              {% endif %}
+
+            {# ===== 어떤 radio도 선택하지 않았을 때 ===== #}
+            {% else %}
+              <p>조회 항목을 선택해주세요.</p>
+            {% endif %}
+
           </div>
         </section>
       </div>
