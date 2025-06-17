@@ -35,15 +35,13 @@ def search_history(request):
 
             tables = GS_history(company)
             return render(request, 'index.html', {
-                'response_tables': tables,
-                'selected_type': 'history'
+                'response_tables': tables
             })
 
         elif selected == 'similar':
             result = run_ollama_with_reference(company, product, startDate, endDate, comment)
             return render(request, 'index.html', {
-                'response': result,
-                'selected_type': 'similar'
+                'response_tables': tables
             })
 
     # GET 요청 또는 POST 실패 시
@@ -78,22 +76,6 @@ def GS_history(company):
         results.append(result)
     return results
     
-def chat_gpt(request):
-    if request.method == 'POST':
-        q1 = request.POST.get('company', '')
-        q2 = request.POST.get('product', '')
-        q3 = request.POST.get('startDate', '')
-        q4 = request.POST.get('endDate', '')
-        q5 = request.POST.get('comment', '')
-
-        # 내부 모듈 함수 호출
-        result = run_ollama_with_reference(q1, q2, q3, q4, q5)
-
-       # 결과를 index.html에 출력
-        return render(request, 'index.html', {'response': result})
-        
-    return render(request, 'index.html')
-
 def reload_reference_view(request):
     reload_reference_context()
     reload_reference_dataframe()
