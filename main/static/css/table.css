@@ -7,6 +7,8 @@
 
 .info-table {
   width: 100%;
+  margin-bottom: 30px;
+  border: 3px solid black;   /* ✅ 검정 외곽선 */
   border-collapse: collapse;
   border-radius: 10px;
   overflow: hidden;
@@ -26,7 +28,7 @@
 .info-table .header-row {
   background-color: #b3b3b3; /* 회색 */
   font-weight: bold;
-  color: white;
+  color: black;
 }
 
 .icon-cell {
