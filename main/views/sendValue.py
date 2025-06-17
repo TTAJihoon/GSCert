@@ -21,6 +21,10 @@ def search_history(request):
     if request.method == 'POST':
         selected = request.POST.get('selectType')  # ← 라디오 버튼 값
         company = request.POST.get('company', '')
+        product = request.POST.get('product', '')
+        startDate = request.POST.get('startDate', '')
+        endDate = request.POST.get('endDate', '')
+        comment = request.POST.get('comment', '')
         if selected == 'history':
             if not isinstance(company, str) or not q1.strip():
                 return render(request, 'index.html', {'response': '회사명을 입력해주세요.'})
@@ -28,7 +32,8 @@ def search_history(request):
             tables = GS_history(company)
             return render(request, 'index.html', {'response_tables': tables})
         elif selected == 'similar':
-            tables = ----------------------------------------------------------------------------------
+            result = run_ollama_with_reference(company, product, startDate, endDate, comment)
+            return render(request, 'index.html', {'response': result})
     return render(request, 'index.html')
     
 def GS_history(company):
