@@ -63,12 +63,12 @@
         <!-- 중앙/우측 컨텐츠 영역 -->
         <section class="content" id="result-area">
           <div class="scroll-container">
-            {% if selected_type == 'similar' %}
+<!--            {% if selected_type == 'similar' %}-->
               {% if response %}
                 <p>{{ response }}</p>
               {% endif %}
 
-            {% elif selected_type == 'history' %}
+<!--            {% elif selected_type == 'history' %}-->
               {% for table in response_tables %}
                 <table class="info-table">
                   <!-- 상단 헤더 -->
@@ -131,7 +131,7 @@
               {% empty %}
                 <p>검색 결과가 없습니다.</p>
               {% endfor %}
-            {% endif %}
+<!--            {% endif %}-->
           </div>
         </section>
       </div>
