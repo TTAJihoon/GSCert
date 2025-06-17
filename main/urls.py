@@ -12,6 +12,6 @@ urlpatterns = [
     path('welcome/', welcome),
     path('index/', index),
     path('test-login/', login_test_view),
-    path('search-history/', search_history, name='history'),
+    path('search-history/', history, name='history'),
     path('reload-reference/', reload_reference_view, name='reload_reference'),
 ]
