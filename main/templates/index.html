@@ -41,20 +41,20 @@
   
             <div class="input-group">
               <label>회사명</label>
-              <input type="text" name="company" value="{{ company }}" placeholder="예시: 주식회사 조은소프트">
+              <input type="text" name="company" id="company" value="{{ company }}" placeholder="예시: 주식회사 조은소프트">
               
               <label>제품명</label>
-              <input type="text" name="product" value="{{ product }}" placeholder="예시: PDF v1.0">
+              <input type="text" name="product" id="product" value="{{ product }}" placeholder="예시: PDF v1.0">
             
               <label>기간</label>
               <div class="date-range">
-                <input type="date" name="startDate" value="{{ start_date }}">
+                <input type="date" name="startDate" id="startDate" value="{{ start_date }}">
                 <span> - </span>
-                <input type="date" name="endDate" value="{{ end_date }}">
+                <input type="date" name="endDate" id="endDate" value="{{ end_date }}">
               </div>
 
               <label>설명</label>
-              <input type="text" name="comment" value="{{ comment }}" placeholder="예시: PDF 프로그램">
+              <input type="text" name="comment" id="comment" value="{{ comment }}" placeholder="예시: PDF 프로그램">
             </div>
 
             <button class="search-btn" type="submit">검색</button>
