@@ -47,10 +47,13 @@ def search_history(request):
 
         elif selected == 'similar':
             try:
+                result_str = run_ollama_with_reference(company, product, startDate, endDate, comment)
+                print("[DEBUG] LLM 응답 원문:", result_str[:500])
                 result_json = json.loads(result_str)
-            except json.JSONDecodeError:
+            except Exception as e:
+                print("[ERROR] 유사도 검색 오류:", e)
                 result_json = []
-                context['response'] = "유사도 검색 결과를 파싱하는 중 오류가 발생했습니다."
+                context['response'] = "유사도 검색 중 오류 발생 또는 응답 파싱 실패"
                 
                 context['response_tables'] = result_json
                 return render(request, 'index.html', context)
