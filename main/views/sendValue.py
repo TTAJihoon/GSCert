@@ -26,23 +26,28 @@ def search_history(request):
         endDate = request.POST.get('endDate', '')
         comment = request.POST.get('comment', '')
 
+        context = {
+            'selected_type': selected,
+            'company': company,
+            'product': product,
+            'start_date': startDate,
+            'end_date': endDate,
+            'comment': comment,
+        }
+        
         if selected == 'history':
-            if not isinstance(company, str) or not company.strip():
-                return render(request, 'index.html', {
-                    'response': '회사명을 입력해주세요.',
-                    'selected_type': 'history'
-                })
+            if not company.strip():
+                context['response'] = '회사명을 입력해주세요.'
+                return render(request, 'index.html', context)
 
             tables = GS_history(company)
-            return render(request, 'index.html', {
-                'response_tables': tables
-            })
+            context['response_tables'] = tables
+            return render(request, 'index.html', context)
 
         elif selected == 'similar':
             result = run_ollama_with_reference(company, product, startDate, endDate, comment)
-            return render(request, 'index.html', {
-                'response_tables': tables
-            })
+            context['response_tables'] = result  # 또는 tables?
+            return render(request, 'index.html', context)
 
     # GET 요청 또는 POST 실패 시
     return render(request, 'index.html')
