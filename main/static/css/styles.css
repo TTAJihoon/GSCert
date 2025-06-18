@@ -110,6 +110,12 @@ body {
   width: 48%;
 }
 
+input:disabled {
+  background-color: #e0e0e0;
+  color: #555;
+  cursor: not-allowed;
+}
+
 .search-btn {
   background-color: #2c74dd;
   color: white;
