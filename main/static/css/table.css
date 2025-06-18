@@ -1,8 +1,3 @@
-#result-area {
-  background-color: white;
-  padding: 20px;
-}
-
 .scroll-container {
   max-height: 1500px;         /* ✅ 표시 가능한 최대 높이 지정 */
   overflow-y: auto;          /* ✅ 세로 스크롤만 표시 */
@@ -30,7 +25,7 @@
   vertical-align: middle;
 }
 
-.info-table .header-row {
+.header-row {
   background-color: #b3b3b3; /* 회색 */
   font-weight: bold;
   color: black;
@@ -54,4 +49,9 @@
 .doc-icon img {
   width: 32px;
   height: 32px;
+}
+
+#result-area {
+  background-color: white;
+  padding: 20px;
 }
