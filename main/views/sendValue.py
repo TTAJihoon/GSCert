@@ -1,3 +1,4 @@
+import json
 import pandas as pd
 from django.shortcuts import render
 from .chatbot import run_ollama_with_reference, reload_reference_context
@@ -45,10 +46,15 @@ def search_history(request):
             return render(request, 'index.html', context)
 
         elif selected == 'similar':
-            result = run_ollama_with_reference(company, product, startDate, endDate, comment)
-            context['response_tables'] = result  # 또는 tables?
-            return render(request, 'index.html', context)
-
+            try:
+                result_json = json.loads(result_str)
+            except json.JSONDecodeError:
+                result_json = []
+                context['response'] = "유사도 검색 결과를 파싱하는 중 오류가 발생했습니다."
+                
+                context['response_tables'] = result_json
+                return render(request, 'index.html', context)
+                
     # GET 요청 또는 POST 실패 시
     return render(request, 'index.html')
     
