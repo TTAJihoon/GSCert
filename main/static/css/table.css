@@ -1,3 +1,8 @@
+#result-area {
+  background-color: white;
+  padding: 20px;
+}
+
 .scroll-container {
   max-height: 1500px;         /* ✅ 표시 가능한 최대 높이 지정 */
   overflow-y: auto;          /* ✅ 세로 스크롤만 표시 */
@@ -5,6 +10,7 @@
 }
 
 .info-table {
+  background-color: #f0fafe;
   width: 100%;
   margin-bottom: 30px;
   border: 3px solid black;   /* ✅ 검정 외곽선 */
