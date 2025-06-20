@@ -10,3 +10,6 @@ def login_test_view(request):
 
 def index(request):
     return render(request, 'index.html')
+
+def security(request):
+    return render(request, 'security.html')
