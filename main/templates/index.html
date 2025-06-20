@@ -69,19 +69,39 @@
             <table class="info-table">
               <tr class="header-row">
                 <th>회사명</th>
-                <th>인증일자</th>
-                <th>인증번호</th>
+                <th>제품명</th>
                 <th>시험번호</th>
-                <th>시험WD</th>
-                <th>관련 문서 다운로드</th>
+                <th>시작/종료 날짜</th>
+                <th>인증일자</th>
               </tr>
               <tr>
                 <td>{{ table.a4 }}</td>
-                <td>{{ table.a3 }}</td>
-                <td>{{ table.a2 }}</td>
+                <td>{{ table.a5 }}</td>
                 <td>{{ table.a7 }}</td>
-                <td>{{ table.a10 }}</td>
-                <td class="icon-cell" rowspan="5">
+                <td>{{ table.a13 }}</td>
+                <td>{{ table.a3 }}</td>
+              </tr>  
+              <tr class="header-row">
+                <th colspan="4">제품 개요</th>
+                <th>시험원</th>
+              </tr>
+              <tr>
+                <td>{{ table.a9 }}</td>
+                <td>{{ table.a14 }}</td>
+              </tr>
+              <tr class="header-row">
+                <th>인증번호</th>
+                <th>SW 분류</th>
+                <th>재계약 여부</th>
+                <th>특이사항</th>
+                <th>관련 문서 다운로드</th>
+              </tr>
+              <tr>
+                <td>{{ table.a2 }}</td>
+                <td>{{ table.a8 }}</td>
+                <td>{{ table.a11 }}</td>
+                <td>{{ table.a12 }}</td>
+                <td class="icon-cell">
                   <div class="doc-icon">
                     <img src="{% static 'images/word.jpg' %}" alt="결과서" />
                     <div>결과서</div>
@@ -95,28 +115,6 @@
                     <div>결함 리포트</div>
                   </div>
                 </td>
-              </tr>
-              <tr class="header-row">
-                <th>제품명</th>
-                <th colspan="4">제품 개요</th>
-              </tr>
-              <tr>
-                <td>{{ table.a5 }}</td>
-                <td colspan="4">{{ table.a9 }}</td>
-              </tr>             
-              <tr class="header-row">
-                <th>분류</th>
-                <th>재계약 여부</th>
-                <th>특이사항</th>
-                <th>시작/종료 날짜</th>
-                <th>시험원</th>
-              </tr>
-              <tr>
-                <td>{{ table.a8 }}</td>
-                <td>{{ table.a11 }}</td>
-                <td>{{ table.a12 }}</td>
-                <td>{{ table.a13 }}</td>
-                <td>{{ table.a14 }}</td>
               </tr>
             </table>
             {% endfor %}
