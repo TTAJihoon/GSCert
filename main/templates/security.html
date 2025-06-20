@@ -1,12 +1,30 @@
 {% load static %}
 <!DOCTYPE html>
 <html lang="ko">
-<head>
-    <meta charset="UTF-8">
-    <title>보안 페이지</title>
-</head>
-<body>
-    <h1>Security Page</h1>
-    <p>여기에 보안 관련 내용을 작성하세요.</p>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>AI 서포터즈 센터</title>
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}"/>
+    <link rel="stylesheet" href="{% static 'css/table.css' %}"/>
+    <script src="{% static 'scripts/radio.js' %}" defer></script>
+  </head>
+  
+  <body>
+    <div class="container">
+      <!-- 상단 바 -->
+      <header class="top-bar">
+        <img src="{% static 'images/TTA logo.jpg' %}" alt="로고" class="logo">
+        <span class="title">AI 서포터즈 센터</span>
+        <nav class="menu">
+          <button onclick="location.href='{% url 'index' %}'">메뉴1</button>
+          <button onclick="location.href='{% url 'security' %}'">메뉴2</button>
+          <button>메뉴3</button>
+          <button>메뉴4</button>
+          <button>메뉴5</button>
+        </nav>
+      </header>
+        <h1>Security Page</h1>
+        <p>여기에 보안 관련 내용을 작성하세요.</p>
+  </body>
 </html>
