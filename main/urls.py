@@ -11,6 +11,7 @@ urlpatterns = [
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('welcome/', welcome),
     path('index/', index),
+    path('security/', security),
     path('test-login/', login_test_view),
     path('search-history/', search_history, name='history'),
     path('reload-reference/', reload_reference_view, name='reload_reference'),
