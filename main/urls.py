@@ -1,8 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path
-from . import views
-from main.views.sendValue import search_history
-from main.views.sendValue import reload_reference_view
+from main.views.init import index, security
+from main.views.sendValue import search_history, reload_reference_view
 
 urlpatterns = [
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
