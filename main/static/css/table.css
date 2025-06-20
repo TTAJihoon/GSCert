@@ -1,14 +1,15 @@
 .scroll-container {
-  height: calc(100vh - 60px);
-  overflow-y: auto;          /* ✅ 세로 스크롤만 표시 */
+  height: calc(100vh - 100px);  /* 60px header + 40px padding 고려 */
+  overflow-y: auto;
   padding-right: 10px;
 }
 
+/* 테이블 관련 스타일 */
 .info-table {
   background-color: #f0fafe;
   width: 100%;
   margin-bottom: 30px;
-  border: 3px solid black;   /* ✅ 검정 외곽선 */
+  border: 3px solid black;
   border-collapse: collapse;
   border-radius: 10px;
   overflow: hidden;
@@ -26,7 +27,7 @@
 }
 
 .header-row {
-  background-color: #b3b3b3; /* 회색 */
+  background-color: #b3b3b3;
   font-weight: bold;
   color: black;
 }
@@ -36,7 +37,7 @@
   justify-content: center;
   align-items: center;
   gap: 12px;
-  height: 100%;  /* 세로 정렬 */
+  height: 100%;
 }
 
 .doc-icon {
@@ -51,7 +52,9 @@
   height: 32px;
 }
 
+/* scroll-container의 부모 영역 */
 #result-area {
   background-color: white;
   padding: 20px;
+  box-sizing: border-box;
 }
