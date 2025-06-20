@@ -1,5 +1,5 @@
 .scroll-container {
-  max-height: 1500px;         /* ✅ 표시 가능한 최대 높이 지정 */
+  flex: 1;         /* ✅ 표시 가능한 최대 높이 지정 */
   overflow-y: auto;          /* ✅ 세로 스크롤만 표시 */
   padding-right: 10px;
 }
