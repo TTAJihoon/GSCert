@@ -67,7 +67,7 @@ def run_ollama_with_reference(startDate, endDate, comment):
     """
         
     try:
-        response = generate(model='gemma3', prompt=prompt)
+        response = generate(model='mistral', prompt=prompt)
         return response.get("response", "[응답 없음]")
     except Exception as e:
         print("[ERROR]", e)
