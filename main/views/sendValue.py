@@ -47,7 +47,7 @@ def search_history(request):
 
         elif selected == 'similar':
             try:
-                result_str = run_ollama_with_reference(company, product, startDate, endDate, comment)
+                result_str = run_ollama_with_reference(startDate, endDate, comment)
                 print("[DEBUG] LLM 응답 원문:", result_str[:500])
                 result_json = json.loads(result_str)
             except Exception as e:
