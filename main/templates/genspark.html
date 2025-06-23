@@ -1,371 +1,280 @@
+
 {% load static %}
 <!DOCTYPE html>
 <html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>AI 서포터즈 센터</title>
-    <link rel="stylesheet" href="{% static 'css/styles.css' %}"/>
-    <link rel="stylesheet" href="{% static 'css/table.css' %}"/>
-    <script src="{% static 'scripts/radio.js' %}" defer></script>
+<head>
+    <meta charset="UTF-8">
+    <title>AI 서포터즈 + GenSpark</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
+    <!-- Tailwind, FontAwesome -->
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+
+    <!-- 기본 폰트 및 상단바 스타일 -->
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
         body {
             font-family: 'Noto Sans KR', sans-serif;
             margin: 0;
             padding: 0;
-            width: 1280px;
-            min-height: 720px;
-            overflow: hidden;
         }
-        .slide-container {
-            width: 1280px;
-            min-height: 720px;
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-            position: relative;
+        .top-bar {
+            background-color: #d8e9f8;
+            padding: 10px 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .logo {
+            height: 40px;
+            margin-right: 10px;
         }
         .title {
-            font-size: 36px;
-            font-weight: 700;
-            color: #1a53a0;
-            margin-bottom: 30px;
-            padding-bottom: 15px;
-            border-bottom: 2px solid #1a53a0;
-            display: inline-block;
+            font-size: 22px;
+            font-weight: bold;
+            margin-right: auto;
         }
-        .accent-bar {
-            height: 8px;
-            background: linear-gradient(90deg, #1a53a0 0%, #4285f4 100%);
+        .menu {
+            display: flex;
+            flex: 1;
+            justify-content: space-between;
+            gap: 0;
             width: 100%;
-            position: absolute;
-            bottom: 0;
+            max-width: 1500px;
         }
-        .accent-bar-top {
-            height: 8px;
-            background: linear-gradient(90deg, #1a53a0 0%, #4285f4 100%);
-            width: 100%;
-            position: absolute;
-            top: 0;
-        }
-        .content-box {
-            background-color: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
-            padding: 20px;
-            margin-bottom: 20px;
-        }
-        .upload-area {
-            border: 2px dashed #1a53a0;
-            border-radius: 8px;
-            padding: 20px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            background-color: rgba(26, 83, 160, 0.05);
-        }
-        .upload-area:hover {
-            background-color: rgba(26, 83, 160, 0.1);
-        }
-        .check-item {
-            border-left: 4px solid transparent;
-            padding: 10px 15px;
-            margin-bottom: 8px;
-            transition: all 0.2s;
-        }
-        .check-item.pass {
-            border-left-color: #34c759;
-            background-color: rgba(52, 199, 89, 0.1);
-        }
-        .check-item.fail {
-            border-left-color: #ff3b30;
-            background-color: rgba(255, 59, 48, 0.1);
-        }
-        .status-icon {
-            width: 18px;
-            height: 18px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            margin-right: 8px;
-        }
-        .status-icon.pass {
-            background-color: #34c759;
-            color: white;
-        }
-        .status-icon.fail {
-            background-color: #ff3b30;
-            color: white;
-        }
-        .tab-button {
-            padding: 10px 16px;
+        .menu button {
+            flex: 1;
+            background: none;
+            border: none;
             font-size: 14px;
-            font-weight: 500;
-            border-radius: 4px 4px 0 0;
-            border-bottom: none;
+            text-align: center;
+            line-height: 1.2;
+            padding: 4px;
+            white-space: pre-line;
             cursor: pointer;
-        }
-        .tab-button.active {
-            background-color: white;
-            border: 1px solid #e2e8f0;
-            border-bottom: none;
-            color: #1a53a0;
-            font-weight: 600;
-        }
-        .progress-bar {
-            height: 8px;
-            background-color: #e2e8f0;
-            border-radius: 4px;
-            overflow: hidden;
-        }
-        .progress-value {
-            height: 100%;
-            background-color: #1a53a0;
-            border-radius: 4px;
         }
     </style>
 </head>
 <body>
-    <div class="container">
-      <!-- 상단 바 -->
-      <header class="top-bar">
+
+    <!-- ✅ 상단 바 -->
+    <header class="top-bar">
         <img src="{% static 'images/TTA logo.jpg' %}" alt="로고" class="logo">
         <span class="title">AI 서포터즈 센터</span>
         <nav class="menu">
-          <button onclick="location.href='{% url 'index' %}'">시험 이력 조회<br>유사 시험 조회</button>
-          <button onclick="location.href='{% url 'security' %}'">보안성 결함 작성</button>
-          <button onclick="location.href='{% url 'genspark' %}'">테스트케이스 작성</button>
-          <button>시험결과서 작성</button>
+            <button onclick="location.href='/index/'">메뉴1<br>시험 이력</button>
+            <button onclick="location.href='/security/'">메뉴2<br>보안기능</button>
+            <button>메뉴3</button>
+            <button>메뉴4</button>
+            <button>메뉴5</button>
         </nav>
-      </header>
-    </div>
-    <div class="slide-container flex flex-col justify-between">
-        <div class="accent-bar-top"></div>
-        
-        <div class="flex flex-col px-20 py-10">
-            <h1 class="title">4. 매뉴얼 품질 점검 화면</h1>
-            
-            <div class="grid grid-cols-3 gap-6">
-                <!-- 왼쪽 패널: 파일 업로드 및 설정 -->
-                <div class="col-span-1">
-                    <div class="content-box mb-6">
-                        <h3 class="text-lg font-semibold text-gray-700 mb-4">파일 업로드</h3>
-                        
-                        <div class="upload-area mb-4">
-                            <i class="fas fa-file-upload text-4xl text-blue-500 mb-2"></i>
-                            <p class="mb-1">사용자 취급 설명서를 여기에 끌어다 놓거나</p>
-                            <button class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded mt-2">
+    </header>
+
+    <!-- ✅ GenSpark 본문 내용 -->
+    <main>
+    
+<div class="slide-container flex flex-col justify-between">
+<div class="accent-bar-top"></div>
+<div class="flex flex-col px-20 py-10">
+<h1 class="title">4. 매뉴얼 품질 점검 화면</h1>
+<div class="grid grid-cols-3 gap-6">
+<!-- 왼쪽 패널: 파일 업로드 및 설정 -->
+<div class="col-span-1">
+<div class="content-box mb-6">
+<h3 class="text-lg font-semibold text-gray-700 mb-4">파일 업로드</h3>
+<div class="upload-area mb-4">
+<i class="fas fa-file-upload text-4xl text-blue-500 mb-2"></i>
+<p class="mb-1">사용자 취급 설명서를 여기에 끌어다 놓거나</p>
+<button class="bg-blue-500 hover:bg-blue-600 text-white font-medium py-2 px-4 rounded mt-2">
                                 파일 선택
                             </button>
-                            <p class="text-xs text-gray-500 mt-2">지원 형식: DOCX, PDF</p>
-                        </div>
-                        
-                        <div class="file-info bg-gray-50 p-3 rounded flex items-center">
-                            <i class="fas fa-file-word text-blue-500 mr-3"></i>
-                            <div>
-                                <p class="font-medium text-sm">사용자취급설명서.docx</p>
-                                <p class="text-xs text-gray-500">2.1MB • 방금 전 업로드됨</p>
-                            </div>
-                            <button class="ml-auto text-gray-400 hover:text-gray-600">
-                                <i class="fas fa-times"></i>
+<p class="text-xs text-gray-500 mt-2">지원 형식: DOCX, PDF</p>
+</div>
+<div class="file-info bg-gray-50 p-3 rounded flex items-center">
+<i class="fas fa-file-word text-blue-500 mr-3"></i>
+<div>
+<p class="font-medium text-sm">사용자취급설명서.docx</p>
+<p class="text-xs text-gray-500">2.1MB • 방금 전 업로드됨</p>
+</div>
+<button class="ml-auto text-gray-400 hover:text-gray-600">
+<i class="fas fa-times"></i>
+</button>
+</div>
+</div>
+<div class="content-box">
+<h3 class="text-lg font-semibold text-gray-700 mb-4">점검 옵션</h3>
+<div class="mb-3">
+<label class="flex items-center mb-1">
+<input checked="" class="form-checkbox h-4 w-4 text-blue-600 mr-2" type="checkbox"/>
+<span>전체 항목 점검</span>
+</label>
+<p class="text-xs text-gray-500 ml-6">모든 필수 항목 및 추가 항목을 검증합니다</p>
+</div>
+<div class="border-t border-gray-200 my-4 pt-4">
+<h4 class="text-sm font-semibold mb-2">사용자 정의 항목</h4>
+<div class="flex flex-wrap">
+<div class="w-full mb-2">
+<label class="flex items-center">
+<input checked="" class="form-checkbox h-4 w-4 text-blue-600 mr-2" type="checkbox"/>
+<span class="text-sm">식별정보(제품명, 버전)</span>
+</label>
+</div>
+<div class="w-full mb-2">
+<label class="flex items-center">
+<input checked="" class="form-checkbox h-4 w-4 text-blue-600 mr-2" type="checkbox"/>
+<span class="text-sm">제품의 주요 사용 목적</span>
+</label>
+</div>
+<div class="w-full mb-2">
+<label class="flex items-center">
+<input checked="" class="form-checkbox h-4 w-4 text-blue-600 mr-2" type="checkbox"/>
+<span class="text-sm">최소/권장 장비 사양</span>
+</label>
+</div>
+</div>
+<button class="text-sm text-blue-600 hover:text-blue-700 mt-1 flex items-center">
+<i class="fas fa-plus-circle mr-1"></i> 모든 항목 보기
                             </button>
-                        </div>
-                    </div>
-                    
-                    <div class="content-box">
-                        <h3 class="text-lg font-semibold text-gray-700 mb-4">점검 옵션</h3>
-                        
-                        <div class="mb-3">
-                            <label class="flex items-center mb-1">
-                                <input type="checkbox" class="form-checkbox h-4 w-4 text-blue-600 mr-2" checked>
-                                <span>전체 항목 점검</span>
-                            </label>
-                            <p class="text-xs text-gray-500 ml-6">모든 필수 항목 및 추가 항목을 검증합니다</p>
-                        </div>
-                        
-                        <div class="border-t border-gray-200 my-4 pt-4">
-                            <h4 class="text-sm font-semibold mb-2">사용자 정의 항목</h4>
-                            
-                            <div class="flex flex-wrap">
-                                <div class="w-full mb-2">
-                                    <label class="flex items-center">
-                                        <input type="checkbox" class="form-checkbox h-4 w-4 text-blue-600 mr-2" checked>
-                                        <span class="text-sm">식별정보(제품명, 버전)</span>
-                                    </label>
-                                </div>
-                                
-                                <div class="w-full mb-2">
-                                    <label class="flex items-center">
-                                        <input type="checkbox" class="form-checkbox h-4 w-4 text-blue-600 mr-2" checked>
-                                        <span class="text-sm">제품의 주요 사용 목적</span>
-                                    </label>
-                                </div>
-                                
-                                <div class="w-full mb-2">
-                                    <label class="flex items-center">
-                                        <input type="checkbox" class="form-checkbox h-4 w-4 text-blue-600 mr-2" checked>
-                                        <span class="text-sm">최소/권장 장비 사양</span>
-                                    </label>
-                                </div>
-                            </div>
-                            
-                            <button class="text-sm text-blue-600 hover:text-blue-700 mt-1 flex items-center">
-                                <i class="fas fa-plus-circle mr-1"></i> 모든 항목 보기
-                            </button>
-                        </div>
-                        
-                        <button class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded mt-4 flex items-center justify-center">
-                            <i class="fas fa-play-circle mr-2"></i> 점검 시작
+</div>
+<button class="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded mt-4 flex items-center justify-center">
+<i class="fas fa-play-circle mr-2"></i> 점검 시작
                         </button>
-                    </div>
-                </div>
-                
-                <!-- 오른쪽 패널: 점검 결과 -->
-                <div class="col-span-2">
-                    <div class="flex items-center mb-4">
-                        <div class="flex border-b border-gray-200 w-full">
-                            <div class="tab-button active">
-                                <i class="fas fa-list-check mr-2"></i>점검 결과
+</div>
+</div>
+<!-- 오른쪽 패널: 점검 결과 -->
+<div class="col-span-2">
+<div class="flex items-center mb-4">
+<div class="flex border-b border-gray-200 w-full">
+<div class="tab-button active">
+<i class="fas fa-list-check mr-2"></i>점검 결과
                             </div>
-                            <div class="tab-button">
-                                <i class="fas fa-table mr-2"></i>상세 항목 분석
+<div class="tab-button">
+<i class="fas fa-table mr-2"></i>상세 항목 분석
                             </div>
-                            <div class="tab-button">
-                                <i class="fas fa-history mr-2"></i>검증 기록
+<div class="tab-button">
+<i class="fas fa-history mr-2"></i>검증 기록
                             </div>
-                        </div>
-                    </div>
-                    
-                    <div class="content-box">
-                        <div class="flex items-center justify-between mb-6">
-                            <div class="flex items-center">
-                                <i class="fas fa-chart-pie text-blue-600 text-xl mr-3"></i>
-                                <h3 class="text-lg font-semibold">품질 점검 결과 요약</h3>
-                            </div>
-                            <button class="bg-white border border-blue-500 text-blue-500 hover:bg-blue-50 py-1.5 px-3 rounded text-sm flex items-center">
-                                <i class="fas fa-file-export mr-1"></i> 보고서 생성
+</div>
+</div>
+<div class="content-box">
+<div class="flex items-center justify-between mb-6">
+<div class="flex items-center">
+<i class="fas fa-chart-pie text-blue-600 text-xl mr-3"></i>
+<h3 class="text-lg font-semibold">품질 점검 결과 요약</h3>
+</div>
+<button class="bg-white border border-blue-500 text-blue-500 hover:bg-blue-50 py-1.5 px-3 rounded text-sm flex items-center">
+<i class="fas fa-file-export mr-1"></i> 보고서 생성
                             </button>
-                        </div>
-                        
-                        <div class="grid grid-cols-3 gap-4 mb-6">
-                            <div class="bg-blue-50 rounded-lg p-4 text-center">
-                                <p class="text-gray-600 text-sm mb-1">총 점검 항목</p>
-                                <p class="text-3xl font-bold text-gray-800">13</p>
-                            </div>
-                            
-                            <div class="bg-green-50 rounded-lg p-4 text-center">
-                                <p class="text-gray-600 text-sm mb-1">통과</p>
-                                <p class="text-3xl font-bold text-green-600">8</p>
-                            </div>
-                            
-                            <div class="bg-red-50 rounded-lg p-4 text-center">
-                                <p class="text-gray-600 text-sm mb-1">실패</p>
-                                <p class="text-3xl font-bold text-red-600">5</p>
-                            </div>
-                        </div>
-                        
-                        <div class="mb-6">
-                            <h4 class="text-sm font-semibold text-gray-700 mb-2">품질 점수</h4>
-                            <div class="flex items-center">
-                                <div class="w-full mr-4">
-                                    <div class="progress-bar">
-                                        <div class="progress-value" style="width: 62%;"></div>
-                                    </div>
-                                </div>
-                                <span class="font-bold text-lg">62%</span>
-                            </div>
-                        </div>
-                        
-                        <div class="border-t border-gray-200 pt-4">
-                            <h4 class="text-sm font-semibold text-gray-700 mb-3">세부 항목 검증 결과</h4>
-                            
-                            <div class="max-h-64 overflow-y-auto pr-2">
-                                <div class="check-item pass">
-                                    <div class="flex justify-between">
-                                        <div class="flex items-center">
-                                            <span class="status-icon pass"><i class="fas fa-check text-xs"></i></span>
-                                            <span class="font-medium">식별정보(제품명, 버전) 제공</span>
-                                        </div>
-                                        <button class="text-blue-600 text-sm hover:text-blue-700">
-                                            <i class="fas fa-info-circle"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <div class="check-item pass">
-                                    <div class="flex justify-between">
-                                        <div class="flex items-center">
-                                            <span class="status-icon pass"><i class="fas fa-check text-xs"></i></span>
-                                            <span class="font-medium">제품의 주요 사용 목적 제공</span>
-                                        </div>
-                                        <button class="text-blue-600 text-sm hover:text-blue-700">
-                                            <i class="fas fa-info-circle"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <div class="check-item fail">
-                                    <div class="flex justify-between">
-                                        <div class="flex items-center">
-                                            <span class="status-icon fail"><i class="fas fa-times text-xs"></i></span>
-                                            <span class="font-medium">최소/권장 장비 사양 정보 제공</span>
-                                        </div>
-                                        <button class="text-blue-600 text-sm hover:text-blue-700">
-                                            <i class="fas fa-info-circle"></i>
-                                        </button>
-                                    </div>
-                                    <div class="mt-2 text-sm text-red-600 bg-red-50 p-2 rounded">
-                                        <i class="fas fa-exclamation-circle mr-1"></i>
+</div>
+<div class="grid grid-cols-3 gap-4 mb-6">
+<div class="bg-blue-50 rounded-lg p-4 text-center">
+<p class="text-gray-600 text-sm mb-1">총 점검 항목</p>
+<p class="text-3xl font-bold text-gray-800">13</p>
+</div>
+<div class="bg-green-50 rounded-lg p-4 text-center">
+<p class="text-gray-600 text-sm mb-1">통과</p>
+<p class="text-3xl font-bold text-green-600">8</p>
+</div>
+<div class="bg-red-50 rounded-lg p-4 text-center">
+<p class="text-gray-600 text-sm mb-1">실패</p>
+<p class="text-3xl font-bold text-red-600">5</p>
+</div>
+</div>
+<div class="mb-6">
+<h4 class="text-sm font-semibold text-gray-700 mb-2">품질 점수</h4>
+<div class="flex items-center">
+<div class="w-full mr-4">
+<div class="progress-bar">
+<div class="progress-value" style="width: 62%;"></div>
+</div>
+</div>
+<span class="font-bold text-lg">62%</span>
+</div>
+</div>
+<div class="border-t border-gray-200 pt-4">
+<h4 class="text-sm font-semibold text-gray-700 mb-3">세부 항목 검증 결과</h4>
+<div class="max-h-64 overflow-y-auto pr-2">
+<div class="check-item pass">
+<div class="flex justify-between">
+<div class="flex items-center">
+<span class="status-icon pass"><i class="fas fa-check text-xs"></i></span>
+<span class="font-medium">식별정보(제품명, 버전) 제공</span>
+</div>
+<button class="text-blue-600 text-sm hover:text-blue-700">
+<i class="fas fa-info-circle"></i>
+</button>
+</div>
+</div>
+<div class="check-item pass">
+<div class="flex justify-between">
+<div class="flex items-center">
+<span class="status-icon pass"><i class="fas fa-check text-xs"></i></span>
+<span class="font-medium">제품의 주요 사용 목적 제공</span>
+</div>
+<button class="text-blue-600 text-sm hover:text-blue-700">
+<i class="fas fa-info-circle"></i>
+</button>
+</div>
+</div>
+<div class="check-item fail">
+<div class="flex justify-between">
+<div class="flex items-center">
+<span class="status-icon fail"><i class="fas fa-times text-xs"></i></span>
+<span class="font-medium">최소/권장 장비 사양 정보 제공</span>
+</div>
+<button class="text-blue-600 text-sm hover:text-blue-700">
+<i class="fas fa-info-circle"></i>
+</button>
+</div>
+<div class="mt-2 text-sm text-red-600 bg-red-50 p-2 rounded">
+<i class="fas fa-exclamation-circle mr-1"></i>
                                         '시스템 요구사항' 섹션은 있으나 구체적인 사양(메모리, 저장 공간, 해상도)이 누락되었습니다.
                                     </div>
-                                </div>
-                                
-                                <div class="check-item fail">
-                                    <div class="flex justify-between">
-                                        <div class="flex items-center">
-                                            <span class="status-icon fail"><i class="fas fa-times text-xs"></i></span>
-                                            <span class="font-medium">연동 제품 정보 제공</span>
-                                        </div>
-                                        <button class="text-blue-600 text-sm hover:text-blue-700">
-                                            <i class="fas fa-info-circle"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <div class="check-item pass">
-                                    <div class="flex justify-between">
-                                        <div class="flex items-center">
-                                            <span class="status-icon pass"><i class="fas fa-check text-xs"></i></span>
-                                            <span class="font-medium">용어 및 약어 정의 제공</span>
-                                        </div>
-                                        <button class="text-blue-600 text-sm hover:text-blue-700">
-                                            <i class="fas fa-info-circle"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <div class="check-item pass">
-                                    <div class="flex justify-between">
-                                        <div class="flex items-center">
-                                            <span class="status-icon pass"><i class="fas fa-check text-xs"></i></span>
-                                            <span class="font-medium">데이터 백업 및 복구 절차 제공</span>
-                                        </div>
-                                        <button class="text-blue-600 text-sm hover:text-blue-700">
-                                            <i class="fas fa-info-circle"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <div class="accent-bar"></div>
-    </div>
+</div>
+<div class="check-item fail">
+<div class="flex justify-between">
+<div class="flex items-center">
+<span class="status-icon fail"><i class="fas fa-times text-xs"></i></span>
+<span class="font-medium">연동 제품 정보 제공</span>
+</div>
+<button class="text-blue-600 text-sm hover:text-blue-700">
+<i class="fas fa-info-circle"></i>
+</button>
+</div>
+</div>
+<div class="check-item pass">
+<div class="flex justify-between">
+<div class="flex items-center">
+<span class="status-icon pass"><i class="fas fa-check text-xs"></i></span>
+<span class="font-medium">용어 및 약어 정의 제공</span>
+</div>
+<button class="text-blue-600 text-sm hover:text-blue-700">
+<i class="fas fa-info-circle"></i>
+</button>
+</div>
+</div>
+<div class="check-item pass">
+<div class="flex justify-between">
+<div class="flex items-center">
+<span class="status-icon pass"><i class="fas fa-check text-xs"></i></span>
+<span class="font-medium">데이터 백업 및 복구 절차 제공</span>
+</div>
+<button class="text-blue-600 text-sm hover:text-blue-700">
+<i class="fas fa-info-circle"></i>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="accent-bar"></div>
+</div>
+
+    </main>
+
 </body>
 </html>
