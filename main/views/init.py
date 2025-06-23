@@ -13,3 +13,6 @@ def index(request):
 
 def security(request):
     return render(request, 'security.html')
+
+def genspark(request):
+    return render(request, 'genspark.html')
