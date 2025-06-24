@@ -12,7 +12,7 @@ class MainConfig(AppConfig):
         """
         print("[MainConfig] 앱이 준비되었습니다. 임베딩 캐시 로딩 시도 중...")
         try:
-            from .embedding_pipeline import load_embeddings
+            from main.utils.embedding import load_embeddings
             load_embeddings()
             print("[MainConfig] 임베딩 로딩 성공")
         except Exception as e:
