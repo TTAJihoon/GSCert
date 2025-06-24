@@ -37,6 +37,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'main.apps.MainConfig',  # 문자열로 직접 앱 클래스를 지정해야 ready()가 호출됨
     'main',
 ]
 
