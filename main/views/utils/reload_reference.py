@@ -1,4 +1,4 @@
-from main.utils.constants import REFERENCE_PATH
+from .constants import REFERENCE_PATH
 
 # 전역 DataFrame
 REFERENCE_DF = None
