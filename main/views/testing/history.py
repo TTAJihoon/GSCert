@@ -30,7 +30,7 @@ def GS_history(company):
             'a10': row.get('총WD', ''),
             'a11': row.get('재계약', ''),
             'a12': row.get('특이사항', ''),
-            'a13': row.get('시작날짜//n종료날짜', ''),
+            'a13': row.get('시작날짜/\n종료날짜', ''),
             'a14': row.get('시험원', '')
         }
         results.append(result)
