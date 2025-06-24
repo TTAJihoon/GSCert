@@ -1,3 +1,5 @@
+import pandas as pd
+
 def GS_history(company):
     if not isinstance(company, str) or not company.strip():
         return []  # 또는 raise ValidationError("회사명을 입력하세요.")
