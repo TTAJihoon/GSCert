@@ -2,7 +2,7 @@ import json
 import pandas as pd
 from django.shortcuts import render
 from .history import GS_history
-from .chatbot import run_ollama_with_reference
+#from .chatbot import run_ollama_with_reference
 
 def search_history(request):
     if request.method == 'POST':
@@ -32,14 +32,14 @@ def search_history(request):
             return render(request, 'index.html', context)
 
         elif selected == 'similar':
-            try:
-                result_str = run_ollama_with_reference(startDate, endDate, comment)
-                print("[DEBUG] LLM 응답 원문:", result_str[:500])
-                result_json = json.loads(result_str)
-            except Exception as e:
-                print("[ERROR] 유사도 검색 오류:", e)
-                result_json = []
-                context['response'] = "유사도 검색 중 오류 발생 또는 응답 파싱 실패"
+#            try:
+#                result_str = run_ollama_with_reference(startDate, endDate, comment)
+#                print("[DEBUG] LLM 응답 원문:", result_str[:500])
+#                result_json = json.loads(result_str)
+#            except Exception as e:
+#                print("[ERROR] 유사도 검색 오류:", e)
+#                result_json = []
+#                context['response'] = "유사도 검색 중 오류 발생 또는 응답 파싱 실패"
                 
                 context['response_tables'] = result_json
                 return render(request, 'index.html', context)
