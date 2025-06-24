@@ -1,4 +1,5 @@
 import pandas as pd
+from main.utils.reload_reference import REFERENCE_DF, reload_reference_dataframe
 
 def GS_history(company):
     if not isinstance(company, str) or not company.strip():
