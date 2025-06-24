@@ -1,4 +1,6 @@
-from .constants import REFERENCE_PATH
+import pandas as pd
+from django.shortcuts import render
+from main.utils.constants import REFERENCE_PATH
 
 # 전역 DataFrame
 REFERENCE_DF = None
