@@ -2,7 +2,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import path
 from main.views.init import index, security, genspark
 from main.views.testing.sendValue import search_history
-from main.views.reload_reference import reload_reference_view
+from main.utils.reload_reference import reload_reference_view
 
 urlpatterns = [
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
