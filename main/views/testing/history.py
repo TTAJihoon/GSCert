@@ -2,6 +2,12 @@ import pandas as pd
 from main.utils.reload_reference import REFERENCE_DF, reload_reference_dataframe
 
 def GS_history(company):
+    if REFERENCE_DF is None:
+        reload_reference_dataframe()
+    if REFERENCE_DF is None:
+        # 그래도 None이면 로딩 실패한 상태
+        raise ValueError("REFERENCE_DF is still None. CSV 파일이 로딩되지 않았습니다.")
+        
     if not isinstance(company, str) or not company.strip():
         return []  # 또는 raise ValidationError("회사명을 입력하세요.")
 
