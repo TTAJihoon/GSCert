@@ -1,6 +1,7 @@
 import json
 import pandas as pd
 from django.shortcuts import render
+from .history import GS_history
 from .chatbot import run_ollama_with_reference
 
 def search_history(request):
