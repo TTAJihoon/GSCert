@@ -1,8 +1,7 @@
 import json
 import pandas as pd
 from django.shortcuts import render
-from .chatbot import run_ollama_with_reference, reload_reference_context
-from main.utils.constants import REFERENCE_PATH
+from .chatbot import run_ollama_with_reference
 
 def search_history(request):
     if request.method == 'POST':
