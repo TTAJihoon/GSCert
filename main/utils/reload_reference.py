@@ -14,7 +14,7 @@ def reload_reference_dataframe():
         print("[ERROR] DataFrame reload 실패:", e)
 
 # 초기 1회 로딩
-reload_reference_dataframe()
+#reload_reference_dataframe()
 
 def reload_reference_view(request):
     reload_reference_dataframe()
