@@ -7,6 +7,7 @@ from main.utils.reload_reference import reload_reference_view
 urlpatterns = [
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('index/', index, name='index'),
+    path('test/', index, name='test'),
     path('security/', security, name='security'),
     path('search-history/', search_history, name='history'),
     path('reload-reference/', reload_reference_view, name='reload_reference'),
