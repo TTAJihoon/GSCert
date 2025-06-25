@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>에코백스토어 - 친환경 종량제 봉투 전문몰</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .card-hover {
+            transition: all 0.3s ease;
+        }
+        .card-hover:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        .bg-gradient {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Header -->
+    <header class="bg-white shadow-lg sticky top-0 z-50">
+        <div class="container mx-auto px-4">
+            <div class="flex justify-between items-center py-4">
+                <div class="flex items-center space-x-2">
+                    <i class="fas fa-leaf text-green-500 text-2xl"></i>
+                    <h1 class="text-2xl font-bold text-gray-800">에코백스토어</h1>
+                </div>
+                <nav class="hidden md:flex space-x-8">
+                    <a href="#home" class="text-gray-600 hover:text-blue-600 transition">홈</a>
+                    <a href="#products" class="text-gray-600 hover:text-blue-600 transition">제품</a>
+                    <a href="#features" class="text-gray-600 hover:text-blue-600 transition">특징</a>
+                    <a href="#contact" class="text-gray-600 hover:text-blue-600 transition">문의</a>
+                </nav>
+                <div class="flex items-center space-x-4">
+                    <i class="fas fa-shopping-cart text-gray-600 text-xl cursor-pointer hover:text-blue-600"></i>
+                    <button class="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition">
+                        로그인
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Hero Section -->
+    <section id="home" class="gradient-bg text-white py-20">
+        <div class="container mx-auto px-4 text-center">
+            <h2 class="text-5xl font-bold mb-6">친환경 종량제 봉투의 새로운 기준</h2>
+            <p class="text-xl mb-8 opacity-90">정부 인증 친환경 소재로 만든 고품질 종량제 봉투를 합리적인 가격에 만나보세요</p>
+            <div class="flex justify-center space-x-4">
+                <button class="bg-white text-blue-600 px-8 py-3 rounded-full font-semibold hover:shadow-lg transition">
+                    지금 주문하기
+                </button>
+                <button class="border-2 border-white text-white px-8 py-3 rounded-full font-semibold hover:bg-white hover:text-blue-600 transition">
+                    제품 둘러보기
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Features Section -->
+    <section id="features" class="py-16 bg-white">
+        <div class="container mx-auto px-4">
+            <div class="text-center mb-12">
+                <h3 class="text-3xl font-bold text-gray-800 mb-4">왜 에코백스토어를 선택하나요?</h3>
+                <p class="text-gray-600 text-lg">차별화된 서비스와 품질로 고객 만족을 실현합니다</p>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="text-center p-6 card-hover bg-gray-50 rounded-xl">
+                    <div class="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-recycle text-green-600 text-2xl"></i>
+                    </div>
+                    <h4 class="text-xl font-semibold mb-3">100% 친환경 소재</h4>
+                    <p class="text-gray-600">생분해 가능한 친환경 소재로 제작되어 환경을 보호합니다</p>
+                </div>
+                <div class="text-center p-6 card-hover bg-gray-50 rounded-xl">
+                    <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-certificate text-blue-600 text-2xl"></i>
+                    </div>
+                    <h4 class="text-xl font-semibold mb-3">정부 인증 제품</h4>
+                    <p class="text-gray-600">환경부 인증을 받은 안전하고 신뢰할 수 있는 제품입니다</p>
+                </div>
+                <div class="text-center p-6 card-hover bg-gray-50 rounded-xl">
+                    <div class="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-shipping-fast text-purple-600 text-2xl"></i>
+                    </div>
+                    <h4 class="text-xl font-semibold mb-3">무료 배송</h4>
+                    <p class="text-gray-600">전국 어디든 무료 배송으로 빠르고 안전하게 배송합니다</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Products Section -->
+    <section id="products" class="py-16 bg-gray-50">
+        <div class="container mx-auto px-4">
+            <div class="text-center mb-12">
+                <h3 class="text-3xl font-bold text-gray-800 mb-4">다양한 사이즈의 종량제 봉투</h3>
+                <p class="text-gray-600 text-lg">가정용부터 사업용까지 모든 사이즈를 취급합니다</p>
+            </div>
+            <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- 10L 봉투 -->
+                <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover">
+                    <div class="bg-gradient-to-r from-pink-400 to-red-400 h-48 flex items-center justify-center">
+                        <i class="fas fa-trash-alt text-white text-6xl"></i>
+                    </div>
+                    <div class="p-6">
+                        <h4 class="text-xl font-semibold mb-2">10L 종량제 봉투</h4>
+                        <p class="text-gray-600 mb-4">소형 가정용 쓰레기봉투 (50매입)</p>
+                        <div class="flex justify-between items-center">
+                            <span class="text-2xl font-bold text-blue-600">₩12,000</span>
+                            <button class="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition">
+                                구매하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 20L 봉투 -->
+                <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover">
+                    <div class="bg-gradient-to-r from-blue-400 to-indigo-400 h-48 flex items-center justify-center">
+                        <i class="fas fa-trash-alt text-white text-6xl"></i>
+                    </div>
+                    <div class="p-6">
+                        <h4 class="text-xl font-semibold mb-2">20L 종량제 봉투</h4>
+                        <p class="text-gray-600 mb-4">일반 가정용 쓰레기봉투 (50매입)</p>
+                        <div class="flex justify-between items-center">
+                            <span class="text-2xl font-bold text-blue-600">₩18,000</span>
+                            <button class="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition">
+                                구매하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 50L 봉투 -->
+                <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover">
+                    <div class="bg-gradient-to-r from-green-400 to-teal-400 h-48 flex items-center justify-center">
+                        <i class="fas fa-trash-alt text-white text-6xl"></i>
+                    </div>
+                    <div class="p-6">
+                        <h4 class="text-xl font-semibold mb-2">50L 종량제 봉투</h4>
+                        <p class="text-gray-600 mb-4">대용량 가정용 쓰레기봉투 (30매입)</p>
+                        <div class="flex justify-between items-center">
+                            <span class="text-2xl font-bold text-blue-600">₩25,000</span>
+                            <button class="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition">
+                                구매하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 100L 봉투 -->
+                <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover">
+                    <div class="bg-gradient-to-r from-purple-400 to-pink-400 h-48 flex items-center justify-center">
+                        <i class="fas fa-trash-alt text-white text-6xl"></i>
+                    </div>
+                    <div class="p-6">
+                        <h4 class="text-xl font-semibold mb-2">100L 종량제 봉투</h4>
+                        <p class="text-gray-600 mb-4">사업용 대형 쓰레기봉투 (20매입)</p>
+                        <div class="flex justify-between items-center">
+                            <span class="text-2xl font-bold text-blue-600">₩35,000</span>
+                            <button class="bg-blue-600 text-white px-4 py-2 rounded-full hover:bg-blue-700 transition">
+                                구매하기
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Special Offers Section -->
+    <section class="py-16 bg-white">
+        <div class="container mx-auto px-4">
+            <div class="bg-gradient text-white rounded-2xl p-12 text-center">
+                <h3 class="text-3xl font-bold mb-4">🎉 특별 할인 이벤트</h3>
+                <p class="text-xl mb-6 opacity-90">10만원 이상 구매시 20% 할인 + 무료배송</p>
+                <div class="flex justify-center space-x-4">
+                    <button class="bg-white text-pink-600 px-8 py-3 rounded-full font-semibold hover:shadow-lg transition">
+                        할인 혜택 받기
+                    </button>
+                    <span class="bg-white bg-opacity-20 px-6 py-3 rounded-full font-semibold">
+                        ⏰ 한정 기간 이벤트
+                    </span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials Section -->
+    <section class="py-16 bg-gray-50">
+        <div class="container mx-auto px-4">
+            <div class="text-center mb-12">
+                <h3 class="text-3xl font-bold text-gray-800 mb-4">고객 후기</h3>
+                <p class="text-gray-600 text-lg">실제 고객들이 남긴 생생한 후기를 확인해보세요</p>
+            </div>
+            <div class="grid md:grid-cols-3 gap-8">
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <div class="flex items-center mb-4">
+                        <div class="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mr-4">
+                            <i class="fas fa-user text-blue-600"></i>
+                        </div>
+                        <div>
+                            <h5 class="font-semibold">김영희님</h5>
+                            <div class="text-yellow-400">
+                                <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-gray-600">"친환경 소재라서 마음 놓고 사용할 수 있어요. 품질도 뛰어나고 배송도 빨라서 만족합니다!"</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <div class="flex items-center mb-4">
+                        <div class="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mr-4">
+                            <i class="fas fa-user text-green-600"></i>
+                        </div>
+                        <div>
+                            <h5 class="font-semibold">박민수님</h5>
+                            <div class="text-yellow-400">
+                                <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-gray-600">"사업장에서 사용하는데 대용량 사이즈가 있어서 너무 좋아요. 가격도 합리적이고 할인 혜택까지!"</p>
+                </div>
+                <div class="bg-white p-6 rounded-xl shadow-md">
+                    <div class="flex items-center mb-4">
+                        <div class="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mr-4">
+                            <i class="fas fa-user text-purple-600"></i>
+                        </div>
+                        <div>
+                            <h5 class="font-semibold">이수진님</h5>
+                            <div class="text-yellow-400">
+                                <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-gray-600">"찢어지지 않고 튼튼해서 안심하고 쓸 수 있어요. 온라인 주문도 편리하고 추천합니다!"</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer id="contact" class="bg-gray-800 text-white py-12">
+        <div class="container mx-auto px-4">
+            <div class="grid md:grid-cols-4 gap-8">
+                <div>
+                    <div class="flex items-center space-x-2 mb-4">
+                        <i class="fas fa-leaf text-green-400 text-xl"></i>
+                        <h4 class="text-xl font-bold">에코백스토어</h4>
+                    </div>
+                    <p class="text-gray-400 mb-4">친환경 종량제 봉투 전문 온라인몰로 고품질 제품과 차별화된 서비스를 제공합니다.</p>
+                    <div class="flex space-x-4">
+                        <i class="fab fa-facebook text-blue-400 text-xl cursor-pointer hover:text-blue-300"></i>
+                        <i class="fab fa-instagram text-pink-400 text-xl cursor-pointer hover:text-pink-300"></i>
+                        <i class="fab fa-youtube text-red-400 text-xl cursor-pointer hover:text-red-300"></i>
+                    </div>
+                </div>
+                <div>
+                    <h5 class="text-lg font-semibold mb-4">제품 카테고리</h5>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#" class="hover:text-white transition">10L 종량제 봉투</a></li>
+                        <li><a href="#" class="hover:text-white transition">20L 종량제 봉투</a></li>
+                        <li><a href="#" class="hover:text-white transition">50L 종량제 봉투</a></li>
+                        <li><a href="#" class="hover:text-white transition">100L 종량제 봉투</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h5 class="text-lg font-semibold mb-4">고객 서비스</h5>
+                    <ul class="space-y-2 text-gray-400">
+                        <li><a href="#" class="hover:text-white transition">주문/배송 안내</a></li>
+                        <li><a href="#" class="hover:text-white transition">교환/반품 정책</a></li>
+                        <li><a href="#" class="hover:text-white transition">자주 묻는 질문</a></li>
+                        <li><a href="#" class="hover:text-white transition">고객센터</a></li>
+                    </ul>
+                </div>
+                <div>
+                    <h5 class="text-lg font-semibold mb-4">연락처</h5>
+                    <div class="space-y-2 text-gray-400">
+                        <div class="flex items-center space-x-2">
+                            <i class="fas fa-phone"></i>
+                            <span>1588-1234</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <i class="fas fa-envelope"></i>
+                            <span>info@ecobagstore.co.kr</span>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <i class="fas fa-clock"></i>
+                            <span>평일 09:00-18:00</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400">
+                <p>&copy; 2024 에코백스토어. All rights reserved. | 사업자등록번호: 123-45-67890</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Smooth scrolling for navigation links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                document.querySelector(this.getAttribute('href')).scrollIntoView({
+                    behavior: 'smooth'
+                });
+            });
+        });
+
+        // Add cart functionality
+        let cart = [];
+        
+        document.querySelectorAll('button:contains("구매하기")').forEach(button => {
+            button.addEventListener('click', function() {
+                // Simple cart simulation
+                alert('장바구니에 추가되었습니다!');
+            });
+        });
+    </script>
+</body>
+</html>
