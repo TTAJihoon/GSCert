@@ -16,7 +16,7 @@ def reload_reference_dataframe():
 # 초기 1회 로딩
 #reload_reference_dataframe()
 
-def get_REF():
+def getREF():
     return REFERENCE_DF
 
 def reload_reference_view(request):
