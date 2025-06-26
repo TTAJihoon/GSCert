@@ -9,7 +9,7 @@ EMBEDDING_FILE = "main/data/reference_embeddings.npy"
 MODEL = None
 EMBEDDINGS = None
 EMBEDDED_DF = None
-
+REFERENCE_DF = None
 
 def generate_and_save_embeddings():
     """REFERENCE_DF가 없다면 로딩한 후 임베딩 생성 및 저장"""
