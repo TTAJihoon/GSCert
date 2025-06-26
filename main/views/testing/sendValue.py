@@ -28,6 +28,9 @@ def search_history(request):
                 return render(request, 'index.html', context)
                 
             tables = GS_history(company, product)
+            if isinstance(tables, dict):
+                tables = [tables]
+                
             context['response_tables'] = tables
             return render(request, 'index.html', context)
 
