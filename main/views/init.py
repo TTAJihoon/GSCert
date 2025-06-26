@@ -19,3 +19,6 @@ def security(request):
 
 def genspark(request):
     return render(request, 'genspark.html')
+    
+def test(request):
+    return render(request, 'test.html')
