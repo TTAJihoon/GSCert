@@ -8,16 +8,17 @@ def GS_history(company):
         # 그래도 None이면 로딩 실패한 상태
         raise ValueError("REFERENCE_DF is still None. CSV 파일이 로딩되지 않았습니다.")
         
-    if not isinstance(company, str) or not company.strip():
-        return []  # 또는 raise ValidationError("회사명을 입력하세요.")
+    df = REFERENCE_DF.copy()
 
-    matches = REFERENCE_DF[
-        REFERENCE_DF['회사명'].fillna('').str.contains(company, case=False)
-    ]
+    if company.strip():
+        df = df[df['회사명'].fillna('').str.contains(company, case=False)]
+
+    if product.strip():
+        df = df[df['제품'].fillna('').str.contains(product, case=False)]
 
     results = []
-    for _, row in matches.iterrows():
-        result = {
+    for _, row in df.iterrows():
+        result.append({
             'a1': row.get('일련번호', ''),
             'a2': row.get('인증번호', ''),
             'a3': row.get('인증일자', ''),
@@ -32,6 +33,5 @@ def GS_history(company):
             'a12': row.get('특이사항', ''),
             'a13': row.get('시작날짜/\n종료날짜', ''),
             'a14': row.get('시험원', '')
-        }
-        results.append(result)
+        })
     return results
