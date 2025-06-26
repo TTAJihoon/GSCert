@@ -30,7 +30,8 @@ def search_history(request):
             tables = GS_history(company, product)
             if isinstance(tables, dict):
                 tables = [tables]
-                
+
+            tables = list(tables)[::-1]
             context['response_tables'] = tables
             return render(request, 'index.html', context)
 
