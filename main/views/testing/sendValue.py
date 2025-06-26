@@ -27,9 +27,9 @@ def search_history(request):
                 context['response'] = '회사명 또는 제품명 중 하나 이상을 입력해주세요.'
                 return render(request, 'index.html', context)
                 
-                tables = GS_history(company, product)
-                context['response_tables'] = tables
-                return render(request, 'index.html', context)
+            tables = GS_history(company, product)
+            context['response_tables'] = tables
+            return render(request, 'index.html', context)
 
         elif selected == 'similar':
 #            try:
