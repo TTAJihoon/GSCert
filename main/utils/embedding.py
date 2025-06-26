@@ -1,4 +1,4 @@
-from main.utils.reload_reference import REFERENCE_DF, reload_reference_dataframe
+from main.utils.reload_reference import reload_reference_dataframe
 from sentence_transformers import SentenceTransformer, util
 import pandas as pd
 import numpy as np
@@ -15,9 +15,11 @@ def generate_and_save_embeddings():
     """REFERENCE_DF가 없다면 로딩한 후 임베딩 생성 및 저장"""
     global MODEL
 
+    REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
         print("[generate] REFERENCE_DF가 None → reference.csv 로딩 중...")
         reload_reference_dataframe()
+        REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
         raise ValueError("[generate] REFERENCE_DF is still None. reference.csv 로딩 실패")
 
