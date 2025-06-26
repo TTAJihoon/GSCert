@@ -1,63 +1,65 @@
-# embedding_pipeline_revised.py
-
 from main.utils.reload_reference import REFERENCE_DF, reload_reference_dataframe
 from sentence_transformers import SentenceTransformer, util
 import pandas as pd
 import numpy as np
 import os
 
-# 전역 변수
 MODEL_NAME = "snunlp/KR-SBERT-V40K-klueNLI-augSTS"
 EMBEDDING_FILE = "main/data/reference_embeddings.npy"
 MODEL = None
 EMBEDDINGS = None
-EMBEDDED_DF = None  # 임베딩과 순서가 일치하는 제품 설명만 필터링한 DataFrame
+EMBEDDED_DF = None
 
 
 def generate_and_save_embeddings():
-    """제품 설명 임베딩 생성 및 저장 (일련번호 순서 유지)"""
+    """REFERENCE_DF가 없다면 로딩한 후 임베딩 생성 및 저장"""
     global MODEL
 
     if REFERENCE_DF is None:
+        print("[generate] REFERENCE_DF가 None → reference.csv 로딩 중...")
         reload_reference_dataframe()
     if REFERENCE_DF is None:
-        raise ValueError("REFERENCE_DF is still None. reference.csv 로딩 실패")
+        raise ValueError("[generate] REFERENCE_DF is still None. reference.csv 로딩 실패")
 
     df = REFERENCE_DF[REFERENCE_DF["제품 설명"].notna()].reset_index(drop=True)
     text_list = df["제품 설명"].astype(str).tolist()
 
-    print("[1] KoSBERT 모델 로딩 중...")
+    print("[generate] KoSBERT 모델 로딩 중...")
     MODEL = SentenceTransformer(MODEL_NAME)
 
-    print(f"[2] 총 {len(text_list)}건 임베딩 생성 중...")
+    print(f"[generate] 총 {len(text_list)}건 임베딩 생성 중...")
     embeddings = MODEL.encode(text_list, convert_to_tensor=False)
 
     os.makedirs(os.path.dirname(EMBEDDING_FILE), exist_ok=True)
     np.save(EMBEDDING_FILE, embeddings)
-    print(f"[완료] 임베딩 저장 → {EMBEDDING_FILE}")
+    print(f"[generate] 임베딩 저장 완료 → {EMBEDDING_FILE}")
 
 
 def load_embeddings():
-    """저장된 임베딩 및 대응하는 원본 DataFrame 로드"""
+    """임베딩과 참조 DataFrame을 로드하거나 없으면 자동 생성"""
     global MODEL, EMBEDDINGS, EMBEDDED_DF
+
+    print("[load_embeddings] 임베딩 캐시 로딩 시도 중...")
 
     if not os.path.exists(EMBEDDING_FILE):
         print("[load_embeddings] 임베딩 파일이 없어 생성합니다.")
         generate_and_save_embeddings()
 
-    print("[1] KoSBERT 모델 로딩 중...")
-    MODEL = SentenceTransformer(MODEL_NAME)
-
-    print("[2] 임베딩 불러오는 중...")
-    EMBEDDINGS = np.load(EMBEDDING_FILE)
-
     if REFERENCE_DF is None:
+        print("[load_embeddings] REFERENCE_DF가 None → reference.csv 로딩 중...")
         reload_reference_dataframe()
     if REFERENCE_DF is None:
-        raise ValueError("REFERENCE_DF is still None. reference.csv 로딩 실패")
+        raise ValueError("[load_embeddings] REFERENCE_DF is still None. reference.csv 로딩 실패")
+
+    print("[load_embeddings] KoSBERT 모델 로딩 중...")
+    MODEL = SentenceTransformer(MODEL_NAME)
+
+    print("[load_embeddings] 임베딩 불러오는 중...")
+    EMBEDDINGS = np.load(EMBEDDING_FILE)
 
     EMBEDDED_DF = REFERENCE_DF[REFERENCE_DF["제품 설명"].notna()].reset_index(drop=True)
-    print(f"[완료] 임베딩 {len(EMBEDDINGS)}개, 참조 데이터 {len(EMBEDDED_DF)}개 로드 완료")
+    print(f"[load_embeddings] 완료: 임베딩 {len(EMBEDDINGS)}개, 참조 데이터 {len(EMBEDDED_DF)}개 로드 완료")
+
 
 
 def search_similar_by_text(query_text: str, top_k: int = 5):
