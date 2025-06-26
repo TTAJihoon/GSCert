@@ -1,0 +1,118 @@
+/* GenSpark 전용 스타일 */
+.genspark-main {
+  padding: 40px 60px;
+  background-color: #ffffff;
+  font-family: 'Noto Sans KR', sans-serif;
+  color: #333;
+}
+
+.genspark-main h1.title {
+  font-size: 24px;
+  font-weight: 700;
+  margin-bottom: 24px;
+}
+
+.genspark-main .content-box {
+  background-color: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  padding: 20px;
+  margin-bottom: 24px;
+}
+
+.genspark-main .upload-area {
+  border: 2px dashed #90cdf4;
+  padding: 24px;
+  text-align: center;
+  border-radius: 8px;
+  background-color: #f0f9ff;
+}
+
+.genspark-main .upload-area p {
+  font-size: 14px;
+  color: #555;
+}
+
+.genspark-main .file-info {
+  background-color: #eef6ff;
+  border: 1px solid #cce4ff;
+  border-radius: 6px;
+  padding: 12px;
+  margin-top: 12px;
+}
+
+.genspark-main .file-info p {
+  margin: 0;
+}
+
+.genspark-main .form-checkbox {
+  accent-color: #3b82f6;
+}
+
+.genspark-main .tab-button {
+  flex: 1;
+  text-align: center;
+  padding: 10px;
+  cursor: pointer;
+  font-weight: 500;
+  color: #666;
+  border-bottom: 3px solid transparent;
+}
+
+.genspark-main .tab-button.active {
+  color: #2563eb;
+  border-color: #2563eb;
+  background-color: #eff6ff;
+}
+
+.genspark-main .progress-bar {
+  width: 100%;
+  height: 12px;
+  background-color: #e5e7eb;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.genspark-main .progress-value {
+  height: 100%;
+  background-color: #3b82f6;
+}
+
+.genspark-main .check-item {
+  padding: 12px;
+  margin-bottom: 12px;
+  border-radius: 6px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.genspark-main .check-item.pass {
+  background-color: #ecfdf5;
+  border-left: 4px solid #22c55e;
+}
+
+.genspark-main .check-item.fail {
+  background-color: #fef2f2;
+  border-left: 4px solid #ef4444;
+}
+
+.genspark-main .check-item .status-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  margin-right: 8px;
+}
+
+.genspark-main .status-icon.pass {
+  background-color: #22c55e;
+  color: white;
+}
+
+.genspark-main .status-icon.fail {
+  background-color: #ef4444;
+  color: white;
+}
