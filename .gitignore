@@ -23,3 +23,6 @@ Thumbs.db
 # Migrations (선택)
 */migrations/__pycache__/
 */migrations/*.py[cod]
+
+# 임베딩 캐시
+reference_embeddings.npy
