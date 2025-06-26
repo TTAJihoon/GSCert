@@ -47,9 +47,11 @@ def load_embeddings():
         print("[load_embeddings] 임베딩 파일이 없어 생성합니다.")
         generate_and_save_embeddings()
 
+    REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
         print("[load_embeddings] REFERENCE_DF가 None → reference.csv 로딩 중...")
         reload_reference_dataframe()
+        REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
         raise ValueError("[load_embeddings] REFERENCE_DF is still None. reference.csv 로딩 실패")
 
