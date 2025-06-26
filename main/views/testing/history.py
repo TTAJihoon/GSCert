@@ -35,4 +35,6 @@ def GS_history(company, product):
             'a13': row.get('시작날짜/\n종료날짜', ''),
             'a14': row.get('시험원', '')
         })
+        if isinstance(results, dict):
+            results = [results]
     return results
