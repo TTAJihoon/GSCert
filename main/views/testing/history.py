@@ -1,9 +1,10 @@
 from main.utils.reload_reference import reload_reference_dataframe, getREF
 
 def GS_history(company, product):
-    REFERENCE_DF = getREF
+    REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
         reload_reference_dataframe()
+        REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
         # 그래도 None이면 로딩 실패한 상태
         raise ValueError("REFERENCE_DF is still None. CSV 파일이 로딩되지 않았습니다.")
