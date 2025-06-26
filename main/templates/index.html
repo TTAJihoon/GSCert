@@ -1,128 +1,105 @@
-{% load static %}
-<!DOCTYPE html>
-<html lang="ko">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>AI 서포터즈 센터</title>
-    <link rel="stylesheet" href="{% static 'css/styles.css' %}"/>
-    <link rel="stylesheet" href="{% static 'css/table.css' %}"/>
-    <script src="{% static 'scripts/radio.js' %}" defer></script>
-  </head>
-  
-  <body>
-    <div class="container">
-      <!-- 상단 바 -->
-      <header class="top-bar">
-        <img src="{% static 'images/TTA logo.jpg' %}" alt="로고" class="logo">
-        <span class="title">AI 서포터즈 센터</span>
-        <nav class="menu">
-          <button onclick="location.href='{% url 'index' %}'">시험 이력 조회<br>유사 시험 조회</button>
-          <button onclick="location.href='{% url 'security' %}'">보안성 결함 작성</button>
-          <button onclick="location.href='{% url 'genspark' %}'">테스트케이스 작성</button>
-          <button>시험결과서 작성</button>
-        </nav>
-      </header>
-  
-      <div class="main">
-        <!-- 좌측 패널 -->
-        <aside class="sidebar">
-          <form method="post" action="{% url 'history' %}">
-            {% csrf_token %}
-            <div class="checkbox-group">
-              <div class="checkbox-row">
-                <label><input type="radio" name="selectType" value="history" onclick="onlyOne(this)" checked> 시험 이력 조회</label>
-              </div>
-              <div class="checkbox-row">
-                <label><input type="radio" name="selectType" value="similar" onclick="onlyOne(this)"> 유사 시험 조회</label>
-              </div>
-            </div>
-  
-            <div class="input-group">
-              <label>회사명</label>
-              <input type="text" name="company" id="company" value="{{ company }}" placeholder="예시: 주식회사 조은소프트">
-              
-              <label>제품명</label>
-              <input type="text" name="product" id="product" value="{{ product }}" placeholder="예시: PDF v1.0">
-            
-              <label>기간</label>
-              <div class="date-range">
-                <input type="date" name="startDate" id="startDate" value="{{ start_date }}">
-                <span> - </span>
-                <input type="date" name="endDate" id="endDate" value="{{ end_date }}">
-              </div>
+{% extends 'header.html' %}
 
-              <label>설명</label>
-              <input type="text" name="comment" id="comment" value="{{ comment }}" placeholder="예시: PDF 프로그램">
-            </div>
+{% block title %}시험 이력 조회{% endblock %}
 
-            <button class="search-btn" type="submit">검색</button>
-          </form>
-        </aside>
-
-        <!-- 중앙/우측 컨텐츠 영역 -->
-        <section class="content" id="result-area">
-          <div class="scroll-container">
-            {% if response_tables %}
-            {% for table in response_tables %}
-            <table class="info-table">
-              <tr class="header-row">
-                <th>회사명</th>
-                <th>제품명</th>
-                <th>시험번호</th>
-                <th>시작/종료 날짜</th>
-                <th>인증일자</th>
-              </tr>
-              <tr>
-                <td>{{ table.a4 }}</td>
-                <td>{{ table.a5 }}</td>
-                <td>{{ table.a7 }}</td>
-                <td>{{ table.a13 }}</td>
-                <td>{{ table.a3 }}</td>
-              </tr>  
-              <tr class="header-row">
-                <th colspan="4">제품 개요</th>
-                <th>시험원</th>
-              </tr>
-              <tr>
-                <td colspan="4">{{ table.a9 }}</td>
-                <td>{{ table.a14 }}</td>
-              </tr>
-              <tr class="header-row">
-                <th>인증번호</th>
-                <th>SW 분류</th>
-                <th>재계약 여부</th>
-                <th>총 WD</th>
-                <th>관련 문서 다운로드</th>
-              </tr>
-              <tr>
-                <td>{{ table.a2 }}</td>
-                <td>{{ table.a8 }}</td>
-                <td>{{ table.a11 }}</td>
-                <td>{{ table.a10 }}</td>
-                <td class="icon-cell">
-                  <div class="doc-icon">
-                    <img src="{% static 'images/word.jpg' %}" alt="결과서" />
-                    <div>결과서</div>
-                  </div>
-                  <div class="doc-icon">
-                    <img src="{% static 'images/excel.jpg' %}" alt="기능 리스트" />
-                    <div>기능 리스트</div>
-                  </div>
-                  <div class="doc-icon">
-                    <img src="{% static 'images/excel.jpg' %}" alt="결함 리포트" />
-                    <div>결함 리포트</div>
-                  </div>
-                </td>
-              </tr>
-            </table>
-            {% endfor %}
-            {% else %}
-            <p>검색 결과가 없습니다.</p>
-            {% endif %}
-          </div>
-        </section>
+{% block content %}
+<div class="main">
+  <!-- 좌측 패널 -->
+  <aside class="sidebar">
+    <form method="post" action="{% url 'history' %}">
+      {% csrf_token %}
+      <div class="checkbox-group">
+        <div class="checkbox-row">
+          <label><input type="radio" name="selectType" value="history" onclick="onlyOne(this)" checked> 시험 이력 조회</label>
+        </div>
+        <div class="checkbox-row">
+          <label><input type="radio" name="selectType" value="similar" onclick="onlyOne(this)"> 유사 시험 조회</label>
+        </div>
       </div>
+      
+      <div class="input-group">
+        <label>회사명</label>
+        <input type="text" name="company" id="company" value="{{ company }}" placeholder="예시: 주식회사 조은소프트">
+        
+        <label>제품명</label>
+        <input type="text" name="product" id="product" value="{{ product }}" placeholder="예시: PDF v1.0">
+        
+        <label>기간</label>
+        <div class="date-range">
+          <input type="date" name="startDate" id="startDate" value="{{ start_date }}">
+          <span> - </span>
+          <input type="date" name="endDate" id="endDate" value="{{ end_date }}">
+        </div>
+        
+        <label>설명</label>
+        <input type="text" name="comment" id="comment" value="{{ comment }}" placeholder="예시: PDF 프로그램">
+      </div>
+      
+      <button class="search-btn" type="submit">검색</button>
+    </form>
+  </aside>
+  
+  <!-- 중앙/우측 컨텐츠 영역 -->
+  <section class="content" id="result-area">
+    <div class="scroll-container">
+      {% if response_tables %}
+      {% for table in response_tables %}
+      <table class="info-table">
+        <tr class="header-row">
+          <th>회사명</th>
+          <th>제품명</th>
+          <th>시험번호</th>
+          <th>시작/종료 날짜</th>
+          <th>인증일자</th>
+        </tr>
+        <tr>
+          <td>{{ table.a4 }}</td>
+          <td>{{ table.a5 }}</td>
+          <td>{{ table.a7 }}</td>
+          <td>{{ table.a13 }}</td>
+          <td>{{ table.a3 }}</td>
+        </tr>  
+        <tr class="header-row">
+          <th colspan="4">제품 개요</th>
+          <th>시험원</th>
+        </tr>
+        <tr>
+          <td colspan="4">{{ table.a9 }}</td>
+          <td>{{ table.a14 }}</td>
+        </tr>
+        <tr class="header-row">
+          <th>인증번호</th>
+          <th>SW 분류</th>
+          <th>재계약 여부</th>
+          <th>총 WD</th>
+          <th>관련 문서 다운로드</th>
+        </tr>
+        <tr>
+          <td>{{ table.a2 }}</td>
+          <td>{{ table.a8 }}</td>
+          <td>{{ table.a11 }}</td>
+          <td>{{ table.a10 }}</td>
+          <td class="icon-cell">
+            <div class="doc-icon">
+              <img src="{% static 'images/word.jpg' %}" alt="결과서" />
+              <div>결과서</div>
+            </div>
+            <div class="doc-icon">
+              <img src="{% static 'images/excel.jpg' %}" alt="기능 리스트" />
+              <div>기능 리스트</div>
+            </div>
+            <div class="doc-icon">
+              <img src="{% static 'images/excel.jpg' %}" alt="결함 리포트" />
+              <div>결함 리포트</div>
+            </div>
+          </td>
+        </tr>
+      </table>
+      {% endfor %}
+      {% else %}
+      <p>검색 결과가 없습니다.</p>
+      {% endif %}
     </div>
-  </body>
-</html>
+  </section>
+</div>
+{% endblock %}
