@@ -52,18 +52,10 @@
                 
                 <!-- 메뉴 항목들 -->
                 <div class="flex space-x-1">
-                    <button class="nav-item active px-4 py-2 rounded-md text-sm font-medium">
-                        시험 이력 조회/유사 시험 조회
-                    </button>
-                    <button class="nav-item px-4 py-2 rounded-md text-sm font-medium text-gray-700">
-                        보안성 결함 작성
-                    </button>
-                    <button class="nav-item px-4 py-2 rounded-md text-sm font-medium text-gray-700">
-                        테스트케이스 작성
-                    </button>
-                    <button class="nav-item px-4 py-2 rounded-md text-sm font-medium text-gray-700">
-                        시험결과서 작성
-                    </button>
+                    <button class="nav-item px-4 py-2 rounded-md text-sm font-medium text-gray-700" onclick="location.href='{% url 'index' %}'">시험 이력 조회<br>유사 시험 조회</button>
+                    <button class="nav-item px-4 py-2 rounded-md text-sm font-medium text-gray-700" onclick="location.href='{% url 'security' %}'">보안성 결함 작성</button>
+                    <button class="nav-item px-4 py-2 rounded-md text-sm font-medium text-gray-700" onclick="location.href='{% url 'genspark' %}'">테스트케이스 작성</button>
+                    <button class="nav-item active px-4 py-2 rounded-md text-sm font-medium" onclick="location.href='{% url 'genspark2' %}'">시험결과서 작성</button>
                 </div>
             </div>
         </div>
