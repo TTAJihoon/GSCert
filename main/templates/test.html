@@ -3,473 +3,307 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>에코백스토어 - 친환경 종량제 봉투 전문몰</title>
+    <title>TTA AI 서포터즈 센터 - 시험 이력 조회</title>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
     <style>
-        .gradient-bg {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        .sidebar-scroll {
+            max-height: calc(100vh - 200px);
+            overflow-y: auto;
+        }
+        .content-scroll {
+            max-height: calc(100vh - 120px);
+            overflow: auto;
         }
         .card-hover {
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            transition: all 0.3s ease;
         }
         .card-hover:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
         }
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0,0,0,0.5);
-            backdrop-filter: blur(5px);
+        .nav-item {
+            transition: all 0.3s ease;
         }
-        .modal-content {
-            background-color: #fefefe;
-            margin: 5% auto;
-            padding: 0;
-            border-radius: 12px;
-            width: 90%;
-            max-width: 500px;
-            animation: modalSlideIn 0.3s ease-out;
+        .nav-item:hover {
+            background-color: #f3f4f6;
         }
-        @keyframes modalSlideIn {
-            from {
-                opacity: 0;
-                transform: translateY(-50px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        .close {
-            color: #aaa;
-            float: right;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: color 0.3s ease;
-        }
-        .close:hover {
-            color: #667eea;
+        .nav-item.active {
+            background-color: #3b82f6;
+            color: white;
         }
     </style>
 </head>
 <body class="bg-gray-50">
-    <!-- Header -->
-    <header class="bg-white shadow-lg sticky top-0 z-50">
-        <nav class="container mx-auto px-6 py-4">
-            <div class="flex justify-between items-center">
-                <div class="flex items-center space-x-4">
-                    <i class="fas fa-leaf text-green-500 text-2xl"></i>
-                    <h1 class="text-2xl font-bold text-gray-800">에코백스토어</h1>
-                </div>
-                <div class="hidden md:flex space-x-8">
-                    <a href="#home" class="text-gray-600 hover:text-blue-600 transition duration-300">홈</a>
-                    <a href="#products" class="text-gray-600 hover:text-blue-600 transition duration-300">제품</a>
-                    <a href="#about" class="text-gray-600 hover:text-blue-600 transition duration-300">회사소개</a>
-                    <a href="#contact" class="text-gray-600 hover:text-blue-600 transition duration-300">문의</a>
-                </div>
-                <div class="flex items-center space-x-4">
-                    <i class="fas fa-shopping-cart text-gray-600 text-xl cursor-pointer hover:text-blue-600 transition duration-300"></i>
-                    <i class="fas fa-user text-gray-600 text-xl cursor-pointer hover:text-blue-600 transition duration-300"></i>
-                </div>
-            </div>
-        </nav>
-    </header>
-
-    <!-- Hero Section -->
-    <section id="home" class="gradient-bg text-white py-20">
-        <div class="container mx-auto px-6 text-center">
-            <h2 class="text-5xl font-bold mb-6">친환경 종량제 봉투의 새로운 기준</h2>
-            <p class="text-xl mb-8 opacity-90">고품질 생분해성 소재로 만든 프리미엄 종량제 봉투</p>
-            <button onclick="openOrderModal('premium-set')" class="bg-white text-blue-600 px-8 py-4 rounded-full font-semibold text-lg hover:bg-gray-100 transition duration-300 shadow-lg">
-                지금 주문하기 <i class="fas fa-arrow-right ml-2"></i>
-            </button>
-        </div>
-    </section>
-
-    <!-- Features Section -->
-    <section class="py-16 bg-white">
-        <div class="container mx-auto px-6">
-            <div class="text-center mb-12">
-                <h3 class="text-3xl font-bold text-gray-800 mb-4">왜 에코백스토어인가?</h3>
-                <p class="text-gray-600 text-lg">환경을 생각하는 똑똑한 선택</p>
-            </div>
-            <div class="grid md:grid-cols-3 gap-8">
-                <div class="text-center p-6">
-                    <div class="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i class="fas fa-recycle text-green-600 text-2xl"></i>
+    <!-- 상단 네비게이션바 -->
+    <nav class="bg-white shadow-lg border-b border-gray-200">
+        <div class="max-w-full px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-16">
+                <!-- 로고 및 제목 -->
+                <div class="flex items-center cursor-pointer" onclick="location.reload()">
+                    <div class="flex-shrink-0 flex items-center">
+                        <i class="fas fa-shield-alt text-blue-600 text-2xl mr-3"></i>
+                        <div>
+                            <h1 class="text-xl font-bold text-gray-900">TTA</h1>
+                            <p class="text-sm text-gray-600">AI 서포터즈 센터</p>
+                        </div>
                     </div>
-                    <h4 class="text-xl font-semibold mb-2">100% 생분해성</h4>
-                    <p class="text-gray-600">환경친화적 소재로 제작된 완전 생분해성 봉투</p>
                 </div>
-                <div class="text-center p-6">
-                    <div class="bg-blue-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i class="fas fa-shield-alt text-blue-600 text-2xl"></i>
-                    </div>
-                    <h4 class="text-xl font-semibold mb-2">강력한 내구성</h4>
-                    <p class="text-gray-600">찢어짐 방지 특수 소재로 안전하고 튼튼함</p>
-                </div>
-                <div class="text-center p-6">
-                    <div class="bg-purple-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <i class="fas fa-truck text-purple-600 text-2xl"></i>
-                    </div>
-                    <h4 class="text-xl font-semibold mb-2">빠른 배송</h4>
-                    <p class="text-gray-600">전국 어디든 24시간 내 빠른 배송 서비스</p>
+                
+                <!-- 메뉴 항목들 -->
+                <div class="flex space-x-1">
+                    <button class="nav-item active px-4 py-2 rounded-md text-sm font-medium">
+                        시험 이력 조회/유사 시험 조회
+                    </button>
+                    <button class="nav-item px-4 py-2 rounded-md text-sm font-medium text-gray-700">
+                        보안성 결함 작성
+                    </button>
+                    <button class="nav-item px-4 py-2 rounded-md text-sm font-medium text-gray-700">
+                        테스트케이스 작성
+                    </button>
+                    <button class="nav-item px-4 py-2 rounded-md text-sm font-medium text-gray-700">
+                        시험결과서 작성
+                    </button>
                 </div>
             </div>
         </div>
-    </section>
+    </nav>
 
-    <!-- Products Section -->
-    <section id="products" class="py-16 bg-gray-50">
-        <div class="container mx-auto px-6">
-            <div class="text-center mb-12">
-                <h3 class="text-3xl font-bold text-gray-800 mb-4">제품 라인업</h3>
-                <p class="text-gray-600 text-lg">다양한 용량별 종량제 봉투를 만나보세요</p>
-            </div>
-            <div class="grid md:grid-cols-3 gap-8">
-                <!-- 10L 봉투 -->
-                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
-                    <div class="bg-gradient-to-r from-blue-400 to-blue-600 h-48 flex items-center justify-center">
-                        <i class="fas fa-trash-alt text-white text-6xl"></i>
-                    </div>
-                    <div class="p-6">
-                        <div class="flex justify-between items-start mb-4">
-                            <h4 class="text-xl font-bold text-gray-800">10L 종량제 봉투</h4>
-                            <span class="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-sm font-semibold">인기</span>
-                        </div>
-                        <p class="text-gray-600 mb-4">소형 가정용, 화장실 및 작은 공간에 최적</p>
-                        <ul class="text-sm text-gray-500 mb-6 space-y-1">
-                            <li><i class="fas fa-check text-green-500 mr-2"></i>50매입 x 10팩</li>
-                            <li><i class="fas fa-check text-green-500 mr-2"></i>생분해성 소재</li>
-                            <li><i class="fas fa-check text-green-500 mr-2"></i>냄새 차단 기능</li>
-                        </ul>
-                        <div class="flex justify-between items-center">
-                            <span class="text-2xl font-bold text-gray-800">₩24,900</span>
-                            <button onclick="openOrderModal('10L')" class="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition duration-300">
-                                주문하기
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 20L 봉투 -->
-                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
-                    <div class="bg-gradient-to-r from-green-400 to-green-600 h-48 flex items-center justify-center">
-                        <i class="fas fa-trash-alt text-white text-6xl"></i>
-                    </div>
-                    <div class="p-6">
-                        <div class="flex justify-between items-start mb-4">
-                            <h4 class="text-xl font-bold text-gray-800">20L 종량제 봉투</h4>
-                            <span class="bg-green-100 text-green-800 px-2 py-1 rounded-full text-sm font-semibold">추천</span>
-                        </div>
-                        <p class="text-gray-600 mb-4">일반 가정용, 주방 및 거실용으로 적합</p>
-                        <ul class="text-sm text-gray-500 mb-6 space-y-1">
-                            <li><i class="fas fa-check text-green-500 mr-2"></i>30매입 x 10팩</li>
-                            <li><i class="fas fa-check text-green-500 mr-2"></i>강화된 내구성</li>
-                            <li><i class="fas fa-check text-green-500 mr-2"></i>액체 차단 코팅</li>
-                        </ul>
-                        <div class="flex justify-between items-center">
-                            <span class="text-2xl font-bold text-gray-800">₩32,900</span>
-                            <button onclick="openOrderModal('20L')" class="bg-green-600 text-white px-6 py-2 rounded-lg hover:bg-green-700 transition duration-300">
-                                주문하기
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 50L 봉투 -->
-                <div class="bg-white rounded-xl shadow-lg overflow-hidden card-hover">
-                    <div class="bg-gradient-to-r from-purple-400 to-purple-600 h-48 flex items-center justify-center">
-                        <i class="fas fa-trash-alt text-white text-6xl"></i>
-                    </div>
-                    <div class="p-6">
-                        <div class="flex justify-between items-start mb-4">
-                            <h4 class="text-xl font-bold text-gray-800">50L 종량제 봉투</h4>
-                            <span class="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-sm font-semibold">대용량</span>
-                        </div>
-                        <p class="text-gray-600 mb-4">대가족용, 사무실 및 상업시설용</p>
-                        <ul class="text-sm text-gray-500 mb-6 space-y-1">
-                            <li><i class="fas fa-check text-green-500 mr-2"></i>20매입 x 10팩</li>
-                            <li><i class="fas fa-check text-green-500 mr-2"></i>초강력 내구성</li>
-                            <li><i class="fas fa-check text-green-500 mr-2"></i>대용량 전용 설계</li>
-                        </ul>
-                        <div class="flex justify-between items-center">
-                            <span class="text-2xl font-bold text-gray-800">₩45,900</span>
-                            <button onclick="openOrderModal('50L')" class="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition duration-300">
-                                주문하기
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- About Section -->
-    <section id="about" class="py-16 bg-white">
-        <div class="container mx-auto px-6">
-            <div class="grid md:grid-cols-2 gap-12 items-center">
-                <div>
-                    <h3 class="text-3xl font-bold text-gray-800 mb-6">지속 가능한 미래를 위한 선택</h3>
-                    <p class="text-gray-600 text-lg mb-6">
-                        에코백스토어는 환경 보호와 실용성을 모두 갖춘 프리미엄 종량제 봉투를 제공합니다. 
-                        우리의 모든 제품은 100% 생분해성 소재로 제작되어 지구 환경을 생각하는 
-                        소비자들의 현명한 선택입니다.
-                    </p>
-                    <div class="space-y-4">
-                        <div class="flex items-center">
-                            <i class="fas fa-award text-yellow-500 text-xl mr-4"></i>
-                            <span class="text-gray-700">환경부 인증 친환경 제품</span>
-                        </div>
-                        <div class="flex items-center">
-                            <i class="fas fa-certificate text-blue-500 text-xl mr-4"></i>
-                            <span class="text-gray-700">ISO 14001 환경경영시스템 인증</span>
-                        </div>
-                        <div class="flex items-center">
-                            <i class="fas fa-users text-green-500 text-xl mr-4"></i>
-                            <span class="text-gray-700">전국 50,000+ 가정에서 사용</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="bg-gradient-to-br from-blue-50 to-green-50 p-8 rounded-2xl">
-                    <div class="text-center">
-                        <i class="fas fa-leaf text-green-500 text-6xl mb-6"></i>
-                        <h4 class="text-2xl font-bold text-gray-800 mb-4">친환경 약속</h4>
-                        <p class="text-gray-600">
-                            판매 수익의 3%를 환경 보호 단체에 기부하여 
-                            더 깨끗한 지구를 만드는 데 기여하고 있습니다.
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="bg-gray-800 text-white py-12">
-        <div class="container mx-auto px-6">
-            <div class="grid md:grid-cols-4 gap-8">
-                <div>
-                    <div class="flex items-center space-x-2 mb-4">
-                        <i class="fas fa-leaf text-green-500 text-2xl"></i>
-                        <h5 class="text-xl font-bold">에코백스토어</h5>
-                    </div>
-                    <p class="text-gray-400">친환경 종량제 봉투의 새로운 기준</p>
-                </div>
-                <div>
-                    <h6 class="font-semibold mb-4">제품</h6>
-                    <ul class="space-y-2 text-gray-400">
-                        <li><a href="#" class="hover:text-white transition duration-300">10L 봉투</a></li>
-                        <li><a href="#" class="hover:text-white transition duration-300">20L 봉투</a></li>
-                        <li><a href="#" class="hover:text-white transition duration-300">50L 봉투</a></li>
-                    </ul>
-                </div>
-                <div>
-                    <h6 class="font-semibold mb-4">고객 지원</h6>
-                    <ul class="space-y-2 text-gray-400">
-                        <li><a href="#" class="hover:text-white transition duration-300">주문 조회</a></li>
-                        <li><a href="#" class="hover:text-white transition duration-300">배송 안내</a></li>
-                        <li><a href="#" class="hover:text-white transition duration-300">교환/반품</a></li>
-                    </ul>
-                </div>
-                <div>
-                    <h6 class="font-semibold mb-4">연락처</h6>
-                    <div class="space-y-2 text-gray-400">
-                        <p><i class="fas fa-phone mr-2"></i>1588-0000</p>
-                        <p><i class="fas fa-envelope mr-2"></i>info@ecostore.co.kr</p>
-                        <p><i class="fas fa-clock mr-2"></i>평일 9:00-18:00</p>
-                    </div>
-                </div>
-            </div>
-            <div class="border-t border-gray-700 mt-8 pt-8 text-center text-gray-400">
-                <p>&copy; 2024 에코백스토어. All rights reserved.</p>
-            </div>
-        </div>
-    </footer>
-
-    <!-- Order Modal -->
-    <div id="orderModal" class="modal">
-        <div class="modal-content">
-            <div class="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 rounded-t-xl">
-                <div class="flex justify-between items-center">
-                    <h3 class="text-2xl font-bold">주문하기</h3>
-                    <span class="close" onclick="closeOrderModal()">&times;</span>
-                </div>
-                <p class="mt-2 opacity-90">빠르고 간편한 주문 프로세스</p>
-            </div>
+    <!-- 메인 콘텐츠 영역 -->
+    <div class="flex h-screen pt-16">
+        <!-- 좌측 사이드바 -->
+        <div class="w-80 bg-white shadow-lg border-r border-gray-200">
             <div class="p-6">
-                <form id="orderForm">
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">선택 제품</label>
-                        <div class="bg-gray-100 p-4 rounded-lg">
-                            <p id="selectedProduct" class="text-lg font-semibold text-gray-800"></p>
-                            <p id="selectedPrice" class="text-blue-600 font-bold"></p>
-                        </div>
+                <!-- 검색 타입 선택 -->
+                <div class="mb-6">
+                    <h3 class="text-lg font-semibold text-gray-900 mb-4">검색 타입</h3>
+                    <div class="space-y-2">
+                        <label class="flex items-center">
+                            <input type="radio" name="searchType" value="history" checked class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                            <span class="ml-2 text-sm font-medium text-gray-700">시험 이력 조회</span>
+                        </label>
+                        <label class="flex items-center">
+                            <input type="radio" name="searchType" value="similar" class="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500">
+                            <span class="ml-2 text-sm font-medium text-gray-700">유사 시험 조회</span>
+                        </label>
                     </div>
-                    
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">수량</label>
-                        <select class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500">
-                            <option value="1">1개</option>
-                            <option value="2">2개</option>
-                            <option value="3">3개</option>
-                            <option value="5">5개</option>
-                            <option value="10">10개</option>
-                        </select>
+                </div>
+
+                <!-- 검색 필터 -->
+                <div class="sidebar-scroll space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">회사명</label>
+                        <input type="text" id="companyName" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                     </div>
 
-                    <div class="grid md:grid-cols-2 gap-4 mb-4">
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">이름</label>
-                            <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="홍길동" required>
-                        </div>
-                        <div>
-                            <label class="block text-gray-700 text-sm font-bold mb-2">연락처</label>
-                            <input type="tel" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="010-1234-5678" required>
-                        </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">제품명</label>
+                        <input type="text" id="productName" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                     </div>
 
-                    <div class="mb-4">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">배송 주소</label>
-                        <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 mb-2" placeholder="우편번호" required>
-                        <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500 mb-2" placeholder="기본 주소" required>
-                        <input type="text" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500" placeholder="상세 주소">
-                    </div>
-
-                    <div class="mb-6">
-                        <label class="block text-gray-700 text-sm font-bold mb-2">결제 방법</label>
-                        <div class="grid grid-cols-2 gap-4">
-                            <label class="flex items-center">
-                                <input type="radio name="payment" value="card" class="mr-2">
-                                <i class="fas fa-credit-card mr-2 text-blue-500"></i>
-                                신용카드
-                            </label>
-                            <label class="flex items-center">
-                                <input type="radio" name="payment" value="bank" class="mr-2">
-                                <i class="fas fa-university mr-2 text-green-500"></i>
-                                계좌이체
-                            </label>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">기간</label>
+                        <div class="space-y-2">
+                            <input type="date" id="startDate" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            <input type="date" id="endDate" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
                         </div>
                     </div>
 
-                    <div class="flex space-x-4">
-                        <button type="button" onclick="closeOrderModal()" class="flex-1 bg-gray-300 text-gray-700 py-3 rounded-lg hover:bg-gray-400 transition duration-300">
-                            취소
-                        </button>
-                        <button type="submit" class="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 text-white py-3 rounded-lg hover:from-blue-700 hover:to-purple-700 transition duration-300 font-semibold">
-                            주문 완료
-                        </button>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">설명</label>
+                        <textarea id="description" rows="3" class="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"></textarea>
                     </div>
-                </form>
+
+                    <button onclick="searchTests()" class="w-full bg-blue-600 text-white py-2 px-4 rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200">
+                        <i class="fas fa-search mr-2"></i>검색
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 우측 콘텐츠 영역 -->
+        <div class="flex-1 bg-gray-50">
+            <div class="p-6">
+                <div class="mb-6">
+                    <h2 class="text-2xl font-bold text-gray-900">시험 이력 조회 결과</h2>
+                    <p class="text-gray-600 mt-1">총 <span id="resultCount">0</span>건의 시험 이력이 조회되었습니다.</p>
+                </div>
+
+                <div id="testResults" class="content-scroll space-y-4">
+                    <!-- 결과 카드들이 여기에 동적으로 추가됩니다 -->
+                </div>
             </div>
         </div>
     </div>
 
     <script>
-        // 제품 정보
-        const products = {
-            '10L': {
-                name: '10L 종량제 봉투 (50매입 x 10팩)',
-                price: '₩24,900'
+        // 샘플 데이터
+        const sampleData = [
+            {
+                certificationNumber: "TTA-2024-001",
+                swCategory: "웹 애플리케이션",
+                testNumber: "TEST-2024-001",
+                startDate: "2024-01-15",
+                endDate: "2024-02-28",
+                certificationDate: "2024-03-15",
+                testCenter: "TTA 서울센터",
+                productOverview: "AI 기반 고객 서비스 챗봇 시스템으로, 자연어 처리 기술을 활용하여 고객 문의를 자동으로 처리하고 응답하는 웹 애플리케이션입니다. 다양한 산업 분야에서 활용 가능한 범용적인 솔루션으로 설계되었습니다.",
+                totalWD: "45WD",
+                renewal: "재계약",
+                companyName: "테크솔루션(주)",
+                productName: "AI 챗봇 시스템"
             },
-            '20L': {
-                name: '20L 종량제 봉투 (30매입 x 10팩)',
-                price: '₩32,900'
+            {
+                certificationNumber: "TTA-2024-002",
+                swCategory: "모바일 애플리케이션",
+                testNumber: "TEST-2024-002",
+                startDate: "2024-02-01",
+                endDate: "2024-03-20",
+                certificationDate: "2024-04-05",
+                testCenter: "TTA 부산센터",
+                productOverview: "블록체인 기반 디지털 지갑 애플리케이션으로, 암호화폐 거래 및 관리 기능을 제공합니다. 높은 보안성과 사용자 편의성을 겸비한 차세대 핀테크 솔루션입니다.",
+                totalWD: "38WD",
+                renewal: "신규",
+                companyName: "블록체인테크(주)",
+                productName: "디지털 월렛 앱"
             },
-            '50L': {
-                name: '50L 종량제 봉투 (20매입 x 10팩)',
-                price: '₩45,900'
-            },
-            'premium-set': {
-                name: '프리미엄 종량제 봉투 세트',
-                price: '₩89,900'
+            {
+                certificationNumber: "TTA-2024-003",
+                swCategory: "시스템 소프트웨어",
+                testNumber: "TEST-2024-003",
+                startDate: "2024-01-20",
+                endDate: "2024-04-10",
+                certificationDate: "2024-04-25",
+                testCenter: "TTA 대전센터",
+                productOverview: "클라우드 기반 데이터 분석 플랫폼으로, 빅데이터 처리 및 머신러닝 모델 학습을 지원합니다. 실시간 데이터 처리와 시각화 기능이 특징입니다.",
+                totalWD: "52WD",
+                renewal: "재계약",
+                companyName: "데이터사이언스(주)",
+                productName: "클라우드 분석 플랫폼"
             }
-        };
+        ];
 
-        // 모달 열기
-        function openOrderModal(productType) {
-            const modal = document.getElementById('orderModal');
-            const selectedProduct = document.getElementById('selectedProduct');
-            const selectedPrice = document.getElementById('selectedPrice');
-            
-            selectedProduct.textContent = products[productType].name;
-            selectedPrice.textContent = products[productType].price;
-            
-            modal.style.display = 'block';
-            document.body.style.overflow = 'hidden';
-        }
-
-        // 모달 닫기
-        function closeOrderModal() {
-            const modal = document.getElementById('orderModal');
-            modal.style.display = 'none';
-            document.body.style.overflow = 'auto';
-        }
-
-        // 모달 외부 클릭 시 닫기
-        window.onclick = function(event) {
-            const modal = document.getElementById('orderModal');
-            if (event.target === modal) {
-                closeOrderModal();
-            }
-        }
-
-        // 주문 폼 제출
-        document.getElementById('orderForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-            
-            // 간단한 주문 완료 알림
-            alert('주문이 성공적으로 접수되었습니다!\n\n• 주문 확인 문자를 발송해드렸습니다.\n• 평일 기준 1-2일 내 배송 예정입니다.\n• 문의사항은 1588-0000으로 연락주세요.\n\n감사합니다!');
-            
-            closeOrderModal();
-            
-            // 실제 구현 시에는 여기서 서버로 주문 데이터를 전송
-            console.log('주문 데이터 전송 준비 완료');
+        // 페이지 로드 시 초기 데이터 표시
+        document.addEventListener('DOMContentLoaded', function() {
+            displayResults(sampleData);
         });
 
-        // 부드러운 스크롤
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function (e) {
-                e.preventDefault();
-                const target = document.querySelector(this.getAttribute('href'));
-                if (target) {
-                    target.scrollIntoView({
-                        behavior: 'smooth',
-                        block: 'start'
-                    });
+        // 검색 함수
+        function searchTests() {
+            const companyName = document.getElementById('companyName').value.toLowerCase();
+            const productName = document.getElementById('productName').value.toLowerCase();
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            const description = document.getElementById('description').value.toLowerCase();
+
+            let filteredData = sampleData.filter(item => {
+                let matches = true;
+
+                if (companyName && !item.companyName.toLowerCase().includes(companyName)) {
+                    matches = false;
                 }
-            });
-        });
-
-        // 스크롤 애니메이션
-        const observerOptions = {
-            threshold: 0.1,
-            rootMargin: '0px 0px -50px 0px'
-        };
-
-        const observer = new IntersectionObserver(function(entries) {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.style.opacity = '1';
-                    entry.target.style.transform = 'translateY(0)';
+                if (productName && !item.productName.toLowerCase().includes(productName)) {
+                    matches = false;
                 }
-            });
-        }, observerOptions);
+                if (startDate && item.startDate < startDate) {
+                    matches = false;
+                }
+                if (endDate && item.endDate > endDate) {
+                    matches = false;
+                }
+                if (description && !item.productOverview.toLowerCase().includes(description)) {
+                    matches = false;
+                }
 
-        // 카드 요소들에 애니메이션 적용
-        document.querySelectorAll('.card-hover').forEach(card => {
-            card.style.opacity = '0';
-            card.style.transform = 'translateY(30px)';
-            card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-            observer.observe(card);
+                return matches;
+            });
+
+            displayResults(filteredData);
+        }
+
+        // 결과 표시 함수
+        function displayResults(data) {
+            const resultsContainer = document.getElementById('testResults');
+            const resultCount = document.getElementById('resultCount');
+            
+            resultCount.textContent = data.length;
+            
+            if (data.length === 0) {
+                resultsContainer.innerHTML = `
+                    <div class="text-center py-12">
+                        <i class="fas fa-search text-gray-400 text-4xl mb-4"></i>
+                        <p class="text-gray-600">검색 조건에 맞는 시험 이력이 없습니다.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            resultsContainer.innerHTML = data.map(item => `
+                <div class="bg-white rounded-lg shadow-md p-6 card-hover">
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">인증번호</label>
+                            <p class="text-sm text-gray-900 font-semibold">${item.certificationNumber}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">SW분류</label>
+                            <p class="text-sm text-gray-900">${item.swCategory}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">시험번호</label>
+                            <p class="text-sm text-gray-900">${item.testNumber}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">시작일</label>
+                            <p class="text-sm text-gray-900">${item.startDate}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">종료일</label>
+                            <p class="text-sm text-gray-900">${item.endDate}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">인증일자</label>
+                            <p class="text-sm text-gray-900">${item.certificationDate}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">시험원</label>
+                            <p class="text-sm text-gray-900">${item.testCenter}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">총WD</label>
+                            <p class="text-sm text-gray-900">${item.totalWD}</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">재계약 여부</label>
+                            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${item.renewal === '재계약' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}">
+                                ${item.renewal}
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="block text-sm font-medium text-gray-500 mb-2">제품 개요</label>
+                        <p class="text-sm text-gray-900 leading-relaxed">${item.productOverview}</p>
+                    </div>
+                    
+                    <div class="flex justify-between items-center pt-4 border-t border-gray-200">
+                        <div class="text-sm text-gray-600">
+                            <strong>${item.companyName}</strong> - ${item.productName}
+                        </div>
+                        <button class="bg-blue-600 text-white px-4 py-2 rounded-md text-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition duration-200">
+                            <i class="fas fa-download mr-2"></i>문서 다운로드
+                        </button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // 네비게이션 메뉴 클릭 이벤트
+        document.querySelectorAll('.nav-item').forEach(item => {
+            item.addEventListener('click', function() {
+                document.querySelectorAll('.nav-item').forEach(nav => nav.classList.remove('active'));
+                this.classList.add('active');
+            });
         });
     </script>
 </body>
