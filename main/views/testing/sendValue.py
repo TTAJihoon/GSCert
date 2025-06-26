@@ -23,13 +23,13 @@ def search_history(request):
         }
         
         if selected == 'history':
-            if not company.strip():
-                context['response'] = '회사명을 입력해주세요.'
+            if not company.strip() and not product.strip():
+                context['response'] = '회사명 또는 제품명 중 하나 이상을 입력해주세요.'
                 return render(request, 'index.html', context)
-
-            tables = GS_history(company)
-            context['response_tables'] = tables
-            return render(request, 'index.html', context)
+                
+                tables = GS_history(company, product)
+                context['response_tables'] = tables
+                return render(request, 'index.html', context)
 
         elif selected == 'similar':
 #            try:
