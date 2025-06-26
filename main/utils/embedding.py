@@ -1,4 +1,4 @@
-from main.utils.reload_reference import reload_reference_dataframe
+from main.utils.reload_reference import reload_reference_dataframe, getREF
 from sentence_transformers import SentenceTransformer, util
 import pandas as pd
 import numpy as np
