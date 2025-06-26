@@ -47,7 +47,10 @@
   <section class="content" id="result-area">
     <div class="scroll-container">
       {% if response_tables %}
-      {% for table in response_tables %}
+      <p style="font-weight: bold; margin-bottom: 10px;">
+        🔍 검색 결과는 {{ response_tables|length }}개 입니다.
+      </p>
+      {% for table in response_tables|slice:":-1" %}
       <table class="info-table">
         <tr class="header-row">
           <th>회사명</th>
@@ -101,7 +104,7 @@
       </table>
       {% endfor %}
       {% else %}
-      <p>검색 결과가 없습니다.</p>
+      <p style="margin-top: 20px;">🔍 검색 결과가 없습니다.</p>
       {% endif %}
     </div>
   </section>
