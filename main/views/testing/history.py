@@ -1,6 +1,6 @@
 from main.utils.reload_reference import reload_reference_dataframe, getREF
 
-def GS_history(company):
+def GS_history(company, product):
     REFERENCE_DF = getREF
     if REFERENCE_DF is None:
         reload_reference_dataframe()
