@@ -1,5 +1,5 @@
 .scroll-container {
-  height: calc(100vh - 100px);  /* 60px header + 40px padding 고려 */
+  height: calc(100vh - 110px);  /* 60px header + 40px padding 고려 */
   overflow-y: auto;
   padding-right: 10px;
 }
