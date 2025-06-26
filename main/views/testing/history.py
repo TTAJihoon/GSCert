@@ -18,7 +18,7 @@ def GS_history(company, product):
 
     results = []
     for _, row in df.iterrows():
-        result.append({
+        results.append({
             'a1': row.get('일련번호', ''),
             'a2': row.get('인증번호', ''),
             'a3': row.get('인증일자', ''),
