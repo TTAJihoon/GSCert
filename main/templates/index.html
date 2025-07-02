@@ -46,6 +46,13 @@
   <!-- 중앙/우측 컨텐츠 영역 -->
   <section class="content" id="result-area">
     <div class="scroll-container">
+      
+      {% if response %}
+      <div class="result-box">
+        <p>{{ response }}</p>
+      </div>
+      {% endif %}
+      
       {% if response_tables %}
       <p style="font-weight: bold; margin-bottom: 10px;">
         🔍 검색 결과는 {{ response_tables|length }}개 입니다.
