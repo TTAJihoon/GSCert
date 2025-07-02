@@ -43,9 +43,7 @@ def search_history(request):
                 print("[ERROR] 인사 GPT 호출 오류:", e)
                 context['response'] = "인사 GPT 호출 중 오류가 발생했습니다."
                 
-                
-                context['response_tables'] = result_json
-                return render(request, 'index.html', context)
+            return render(request, 'index.html', context)
                 
     # GET 요청 또는 POST 실패 시
     return render(request, 'index.html')
