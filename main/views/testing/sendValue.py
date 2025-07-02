@@ -2,7 +2,7 @@ import json
 import pandas as pd
 from django.shortcuts import render
 from .history import GS_history
-from .chatbot import run_openai_GPT
+from .similar_GPT import run_openai_GPT
 
 def search_history(request):
     if request.method == 'POST':
