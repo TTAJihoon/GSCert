@@ -1,6 +1,6 @@
 import os
 from openai import OpenAI
-from main.utils import reload_reference.py
+from main.utils import reload_reference
 
 # OpenAI API 키로 클라이언트 초기화
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
