@@ -36,14 +36,13 @@ def search_history(request):
             return render(request, 'index.html', context)
 
         elif selected == 'similar':
-#            try:
-#                result_str = run_ollama_with_reference(startDate, endDate, comment)
-#                print("[DEBUG] LLM 응답 원문:", result_str[:500])
-#                result_json = json.loads(result_str)
-#            except Exception as e:
-#                print("[ERROR] 유사도 검색 오류:", e)
-#                result_json = []
-#                context['response'] = "유사도 검색 중 오류 발생 또는 응답 파싱 실패"
+            try:
+                response_text = run_openai_GPT(comment)  # ← 인사 프롬프트 호출
+                context['response'] = response_text       # 문자열 응답은 'response'에 담아 렌더링
+            except Exception as e:
+                print("[ERROR] 인사 GPT 호출 오류:", e)
+                context['response'] = "인사 GPT 호출 중 오류가 발생했습니다."
+                
                 
                 context['response_tables'] = result_json
                 return render(request, 'index.html', context)
