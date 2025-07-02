@@ -6,9 +6,13 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 # 인사하는 챗봇 함수로 수정
 def run_openai_GPT(comment):
+    reference = getREF()  # 서버 시작 시 캐싱된 데이터 사용
     prompt = f"""
-    너는 사용자의 인사에 친절하게 응답하는 인공지능 챗봇이야.
-    사용자가 아래와 같은 말을 하면 적절한 인사로 응답해줘.
+    
+    참고용 데이터의 '일련번호'가 5555인 데이터 행의 값을 컬럼명과 함께 표시해줘.
+    컬럼은 '일련번호'가 포함된 행이야.
+    아래는 참고할 데이터야. 해당 데이터에 있는 값만 대답에 사용해줘.
+    {reference}
 
     사용자 입력: "{comment}"
     """
