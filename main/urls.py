@@ -10,7 +10,7 @@ urlpatterns = [
     path('security/', security, name='security'),
     path('genspark/', genspark, name='genspark'),
     path('test/', test, name='genspark2'),
-    path('search-history/', search_history, name='history'),
+    path('search-history/', search_history, name='search'),
     path('reload-reference/', reload_reference_view, name='reload_reference'),
     
 ]
