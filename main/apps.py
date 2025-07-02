@@ -6,14 +6,5 @@ class MainConfig(AppConfig):
     name = 'main'
 
     def ready(self):
-        """
-        서버 구동 시 자동으로 실행됨.
-        reference_embeddings.npy와 reference_descriptions.csv를 로드합니다.
-        """
-        print("[MainConfig] 앱이 준비되었습니다. 임베딩 캐시 로딩 시도 중...")
-        try:
-            from main.utils.embedding import load_embeddings
-            load_embeddings()
-            print("[MainConfig] 임베딩 로딩 성공")
-        except Exception as e:
-            print(f"[MainConfig] 임베딩 로딩 실패: {e}")
+        from main.utils import reload_reference  # 캐시 로직 있는 모듈 import
+        reference_cache.reload_reference_dataframe()  # 서버 시작 시 1회만 실행
