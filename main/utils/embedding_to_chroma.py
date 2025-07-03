@@ -12,7 +12,7 @@ def build_chroma_from_csv(csv_path):
         raise ValueError("❌ '제품 설명'에 해당하는 컬럼이 없습니다.")
 
     docs = []
-    for _, row in df.iterrows():
+    for _, row in tqdm(df.iterrows(), total=len(df), desc="임베딩 중..."):
         description = row.get(desc_col, "")
         if pd.isna(description) or not str(description).strip():
             continue
