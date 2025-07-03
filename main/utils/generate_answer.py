@@ -5,7 +5,7 @@ import os
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-def ask_question_to_gpt(query, persist_path="./chroma_db", top_k=3):
+def ask_question_to_gpt(query, persist_path="./chroma_db", top_k=3): #유사도 기준으로 추출할 문서 수
     embedding = HuggingFaceEmbeddings(model_name="snunlp/KR-SBERT-V40K-klueNLI-augSTS")
     db = Chroma(persist_directory=persist_path, embedding_function=embedding)
     
