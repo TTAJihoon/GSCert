@@ -8,7 +8,7 @@ REFERENCE_DF = None
 def reload_reference_dataframe():
     global REFERENCE_DF
     try:
-        REFERENCE_DF = pd.read_csv(REFERENCE_PATH, skiprows=3)
+        REFERENCE_DF = pd.read_csv(REFERENCE_PATH, skiprows=0)
         print("[INFO] REFERENCE_DF reloaded.")
     except Exception as e:
         print("[ERROR] DataFrame reload 실패:", e)
