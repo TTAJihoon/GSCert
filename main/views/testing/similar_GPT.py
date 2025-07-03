@@ -1,32 +1,37 @@
-import os
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import HuggingFaceEmbeddings
 from openai import OpenAI
-from main.utils.reload_reference import getREF
+import os
 
-# OpenAI API 키로 클라이언트 초기화
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# 인사하는 챗봇 함수로 수정
-def run_openai_GPT(comment):
-    reference = getREF()  # 서버 시작 시 캐싱된 데이터 사용
-    prompt = f"""
+def ask_question_to_gpt(query, persist_path="./main/data/chroma_db", top_k=3):
+    embedding = HuggingFaceEmbeddings(model_name="snunlp/KR-SBERT-V40K-klueNLI-augSTS")
+    db = Chroma(persist_directory=persist_path, embedding_function=embedding)
     
-    참고용 데이터의 '일련번호'가 5555인 데이터 행의 값을 컬럼명과 함께 표시해줘.
-    컬럼은 '일련번호'가 포함된 행이야.
-    아래는 참고할 데이터야. 해당 데이터에 있는 값만 대답에 사용해줘.
-    {reference}
+    similar_docs = db.similarity_search(query, k=top_k)
+    
+    context = ""
+    for i, doc in enumerate(similar_docs):
+        meta = doc.metadata
+        context += f"[유사도 {i+1}]\n"
+        for key, val in meta.items():
+            context += f"{key}: {val}\n"
+        context += "\n"
 
-    사용자 입력: "{comment}"
+    prompt = f"""
+    [질문]
+    {query}
+    
+    [유사한 제품 정보]
+    {context}
+    
+    위 내용을 바탕으로 사용자의 질문에 답변해주세요.
     """
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o",  # 또는 원하는 모델명
-            messages=[
-                {"role": "system", "content": "너는 친절하고 밝은 인사 챗봇이야."},
-                {"role": "user", "content": prompt}
-            ]
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        print("[ERROR]", e)
-        return f"OpenAI 처리 중 오류 발생: {str(e)}"
+    response = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}]
+    )
+
+    return response.choices[0].message.content.strip()
