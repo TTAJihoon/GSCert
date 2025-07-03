@@ -1,18 +1,25 @@
 import pandas as pd
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain.schema import Document
+from langchain_core.documents import Document
 import os
 
 def build_chroma_from_csv(csv_path):
     df = pd.read_csv(csv_path)
-    
-    # 임베딩 대상은 '제품 설명', metadata는 나머지 전체 row
+
+    desc_col = next((col for col in df.columns if col.strip() in ["제품 설명", "설명", "description"]), None)
+    if not desc_col:
+        raise ValueError("❌ '제품 설명'에 해당하는 컬럼이 없습니다.")
+
     docs = []
     for _, row in df.iterrows():
+        description = row.get(desc_col, "")
+        if pd.isna(description) or not str(description).strip():
+            continue
+
         docs.append(
             Document(
-                page_content=row["제품 설명"],
+                page_content=str(description),
                 metadata=row.to_dict()
             )
         )
@@ -23,4 +30,4 @@ def build_chroma_from_csv(csv_path):
     embedding = HuggingFaceEmbeddings(model_name="snunlp/KR-SBERT-V40K-klueNLI-augSTS")
     db = Chroma.from_documents(documents=docs, embedding=embedding, persist_directory=chroma_path)
     db.persist()
-    print("✅ 전체 row metadata 포함 저장 완료")
+    print("✅ Chroma 저장 완료 ({}건)".format(len(docs)))
