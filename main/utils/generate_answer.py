@@ -11,7 +11,13 @@ def ask_question_to_gpt(query, persist_path="./chroma_db", top_k=15): #유사도
     
     similar_docs = db.similarity_search(query, k=top_k)
 
-    context = "\n\n".join([doc.page_content for doc in similar_docs])
+    context = ""
+    for i, doc in enumerate(similar_docs):
+        metadata = doc.metadata
+        context += f"[유사도 {i+1}]\n"
+        for key, value in metadata.items():
+            context += f"{key}: {value}\n"
+        context += "\n"
     
     prompt = f"""
     사용자 질문: {query}
