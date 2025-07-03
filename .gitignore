@@ -25,4 +25,4 @@ Thumbs.db
 */migrations/*.py[cod]
 
 # 임베딩 캐시
-reference_embeddings.npy
+chroma_db/
