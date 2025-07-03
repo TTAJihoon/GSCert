@@ -2,6 +2,7 @@ import pandas as pd
 from langchain_community.vectorstores import Chroma
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_core.documents import Document
+from tqdm import tqdm
 import os
 
 def build_chroma_from_csv(csv_path):
