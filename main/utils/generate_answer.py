@@ -22,10 +22,10 @@ def ask_question_to_gpt(query, persist_path="./chroma_db", top_k=15): #유사도
     prompt = f"""
     사용자 질문: {query}
 
-    아래는 유사한 제품 설명입니다:
+    [유사한 제품 정보]
     {context}
-
-    위 정보를 바탕으로 답변을 자연스럽게 생성해줘.
+    
+    위 내용을 바탕으로 사용자의 질문에 답변해주세요.
     """
 
     response = client.chat.completions.create(
