@@ -5,7 +5,7 @@ import os
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-def ask_question_to_gpt(query, persist_path="./main/data/chroma_db", top_k=3):
+def run_openai_GPT(query, persist_path="./main/data/chroma_db", top_k=3):
     embedding = HuggingFaceEmbeddings(model_name="snunlp/KR-SBERT-V40K-klueNLI-augSTS")
     db = Chroma(persist_directory=persist_path, embedding_function=embedding)
     
