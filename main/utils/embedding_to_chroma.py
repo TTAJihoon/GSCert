@@ -63,18 +63,13 @@ def build_chroma_from_csv(csv_path):
     print("[TEST] 첫 문서 metadata 예시:", docs[0].metadata)
     print("[TEST] 첫 문서 설명 예시:", docs[0].page_content)
 
-    print("[STEP 7] 문서 추가 중...")
-    try:
-        for i, doc in enumerate(tqdm(docs, desc="Chroma에 문서 추가")):
-            try:
-                db.add_documents([doc])
-            except Exception as doc_err:
-                print(f"[ERROR] 문서 {i} 추가 중 오류 발생: {doc_err}")
-                print("→ 문제 metadata:", doc.metadata)
-                continue
-    except Exception as e:
-        print("[ERROR] 전체 문서 추가 루프 중 오류 발생:", e)
-        return
+    print("[STEP 7] from_documents() 방식으로 전체 추가 중...")
+    db = Chroma.from_documents(
+        documents=docs,
+        embedding_function=embedding,
+        persist_directory=chroma_path,
+    )
+
 
     print("[STEP 8] DB 저장 중...")
     try:
