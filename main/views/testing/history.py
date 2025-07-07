@@ -16,22 +16,26 @@ def GS_history(company, product):
         reload_reference_dataframe()
         REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
-        raise ValueError("REFERENCE_DF is still None. CSV 파일이 로딩되지 않았습니다.")
-    
+        raise ValueError("REFERENCE_DF is still None.")
+
     df = REFERENCE_DF.copy()
 
-    # ✅ 회사명 필터링 (A나 B가 B(구:A)에 포함되도록)
+    # ✅ 회사명 필터링
     if company.strip():
         company = company.strip()
-        df["회사명_키워드목록"] = df["회사명"].fillna("").apply(extract_all_names)
-        df = df[df["회사명_키워드목록"].apply(lambda names: company in names)]
+        # 이름 추출 (B(구:A) → [B, A])
+        def name_matches(cell):
+            names = extract_all_names(str(cell))
+            return any(company.lower() in name.lower() for name in names)
 
-    # ✅ 제품명 필터링 (부분 포함)
+        df = df[df["회사명"].fillna("").apply(name_matches)]
+
+    # ✅ 제품명 필터링 (부분 포함 그대로 유지)
     if product.strip():
         product = product.strip()
         df = df[df['제품'].fillna('').str.contains(product, case=False)]
 
-    # ✅ 결과 변환
+    # 결과 추출 동일
     results = []
     for _, row in df.iterrows():
         results.append({
