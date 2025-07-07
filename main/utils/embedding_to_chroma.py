@@ -57,11 +57,14 @@ def build_chroma_from_csv(csv_path):
 
     print("[STEP 6] Chroma DB 생성 중...")
     try:
+        print("[STEP 6-1] from_documents 시작")
         db = Chroma.from_documents(
-            documents=docs,
+            documents=docs[:100],
             embedding=embedding,
             persist_directory=chroma_path,
+            collection_name="reference_products"
         )
+        print("[STEP 6-2] from_documents 완료")
         print("[STEP 7] Chroma DB 저장 중...")
         db.persist()
         print(f"✅ 저장 완료. 문서 수: {len(docs)}")
