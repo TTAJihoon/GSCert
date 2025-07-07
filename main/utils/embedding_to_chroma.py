@@ -55,18 +55,26 @@ def build_chroma_from_csv(csv_path):
     # STEP 5. 임베딩 모델 로딩
     embedding = HuggingFaceEmbeddings(model_name="snunlp/KR-SBERT-V40K-klueNLI-augSTS")
 
-    print("[STEP 6] Chroma DB 생성 중...")
+    print("[STEP 6] 빈 Chroma DB 인스턴스 생성")
+    db = Chroma(
+        persist_directory=chroma_path,
+        embedding_function=embedding,
+        collection_name="reference_products"
+    )
+    
+    print("[STEP 7] 문서별 개별 추가 시작")
+    for i, doc in enumerate(docs[:100]):  # 100개만 먼저 시도
+        try:
+            db.add_documents([doc])
+            print(f"[OK] 문서 {i} 추가 성공")
+        except Exception as e:
+            print(f"[❌ ERROR] 문서 {i} 추가 실패: {e}")
+            print("→ 해당 metadata:", doc.metadata)
+            break
+
+    print("[STEP 8] 저장 시도")
     try:
-        print("[STEP 6-1] from_documents 시작")
-        db = Chroma.from_documents(
-            documents=docs[:100],
-            embedding=embedding,
-            persist_directory=chroma_path,
-            collection_name="reference_products"
-        )
-        print("[STEP 6-2] from_documents 완료")
-        print("[STEP 7] Chroma DB 저장 중...")
         db.persist()
-        print(f"✅ 저장 완료. 문서 수: {len(docs)}")
+        print("✅ 저장 완료")
     except Exception as e:
-        print("[ERROR] Chroma 저장 중 오류 발생:", e)
+        print("[❌ ERROR] 저장 중 문제 발생:", e)
