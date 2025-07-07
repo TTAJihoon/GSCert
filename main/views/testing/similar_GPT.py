@@ -12,7 +12,6 @@ def run_openai_GPT(query, persist_path="./main/data/chroma_db", top_k=1):
     db = Chroma(persist_directory=persist_path, embedding_function=embedding)
 
     print("[STEP 2] Chroma DB 연결 성공")
-    print("DB 내 문서 수:", db._collection.count())
 
     try:
         similar_docs = db.similarity_search(query, k=top_k)
