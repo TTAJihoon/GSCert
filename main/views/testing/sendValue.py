@@ -40,8 +40,8 @@ def search_history(request):
                 response_text = run_openai_GPT(comment)  # ← 인사 프롬프트 호출
                 context['response'] = response_text       # 문자열 응답은 'response'에 담아 렌더링
             except Exception as e:
-                print("[ERROR] 인사 GPT 호출 오류:", e)
-                context['response'] = "인사 GPT 호출 중 오류가 발생했습니다."
+                print("[ERROR] GPT 처리 중 오류:", e)
+                context['response'] = "GPT 응답 중 오류가 발생했습니다."
                 
             return render(request, 'index.html', context)
                 
