@@ -10,7 +10,9 @@ def safe_str(value):
     try:
         if pd.isna(value):
             return ""
-        return str(value)[:512]  # 너무 긴 문자열도 잘라줌
+        v = str(value)
+        v = v.replace("\n", "_").replace("\r", "_").replace("\t", "_")
+        return v.strip()[:512]
     except Exception:
         return ""
 
