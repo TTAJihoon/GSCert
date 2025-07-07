@@ -59,6 +59,10 @@ def build_chroma_from_csv(csv_path):
         persist_directory=chroma_path,
     )
 
+    # ✅ 여기에 진단용 출력 삽입!
+    print("[TEST] 첫 문서 metadata 예시:", docs[0].metadata)
+    print("[TEST] 첫 문서 설명 예시:", docs[0].page_content)
+
     print("[STEP 7] 문서 추가 중...")
     try:
         for i, doc in enumerate(tqdm(docs, desc="Chroma에 문서 추가")):
