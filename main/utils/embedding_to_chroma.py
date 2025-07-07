@@ -61,6 +61,12 @@ def build_chroma_from_csv(csv_path):
         embedding_function=embedding,
         collection_name="reference_products"
     )
+    print("[DEBUG] 문서 0 상세 확인:")
+    print("page_content:", docs[0].page_content)
+    print("metadata:")
+    
+    for k, v in docs[0].metadata.items():
+        print(f"  {k} ({type(v)}): {repr(v)}")
     
     print("[STEP 7] 문서별 개별 추가 시작")
     for i, doc in enumerate(docs[:100]):  # 100개만 먼저 시도
