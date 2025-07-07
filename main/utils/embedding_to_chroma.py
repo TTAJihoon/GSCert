@@ -66,7 +66,7 @@ def build_chroma_from_csv(csv_path):
     print("[STEP 7] from_documents() 방식으로 전체 추가 중...")
     db = Chroma.from_documents(
         documents=docs,
-        embedding_function=embedding,
+        embedding=embedding,  # ← ✅ embedding만 전달
         persist_directory=chroma_path,
     )
 
