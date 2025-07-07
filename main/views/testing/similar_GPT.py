@@ -16,7 +16,11 @@ embedding = HuggingFaceEmbeddings(model_name="snunlp/KR-SBERT-V40K-klueNLI-augST
 # FAISS 인덱스 로드
 base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 faiss_path = os.path.join(base_dir, "data", "faiss_index")
-db = FAISS.load_local(faiss_path, embedding)
+db = FAISS.load_local(
+    folder_path=faiss_path,
+    embeddings=embedding,
+    allow_dangerous_deserialization=True
+)
 
 def run_openai_GPT(query, top_k=3):
     print("[STEP 1] 사용자 질문 수신:", query)
