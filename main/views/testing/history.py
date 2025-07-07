@@ -1,3 +1,4 @@
+import re
 from main.utils.reload_reference import reload_reference_dataframe, getREF
 
 def extract_all_names(name: str) -> list:
