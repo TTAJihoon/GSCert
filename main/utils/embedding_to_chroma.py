@@ -36,7 +36,7 @@ def build_chroma_from_csv(csv_path):
             continue
 
         clean_metadata = {
-            str(k).strip(): safe_str(v)
+            str(k).strip().replace("\n", "_").replace("/", "_").replace(" ", "_"): safe_str(v)
             for k, v in row.to_dict().items()
         }
 
