@@ -5,16 +5,20 @@ import os
 
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-def run_openai_GPT(query, persist_path="./main/data/chroma_db", top_k=15):
+def run_openai_GPT(query, persist_path="./main/data/chroma_db", top_k=1):
     print("[STEP 1] 질문 수신:", query)
     
     embedding = HuggingFaceEmbeddings(model_name="snunlp/KR-SBERT-V40K-klueNLI-augSTS")
     db = Chroma(persist_directory=persist_path, embedding_function=embedding)
 
     print("[STEP 2] Chroma DB 연결 성공")
+    print("DB 내 문서 수:", db._collection.count())
 
-    similar_docs = db.similarity_search(query, k=top_k)
-    print(f"[STEP 3] 유사 문서 {len(similar_docs)}건 검색됨")
+    try:
+        similar_docs = db.similarity_search(query, k=top_k)
+        print(f"[STEP 3] 유사 문서 {len(similar_docs)}건 검색됨")
+    except Exception as e:
+        print("[ERROR] similarity_search 중 오류 발생:", e)
 
     context = ""
     for i, doc in enumerate(similar_docs):
