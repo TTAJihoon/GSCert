@@ -1,22 +1,36 @@
 from main.utils.reload_reference import reload_reference_dataframe, getREF
 
+def extract_all_names(name: str) -> list:
+    """회사명에서 현재 이름과 과거 이름을 모두 추출"""
+    name = name.strip()
+    if '(구:' in name:
+        m = re.match(r"(.*?)\(구:\s*(.*?)\)", name)
+        if m:
+            return [m.group(1).strip(), m.group(2).strip()]
+    return [name]
+
 def GS_history(company, product):
     REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
         reload_reference_dataframe()
         REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
-        # 그래도 None이면 로딩 실패한 상태
         raise ValueError("REFERENCE_DF is still None. CSV 파일이 로딩되지 않았습니다.")
-        
+    
     df = REFERENCE_DF.copy()
 
+    # ✅ 회사명 필터링 (A나 B가 B(구:A)에 포함되도록)
     if company.strip():
-        df = df[df['회사명'].fillna('').str.contains(company, case=False)]
+        company = company.strip()
+        df["회사명_키워드목록"] = df["회사명"].fillna("").apply(extract_all_names)
+        df = df[df["회사명_키워드목록"].apply(lambda names: company in names)]
 
+    # ✅ 제품명 필터링 (부분 포함)
     if product.strip():
+        product = product.strip()
         df = df[df['제품'].fillna('').str.contains(product, case=False)]
 
+    # ✅ 결과 변환
     results = []
     for _, row in df.iterrows():
         results.append({
@@ -35,6 +49,5 @@ def GS_history(company, product):
             'a13': row.get('시작날짜/\n종료날짜', ''),
             'a14': row.get('시험원', '')
         })
-        if isinstance(results, dict):
-            results = [results]
+
     return results
