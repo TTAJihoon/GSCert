@@ -138,7 +138,8 @@ html, body {
 
 .radio-group {
     display: flex; 
-    gap: 15px; 
+    flex-direction: column;
+    gap: 10px; 
     margin-bottom: 15px; 
 }
 
