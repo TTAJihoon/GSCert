@@ -29,22 +29,72 @@
   margin-right: auto;
 }
 
-.menu {
+.navigation {
   display: flex;
   flex: 1;
-  justify-content: space-between;  /* 버튼 사이 고르게 정렬 */
-  gap: 0; /* 버튼 사이 여백 없게 하려면 */
+  justify-content: space-between;
+  gap: 0;
+  width: 100%;
+  background-color: #d8e9f8;
+}
+
+.nav-menu {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
   width: 100%;
 }
 
-.menu button {
-  flex: 1;                    /* 각 버튼이 같은 너비를 가지도록 */
-  background: none;
-  border: none;
-  font-size: 14px;
+.nav-item {
+  position: relative;
+  flex: 1;
   text-align: center;
-  line-height: 1.2;
-  padding: 4px;
-  white-space: pre-line;      /* 줄바꿈 허용 */
+}
+
+.nav-link {
+  display: block;
+  padding: 8px;
+  color: #000;
+  text-decoration: none;
+  font-size: 14px;
   cursor: pointer;
+}
+
+.nav-item:hover .nav-link {
+  background-color: #bcdcf7;
+}
+
+.dropdown-menu {
+  display: none;
+  position: absolute;
+  background-color: #d8e9f8;
+  width: 100%;
+  left: 0;
+  top: 100%;
+  padding: 0;
+  margin: 0;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+  z-index: 1000;
+}
+
+.dropdown-link {
+  display: block;
+  padding: 8px;
+  text-decoration: none;
+  color: #000;
+  font-size: 13px;
+}
+
+.dropdown-link:hover {
+  background-color: #bcdcf7;
+}
+
+.nav-item:hover .dropdown-menu {
+  display: block;
+}
+
+.dropdown-arrow {
+  margin-left: 4px;
+  font-size: 10px;
 }
