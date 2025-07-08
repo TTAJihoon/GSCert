@@ -72,40 +72,42 @@
     </div>
     
     <div class="table-container">
-      <table class="results-table">
-        <thead>
-          <tr>
-            <th class="col-date">인증일자</th>
-            <th class="col-test-no">시험번호</th>
-            <th class="col-sw-class">SW분류</th>
-            <th class="col-cmp-name">회사명</th>
-            <th class="col-prd-name">제품명</th>
-            <th class="col-overview">제품 개요</th>
-            <th class="col-date">시작/종료 날짜</th>
-            <th class="col-tester">시험원</th>
-            <th class="col-wd">총WD</th>
-            <th class="col-renewal">재계약</th>
-            <th class="col-download">문서</th>
-          </tr>
-        </thead>
-        <tbody id="resultsTableBody">
-          {% for table in response_tables %}
-          <tr>
-            <td>{{ table.a3 }}</td>
-            <td>{{ table.a7 }}</td>
-            <td>{{ table.a8 }}</td>
-            <td>{{ table.a4 }}</td>
-            <td>{{ table.a5 }}</td>
-            <td>{{ table.a9 }}</td>
-            <td>{{ table.a13 }}</td>
-            <td>{{ table.a14 }}</td>
-            <td>{{ table.a10 }}</td>
-            <td>{{ table.a11 }}</td>
-            <td><button class="download-btn"><i class="fas fa-download"></i></button></td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+      <div class="scrollable-table-wrapper">
+        <table class="results-table">
+          <thead>
+            <tr>
+              <th class="col-date">인증일자</th>
+              <th class="col-test-no">시험번호</th>
+              <th class="col-sw-class">SW분류</th>
+              <th class="col-cmp-name">회사명</th>
+              <th class="col-prd-name">제품명</th>
+              <th class="col-overview">제품 개요</th>
+              <th class="col-date">시작/종료 날짜</th>
+              <th class="col-tester">시험원</th>
+              <th class="col-wd">총WD</th>
+              <th class="col-renewal">재계약</th>
+              <th class="col-download">문서</th>
+            </tr>
+          </thead>
+          <tbody id="resultsTableBody">
+            {% for table in response_tables %}
+            <tr>
+              <td>{{ table.a3 }}</td>
+              <td>{{ table.a7 }}</td>
+              <td>{{ table.a8 }}</td>
+              <td>{{ table.a4 }}</td>
+              <td>{{ table.a5 }}</td>
+              <td>{{ table.a9 }}</td>
+              <td>{{ table.a13 }}</td>
+              <td>{{ table.a14 }}</td>
+              <td>{{ table.a10 }}</td>
+              <td>{{ table.a11 }}</td>
+              <td><button class="download-btn"><i class="fas fa-download"></i></button></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </div>
     {% else %}
     <div class="content-header">
