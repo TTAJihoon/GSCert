@@ -46,8 +46,7 @@ def run_openai_GPT(query, top_k=15):
         context += f"제품 설명:{meta.get('제품 설명', '')}, "
         context += f"총WD:{meta.get('총WD', '')}, "
         context += f"재계약:{meta.get('재계약', '')}, "
-        context += f"시작날짜/종료날짜:{meta.get('시작날짜/
-        종료날짜', '')}, "
+        context += f"시작날짜/종료날짜:{meta.get('시작날짜/\n종료날짜', '')}, "
         context += f"시험원:{meta.get('시험원', '')}\n"
         
     prompt = f"""
