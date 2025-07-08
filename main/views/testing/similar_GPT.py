@@ -22,7 +22,7 @@ db = FAISS.load_local(
     allow_dangerous_deserialization=True
 )
 
-def run_openai_GPT(query, top_k=3):
+def run_openai_GPT(query, top_k=15):
     print("[STEP 1] 사용자 질문 수신:", query)
 
     # 유사 문서 검색
