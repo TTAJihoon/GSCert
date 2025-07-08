@@ -37,7 +37,7 @@ def run_openai_GPT(query, top_k=15):
     # 프롬프트 구성
     context = ""
     for i, doc in enumerate(docs):
-        context += f"[문서 {i+1}]\n"
+        context += f"회사명:{meta.get('', '')}"
         for k, v in doc.metadata.items():
             context += f"{k}: {v}\n"
         context += "\n"
@@ -49,7 +49,7 @@ def run_openai_GPT(query, top_k=15):
 [유사한 문서 정보]
 {context}
 
-위 내용을 참고하여 사용자의 질문에 대해 설명하거나 추천해주세요.
+위 내용을 그대로 출력해줘. 아무것도 수정하지 말고.
 """
 
     print("[STEP 3] GPT 요청 시작")
