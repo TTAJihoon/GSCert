@@ -37,11 +37,19 @@ def run_openai_GPT(query, top_k=15):
     # 프롬프트 구성
     context = ""
     for i, doc in enumerate(docs):
-        context += f"회사명:{meta.get('', '')}"
-        for k, v in doc.metadata.items():
-            context += f"{k}: {v}\n"
-        context += "\n"
-
+        context += f"인증번호:{meta.get('인증번호', '')}, "
+        context += f"인증일자:{meta.get('인증일자', '')}, "
+        context += f"회사명:{meta.get('회사명', '')}, "
+        context += f"제품:{meta.get('제품', '')}, "
+        context += f"시험번호:{meta.get('시험번호', '')}, "
+        context += f"S/W분류:{meta.get('S/W분류', '')}, "
+        context += f"제품 설명:{meta.get('제품 설명', '')}, "
+        context += f"총WD:{meta.get('총WD', '')}, "
+        context += f"재계약:{meta.get('재계약', '')}, "
+        context += f"시작날짜/종료날짜:{meta.get('시작날짜/
+        종료날짜', '')}, "
+        context += f"시험원:{meta.get('시험원', '')}\n"
+        
     prompt = f"""
 [질문]
 {query}
