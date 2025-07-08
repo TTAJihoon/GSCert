@@ -30,18 +30,11 @@
 }
 
 .navigation {
-  display: flex;
-  flex: 1;
-  justify-content: space-between;
-  gap: 0;
-  width: 100%;
   background-color: #d8e9f8;
 }
 
 .nav-menu {
   list-style: none;
-  margin: 0;
-  padding: 0;
   display: flex;
   width: 100%;
 }
@@ -58,7 +51,6 @@
   color: #000;
   text-decoration: none;
   font-size: 14px;
-  cursor: pointer;
 }
 
 .nav-item:hover .nav-link {
@@ -70,10 +62,8 @@
   position: absolute;
   background-color: #d8e9f8;
   width: 100%;
-  left: 0;
   top: 100%;
-  padding: 0;
-  margin: 0;
+  left: 0;
   box-shadow: 0 4px 8px rgba(0,0,0,0.2);
   z-index: 1000;
 }
@@ -95,6 +85,6 @@
 }
 
 .dropdown-arrow {
-  margin-left: 4px;
   font-size: 10px;
+  margin-left: 4px;
 }
