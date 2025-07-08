@@ -185,8 +185,7 @@ html, body {
 .results-table th {
     background: var(--tta-blue); 
     color: white; 
-    padding: 12px 8px; 
-    text-align: left; 
+    padding: 12px 8px;
     font-weight: bold; 
     position: sticky; 
     top: 0; 
