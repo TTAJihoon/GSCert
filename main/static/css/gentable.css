@@ -18,12 +18,6 @@ html, body {
     font-family: 'Malgun Gothic', sans-serif; 
 }
 
-.main-container {
-    height: calc(100vh - 150px);  /* 60px header + 40px padding 고려 */
-    overflow-y: auto;
-    padding-right: 10px;
-}
-
 .header {
     height: 60px; 
     background: white; 
@@ -204,17 +198,6 @@ html, body {
     border-bottom: 1px solid #eee; 
     border-right: 1px solid #eee; 
     vertical-align: top; 
-}
-
-.results-table thead,
-.results-table tbody tr {
-  display: table;
-  width: 100%;
-  table-layout: fixed;
-}
-
-.results-table tbody {
-  display: block;
 }
 
 .results-table tbody tr:nth-child(even) {
