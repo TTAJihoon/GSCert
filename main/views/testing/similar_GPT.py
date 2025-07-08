@@ -60,7 +60,7 @@ def run_openai_GPT(query, top_k=15):
             messages=[{"role": "user", "content": prompt}]
         )
         print("[STEP 4] GPT 응답 완료")
-        return response.choices[0].message.content()
+        return response.choices[0].message.content.strip()
     except Exception as e:
         print("[ERROR] GPT 응답 실패:", e)
         return "❌ GPT 응답 생성 중 오류가 발생했습니다."
