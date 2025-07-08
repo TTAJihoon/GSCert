@@ -22,6 +22,7 @@ db = FAISS.load_local(
     allow_dangerous_deserialization=True
 )
 
+# 유사 결과 개수 설정
 def run_openai_GPT(query, top_k=15):
     print("[STEP 1] 사용자 질문 수신:", query)
 
