@@ -10,14 +10,6 @@
   height: 100vh;
 }
 
-.top-bar {
-  background-color: #d8e9f8;
-  padding: 10px 20px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
 .logo {
   height: 40px;
   margin-right: 10px;
@@ -29,12 +21,19 @@
   margin-right: auto;
 }
 
+.top-bar {
+  position: relative;
+  z-index: 10; /* 다른 요소 위에 올라가도록 보장 */
+}
+
 .navigation {
-  background-color: #d8e9f8;
+  flex-grow: 1; /* navigation이 top-bar에서 확실히 자리 잡도록 */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .nav-menu {
-  list-style: none;
   display: flex;
   width: 100%;
 }
@@ -42,15 +41,15 @@
 .nav-item {
   position: relative;
   flex: 1;
-  text-align: center;
 }
 
 .nav-link {
   display: block;
-  padding: 8px;
+  padding: 8px 12px;
   color: #000;
-  text-decoration: none;
   font-size: 14px;
+  cursor: pointer;
+  text-decoration: none;
 }
 
 .nav-item:hover .nav-link {
@@ -61,7 +60,7 @@
   display: none;
   position: absolute;
   background-color: #d8e9f8;
-  width: 100%;
+  width: 100%; /* 부모 메뉴 너비만큼 */
   top: 100%;
   left: 0;
   box-shadow: 0 4px 8px rgba(0,0,0,0.2);
