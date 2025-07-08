@@ -1,5 +1,3 @@
-# main/management/commands/embed_csv.py
-
 from django.core.management.base import BaseCommand
 from main.utils.embedding_to_faiss import build_faiss_from_csv
 
