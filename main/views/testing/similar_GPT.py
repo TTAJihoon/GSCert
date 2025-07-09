@@ -38,6 +38,7 @@ def run_openai_GPT(query, top_k=15):
     context = ""
     for i, doc in enumerate(docs):
         meta = doc.metadata
+        print(meta)
         context += f"인증번호:{meta.get('인증번호', '')}, "
         context += f"인증일자:{meta.get('인증일자', '')}, "
         context += f"회사명:{meta.get('회사명', '')}, "
