@@ -23,7 +23,7 @@ db = FAISS.load_local(
 )
 
 # 유사 결과 개수 설정
-def run_openai_GPT(query, top_k=5):
+def run_openai_GPT(query, top_k=3):
     print("[STEP 1] 사용자 질문 수신:", query)
 
     # 유사 문서 검색
