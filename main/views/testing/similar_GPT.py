@@ -71,6 +71,7 @@ def run_openai_GPT(query, top_k=10):
             unique_docs.append(doc)
 
     print(f"[STEP 2.5] 중복 제거 후 문서 수: {len(unique_docs)}")
+    print(unique_docs)
 
     if not unique_docs:
         return "❌ 유사한 문서를 찾지 못했습니다."
@@ -88,7 +89,8 @@ def run_openai_GPT(query, top_k=10):
         context += f"제품 설명:{meta.get('제품_설명', '')}, "
         context += f"총WD:{meta.get('총WD', '')}, "
         context += f"재계약:{meta.get('재계약', '')}, "
-        context += f"시작날짜/종료날짜:{meta.get('시작날짜__종료날짜', '')}, "
+        context += f"시작날짜:{meta.get('시작날짜', '')}, "
+        context += f"종료날짜:{meta.get('종료날짜', '')}, "
         context += f"시험원:{meta.get('시험원', '')}\n"
 
     prompt = f"""
