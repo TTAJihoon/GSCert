@@ -16,43 +16,11 @@
     <header class="top-bar">
       <img src="{% static 'images/TTA logo.jpg' %}" alt="로고" class="logo">
       <span class="title">AI 서포터즈 센터</span>
-      <nav class="navigation">
-        <ul class="nav-menu">
-          <li class="nav-item dropdown">
-            <a class="nav-link">
-              <span class="nav-text">테스팅 에이전트</span>
-            </a>
-            <ul class="dropdown-menu">
-              <li><a href="{% url 'index' %}" class=dropdown-link>시험 이력 조회<br>유사 시험 조회</a></li>
-              <li><a href="{% url 'security' %}" class=dropdown-link>보안성 결함 작성</a></li>
-              <li><a href="{% url 'genspark' %}" class=dropdown-link>테스트케이스 작성</a></li>
-              <li><a href="{% url 'genspark2' %}" class=dropdown-link>시험결과서 작성</a></li>
-            </ul>
-          </li>
-
-          <li class="nav-item dropdown">
-            <a class="nav-link">
-              <span class="nav-text">서티 에이전트</span>
-            </a>
-            <ul class="dropdown-menu">
-              <li><a href="{% url 'index' %}" class=dropdown-link>인증위 제품정보 자동 작성</a></li>
-              <li><a href="{% url 'security' %}" class=dropdown-link>인증서 제작 자동화</a></li>
-              <li><a href="{% url 'genspark' %}" class=dropdown-link>GS 인증 이력 및 통계 자동화</a></li>
-            </ul>
-          </li>
-          <li class="nav-item dropdown">
-            <a class="nav-link">
-              <span class="nav-text">리뷰 에이전트</span>
-            </a>
-            <ul class="dropdown-menu">
-              <li><a href="{% url 'index' %}" class=dropdown-link>시험 결과서 기본 사항 점검</a></li>
-              <li><a href="{% url 'security' %}" class=dropdown-link>인증서 및 결과서 오류 검출</a></li>
-              <li><a href="{% url 'genspark' %}" class=dropdown-link>ECM 산출물 자동 점검</a></li>
-              <li><a href="{% url 'genspark2' %}" class=dropdown-link>사용자 매뉴얼 기본 품질 점검</a></li>
-            </ul>
-          </li>
-        </ul>
-          
+      <nav class="menu">
+        <button onclick="location.href='{% url 'index' %}'">시험 이력 조회<br>유사 시험 조회</button>
+        <button onclick="location.href='{% url 'security' %}'">보안성 결함 작성</button>
+        <button onclick="location.href='{% url 'genspark' %}'">테스트케이스 작성</button>
+        <button onclick="location.href='{% url 'genspark2' %}'">시험결과서 작성</button>
       </nav>
     </header>
 
