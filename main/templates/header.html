@@ -16,34 +16,27 @@
     <header class="top-bar">
       <img src="{% static 'images/TTA logo.jpg' %}" alt="로고" class="logo">
       <span class="title">AI 서포터즈 센터</span>
-      <nav class="navigation">
+      <div class="navigation">
         <ul class="nav-menu">
-          <li class="nav-item dropdown">
-            <a class="nav-link">
-              <span class="nav-text">테스팅 에이전트</span>
-            </a>
+          <li class="nav-item">
+            <a href="#" class="nav-link">테스팅 에이전트</a>
             <ul class="dropdown-menu">
-              <li><a href="{% url 'index' %}" class=dropdown-link>시험 이력 조회<br>유사 시험 조회</a></li>
-              <li><a href="{% url 'security' %}" class=dropdown-link>보안성 결함 작성</a></li>
-              <li><a href="{% url 'genspark' %}" class=dropdown-link>테스트케이스 작성</a></li>
-              <li><a href="{% url 'genspark2' %}" class=dropdown-link>시험결과서 작성</a></li>
+              <<li><a href="{% url 'index' %}" class=dropdown-link>시험 이력 조회<br>유사 시험 조회</a></li>
+                <li><a href="{% url 'security' %}" class=dropdown-link>보안성 결함 작성</a></li>
+                <li><a href="{% url 'genspark' %}" class=dropdown-link>테스트케이스 작성</a></li>
+                <li><a href="{% url 'genspark2' %}" class=dropdown-link>시험결과서 작성</a></li>
             </ul>
           </li>
-
-          <li class="nav-item dropdown">
-            <a class="nav-link">
-              <span class="nav-text">서티 에이전트</span>
-            </a>
+          <li class="nav-item">
+            <a href="#" class="nav-link">서티 에이전트</a>
             <ul class="dropdown-menu">
               <li><a href="{% url 'index' %}" class=dropdown-link>인증위 제품정보 자동 작성</a></li>
               <li><a href="{% url 'security' %}" class=dropdown-link>인증서 제작 자동화</a></li>
               <li><a href="{% url 'genspark' %}" class=dropdown-link>GS 인증 이력 및 통계 자동화</a></li>
             </ul>
           </li>
-          <li class="nav-item dropdown">
-            <a class="nav-link">
-              <span class="nav-text">리뷰 에이전트</span>
-            </a>
+          <li class="nav-item">
+            <a href="#" class="nav-link">리뷰 에이전트</a>
             <ul class="dropdown-menu">
               <li><a href="{% url 'index' %}" class=dropdown-link>시험 결과서 기본 사항 점검</a></li>
               <li><a href="{% url 'security' %}" class=dropdown-link>인증서 및 결과서 오류 검출</a></li>
@@ -52,8 +45,7 @@
             </ul>
           </li>
         </ul>
-          
-      </nav>
+      </div>
     </header>
 
     <!-- 페이지 개별 내용 -->
