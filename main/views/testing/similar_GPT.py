@@ -58,6 +58,7 @@ def run_openai_GPT(query, top_k=15):
 {context}
 
 유사한 제품인지 잘 확인해서 알려줘
+제품 설명은 꼭 표시해줘야해
 """
 
     print("[STEP 3] GPT 요청 시작")
