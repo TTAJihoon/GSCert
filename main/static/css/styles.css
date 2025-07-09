@@ -35,9 +35,10 @@
   margin-right: auto; /* 로고, 타이틀 왼쪽 정렬 */
 }
 
-.navigation .nav-menu {
+.navigation .nav-menu, .nav-item {
   display: flex;
+  flex: 1;
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 10px 20px;
 }
