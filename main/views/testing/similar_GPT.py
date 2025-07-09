@@ -110,7 +110,7 @@ def run_openai_GPT(query, top_k=3):
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4.1-nano"
+            model="gpt-4.1-nano",
             messages=[{"role": "user", "content": prompt}]
         )
         print("[STEP 4] GPT 응답 완료")
