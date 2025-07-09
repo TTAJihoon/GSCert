@@ -11,11 +11,13 @@
 }
 
 html, body {
-    height: 100%;
-    margin-top: 70px; 
+    height: 100%; 
+    margin: 0; 
     padding: 0; 
-    overflow: auto; 
+    overflow: hidden; 
     font-family: 'Malgun Gothic', sans-serif; 
+    padding-top: 70px; /* 추가: navbar 높이 만큼 body를 아래로 밀어줌 */
+    box-sizing: border-box; /* padding 포함하여 높이 계산 정확하게 */
 }
 
 .header {
