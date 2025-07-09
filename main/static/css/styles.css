@@ -27,15 +27,25 @@
 }
 
 .navigation {
-  background-color: #d8e9f8;
-  padding: 0;
+  background-color: #bcdcf7; /* 마우스 오버 기본 색상으로 설정 */
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+}
+
+.nav-title {
+  font-size: 18px;
+  font-weight: bold;
+  padding: 10px 20px;
+  white-space: nowrap; /* 줄바꿈 방지 */
+  color: #333;
 }
 
 .nav-menu {
   display: flex;
   list-style: none;
-  margin: 0;
   padding: 0;
+  margin: 0 0 0 auto; /* 오른쪽 정렬 */
 }
 
 .nav-item {
@@ -51,7 +61,7 @@
 }
 
 .nav-link:hover {
-  background-color: #bcdcf7;
+  background-color: #a7d0f2; /* 더 진한색으로 오버 시 강조 효과 */
 }
 
 .dropdown-menu {
@@ -64,8 +74,8 @@
   border-radius: 4px;
   box-shadow: 0 4px 10px rgba(0,0,0,0.1);
   list-style: none;
-  margin: 0;
   padding: 0;
+  margin: 0;
   min-width: 150px;
   z-index: 1000;
 }
@@ -87,7 +97,6 @@
   animation: fade-in 0.3s ease-in-out;
 }
 
-/* 부드러운 효과를 위한 키프레임 */
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(-5px); }
   to { opacity: 1; transform: translateY(0); }
