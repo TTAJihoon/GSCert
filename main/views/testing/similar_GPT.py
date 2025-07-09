@@ -82,7 +82,7 @@ def run_openai_GPT(query, top_k=10):
         context += f"인증번호:{meta.get('인증번호', '')}, "
         context += f"인증일자:{meta.get('인증일자', '')}, "
         context += f"회사명:{meta.get('회사명', '')}, "
-        context += f"제품:{meta.get('제품', '')}, "
+        context += f"제품명:{meta.get('제품', '')}, "
         context += f"시험번호:{meta.get('시험번호', '')}, "
         context += f"S/W분류:{meta.get('S_W분류', '')}, "
         context += f"제품 설명:{meta.get('제품_설명', '')}, "
@@ -101,8 +101,8 @@ def run_openai_GPT(query, top_k=10):
 [유사 문서 정보]
 {context}
 
-→ 이 문서들 중에서 의미적으로 유사하지 않다고 판다되는 제품은 지워줘. 그대신 지우기 전 전체 대상 목록을 먼저 표시해줘.
-→ 각 제품 설명을 꼭 표시해줘. 그리고 API를 통해 총 몇 token을 주고 받았는지도 알려줘. 요금 계산을 위한 정보가 필요해.
+→ 결과 비교를 위해 전달 받은 제품명 및 제품 정보를 모두 표시한 후, 이 문서들 중에서 의미적으로 유사하지 않다고 판다되는 제품은 지워줘
+→ 그리고 API를 통해 총 몇 token을 주고 받았는지도 알려줘. 요금 계산을 위한 정보가 필요해.
 """
 
     # STEP 4. GPT 응답 요청
