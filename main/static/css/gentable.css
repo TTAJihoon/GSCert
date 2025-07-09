@@ -14,7 +14,7 @@ html, body {
     height: 100%; 
     margin: 0; 
     padding: 0; 
-    overflow: hidden; 
+    overflow: auto; 
     font-family: 'Malgun Gothic', sans-serif; 
 }
 
@@ -39,9 +39,9 @@ html, body {
 }
 
 .content-area {
-    flex: 1; 
-    display: flex; 
-    overflow: hidden; 
+    margin-top: 70px; /* 필수: navbar 높이만큼 공간 확보 */
+    height: calc(100vh - 70px); /* 화면 전체 높이에서 navbar 높이를 뺌 */
+    overflow: hidden;
 }
 
 .sidebar {
@@ -170,7 +170,7 @@ html, body {
 }
 
 .scrollable-table-wrapper {
-  height: calc(100vh - 150px);  /* 60px header + 40px padding 고려 */
+  height: 100%
   overflow-x: auto;
   overflow-y: auto;
   display: block;
