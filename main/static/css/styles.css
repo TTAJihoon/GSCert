@@ -10,6 +10,13 @@
   height: 100vh;
 }
 
+.top-bar {
+  background-color: #d8e9f8;
+  padding: 10px 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
 
 .navigation {
   display: flex;
