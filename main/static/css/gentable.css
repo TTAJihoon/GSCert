@@ -16,8 +16,6 @@ html, body {
     padding: 0; 
     overflow: hidden; 
     font-family: 'Malgun Gothic', sans-serif; 
-    padding-top: 70px; /* 추가: navbar 높이 만큼 body를 아래로 밀어줌 */
-    box-sizing: border-box; /* padding 포함하여 높이 계산 정확하게 */
 }
 
 .header {
@@ -41,9 +39,9 @@ html, body {
 }
 
 .content-area {
-    margin-top: 70px; /* 필수: navbar 높이만큼 공간 확보 */
-    
-    overflow: hidden;
+    flex: 1; 
+    display: flex; 
+    overflow: hidden; 
 }
 
 .sidebar {
@@ -172,7 +170,7 @@ html, body {
 }
 
 .scrollable-table-wrapper {
-  height: 100%
+  height: calc(100vh - 150px);  /* 60px header + 40px padding 고려 */
   overflow-x: auto;
   overflow-y: auto;
   display: block;
