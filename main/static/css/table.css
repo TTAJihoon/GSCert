@@ -1,4 +1,5 @@
 .content-area {
+  margin-top: 100px;
   height: calc(100vh - 150px);  /* 60px header + 40px padding 고려 */
   overflow-y: auto;
   padding-right: 10px;
