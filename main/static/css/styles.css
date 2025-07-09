@@ -10,18 +10,27 @@
   height: 100vh;
 }
 
-.logo {
+
+.navigation {
+  display: flex;
+  align-items: center;
+  justify-content: space-between; /* 좌우로 정렬 */
+}
+
+.navigation .logo {
   height: 40px;
   margin-right: 10px;
 }
 
-.title {
+.navigation .title {
   font-size: 22px;
   font-weight: bold;
-  margin-right: auto;
+  margin-right: auto; /* 로고, 타이틀 왼쪽 정렬 */
 }
 
-.top-bar {
-  position: relative;
-  z-index: 10; /* 다른 요소 위에 올라가도록 보장 */
+.navigation .nav-menu {
+  display: flex;
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
