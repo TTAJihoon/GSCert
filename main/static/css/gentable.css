@@ -11,7 +11,7 @@
 }
 
 html, body {
-    height: 100%; 
+    height: calc(100vh - 70px); /* 화면 전체 높이에서 navbar 높이를 뺌 */
     margin: 0; 
     padding: 0; 
     overflow: auto; 
@@ -40,7 +40,7 @@ html, body {
 
 .content-area {
     margin-top: 70px; /* 필수: navbar 높이만큼 공간 확보 */
-    height: calc(100vh - 70px); /* 화면 전체 높이에서 navbar 높이를 뺌 */
+    
     overflow: hidden;
 }
 
