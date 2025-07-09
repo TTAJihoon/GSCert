@@ -22,7 +22,7 @@ db = FAISS.load_local(
     allow_dangerous_deserialization=True
 )
 
-def get_paraphrased_queries(query: str, num: int = 3) -> list[str]:
+def get_paraphrased_queries(query: str, num: int = 5) -> list[str]:
     system_prompt = (
         f"다음 문장을 의미가 같도록 다른 표현으로 {num}개 만들어줘.\n"
         f"원문: '{query}'"
@@ -44,7 +44,7 @@ def get_paraphrased_queries(query: str, num: int = 3) -> list[str]:
         print("[ERROR] GPT 파라프레이즈 실패:", e)
         return [query]
 
-def run_openai_GPT(query, top_k=3):
+def run_openai_GPT(query, top_k=10):
     print("[STEP 1] 사용자 질문 수신:", query)
 
     # STEP 1. GPT를 사용해 질의 파라프레이즈 생성
