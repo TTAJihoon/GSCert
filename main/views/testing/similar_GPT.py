@@ -58,6 +58,7 @@ def run_openai_GPT(query, top_k=15):
 {context}
 
 시험번호, 회사명, 제품명, 제품 설명, 총 WD, 시험원 순으로 한줄씩 정리해서 보여줘
+제품 설명은 절대 누락되면 안돼.
 """
 
     print("[STEP 3] GPT 요청 시작")
