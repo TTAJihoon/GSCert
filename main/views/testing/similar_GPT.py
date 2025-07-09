@@ -22,7 +22,7 @@ db = FAISS.load_local(
     allow_dangerous_deserialization=True
 )
 
-def get_paraphrased_queries(query: str, num: int = 5) -> list[str]:
+def get_paraphrased_queries(query: str, num: int) -> list[str]:
     system_prompt = (
         f"다음 문장을 의미가 같도록 다른 표현으로 {num}개 만들어줘.\n"
         f"원문: '{query}'"
@@ -48,7 +48,7 @@ def run_openai_GPT(query, top_k=10):
     print("[STEP 1] 사용자 질문 수신:", query)
 
     # STEP 1. GPT를 사용해 질의 파라프레이즈 생성
-    sub_queries = get_paraphrased_queries(query, num=3)
+    sub_queries = get_paraphrased_queries(query, num=5)
     print("[STEP 1.5] 파라프레이즈 질의:", sub_queries)
 
     # STEP 2. FAISS 유사 문서 검색
@@ -101,7 +101,7 @@ def run_openai_GPT(query, top_k=10):
 [유사 문서 정보]
 {context}
 
-→ 이 문서들 중에서 의미적으로 유사하지 않다고 판다되는 제품은 지워줘.
+→ 이 문서들 중에서 의미적으로 유사하지 않다고 판다되는 제품은 지워줘. 그대신 지우기 전 전체 대상 목록을 먼저 표시해줘.
 → 각 제품 설명을 꼭 표시해줘. 그리고 API를 통해 총 몇 token을 주고 받았는지도 알려줘. 요금 계산을 위한 정보가 필요해.
 """
 
