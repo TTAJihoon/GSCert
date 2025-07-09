@@ -41,7 +41,7 @@ def build_faiss_from_csv(csv_path):
     df.columns = df.columns.str.strip()
 
     # 설명 컬럼 감지
-    desc_col = next((col for col in df.columns if col in ["제품 설명", "설명", "description"]), None)
+    desc_col = next((col for col in df.columns if col in ["제품 설명", "설명"]), None)
     if not desc_col:
         raise ValueError("❌ '제품 설명'에 해당하는 컬럼이 없습니다.")
 
@@ -52,7 +52,7 @@ def build_faiss_from_csv(csv_path):
             continue
 
         # 날짜 필드 감지
-        raw_date = row.get("시작날짜~종료날짜", "") or row.get("기간", "")
+        raw_date = row.get("시작날짜/\n종료날짜", "")
         start, end = parse_korean_date_range(str(raw_date))
 
         # 메타데이터 정리
