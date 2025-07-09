@@ -27,8 +27,12 @@
 }
 
 .navigation {
-  background-color: #bcdcf7; /* 마우스 오버 기본 색상으로 설정 */
+  background-color: #d8e9f8; /* 마우스 오버 기본 색상으로 설정 */
   display: flex;
+  flex: 1;
+  justify-content: space-between;  /* 버튼 사이 고르게 정렬 */
+  gap: 0; /* 버튼 사이 여백 없게 하려면 */
+  width: 100%;
   align-items: center;
   padding: 0 20px;
 }
@@ -43,6 +47,8 @@
 
 .nav-menu {
   display: flex;
+  flex: 1;
+  background: none;
   list-style: none;
   padding: 0;
   margin: 0 0 0 auto; /* 오른쪽 정렬 */
@@ -94,6 +100,7 @@
 
 .nav-item:hover .dropdown-menu {
   display: block;
+  outline: none;
   animation: fade-in 0.3s ease-in-out;
 }
 
