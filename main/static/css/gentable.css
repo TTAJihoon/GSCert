@@ -11,8 +11,8 @@
 }
 
 html, body {
-    height: calc(100vh - 70px); /* 화면 전체 높이에서 navbar 높이를 뺌 */
-    margin: 0; 
+    height: 100%
+    margin-top: 70px; 
     padding: 0; 
     overflow: auto; 
     font-family: 'Malgun Gothic', sans-serif; 
