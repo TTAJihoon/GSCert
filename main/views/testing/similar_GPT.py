@@ -58,6 +58,7 @@ def run_openai_GPT(query, top_k=15):
 {context}
 
 질문에 대한 설명이나 정리 없이 위 정보를 출력해줘.
+제품 설명은 꼭 넣어줘.
 """
 
     print("[STEP 3] GPT 요청 시작")
