@@ -1,4 +1,4 @@
-.scroll-container {
+.content-area {
   height: calc(100vh - 150px);  /* 60px header + 40px padding 고려 */
   overflow-y: auto;
   padding-right: 10px;
