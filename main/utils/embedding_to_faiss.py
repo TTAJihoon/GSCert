@@ -59,6 +59,7 @@ def build_faiss_from_csv(csv_path):
         clean_metadata = {
             str(k).strip().replace("\n", "_").replace("/", "_").replace(" ", "_"): safe_str(v)
             for k, v in row.to_dict().items()
+            if k not in ["시작날짜/\n종료날짜"]
         }
         clean_metadata["시작일자"] = start or ""
         clean_metadata["종료일자"] = end or ""
