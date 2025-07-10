@@ -37,7 +37,7 @@ def is_within_date_range(doc_start, doc_end, query_start, query_end):
         if doc_start and doc_end and doc_start <= query_start and doc_end >= query_end:
             return True
     except:
-        pass
+        print("날짜 필터링에 오류가 발생했습니다")
     return False
     
 def get_paraphrased_queries(query: str, num: int) -> list[str]:
