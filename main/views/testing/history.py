@@ -87,6 +87,7 @@ def GS_history(company, product, query_start=None, query_end=None):
     for _, row in df.iterrows():
         raw_date = row.get('시작날짜/\n종료날짜', '')
         start_date, end_date = parse_korean_date_range(raw_date)
+        print(start_date, end_date,"---------")
 
         if query_start and query_end:
             if not is_within_date_range(start_date, end_date, query_start, query_end):
