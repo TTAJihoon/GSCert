@@ -22,6 +22,23 @@ db = FAISS.load_local(
     allow_dangerous_deserialization=True
 )
 
+def is_within_date_range(doc_start, doc_end, query_start, query_end):
+    try:
+        doc_start = datetime.fromisoformat(doc_start) if doc_start else None
+        doc_end = datetime.fromisoformat(doc_end) if doc_end else None
+        query_start = datetime.fromisoformat(query_start)
+        query_end = datetime.fromisoformat(query_end)
+
+        if doc_start and query_start <= doc_start <= query_end:
+            return True
+        if doc_end and query_start <= doc_end <= query_end:
+            return True
+        if doc_start and doc_end and doc_start <= query_start and doc_end >= query_end:
+            return True
+    except:
+        pass
+    return False
+    
 def get_paraphrased_queries(query: str, num: int) -> list[str]:
     system_prompt = (
         f"다음 문장을 의미가 같도록 다른 표현으로 {num}개 만들어줘.\n"
@@ -44,7 +61,7 @@ def get_paraphrased_queries(query: str, num: int) -> list[str]:
         print("[ERROR] GPT 파라프레이즈 실패:", e)
         return [query]
 
-def run_openai_GPT(query, top_k=10):
+def run_openai_GPT(query, start, end, top_k=10):
     print("[STEP 1] 사용자 질문 수신:", query)
 
     # STEP 1. GPT를 사용해 질의 파라프레이즈 생성
@@ -52,10 +69,30 @@ def run_openai_GPT(query, top_k=10):
     print("[STEP 1.5] 파라프레이즈 질의:", sub_queries)
 
     # STEP 2. FAISS 유사 문서 검색
+    all_docs = db.docstore._dict.values()
+    
+    # 날짜로 필터링한 문서만 추출
+    filtered_docs = [
+        doc for doc in all_docs
+        if is_within_date_range(
+            doc.metadata.get("시작일자"),
+            doc.metadata.get("종료일자"),
+            start,
+            end
+        )
+    ]
+
+    # 필터링 후 문서가 없는 경우
+    if not filtered_docs:
+        return JsonResponse({"results": []})
+
+    # 필터링한 문서로만 임시 FAISS 인덱스 생성
+    temp_db = FAISS.from_documents(filtered_docs, embedding)
+    
     all_docs = []
     for sq in sub_queries:
         try:
-            docs = db.similarity_search(sq, k=top_k)
+            docs = temp_db.similarity_search(sq, k=top_k)
             print(f"[FAISS] '{sq}' → {len(docs)}건 검색됨")
             all_docs.extend(docs)
         except Exception as e:
