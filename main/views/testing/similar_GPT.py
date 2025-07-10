@@ -23,12 +23,12 @@ db = FAISS.load_local(
 )
 
 def is_within_date_range(doc_start, doc_end, query_start, query_end):
+    print(doc_start, doc_end, query_start, query_end)
     try:
         doc_start = datetime.fromisoformat(doc_start) if doc_start else None
         doc_end = datetime.fromisoformat(doc_end) if doc_end else None
         query_start = datetime.fromisoformat(query_start)
         query_end = datetime.fromisoformat(query_end)
-        print(doc_start, doc_end, query_start, query_end)
 
         if doc_start and query_start <= doc_start <= query_end:
             return True
