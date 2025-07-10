@@ -1,6 +1,8 @@
 import os
+from datetime import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.documents import Document
 from openai import OpenAI
 from dotenv import load_dotenv
 
