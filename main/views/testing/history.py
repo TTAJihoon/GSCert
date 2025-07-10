@@ -35,18 +35,24 @@ def is_within_date_range(doc_start, doc_end, query_start, query_end):
 
 def parse_korean_date_range(text: str):
     try:
-        print(text,"-------------------1")
-        text = re.sub(r"(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일", r"\1.\2.\3", text)
-        text = text.replace(" ", "").replace("~", " ~ ")
+        text = text.strip().replace("\n", "").replace(" ", "")
+        text = text.replace("~", " ~ ")
+
+        # '년월일' 형식 처리
+        text = re.sub(r"(\d{4})년(\d{1,2})월(\d{1,2})일", r"\1.\2.\3", text)
+
+        # '-' 형식을 '.'로 변환
+        text = text.replace("-", ".")
+
+        # 날짜 추출 (YYYY.MM.DD)
         dates = re.findall(r"\d{4}\.\d{1,2}\.\d{1,2}", text)
-        print(date,"-------------------2")
-        if len(dates) == 2:
+
+        if len(dates) >= 2:
             start = datetime.strptime(dates[0], "%Y.%m.%d").date().isoformat()
-            end = datetime.strptime(dates[1], "%Y.%m.%d").date().isoformat()
-            print(start,end,"-------------------3")
+            end = datetime.strptime(dates[-1], "%Y.%m.%d").date().isoformat()
             return start, end
-    except:
-        pass
+    except Exception as e:
+        print("[ERROR] 날짜 파싱 오류:", e)
     return None, None
 
 def GS_history(company, product, query_start=None, query_end=None):
