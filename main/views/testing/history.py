@@ -35,12 +35,15 @@ def is_within_date_range(doc_start, doc_end, query_start, query_end):
 
 def parse_korean_date_range(text: str):
     try:
+        print(text,"-------------------")
         text = re.sub(r"(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일", r"\1.\2.\3", text)
         text = text.replace(" ", "").replace("~", " ~ ")
         dates = re.findall(r"\d{4}\.\d{1,2}\.\d{1,2}", text)
+        print(date,"-------------------")
         if len(dates) == 2:
             start = datetime.strptime(dates[0], "%Y.%m.%d").date().isoformat()
             end = datetime.strptime(dates[1], "%Y.%m.%d").date().isoformat()
+            print(start,end,"-------------------")
             return start, end
     except:
         pass
