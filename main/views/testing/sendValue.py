@@ -12,7 +12,7 @@ def search_history(request):
         startDate = request.POST.get('start_Date', '')
         endDate = request.POST.get('end_Date', '')
         comment = request.POST.get('comment', '')
-        print(comment, company, product, startDate, endDate)
+        print(comment, company, product, startDate, endDate, selected)
 
         context = {
             'selected_type': selected,
