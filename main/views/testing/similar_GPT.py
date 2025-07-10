@@ -84,7 +84,7 @@ def run_openai_GPT(query, start, end, top_k=10):
 
     # 필터링 후 문서가 없는 경우
     if not filtered_docs:
-        return "❌ 유사한 문서를 찾지 못했습니다."
+        return "❌ 날짜에 해당하는 문서를 찾지 못했습니다."
 
     # 필터링한 문서로만 임시 FAISS 인덱스 생성
     temp_db = FAISS.from_documents(filtered_docs, embedding)
