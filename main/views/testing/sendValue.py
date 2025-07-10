@@ -12,6 +12,7 @@ def search_history(request):
         startDate = request.POST.get('start_Date', '')
         endDate = request.POST.get('end_Date', '')
         comment = request.POST.get('comment', '')
+        print(comment, company, product, startDate, endDate)
 
         context = {
             'selected_type': selected,
@@ -37,7 +38,6 @@ def search_history(request):
 
         elif selected == 'similar':
             try:
-                print(comment, startDate, endDate)
                 # response_text = run_openai_GPT(comment, startDate, endDate)  # ← 인사 프롬프트 호출
                 # context['response'] = response_text       # 문자열 응답은 'response'에 담아 렌더링
                 context['response'] = "";
