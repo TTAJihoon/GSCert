@@ -9,8 +9,8 @@ def search_history(request):
         selected = request.POST.get('selectType')  # ← 라디오 버튼 값
         company = request.POST.get('company', '')
         product = request.POST.get('product', '')
-        startDate = request.POST.get('start_Date', '')
-        endDate = request.POST.get('end_Date', '')
+        startDate = request.POST.get('start_date', '')
+        endDate = request.POST.get('end_date', '')
         comment = request.POST.get('comment', '')
         print(comment, company, product, startDate, endDate, selected)
 
