@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from main.utils.reload_reference import reload_reference_dataframe, getREF
 
 def extract_all_names(name: str) -> list:
@@ -15,44 +16,73 @@ def extract_all_names(name: str) -> list:
             ]
     return [name.lower()]
 
+def is_within_date_range(doc_start, doc_end, query_start, query_end):
+    try:
+        doc_start = datetime.fromisoformat(doc_start.strip()) if doc_start else None
+        doc_end = datetime.fromisoformat(doc_end.strip()) if doc_end else None
+        query_start = datetime.fromisoformat(query_start.strip())
+        query_end = datetime.fromisoformat(query_end.strip())
 
-def GS_history(company, product):
+        if doc_start and query_start <= doc_start <= query_end:
+            return True
+        if doc_end and query_start <= doc_end <= query_end:
+            return True
+        if doc_start and doc_end and doc_start <= query_start and doc_end >= query_end:
+            return True
+    except:
+        return False
+    return False
+
+def parse_korean_date_range(text: str):
+    try:
+        text = re.sub(r"(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일", r"\1.\2.\3", text)
+        text = text.replace(" ", "").replace("~", " ~ ")
+        dates = re.findall(r"\d{4}\.\d{1,2}\.\d{1,2}", text)
+        if len(dates) == 2:
+            start = datetime.strptime(dates[0], "%Y.%m.%d").date().isoformat()
+            end = datetime.strptime(dates[1], "%Y.%m.%d").date().isoformat()
+            return start, end
+    except:
+        pass
+    return None, None
+
+def GS_history(company, product, query_start=None, query_end=None):
     REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
         reload_reference_dataframe()
         REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
         raise ValueError("REFERENCE_DF is still None. CSV 파일이 로딩되지 않았습니다.")
-    
+
     df = REFERENCE_DF.copy()
     df.columns = df.columns.str.strip()
 
-    # ✅ 회사명 필터링
     if company.strip():
         search = company.strip().lower()
-
-        # 1단계: 모든 회사명에서 [현재, 과거] 이름 추출
         df["회사명_키워드목록"] = df["회사명"].fillna("").apply(extract_all_names)
 
-        # 2단계: 검색어가 포함된 이름들을 수집
         all_related_names = set()
         for names in df["회사명_키워드목록"]:
             if any(search in name for name in names):
                 all_related_names.update(names)
 
-        # 3단계: 이 이름들 중 하나라도 포함된 행 추출
         df = df[df["회사명_키워드목록"].apply(
             lambda names: any(name in all_related_names for name in names)
         )]
 
-    # ✅ 제품명 필터링 (부분 포함)
     if product.strip():
         product = product.strip()
         df = df[df['제품'].fillna('').str.contains(product, case=False)]
 
-    # ✅ 결과 구성
     results = []
     for _, row in df.iterrows():
+        raw_date = row.get('시작날짜/\n종료날짜', '')
+        start_date, end_date = parse_korean_date_range(raw_date)
+
+        if query_start and query_end:
+            if not is_within_date_range(start_date, end_date, query_start, query_end):
+                continue  # 날짜 범위가 맞지 않으면 넘어가기
+
         results.append({
             'a1': row.get('일련번호', ''),
             'a2': row.get('인증번호', ''),
@@ -66,7 +96,7 @@ def GS_history(company, product):
             'a10': row.get('총WD', ''),
             'a11': row.get('재계약', ''),
             'a12': row.get('특이사항', ''),
-            'a13': row.get('시작날짜/\n종료날짜', ''),
+            'a13': raw_date,
             'a14': row.get('시험원', '')
         })
 
