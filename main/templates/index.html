@@ -4,6 +4,7 @@
 
 {% block head %}
 <link rel="stylesheet" href="{% static 'css/gentable.css' %}"/>
+<link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 <script src="{% static 'scripts/radio.js' %}" defer></script>
 <script src="{% static 'scripts/set_date.js' %}" defer></script>
 {% endblock %}
@@ -23,11 +24,17 @@
             <input type="radio" name="selectType" id="history" value="history"
               {% if selected_type == "history" %}checked{% endif %}>
             <label for="history">시험 이력 조회</label>
+            <span class="tooltip">ⓘ
+              <span class="tooltiptext">회사명, 제품명, 기간을 기준으로 시험 이력을 조회합니다.</span>
+            </span>
           </div>
           <div class="radio-item">
             <input type="radio" name="selectType" id="similar" value="similar"
               {% if selected_type == "similar" %}checked{% endif %}>
             <label for="similar">유사 시험 조회</label>
+            <span class="tooltip">ⓘ
+              <span class="tooltiptext">기간과 설명을 기준으로 유사한 시험을 조회합니다.</span>
+            </span>
           </div>
         </div>
         
