@@ -2,8 +2,10 @@
 {% load static %}
 {% block title %}시험 이력 조회{% endblock %}
 
-{% block css %}
+{% block head %}
 <link rel="stylesheet" href="{% static 'css/gentable.css' %}"/>
+<script src="{% static 'scripts/radio.js' %}" defer></script>
+<script src="{% static 'scripts/set_date.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -41,8 +43,15 @@
         
         <div class="form-group">
           <label class="form-label">기간</label>
-          <input type="date" class="form-input" name="start_date" value="{{ start_date|default:'2024-01-01' }}" style="margin-bottom: 5px;">
-          <input type="date" class="form-input" name="end_date" value="{{ end_date|default:'2026-01-01' }}" >
+          <input type="date" class="form-input" name="start_date" id="start_date" value="{% if start_date %}{{ start_date }}{% else %}2023-01-01{% endif %}" style="margin-bottom: 5px;">
+          <input type="date" class="form-input" name="end_date" id="end_date" value="{% if end_date %}{{ end_date }}{% else %}{{ today_date }}{% endif %}">
+
+          <div class="date-shortcuts" style="margin-top:10px;">
+            <button type="button" class="shortcut-btn" onclick="setYearsAgo(3)">3년</button>
+            <button type="button" class="shortcut-btn" onclick="setYearsAgo(5)">5년</button>
+            <button type="button" class="shortcut-btn" onclick="setYearsAgo(7)">7년</button>
+            <button type="button" class="shortcut-btn" onclick="setYearsAgo(10)">10년</button>
+          </div>
         </div>
         
         <div class="form-group">
