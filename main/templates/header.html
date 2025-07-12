@@ -15,12 +15,29 @@
     <header class="top-bar">
       <img src="{% static 'images/TTA logo.jpg' %}" alt="로고" class="logo">
       <span class="title">AI 서포터즈 센터</span>
-      <nav class="menu">
-        <button onclick="location.href='{% url 'index' %}'">시험 이력 조회<br>유사 시험 조회</button>
-        <button onclick="location.href='{% url 'security' %}'">보안성 결함 작성</button>
-        <button onclick="location.href='{% url 'genspark' %}'">테스트케이스 작성</button>
-        <button onclick="location.href='{% url 'genspark2' %}'">시험결과서 작성</button>
-      </nav>
+       <div class="menu-section">
+         <div class="menu-item">메뉴1
+           <div class="submenu">
+             <div class="submenu-item">하위메뉴1-1</div>
+             <div class="submenu-item">하위메뉴1-2</div>
+             <div class="submenu-item">하위메뉴1-3</div>
+           </div>
+         </div>
+         <div class="menu-item">메뉴2
+           <div class="submenu">
+             <div class="submenu-item">하위메뉴2-1</div>
+             <div class="submenu-item">하위메뉴2-2</div>
+             <div class="submenu-item">하위메뉴2-3</div>
+           </div>
+         </div>
+         <div class="menu-item">메뉴3
+           <div class="submenu">
+             <div class="submenu-item">하위메뉴3-1</div>
+             <div class="submenu-item">하위메뉴3-2</div>
+             <div class="submenu-item">하위메뉴3-3</div>
+           </div>
+         </div>
+       </div>
     </header>
 
     <!-- 페이지 개별 내용 -->
