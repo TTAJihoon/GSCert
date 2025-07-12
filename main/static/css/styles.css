@@ -1,27 +1,24 @@
-* {
-  box-sizing: border-box;
+body {
   margin: 0;
   padding: 0;
-}
-
-html, body {
+  font-family: 'Noto Sans KR', sans-serif;
   overflow: scroll;
-  font-family: sans-serif;
-  background-color: white;
 }
 
 .container {
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 720px;
+  width: 1280px;
 }
 
 .top-bar {
+  width: 100%;
   background-color: #d8e9f8;
-  padding: 10px 20px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  height: 70px;
+  padding: 0 30px;
 }
 
 .logo {
@@ -33,10 +30,11 @@ html, body {
   font-size: 22px;
   font-weight: bold;
   margin-right: auto;
+  color: #2c3e50;
 }
 
 .menu-section {
-  flex: 1;
+  flex: 5;
   display: flex;
   justify-content: space-evenly;
 }
@@ -84,82 +82,4 @@ html, body {
 .submenu-item:hover {
   background-color: #f5f5f5;
   padding-left: 25px;
-}
-
-.main {
-  display: flex;
-  flex: 1;
-}
-
-.sidebar {
-  background-color: #f3f3f3;
-  width: 300px;
-  padding: 20px;
-}
-
-.checkbox-group {
-  margin-bottom: 20px;
-}
-
-.checkbox-row {
-  display: flex;
-  align-items: center;
-  margin-bottom: 10px;
-}
-
-.arrow-icon {
-  width: 16px;
-  height: 16px;
-  margin-right: 6px;
-}
-
-.input-group label {
-  display: block;
-  margin-top: 10px;
-  margin-bottom: 4px;
-  font-weight: bold;
-}
-
-.input-group input[type="text"] {
-  background-color: white;
-  border: none;
-  padding: 8px;
-  width: 100%;
-  margin-bottom: 10px;
-}
-
-.date-range {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.date-range input[type="date"] {
-  background-color: #white;
-  border: none;
-  padding: 6px;
-  width: 48%;
-}
-
-input:disabled {
-  background-color: #e0e0e0;
-  color: #555;
-  cursor: not-allowed;
-}
-
-.search-btn {
-  background-color: #2c74dd;
-  color: white;
-  border: none;
-  width: 100%;
-  padding: 12px;
-  font-size: 16px;
-  margin-top: 20px;
-  cursor: pointer;
-  transition: transform 0.1s, background-color 0.3s;
-}
-
-.search-btn:active {
-  transform: scale(0.98);
-  background-color: #1a5dcc;
 }
