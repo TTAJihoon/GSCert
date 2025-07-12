@@ -36,7 +36,7 @@ html, body {
 }
 
 .menu-section {
-  flex: 5;
+  flex: 1;
   display: flex;
   justify-content: space-evenly;
 }
