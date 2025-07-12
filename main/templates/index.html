@@ -31,17 +31,17 @@
           </div>
         </div>
         
-        <div class="form-group">
+        <div class="form-group" id="company-group">
           <label class="form-label">회사명</label>
           <input type="text" class="form-input" name="company" value="{{ company }}" placeholder="회사명을 입력하세요">
         </div>
         
-        <div class="form-group">
+        <div class="form-group" id="product-group">
           <label class="form-label">제품명</label>
           <input type="text" class="form-input" name="product" value="{{ product }}" placeholder="제품명을 입력하세요">
         </div>
         
-        <div class="form-group">
+        <div class="form-group" id="date-group">
           <label class="form-label">기간</label>
           <input type="date" class="form-input" name="start_date" id="start_date" value="{% if start_date %}{{ start_date }}{% else %}2023-01-01{% endif %}" style="margin-bottom: 5px;">
           <input type="date" class="form-input" name="end_date" id="end_date" value="{% if end_date %}{{ end_date }}{% else %}{{ today_date }}{% endif %}">
@@ -54,7 +54,7 @@
           </div>
         </div>
         
-        <div class="form-group">
+        <div class="form-group" id="comment-group">
           <label class="form-label">설명</label>
           <textarea class="form-input" rows="3" name="comment" value="{{ comment }}" placeholder="설명을 입력하세요"></textarea>
         </div>
