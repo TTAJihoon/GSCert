@@ -30,13 +30,14 @@ body {
   font-size: 22px;
   font-weight: bold;
   color: #2c3e50;
-  margin-right: 20px; /* 적당한 여백 설정 */
+  white-space: nowrap; /* 추가: 텍스트가 한 줄에 나오도록 설정 */
 }
 
 .menu-section {
   flex-grow: 1; /* 추가: 남은 공간을 전부 차지 */
   display: flex;
-  justify-content: space-evenly;
+  justify-content: center; /* 메뉴를 중앙 정렬로 변경 */
+  gap: 30px; /* 메뉴 간 간격 설정 */
 }
 
 .menu-item {
