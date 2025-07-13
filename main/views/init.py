@@ -11,6 +11,9 @@ def login_test_view(request):
 def index(request):
     return render(request, 'index.html')
 
+def search(request):
+    return render(request, 'search.html')
+    
 def security(request):
     return render(request, 'security.html')
 
