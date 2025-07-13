@@ -5,7 +5,7 @@ body {
   overflow: scroll;
 }
 
-.container {
+.main-container {
   display: flex;
   flex-direction: column;
   min-height: 720px;
@@ -35,6 +35,7 @@ body {
 
 .menu-section {
   flex-grow: 1; /* 추가: 남은 공간을 전부 차지 */
+  flex-shrink: 1; /* 명시적으로 축소 허용 */
   display: flex;
   justify-content: center; /* 메뉴를 중앙 정렬로 변경 */
   gap: 30px; /* 메뉴 간 간격 설정 */
