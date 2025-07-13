@@ -14,7 +14,6 @@ html, body {
     height: 100%; 
     margin: 0; 
     padding: 0; 
-    overflow: scroll; 
     font-family: 'Malgun Gothic', sans-serif; 
 }
 
@@ -41,15 +40,13 @@ html, body {
 .content-area {
     flex: 1; 
     display: flex; 
-    overflow: hidden; 
 }
 
 .sidebar {
     width: 300px; 
     background: var(--tta-gray); 
     border-right: 1px solid var(--tta-border); 
-    padding: 20px; 
-    overflow-y: auto; 
+    padding: 20px;  
     flex-shrink: 0; 
 }
 
