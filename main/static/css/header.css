@@ -34,7 +34,7 @@
   cursor: pointer;
   padding: 0 20px;
   height: 70px;
-  width: 200px;
+  width: 350px;
   display: flex;
   align-items: center;
   color: #2c3e50;
@@ -52,7 +52,7 @@
   top: 70px;
   left: 0;
   background-color: white;
-  width: 350px;
+  width: 250px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   opacity: 0;
   visibility: hidden;
