@@ -43,7 +43,7 @@ html, body {
 }
 
 .sidebar {
-    width: 300px; 
+    width: 100%; 
     background: var(--tta-gray); 
     border-right: 1px solid var(--tta-border); 
     padding: 20px;  
@@ -51,6 +51,7 @@ html, body {
 }
 
 .main-content {
+    width: 100%; 
     flex: 1; 
     display: flex; 
     flex-direction: column; 
