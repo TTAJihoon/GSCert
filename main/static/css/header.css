@@ -39,6 +39,7 @@
   color: #2c3e50;
   font-size: 22px;
   font-weight: 600;
+  text-align: center;
 }
 
 .menu-item:hover {
@@ -70,7 +71,7 @@
   color: #333;
   display: block;
   transition: all 0.2s ease;
-  
+  text-align: center;
 }
 
 .submenu-item:hover {
