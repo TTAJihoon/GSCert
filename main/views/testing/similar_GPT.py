@@ -43,8 +43,22 @@ def is_within_date_range(doc_start, doc_end, query_start, query_end):
     
 def get_paraphrased_queries(query: str, num: int) -> list[str]:
     system_prompt = (
-        f"다음 문장을 의미가 같도록 다른 표현으로 {num}개 만들어줘.\n"
-        f"원문: '{query}'"
+        f"아래 입력된 문장과 의미적으로 완벽하게 일치하거나 매우 유사하지만,
+        단어나 표현 방식은 다르게 구성된 문장 {num}개를 만들어 주세요.
+        이 문장들은 소프트웨어 제품의 설명으로 사용되며, 유사도 검색에 활용될 예정입니다.
+        
+        - 반드시 의미가 일치해야 합니다.
+        - 표현이나 단어는 원본과 다르게 구성해 주세요.
+        - 한 문장 당 최대 20 단어 이내로 작성해 주세요.
+        
+        입력 문장: {query}
+        
+        출력 예시>
+        입력 문장: DB 보안 제품  
+        출력 문장:
+        1. 데이터베이스 암복호화 솔루션
+        2. DB 접근제어 소프트웨어
+        3. 데이터베이스 보안 관리 시스템"
     )
 
     try:
@@ -63,11 +77,11 @@ def get_paraphrased_queries(query: str, num: int) -> list[str]:
         print("[ERROR] GPT 파라프레이즈 실패:", e)
         return [query]
 
-def run_openai_GPT(query, start, end, top_k=10):
+def run_openai_GPT(query, start, end, top_k=20): # 문장당 유사제품 검색 개수
     print("[STEP 1] 사용자 질문 수신:", query)
 
     # STEP 1. GPT를 사용해 질의 파라프레이즈 생성
-    sub_queries = get_paraphrased_queries(query, num=5)
+    sub_queries = get_paraphrased_queries(query, num=3) # 추천 문장 생성 개수
     print("[STEP 1.5] 파라프레이즈 질의:", sub_queries)
 
     # STEP 2. FAISS 유사 문서 검색
@@ -133,19 +147,45 @@ def run_openai_GPT(query, start, end, top_k=10):
         context += f"시험원:{meta.get('시험원', '')}\n"
 
     prompt = f"""
-[사용자 질문]
-{query}
-
-[GPT가 생성한 파라프레이즈 질의]
-{sub_queries}
-
-[유사 문서 정보]
-{context}
-
-→ 결과 비교를 위해 전달 받은 제품명 및 제품 정보를 모두 표시한 후, 이 문서들 중에서 의미적으로 유사하지 않다고 판다되는 제품은 지워줘
-→ 그리고 API를 통해 총 몇 token을 주고 받았는지도 알려줘. 요금 계산을 위한 정보가 필요해.
-"""
-
+    아래는 사용자가 입력한 원본 문장과 그 문장을 바탕으로 유사도 검색을 통해 조회한 문장 리스트입니다.  
+    리스트에 포함된 문장 중 원본 문장과 의미적으로 관련 없는 문장만 제거하여 결과를 출력하세요.
+    
+    [판단 기준]
+    - 의미적으로 관련 있다는 것은 핵심 기술이나 목적이 동일하거나 매우 유사한 경우를 의미합니다.
+    - 관련 없다는 것은 핵심 기술이나 목적이 전혀 다르거나 일치하지 않는 경우입니다.
+    
+    [예시]
+    - 원본 문장: "DB 보안 제품"
+    - 관련 있는 문장:
+    - "데이터베이스 암복호화 솔루션"
+    - "DB 접근 제어 시스템"
+    - 관련 없는 문장:
+    - "클라우드 데이터 백업 서비스"
+    - "네트워크 모니터링 시스템"
+    
+    ---
+    
+    [실제 작업 수행]
+    
+    원본 문장:
+    [사용자가 처음 입력한 문장]
+    
+    조회된 문장 리스트:
+    1. [조회된 문장 1]
+    2. [조회된 문장 2]
+    3. [조회된 문장 3]
+    (중략...)
+    60. [조회된 문장 60]
+    
+    ---
+    
+    의미적으로 관련 없는 문장 번호만 추출하여 아래와 같은 형식으로 출력하세요.
+    
+    출력 형식 예시:
+    관련 없는 문장 번호: 5, 12, 24, 30, 45
+    
+    """
+    
     # STEP 4. GPT 응답 요청
     print("[STEP 3] GPT 요청 시작")
 
