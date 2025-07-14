@@ -79,7 +79,7 @@ def run_openai_GPT(query, start, end, top_k=20): # 문장당 유사제품 검색
     print("[STEP 1] 사용자 질문 수신:", query)
 
     # STEP 1. GPT를 사용해 질의 파라프레이즈 생성
-    sub_queries = get_paraphrased_queries(query, num=3) # 추천 문장 생성 개수
+    sub_queries = get_paraphrased_queries(query, num=5) # 추천 문장 생성 개수
     print("[STEP 1.5] 파라프레이즈 질의:", sub_queries)
 
     # STEP 2. FAISS 유사 문서 검색
