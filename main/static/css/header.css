@@ -14,16 +14,9 @@
   padding: 0 30px;
 }
 
-.logo {
+.logo, .title {
   height: 40px;
   margin-right: 10px;
-}
-
-.title {
-  font-size: 22px;
-  font-weight: bold;
-  color: #2c3e50;
-  white-space: nowrap; /* 추가: 텍스트가 한 줄에 나오도록 설정 */
 }
 
 .menu-section {
