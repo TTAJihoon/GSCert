@@ -44,22 +44,17 @@ def is_within_date_range(doc_start, doc_end, query_start, query_end):
 def get_paraphrased_queries(query: str, num: int) -> list[str]:
     system_prompt = (
         f"""
-        아래 입력된 문장과 의미적으로 완벽하게 일치하거나 매우 유사하지만,
-        단어나 표현 방식은 다르게 구성된 문장 {num}개를 만들어 주세요.
-        이 문장들은 소프트웨어 제품의 설명으로 사용되며, 유사도 검색에 활용될 예정입니다.
-        
-        - 반드시 의미가 일치해야 합니다.
-        - 표현이나 단어는 원본과 다르게 구성해 주세요.
-        - 한 문장 당 최대 20 단어 이내로 작성해 주세요.
-        
-        입력 문장: {query}
-        
-        출력 예시>
-        입력 문장: DB 보안 제품  
+        아래 입력된 문장과 의미적으로 매우 유사하되, 단어와 표현 방식을 바꾼 문장 {num}개를 제공하세요.
+        각 문장 앞에 번호를 붙여 다음 형식으로 제공합니다.
+
+        입력 문장: DB 보안 제품
         출력 문장:
         1. 데이터베이스 암복호화 솔루션
         2. DB 접근제어 소프트웨어
         3. 데이터베이스 보안 관리 시스템
+
+        입력 문장: {query}
+        출력 문장:
         """
     )
 
@@ -73,7 +68,7 @@ def get_paraphrased_queries(query: str, num: int) -> list[str]:
         )
         raw_text = response.choices[0].message.content
         # 문장만 추출 (숫자, 리스트 제거)
-        paraphrased = [line.strip("1234567890. ").strip() for line in raw_text.split("\n") if line.strip()]
+        paraphrased = re.findall(r"\d+\.\s*(.+)", raw_text)
         return paraphrased[:num]
     except Exception as e:
         print("[ERROR] GPT 파라프레이즈 실패:", e)
@@ -126,8 +121,7 @@ def run_openai_GPT(query, start, end, top_k=20): # 문장당 유사제품 검색
             unique_docs.append(doc)
 
     print(f"[STEP 2.5] 중복 제거 후 문서 수: {len(unique_docs)}")
-    print(unique_docs)
-
+    
     if not unique_docs:
         return "❌ 유사한 문서를 찾지 못했습니다."
 
@@ -147,13 +141,14 @@ def run_openai_GPT(query, start, end, top_k=20): # 문장당 유사제품 검색
         context += f"시작날짜:{meta.get('시작날짜', '')}, "
         context += f"종료날짜:{meta.get('종료날짜', '')}, "
         context += f"시험원:{meta.get('시험원', '')}\n"
+    print(context)
 
     prompt = f"""
-    아래는 사용자가 입력한 원본 문장과 그 문장을 바탕으로 유사도 검색을 통해 조회한 문장 리스트입니다.  
-    리스트에 포함된 문장 중 원본 문장과 의미적으로 관련 없는 문장만 제거하여 결과를 출력하세요.
+    {context}는 사용자가 입력한 원본 문장: {query}으로 생성한 유사도 검색용 문장: {sub_queries}에 대한 조회결과 리스트입니다.  
+    리스트에 포함된 문장 중 원본 문장과 의미적으로 관련 없는 문장을 제거하여 조회된 문장 리스트를 출력하세요.
     
     [판단 기준]
-    - 의미적으로 관련 있다는 것은 핵심 기술이나 목적이 동일하거나 매우 유사한 경우를 의미합니다.
+    - SW 제품에 대한 설명으로 판단하여 의미적으로 관련 있다는 것은 핵심 기술이나 목적이 동일하거나 매우 유사한 경우를 의미합니다.
     - 관련 없다는 것은 핵심 기술이나 목적이 전혀 다르거나 일치하지 않는 경우입니다.
     
     [예시]
@@ -167,31 +162,18 @@ def run_openai_GPT(query, start, end, top_k=20): # 문장당 유사제품 검색
     
     ---
     
-    [실제 작업 수행]
+    [출력 형식 예시]
     
-    원본 문장:
-    {query}
-    
-    [GPT가 생성한 파라프레이즈 질의]
-    {sub_queries}
-    
-    [유사 문서 정보]
-    {context}
-    
-    [사용자가 처음 입력한 문장]    
-    조회된 문장 리스트:
+    의미적으로 관련 없는 문장을 제거하기 전 전체 조회된 문장 리스트:
     1. [조회된 문장 1]
     2. [조회된 문장 2]
     3. [조회된 문장 3]
-    (중략...)
-    60. [조회된 문장 60]
+    (마지막 문장까지 반복...)
     
     ---
     
-    의미적으로 관련 없는 문장 번호만 추출하여 아래와 같은 형식으로 출력하세요.
-    
-    출력 형식 예시:
-    관련 없는 문장 번호: 5, 12, 24, 30, 45
+    전체 조회된 문장 리스트에서 의미적으로 관련이 없다고 판단되는 문장 번호만 추출하여 아래와 같은 형식으로 출력하세요.
+    관련 없는 문장 번호: 5, 12, 24, 30, 45, (마지막 문장 번호까지 반복...)
     
     """
     
