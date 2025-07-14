@@ -43,7 +43,8 @@ def is_within_date_range(doc_start, doc_end, query_start, query_end):
     
 def get_paraphrased_queries(query: str, num: int) -> list[str]:
     system_prompt = (
-        f"아래 입력된 문장과 의미적으로 완벽하게 일치하거나 매우 유사하지만,
+        f"""
+        아래 입력된 문장과 의미적으로 완벽하게 일치하거나 매우 유사하지만,
         단어나 표현 방식은 다르게 구성된 문장 {num}개를 만들어 주세요.
         이 문장들은 소프트웨어 제품의 설명으로 사용되며, 유사도 검색에 활용될 예정입니다.
         
@@ -58,7 +59,8 @@ def get_paraphrased_queries(query: str, num: int) -> list[str]:
         출력 문장:
         1. 데이터베이스 암복호화 솔루션
         2. DB 접근제어 소프트웨어
-        3. 데이터베이스 보안 관리 시스템"
+        3. 데이터베이스 보안 관리 시스템
+        """
     )
 
     try:
