@@ -34,7 +34,7 @@ def search_history(request):
 
             tables = list(tables)[::-1]
             context['response_tables'] = tables
-            return render(request, 'index.html', context)
+            return render(request, 'search.html', context)
 
         elif selected == 'similar':
             try:
@@ -44,7 +44,7 @@ def search_history(request):
                 print("[ERROR] GPT 처리 중 오류:", e)
                 context['response'] = "GPT 응답 중 오류가 발생했습니다."
                 
-            return render(request, 'index.html', context)
+            return render(request, 'search.html', context)
                 
     # GET 요청 또는 POST 실패 시
-    return render(request, 'index.html')
+    return render(request, 'search.html')
