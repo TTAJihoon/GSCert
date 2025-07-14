@@ -190,7 +190,6 @@ html, body {
     font-weight: bold; 
     position: sticky; 
     top: 0; 
-    z-index: 10; 
     border-right: 1px solid rgba(255,255,255,0.2); 
 }
 
