@@ -7,7 +7,7 @@
 
 .top-bar {
   width: 100%;
-  min-width: fit-content;
+  min-width: 1040px;
   background-color: #d8e9f8;
   display: flex;
   align-items: center;
@@ -27,7 +27,7 @@
   flex-grow: 1; /* 추가: 남은 공간을 전부 차지 */
   display: flex;
   justify-content: center; /* 메뉴를 중앙 정렬로 변경 */
-  gap: 100px; /* 메뉴 간 간격 설정 */
+  gap: 20px; /* 메뉴 간 간격 설정 */
 }
 
 .menu-item {
@@ -35,7 +35,7 @@
   cursor: pointer;
   padding: 0 20px;
   height: 70px;
-  width: 350px;
+  width: 250px;
   display: flex;
   align-items: center;
   color: #2c3e50;
