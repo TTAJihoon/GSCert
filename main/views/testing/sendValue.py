@@ -38,8 +38,7 @@ def search_history(request):
 
         elif selected == 'similar':
             try:
-                response_text = run_openai_GPT(comment, startDate, endDate)  # ← 인사 프롬프트 호출
-                context['response'] = response_text       # 문자열 응답은 'response'에 담아 렌더링
+                context['response_tables'] = run_openai_GPT(comment, startDate, endDate)  # ← 인사 프롬프트 호출
             except Exception as e:
                 print("[ERROR] GPT 처리 중 오류:", e)
                 context['response'] = "GPT 응답 중 오류가 발생했습니다."
