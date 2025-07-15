@@ -70,7 +70,8 @@ def get_paraphrased_queries(query: str, num: int) -> list[str]:
         raw_text = response.choices[0].message.content
         # 문장만 추출 (숫자, 리스트 제거)
         paraphrased = re.findall(r"\d+\.\s*(.+)", raw_text)
-        return paraphrased[:num]
+        paraphrased.insert(0, query)
+        return paraphrased[:num+1]
     except Exception as e:
         print("[ERROR] GPT 파라프레이즈 실패:", e)
         return [query]
@@ -145,9 +146,8 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
     print(context)
 
     prompt = f"""
-    조회된 문장 리스트: {context}는 사용자가 입력한 원본 문장: {query}으로 생성한 유사도 검색용 문장: {sub_queries}에 대한 조회결과 리스트입니다.  
-    리스트에 포함된 문장 중 원본 문장과 의미적으로 관련 없는 문장을 제거하여 조회된 문장 리스트를 출력하세요.
-    조회된 문장에는 회사명과 제품명, 제품 설명 3가지를 꼭 포함하여 출력하세요.
+    조회된 문장 리스트: {context}는 유사 문장: {unique_docs}에 대해 metadata를 연결한 결과 리스트입니다.
+    리스트에 포함된 문장 중 '제품 설명' 부분이 원본 문장: {query}과 SW 의미적으로 관련 없는 문장을 제거합니다.
     
     [판단 기준]
     - SW 제품에 대한 설명으로 판단하여 의미적으로 관련 있다는 것은 핵심 기술이나 목적이 동일하거나 매우 유사한 경우를 의미합니다.
@@ -161,18 +161,26 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
     - 관련 없는 문장:
     - "클라우드 데이터 백업 서비스"
     - "네트워크 모니터링 시스템"
-    
+
+    전체 문장: all_sentence
+    제거 대상 문장: remove_sentence
     ---
     
-    [출력 형식 예시]
-    의미적으로 관련 없는 문장을 제거하기 전 전체 조회된 문장 리스트:
-    1. [조회된 문장 1]
-    2. [조회된 문장 2]
-    3. [조회된 문장 3]
-    (마지막 문장까지 반복...)
-    
+    [반드시 지켜야 하는 출력 형식 예시]
+    {
+        "all_sentence": {
+            "회사명": "회사명 값",
+            "제품": "제품 값",
+            "제품 설명": "제품 설명 값"
+        },
+        "remove_sentence": {
+            "회사명": "회사명 값",
+            "제품": "제품 값",
+            "제품 설명": "제품 설명 값",
+            "... (중략)"
+        }
+    }
     ---
-    
     전체 조회된 문장 리스트에서 의미적으로 관련이 없다고 판단되는 문장 번호만 추출하여 아래와 같은 형식으로 출력하세요.
     관련 없는 문장
     [관련 없다고 판단된 문장 번호]. [관련 없다고 판단한 사유]
@@ -189,8 +197,12 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
         response = client.chat.completions.create(
             model="gpt-4.1-nano",
             messages=[{"role": "user", "content": prompt}]
+            response_format={"type": "json_object"}
         )
+        # JSON으로 파싱
+        response_json = json.loads(response.choices[0].message.content.strip())
         print("[STEP 4] GPT 응답 완료")
+        
         return response.choices[0].message.content.strip()
     except Exception as e:
         print("[ERROR] GPT 응답 실패:", e)
