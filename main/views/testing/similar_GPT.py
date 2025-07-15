@@ -144,7 +144,6 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
         context += f"시작날짜:{meta.get('시작날짜', '')}, "
         context += f"종료날짜:{meta.get('종료날짜', '')}, "
         context += f"시험원:{meta.get('시험원', '')}\n"
-    print(context)
 
     prompt = f"""
     당신은 SW 제품 관리자입니다.
@@ -196,10 +195,11 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
+        print(response)
         # JSON으로 파싱
         response_json = json.loads(response.choices[0].message.content.strip())
         print("[STEP 4] GPT 응답 완료")
-        
+        print(response_json)
         return response_json.get("result", [])
     except Exception as e:
         print("[ERROR] GPT 응답 실패:", e)
