@@ -166,6 +166,7 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
 
     [반드시 지켜야 하는 출력 형식(json) 예시]
     [
+      'result': [
       {{
         'a1': "일련번호 데이터",
         'a2': "인증번호 데이터",
@@ -183,6 +184,7 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
         'a14': "시험원 데이터"
       }},
       ...
+      ]
     ]
     """
     
