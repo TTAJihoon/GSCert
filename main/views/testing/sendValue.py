@@ -42,6 +42,7 @@ def search_history(request):
                 if isinstance(result, dict):
                     result = [result]
                 context['response_tables'] = result[::-1]
+                print(result)
             except Exception as e:
                 print("[ERROR] GPT 처리 중 오류:", e)
                 context['response'] = "GPT 응답 중 오류가 발생했습니다."
