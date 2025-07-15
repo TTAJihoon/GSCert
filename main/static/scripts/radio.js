@@ -5,12 +5,10 @@ function updateFormState() {
   // 입력창 활성화/비활성화 처리
   document.getElementById('company').disabled = !isHistory;
   document.getElementById('product').disabled = !isHistory;
-  document.getElementById('comment').disabled = isHistory;
   
   // 배경색 변경 처리
   document.getElementById('company-group').style.opacity = isHistory ? "1" : "0.5";
   document.getElementById('product-group').style.opacity = isHistory ? "1" : "0.5";
-  document.getElementById('comment-group').style.opacity = isHistory ? "0.5" : "1";
 }
 
 // 라디오 버튼 변경 시 이벤트 처리
