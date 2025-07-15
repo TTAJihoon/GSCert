@@ -55,7 +55,7 @@ def parse_korean_date_range(text: str):
         print("[ERROR] 날짜 파싱 오류:", e)
     return None, None
 
-def GS_history(company, product, comment="", query_start=None, query_end=None):
+def GS_history(company, product, query_start=None, query_end=None):
     REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
         reload_reference_dataframe()
@@ -66,29 +66,22 @@ def GS_history(company, product, comment="", query_start=None, query_end=None):
     df = REFERENCE_DF.copy()
     df.columns = df.columns.str.strip()
 
-    filters = []
-
-    # 회사명 필터: 단순 포함 방식
     if company.strip():
         search = company.strip().lower()
-        company_filter = df["회사명"].fillna("").str.lower().str.contains(search)
-        filters.append(company_filter)
+        df["회사명_키워드목록"] = df["회사명"].fillna("").apply(extract_all_names)
 
-    # 제품명 필터
+        all_related_names = set()
+        for names in df["회사명_키워드목록"]:
+            if any(search in name for name in names):
+                all_related_names.update(names)
+
+        df = df[df["회사명_키워드목록"].apply(
+            lambda names: any(name in all_related_names for name in names)
+        )]
+
     if product.strip():
-        product_filter = df['제품'].fillna('').str.contains(product.strip(), case=False)
-        filters.append(product_filter)
-
-    # 제품 설명 필터
-    if comment.strip():
-        desc_filter = df['제품 설명'].fillna('').str.contains(comment.strip(), case=False)
-        filters.append(desc_filter)
-
-    # 필터 결합
-    if filters:
-        from functools import reduce
-        combined_filter = reduce(lambda x, y: x & y, filters)
-        df = df[combined_filter]
+        product = product.strip()
+        df = df[df['제품'].fillna('').str.contains(product, case=False)]
 
     results = []
     for _, row in df.iterrows():
