@@ -86,8 +86,8 @@ def GS_history(company, product, query_start=None, query_end=None):
         filters.append(product_filter)
 
     # 제품 설명 필터 처리
-    if description.strip():
-        desc_filter = df['제품 설명'].fillna('').str.contains(description.strip(), case=False)
+    if comment.strip():
+        desc_filter = df['제품 설명'].fillna('').str.contains(comment.strip(), case=False)
         filters.append(desc_filter)
 
     # 필터 결합: 모든 조건이 참인 경우만 남기기
