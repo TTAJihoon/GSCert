@@ -194,7 +194,7 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
         response = client.chat.completions.create(
             model="gpt-4.1-nano",
             messages=[{"role": "user", "content": prompt}],
-            response_format="json"
+            response_format={"type": "json_object"}
         )
         # JSON으로 파싱
         response_json = json.loads(response.choices[0].message.content.strip())
