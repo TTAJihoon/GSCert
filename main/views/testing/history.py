@@ -66,22 +66,35 @@ def GS_history(company, product, query_start=None, query_end=None):
     df = REFERENCE_DF.copy()
     df.columns = df.columns.str.strip()
 
+    filters = []
+
+    # 회사명 필터 처리
     if company.strip():
         search = company.strip().lower()
         df["회사명_키워드목록"] = df["회사명"].fillna("").apply(extract_all_names)
-
         all_related_names = set()
         for names in df["회사명_키워드목록"]:
             if any(search in name for name in names):
                 all_related_names.update(names)
-
-        df = df[df["회사명_키워드목록"].apply(
+        filters.append(df["회사명_키워드목록"].apply(
             lambda names: any(name in all_related_names for name in names)
-        )]
+        ))
 
+    # 제품명 필터 처리
     if product.strip():
-        product = product.strip()
-        df = df[df['제품'].fillna('').str.contains(product, case=False)]
+        product_filter = df['제품'].fillna('').str.contains(product.strip(), case=False)
+        filters.append(product_filter)
+
+    # 제품 설명 필터 처리
+    if description.strip():
+        desc_filter = df['제품 설명'].fillna('').str.contains(description.strip(), case=False)
+        filters.append(desc_filter)
+
+    # 필터 결합: 모든 조건이 참인 경우만 남기기
+    if filters:
+        from functools import reduce
+        combined_filter = reduce(lambda x, y: x & y, filters)
+        df = df[combined_filter]
 
     results = []
     for _, row in df.iterrows():
