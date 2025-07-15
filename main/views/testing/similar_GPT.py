@@ -196,13 +196,11 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
-        print(response)
         # JSON으로 파싱
         response_json = json.loads(response.choices[0].message.content.strip())
         print("[STEP 4] GPT 응답 완료")
-        print(response_json)
         
-        return response_json
+        return response_json.get("result", [])
     except Exception as e:
         print("[ERROR] GPT 응답 실패:", e)
         return "❌ GPT 응답 생성 중 오류가 발생했습니다."
