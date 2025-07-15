@@ -1,5 +1,6 @@
 import os
 import re
+import json
 from datetime import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -146,48 +147,44 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
     print(context)
 
     prompt = f"""
-    조회된 문장 리스트: {context}는 유사 문장: {unique_docs}에 대해 metadata를 연결한 결과 리스트입니다.
-    리스트에 포함된 문장 중 '제품 설명' 부분이 원본 문장: {query}과 SW 의미적으로 관련 없는 문장을 제거합니다.
+    당신은 SW 제품 관리자입니다.
+    [조회된 문장 리스트]{context}에서 '제품 설명' 부분이 [사용자 질의 문장]{query}과 SW 의미적으로 관련 없는 경우, 해당 행을 지워주세요.
+    조회된 문장 리스트는 제품 설명에 해당하는 metadata를 연결한 제품 정보 데이터 리스트입니다.
+    결과는 아래 json 형식으로 변환해서 응답하세요. json 결과만 답변해주세요.
     
     [판단 기준]
     - SW 제품에 대한 설명으로 판단하여 의미적으로 관련 있다는 것은 핵심 기술이나 목적이 동일하거나 매우 유사한 경우를 의미합니다.
     - 관련 없다는 것은 핵심 기술이나 목적이 전혀 다르거나 일치하지 않는 경우입니다.
     
     [예시]
-    - 원본 문장: "DB 보안 제품"
-    - 관련 있는 문장:
+    - 사용자 질의 문장: "DB 보안 제품"
+    - 관련 있는 제품 설명:
     - "데이터베이스 암복호화 솔루션"
     - "DB 접근 제어 시스템"
-    - 관련 없는 문장:
+    - 관련 없는 제품 설명:
     - "클라우드 데이터 백업 서비스"
     - "네트워크 모니터링 시스템"
 
-    전체 문장: all_sentence
-    제거 대상 문장: remove_sentence
-    ---
-    
-    [반드시 지켜야 하는 출력 형식 예시]
-    {
-        "all_sentence": {
-            "회사명": "회사명 값",
-            "제품": "제품 값",
-            "제품 설명": "제품 설명 값"
-        },
-        "remove_sentence": {
-            "회사명": "회사명 값",
-            "제품": "제품 값",
-            "제품 설명": "제품 설명 값",
-            "... (중략)"
-        }
-    }
-    ---
-    전체 조회된 문장 리스트에서 의미적으로 관련이 없다고 판단되는 문장 번호만 추출하여 아래와 같은 형식으로 출력하세요.
-    관련 없는 문장
-    [관련 없다고 판단된 문장 번호]. [관련 없다고 판단한 사유]
-    [관련 없다고 판단된 문장 번호]. [관련 없다고 판단한 사유]
-    [관련 없다고 판단된 문장 번호]. [관련 없다고 판단한 사유]
-    (마지막 문장까지 반복...)
-    [출력 형식 예시 끝]
+    [반드시 지켜야 하는 출력 형식(json) 예시]
+    [
+      {{
+        'a1': "일련번호 데이터",
+        'a2': "인증번호 데이터",
+        'a3': "인증일자 데이터",
+        'a4': "회사명 데이터",
+        'a5': "제품 데이터",
+        'a6': "등급 데이터",
+        'a7': "시험번호 데이터",
+        'a8': "S/W분류 데이터",
+        'a9': "제품 설명 데이터",
+        'a10': "총WD 데이터",
+        'a11': "재계약 데이터",
+        'a12': "특이사항 데이터",
+        'a13': "시작날짜 데이터 ~ 종료날짜 데이터",
+        'a14': "시험원 데이터"
+      }},
+      ...
+    ]
     """
     
     # STEP 4. GPT 응답 요청
@@ -196,14 +193,14 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
     try:
         response = client.chat.completions.create(
             model="gpt-4.1-nano",
-            messages=[{"role": "user", "content": prompt}]
+            messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
         # JSON으로 파싱
         response_json = json.loads(response.choices[0].message.content.strip())
         print("[STEP 4] GPT 응답 완료")
         
-        return response.choices[0].message.content.strip()
+        return response_json
     except Exception as e:
         print("[ERROR] GPT 응답 실패:", e)
         return "❌ GPT 응답 생성 중 오류가 발생했습니다."
