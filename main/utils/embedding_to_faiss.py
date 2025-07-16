@@ -87,7 +87,7 @@ def build_faiss_from_csv(csv_path):
     # doc_ids를 FAISS 인덱스와 동일한 순서로 저장 (pickle로 저장 권장)
     
     with open("doc_ids.pkl", "wb") as f:
-    pickle.dump(doc_ids, f)
+        pickle.dump(doc_ids, f)
     
     #FAISS 인덱스 저장
     db.save_local("faiss_index")
