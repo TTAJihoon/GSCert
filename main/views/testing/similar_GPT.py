@@ -1,9 +1,6 @@
-import numpy as np
-import faiss
 import os
 import re
 import json
-import pickle
 from datetime import datetime
 from langchain_community.vectorstores import FAISS
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -23,7 +20,6 @@ embedding = HuggingFaceEmbeddings(model_name="snunlp/KR-SBERT-V40K-klueNLI-augST
 # FAISS 인덱스 로드
 base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 faiss_path = os.path.join(base_dir, "data", "faiss_index")
-doc_ids_path = os.path.join(faiss_path, "doc_ids.pkl")
 db = FAISS.load_local(
     folder_path=faiss_path,
     embeddings=embedding,
@@ -81,58 +77,6 @@ def get_paraphrased_queries(query: str, num: int) -> list[str]:
         print("[ERROR] GPT 파라프레이즈 실패:", e)
         return [query]
 
-def filter_document_ids_by_date(docstore, start, end):
-    filtered_ids = [
-        doc_id for doc_id, doc in docstore.items()
-        if is_within_date_range(
-            doc.metadata.get("시작일자"),
-            doc.metadata.get("종료일자"),
-            start,
-            end
-        )
-    ]
-    return filtered_ids
-
-
-def search_filtered_vectors(query, filtered_doc_ids, db, embedding, doc_id_to_faiss_id, faiss_id_to_doc_id, top_k=15):
-    # filtered_doc_ids는 문자열 doc_id의 리스트
-    filtered_faiss_ids = [
-        doc_id_to_faiss_id[doc_id]
-        for doc_id in filtered_doc_ids
-        if doc_id in doc_id_to_faiss_id
-    ]
-
-    # 예외 처리: 필터링된 ID가 없으면 빈 리스트 반환
-    if not filtered_faiss_ids:
-        return []
-
-    # 정확한 faiss id로 벡터를 재구성
-    vectors = np.array([
-        db.index.reconstruct(faiss_id)
-        for faiss_id in filtered_faiss_ids
-    ])
-
-    # 임시 인덱스 생성 및 벡터 추가
-    temp_index = faiss.IndexFlatL2(vectors.shape[1])
-    temp_index.add(vectors)
-
-    # 질의 벡터 임베딩
-    query_vector = np.array([embedding.embed_query(query)])
-
-    # 유사도 검색 수행
-    distances, indices = temp_index.search(query_vector, min(top_k, len(filtered_faiss_ids)))
-
-    # 매칭된 문서 ID 얻기
-    matched_doc_ids = [
-        faiss_id_to_doc_id[filtered_faiss_ids[idx]]
-        for idx in indices[0]
-    ]
-
-    # 최종 문서 객체로 반환
-    docs = [db.docstore._dict[doc_id] for doc_id in matched_doc_ids]
-
-    return docs
-    
 def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색 개수
     print("[STEP 1] 사용자 질문 수신:", query)
 
@@ -140,28 +84,31 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
     sub_queries = get_paraphrased_queries(query, num=3) # 추천 문장 생성 개수
     print("[STEP 1.5] 파라프레이즈 질의:", sub_queries)
 
-    # STEP 2. 날짜로 문서 ID 필터링
-    filtered_ids = filter_document_ids_by_date(db.docstore._dict, start, end)
+    # STEP 2. FAISS 유사 문서 검색
+    all_docs = db.docstore._dict.values()
     
-    # 필터링 결과 없으면 종료
-    if not filtered_ids:
+    # 날짜로 필터링한 문서만 추출
+    filtered_docs = [
+        doc for doc in all_docs
+        if is_within_date_range(
+            doc.metadata.get("시작일자"),
+            doc.metadata.get("종료일자"),
+            start,
+            end
+        )
+    ]
+
+    # 필터링 후 문서가 없는 경우
+    if not filtered_docs:
         return "❌ 날짜에 해당하는 문서를 찾지 못했습니다."
 
-    # STEP 3. 유사도 검색 수행 (임시 벡터 기반)
-    doc_ids_path = os.path.join(faiss_path, "doc_ids.pkl")
-    with open(doc_ids_path, "rb") as f:
-        doc_ids = pickle.load(f)
-    faiss_id_to_doc_id = dict(enumerate(doc_ids))
-    doc_id_to_faiss_id = {v: k for k, v in faiss_id_to_doc_id.items()}
+    # 필터링한 문서로만 임시 FAISS 인덱스 생성
+    temp_db = FAISS.from_documents(filtered_docs, embedding)
     
     all_docs = []
     for sq in sub_queries:
         try:
-            docs = search_filtered_vectors(
-                sq, filtered_ids, db, embedding, 
-                doc_id_to_faiss_id, faiss_id_to_doc_id, 
-                top_k=top_k
-            )
+            docs = temp_db.similarity_search(sq, k=top_k)
             print(f"[FAISS] '{sq}' → {len(docs)}건 검색됨")
             all_docs.extend(docs)
         except Exception as e:
