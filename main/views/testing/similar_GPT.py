@@ -1,3 +1,5 @@
+import numpy as np
+import faiss
 import os
 import re
 import json
@@ -77,6 +79,29 @@ def get_paraphrased_queries(query: str, num: int) -> list[str]:
         print("[ERROR] GPT 파라프레이즈 실패:", e)
         return [query]
 
+def search_filtered_vectors(query, filtered_ids, db, embedding, top_k=15):
+    # 필터링된 문서의 임베딩 벡터만 추출
+    vectors = np.array([db.index.reconstruct(id) for id in filtered_ids])
+
+    # FAISS 임시 인덱스 생성 (매우 빠름, 벡터만 넣음)
+    dimension = vectors.shape[1]
+    temp_index = faiss.IndexFlatL2(dimension)
+    temp_index.add(vectors)
+
+    # 쿼리 임베딩 벡터 계산
+    query_vector = np.array([embedding.embed_query(query)])
+
+    # 유사도 검색
+    distances, indices = temp_index.search(query_vector, top_k)
+
+    # 실제 문서 ID 얻기
+    matched_ids = [filtered_ids[idx] for idx in indices[0]]
+
+    # 실제 문서 얻기
+    docs = [db.docstore._dict[doc_id] for doc_id in matched_ids]
+
+    return docs
+    
 def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색 개수
     print("[STEP 1] 사용자 질문 수신:", query)
 
@@ -84,31 +109,18 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
     sub_queries = get_paraphrased_queries(query, num=3) # 추천 문장 생성 개수
     print("[STEP 1.5] 파라프레이즈 질의:", sub_queries)
 
-    # STEP 2. FAISS 유사 문서 검색
-    all_docs = db.docstore._dict.values()
+    # STEP 2. 날짜로 문서 ID 필터링
+    filtered_ids = filter_document_ids_by_date(db.docstore._dict, start, end)
     
-    # 날짜로 필터링한 문서만 추출
-    filtered_docs = [
-        doc for doc in all_docs
-        if is_within_date_range(
-            doc.metadata.get("시작일자"),
-            doc.metadata.get("종료일자"),
-            start,
-            end
-        )
-    ]
-
-    # 필터링 후 문서가 없는 경우
-    if not filtered_docs:
+    # 필터링 결과 없으면 종료
+    if not filtered_ids:
         return "❌ 날짜에 해당하는 문서를 찾지 못했습니다."
 
-    # 필터링한 문서로만 임시 FAISS 인덱스 생성
-    temp_db = FAISS.from_documents(filtered_docs, embedding)
-    
+    # STEP 3. 유사도 검색 수행 (임시 벡터 기반)
     all_docs = []
     for sq in sub_queries:
         try:
-            docs = temp_db.similarity_search(sq, k=top_k)
+            docs = search_filtered_vectors(sq, filtered_ids, db, embedding, top_k=top_k)
             print(f"[FAISS] '{sq}' → {len(docs)}건 검색됨")
             all_docs.extend(docs)
         except Exception as e:
