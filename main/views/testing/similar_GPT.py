@@ -27,6 +27,7 @@ db = FAISS.load_local(
     embeddings=embedding,
     allow_dangerous_deserialization=True
 )
+doc_ids = list(db.docstore._dict.keys())
 
 def is_within_date_range(doc_start, doc_end, query_start, query_end):
     try:
@@ -78,6 +79,19 @@ def get_paraphrased_queries(query: str, num: int) -> list[str]:
     except Exception as e:
         print("[ERROR] GPT 파라프레이즈 실패:", e)
         return [query]
+
+def filter_document_ids_by_date(docstore, start, end):
+    filtered_ids = [
+        doc_id for doc_id, doc in docstore.items()
+        if is_within_date_range(
+            doc.metadata.get("시작일자"),
+            doc.metadata.get("종료일자"),
+            start,
+            end
+        )
+    ]
+    return filtered_ids
+
 
 def search_filtered_vectors(query, filtered_ids, db, embedding, top_k=15):
     # 필터링된 문서의 임베딩 벡터만 추출
