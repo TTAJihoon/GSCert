@@ -158,7 +158,7 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
     for sq in sub_queries:
         try:
             docs = search_filtered_vectors(
-                sq, filtered_doc_ids, db, embedding, 
+                sq, filtered_ids, db, embedding, 
                 doc_id_to_faiss_id, faiss_id_to_doc_id, 
                 top_k=top_k
             )
