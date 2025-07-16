@@ -1,5 +1,6 @@
 import os
 import re
+import pickle
 import pandas as pd
 from datetime import datetime
 from tqdm import tqdm
@@ -75,12 +76,20 @@ def build_faiss_from_csv(csv_path):
     embedding = HuggingFaceEmbeddings(model_name="snunlp/KR-SBERT-V40K-klueNLI-augSTS")
 
     print("[STEP 5] FAISS 인덱스 생성 중...")
+    
+    # 최초 FAISS 인덱스 생성 (한번만!)
     db = FAISS.from_documents(docs, embedding)
 
+    # 문서 ID를 생성한 FAISS 인덱스의 순서대로 저장 (필수!!)
+    doc_ids = [doc.metadata["문서ID"] for doc in documents]
+
     print("[STEP 6] FAISS 인덱스 저장 중...")
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    faiss_path = os.path.join(base_dir, "data", "faiss_index")
-    os.makedirs(faiss_path, exist_ok=True)
-    db.save_local(faiss_path)
+    # doc_ids를 FAISS 인덱스와 동일한 순서로 저장 (pickle로 저장 권장)
+    
+    with open("doc_ids.pkl", "wb") as f:
+    pickle.dump(doc_ids, f)
+    
+    #FAISS 인덱스 저장
+    db.save_local("faiss_index")
 
     print("✅ FAISS 저장 완료. 문서 수:", len(docs))
