@@ -89,7 +89,7 @@ def build_faiss_from_csv(csv_path):
     db.save_local("faiss_index")
     
     # 문서 ID를 생성한 FAISS 인덱스의 순서대로 저장 (필수!!)
-    doc_ids = [doc.metadata["문서ID"] for doc in documents]
+    doc_ids = [doc.metadata["문서ID"] for doc in docs]
     with open(os.path.join(faiss_path, "doc_ids.pkl"), "wb") as f:
         pickle.dump(doc_ids, f)
     
