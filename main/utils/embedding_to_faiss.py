@@ -64,6 +64,7 @@ def build_faiss_from_csv(csv_path):
         }
         clean_metadata["시작일자"] = start or ""
         clean_metadata["종료일자"] = end or ""
+        clean_metadata["문서ID"] = safe_str(row["일련번호"])
 
         docs.append(
             Document(
