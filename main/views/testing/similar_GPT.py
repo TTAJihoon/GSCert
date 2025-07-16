@@ -62,7 +62,7 @@ def get_paraphrased_queries(query: str, num: int) -> list[str]:
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini-high",
+            model="gpt-4.1-mini",
             messages=[
                 {"role": "system", "content": "너는 질의어를 다양한 표현으로 바꾸는 도우미야."},
                 {"role": "user", "content": system_prompt}
@@ -193,7 +193,7 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini-high",
+            model="gpt-4.1-mini",
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
