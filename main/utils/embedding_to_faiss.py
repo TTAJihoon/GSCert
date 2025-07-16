@@ -80,16 +80,17 @@ def build_faiss_from_csv(csv_path):
     # 최초 FAISS 인덱스 생성 (한번만!)
     db = FAISS.from_documents(docs, embedding)
 
-    # 문서 ID를 생성한 FAISS 인덱스의 순서대로 저장 (필수!!)
-    doc_ids = [doc.metadata["문서ID"] for doc in documents]
+    # 저장할 경로 지정 (반드시 절대 경로 추천)
+    base_dir = "C:/GSCert/myproject"
+    faiss_path = os.path.join(base_dir, "data", "faiss_index")
 
     print("[STEP 6] FAISS 인덱스 저장 중...")
-    # doc_ids를 FAISS 인덱스와 동일한 순서로 저장 (pickle로 저장 권장)
-    
-    with open("doc_ids.pkl", "wb") as f:
-        pickle.dump(doc_ids, f)
-    
     #FAISS 인덱스 저장
     db.save_local("faiss_index")
-
+    
+    # 문서 ID를 생성한 FAISS 인덱스의 순서대로 저장 (필수!!)
+    doc_ids = [doc.metadata["문서ID"] for doc in documents]
+    with open(os.path.join(faiss_path, "doc_ids.pkl"), "wb") as f:
+        pickle.dump(doc_ids, f)
+    
     print("✅ FAISS 저장 완료. 문서 수:", len(docs))
