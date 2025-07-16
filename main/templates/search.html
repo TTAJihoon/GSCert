@@ -80,7 +80,10 @@
   </div>
   
   <div class="main-content">
-    
+    <div id="loadingIndicator" style="display:none; text-align:center; margin-top:20px;">
+      <i class="fas fa-spinner fa-spin" style="font-size:24px; color:#3498db;"></i>
+      <span style="margin-left:10px; font-size:18px;">시험 이력 조회 중입니다. 잠시만 기다려 주세요...</span>
+    </div>
     {% if response %}
     <div class="result-box">
       <p>{{ response|linebreaksbr }}</p>
