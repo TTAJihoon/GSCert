@@ -29,13 +29,6 @@ db = FAISS.load_local(
     embeddings=embedding,
     allow_dangerous_deserialization=True
 )
-# doc_ids 로드
-with open(doc_ids_path, "rb") as f:
-    doc_ids = pickle.load(f)
-    
-# ID 매핑 생성
-faiss_id_to_doc_id = dict(enumerate(doc_ids))
-doc_id_to_faiss_id = {v: k for k, v in faiss_id_to_doc_id.items()}
 
 def is_within_date_range(doc_start, doc_end, query_start, query_end):
     try:
@@ -155,6 +148,12 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
         return "❌ 날짜에 해당하는 문서를 찾지 못했습니다."
 
     # STEP 3. 유사도 검색 수행 (임시 벡터 기반)
+    doc_ids_path = os.path.join(faiss_path, "doc_ids.pkl")
+    with open(doc_ids_path, "rb") as f:
+        doc_ids = pickle.load(f)
+    faiss_id_to_doc_id = dict(enumerate(doc_ids))
+    doc_id_to_faiss_id = {v: k for k, v in faiss_id_to_doc_id.items()}
+    
     all_docs = []
     for sq in sub_queries:
         try:
