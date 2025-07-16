@@ -82,7 +82,7 @@ def build_faiss_from_csv(csv_path):
     db = FAISS.from_documents(docs, embedding)
 
     # 저장할 경로 지정 (반드시 절대 경로 추천)
-    base_dir = "C:/GSCert/myproject"
+    base_dir = "C:\GSCert\myproject\main"
     faiss_path = os.path.join(base_dir, "data", "faiss_index")
 
     print("[STEP 6] FAISS 인덱스 저장 중...")
