@@ -27,7 +27,8 @@ db = FAISS.load_local(
     embeddings=embedding,
     allow_dangerous_deserialization=True
 )
-doc_ids = list(db.docstore._dict.keys())
+faiss_id_to_doc_id = dict(enumerate(db.docstore._dict.keys()))
+doc_id_to_faiss_id = {v: k for k, v in faiss_id_to_doc_id.items()}
 
 def is_within_date_range(doc_start, doc_end, query_start, query_end):
     try:
@@ -93,26 +94,15 @@ def filter_document_ids_by_date(docstore, start, end):
     return filtered_ids
 
 
-def search_filtered_vectors(query, filtered_ids, db, embedding, top_k=15):
-    # 필터링된 문서의 임베딩 벡터만 추출
-    vectors = np.array([db.index.reconstruct(id) for id in filtered_ids])
-
-    # FAISS 임시 인덱스 생성 (매우 빠름, 벡터만 넣음)
-    dimension = vectors.shape[1]
-    temp_index = faiss.IndexFlatL2(dimension)
+def search_filtered_vectors(query, filtered_faiss_ids, db, embedding, top_k=15):
+    vectors = np.array([db.index.reconstruct(faiss_id) for faiss_id in filtered_faiss_ids])
+    temp_index = faiss.IndexFlatL2(vectors.shape[1])
     temp_index.add(vectors)
 
-    # 쿼리 임베딩 벡터 계산
     query_vector = np.array([embedding.embed_query(query)])
-
-    # 유사도 검색
     distances, indices = temp_index.search(query_vector, top_k)
-
-    # 실제 문서 ID 얻기
-    matched_ids = [filtered_ids[idx] for idx in indices[0]]
-
-    # 실제 문서 얻기
-    docs = [db.docstore._dict[doc_id] for doc_id in matched_ids]
+    matched_doc_ids = [faiss_id_to_doc_id[filtered_faiss_ids[idx]] for idx in indices[0]]
+    docs = [db.docstore._dict[doc_id] for doc_id in matched_doc_ids]
 
     return docs
     
@@ -134,7 +124,7 @@ def run_openai_GPT(query, start, end, top_k=15): # 문장당 유사제품 검색
     all_docs = []
     for sq in sub_queries:
         try:
-            docs = search_filtered_vectors(sq, filtered_ids, db, embedding, top_k=top_k)
+            docs = search_filtered_vectors(sq, filtered_faiss_ids, db, embedding, top_k=top_k)
             print(f"[FAISS] '{sq}' → {len(docs)}건 검색됨")
             all_docs.extend(docs)
         except Exception as e:
