@@ -26,3 +26,6 @@ Thumbs.db
 
 # 임베딩 캐시
 main/data/chroma_db/
+
+# Static files
+/staticfiles/
