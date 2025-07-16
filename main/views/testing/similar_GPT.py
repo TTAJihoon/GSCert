@@ -23,13 +23,14 @@ embedding = HuggingFaceEmbeddings(model_name="snunlp/KR-SBERT-V40K-klueNLI-augST
 # FAISS 인덱스 로드
 base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 faiss_path = os.path.join(base_dir, "data", "faiss_index")
+doc_ids_path = os.path.join(faiss_path, "doc_ids.pkl")
 db = FAISS.load_local(
     folder_path=faiss_path,
     embeddings=embedding,
     allow_dangerous_deserialization=True
 )
 # doc_ids 로드
-with open("doc_ids.pkl", "rb") as f:
+with open(doc_ids_path, "rb") as f:
     doc_ids = pickle.load(f)
     
 # ID 매핑 생성
