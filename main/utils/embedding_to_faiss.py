@@ -74,7 +74,7 @@ def build_faiss_from_csv(csv_path):
         )
 
     print("[STEP 4] 임베딩 모델 로딩")
-    embedding = HuggingFaceEmbeddings(model_name="snunlp/KR-SBERT-V40K-klueNLI-augSTS")
+    embedding = HuggingFaceEmbeddings(model_name="jhgan/ko-sbert-sts")
 
     print("[STEP 5] FAISS 인덱스 생성 중...")
     
