@@ -4,7 +4,7 @@ from datetime import datetime
 from tqdm import tqdm
 
 csv_path = './data/reference.csv'
-db_path = './data/db.sqlite3'
+db_path = './data/reference.sqlite3'
 
 # 날짜 전처리 함수
 def parse_korean_date_range(date_range_str):
