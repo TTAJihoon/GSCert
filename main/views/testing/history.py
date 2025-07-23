@@ -2,7 +2,7 @@ import json
 import pandas as pd
 from django.shortcuts import render
 
-def search_history(request):
+def history(request):
     if request.method == 'POST':
         gsnum = request.POST.get('gsnum', '')
         project = request.POST.get('project', '')
