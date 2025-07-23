@@ -1,50 +1,80 @@
+import re
 import pandas as pd
-import sqlite3
 from datetime import datetime
-from tqdm import tqdm
 
-# 날짜 전처리 함수
-def parse_korean_date_range(date_range_str):
-    if pd.isna(date_range_str) or '~' not in date_range_str:
+# 개선된 날짜 변환 함수
+def parse_korean_date_range(date_str):
+    if pd.isna(date_str):
         return None, None
-    start_str, end_str = date_range_str.split('~')
-    date_formats = ["%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%Y년 %m월 %d일"]
+
+    # 모든 날짜 패턴(yyyy.mm.dd, yyyy-mm-dd 등)을 찾아 리스트로 저장
+    date_patterns = [
+        r"\d{4}-\d{2}-\d{2}",
+        r"\d{4}\.\d{2}\.\d{2}",
+        r"\d{4}/\d{2}/\d{2}",
+        r"\d{4}년\d{1,2}월\d{1,2}일",
+        r"\d{4}년 \d{1,2}월 \d{1,2}일",
+    ]
     
-    def parse_date(date_str):
-        for fmt in date_formats:
+    dates = []
+    for pattern in date_patterns:
+        dates.extend(re.findall(pattern, date_str))
+
+    if not dates:
+        return None, None
+
+    # 날짜 형식을 표준화
+    parsed_dates = []
+    for date in dates:
+        for fmt in ["%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%Y년 %m월 %d일"]:
             try:
-                return datetime.strptime(date_str.strip(), fmt).strftime('%Y-%m-%d')
+                parsed_date = datetime.strptime(date, fmt)
+                parsed_dates.append(parsed_date)
+                break
             except:
                 continue
-        return None
 
-    return parse_date(start_str), parse_date(end_str)
+    if not parsed_dates:
+        return None, None
 
-def convert_csv_to_sqlite():    
-    # 데이터 로드 및 전처리
+    # 가장 빠른 날짜와 가장 늦은 날짜 선택
+    start_date = min(parsed_dates).strftime('%Y-%m-%d')
+    end_date = max(parsed_dates).strftime('%Y-%m-%d')
+
+    return start_date, end_date
+
+def convert_csv_to_sqlite(csv_path, db_path):
     df = pd.read_csv(csv_path)
     df.columns = df.columns.str.strip()
-    
-    # 날짜 컬럼 변환
+
+    # 개선된 날짜 변환 적용
     df[['시작일자', '종료일자']] = df['시작날짜/\n종료날짜'].apply(
         lambda x: pd.Series(parse_korean_date_range(str(x)))
     )
-    
-    # SQLite DB 연결 및 데이터 저장
+
     conn = sqlite3.connect(db_path)
-
-    # 기존 테이블 삭제(필요 시)
-    conn.execute('DROP TABLE IF EXISTS list')
-
-    # 데이터프레임 SQLite로 저장
+    conn.execute('DROP TABLE IF EXISTS sw_data')
     df.to_sql('sw_data', conn, index=False, if_exists='replace')
 
-    # '일련번호' 컬럼을 기본키로 지정하고 인덱싱 추가
-    conn.execute('''
-        CREATE UNIQUE INDEX idx_sw_data_id ON sw_data(일련번호);
+    # PRIMARY KEY 설정을 위한 테이블 재구성 예시
+    columns_definition = ", ".join([f'"{col}" TEXT' for col in df.columns if col != '일련번호'])
+    conn.execute(f'''
+        CREATE TABLE sw_data_new (
+            일련번호 INTEGER PRIMARY KEY,
+            {columns_definition}
+        );
     ''')
-    
+
+    columns = ', '.join(df.columns)
+    conn.execute(f'''
+        INSERT INTO sw_data_new({columns})
+        SELECT {columns} FROM sw_data;
+    ''')
+
+    conn.execute('DROP TABLE sw_data;')
+    conn.execute('ALTER TABLE sw_data_new RENAME TO sw_data;')
+
     conn.commit()
     conn.close()
 
-    print("✅ SQLite 데이터 저장 완료")
+    print(f"✅ CSV({csv_path}) → SQLite({db_path}) 변환 완료")
