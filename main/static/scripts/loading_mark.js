@@ -18,10 +18,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const company = document.getElementById('company').value.trim();
         const product = document.getElementById('product').value.trim();
 
-        alert('검색 조건을 입력해주세요');
         if (!gsnum && !project && !company && !product) {
             e.preventDefault();
-            
+            alert('검색 조건을 입력해주세요');
+            return false;
         }
     });
 });
