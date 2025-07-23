@@ -14,7 +14,7 @@
 <div class="content-area">
   <div class="sidebar">
     <div class="search-section">
-      <form id=queryForm method="post" action="{% url 'search-h' %}">
+      <form id=queryForm method="post" action="{% url 'history' %}">
         {% csrf_token %}
         <h3 style="margin-bottom: 20px; color: var(--tta-blue); font-size: 18px;">
           <i class="fas fa-search"></i> 검색 조건 
