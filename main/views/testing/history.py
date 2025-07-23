@@ -1,8 +1,6 @@
 import json
 import pandas as pd
 from django.shortcuts import render
-from .history import GS_history
-from .similar_GPT import run_openai_GPT
 
 def search_history(request):
     if request.method == 'POST':
@@ -39,3 +37,6 @@ def search_history(request):
                
     # GET 요청 또는 POST 실패 시
     return render(request, 'search.html')
+
+def GS_history(gsnum, project, company, product, startDate, endDate):
+    
