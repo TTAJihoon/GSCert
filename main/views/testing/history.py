@@ -55,7 +55,7 @@ def parse_korean_date_range(text: str):
         print("[ERROR] 날짜 파싱 오류:", e)
     return None, None
 
-def GS_history(company, product, query_start=None, query_end=None):
+def GS_history(gsnum, project, company, product, query_start=None, query_end=None):
     REFERENCE_DF = getREF()
     if REFERENCE_DF is None:
         reload_reference_dataframe()
