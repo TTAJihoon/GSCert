@@ -1,6 +1,7 @@
 import re
 import pandas as pd
 from datetime import datetime
+import sqlite3
 
 # 개선된 날짜 변환 함수
 def parse_korean_date_range(date_str):
