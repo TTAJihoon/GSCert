@@ -1,13 +1,3 @@
-// Loading_mark
-document.addEventListener('DOMContentLoaded', function () {
-    const form = document.getElementById('queryForm');
-
-    form.addEventListener('submit', function() {
-      document.getElementById('loadingIndicator').style.display = 'block';
-      document.querySelector('.main-content').style.display = 'none';
-    });
-});
-
 // Null_check
 document.addEventListener('DOMContentLoaded', function () {
     const form = document.getElementById('queryForm');
