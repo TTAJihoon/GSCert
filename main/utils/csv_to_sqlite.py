@@ -66,10 +66,12 @@ def convert_csv_to_sqlite(csv_path, db_path):
         );
     ''')
 
-    columns = ', '.join(df.columns)
+    # 컬럼명을 큰따옴표로 묶어서 특수문자 처리
+    quoted_columns = ', '.join([f'"{col}"' for col in df.columns])
+
     conn.execute(f'''
-        INSERT INTO sw_data_new({columns})
-        SELECT {columns} FROM sw_data;
+        INSERT INTO sw_data_new({quoted_columns})
+        SELECT {quoted_columns} FROM sw_data;
     ''')
 
     conn.execute('DROP TABLE sw_data;')
