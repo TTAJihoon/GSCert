@@ -25,7 +25,7 @@ def search_history(request):
         
         if not gsnum.strip() and not project.strip() and not company.strip() and not product.strip():
             context['response'] = '검색 조건 중 하나 이상을 입력해주세요.'
-            return render(request, 'search.html', context)
+            return render(request, 'history.html', context)
                 
         tables = GS_history(gsnum, project, company, product, startDate, endDate)
         if isinstance(tables, dict):
@@ -33,10 +33,10 @@ def search_history(request):
 
         tables = list(tables)[::-1]
         context['response_tables'] = tables
-        return render(request, 'search.html', context)
+        return render(request, 'history.html', context)
                
     # GET 요청 또는 POST 실패 시
-    return render(request, 'search.html')
+    return render(request, 'history.html')
 
 def GS_history(gsnum, project, company, product, startDate, endDate):
     
