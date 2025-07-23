@@ -136,22 +136,6 @@ html, body {
     box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2); 
 }
 
-.radio-group {
-    display: flex; 
-    flex-direction: column;
-    gap: 10px; 
-    margin-bottom: 15px; 
-}
-
-.radio-item {
-    display: flex; 
-    align-items: center; 
-}
-
-.radio-item input[type="radio"] {
-    margin-right: 5px; 
-}
-
 .search-btn {
     width: 100%; 
     padding: 12px; 
