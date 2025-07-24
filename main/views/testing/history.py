@@ -38,58 +38,42 @@ def history(request):
     # GET 요청 또는 POST 실패 시
     return render(request, 'history.html')
 
-def GS_history(gsnum, project, company, product, startDate, endDate):
-    REFERENCE_DF = getREF()
-    if REFERENCE_DF is None:
-        reload_reference_dataframe()
-        REFERENCE_DF = getREF()
-    if REFERENCE_DF is None:
-        raise ValueError("REFERENCE_DF is still None. CSV 파일이 로딩되지 않았습니다.")
+def GS_history(gsnum='', project='', company='', product='', startDate='', endDate='', db_path='main/data/reference.db'):
+    conn = sqlite3.connect(db_path)
+    conn.row_factory = sqlite3.Row  # 컬럼명을 사용해서 결과를 가져올 수 있게 설정
+    cursor = conn.cursor()
 
-    df = REFERENCE_DF.copy()
-    df.columns = df.columns.str.strip()
+    # 기본 쿼리 생성
+    query = "SELECT * FROM sw_data WHERE 1=1"
+    params = []
 
+    # 조건을 확인하여 쿼리에 추가
+    if gsnum.strip():
+        query += " AND 인증번호 LIKE ?"
+        params.append(f"%{gsnum}%")
+    if project.strip():
+        query += " AND 시험번호 LIKE ?"
+        params.append(f"%{project}%")
     if company.strip():
-        search = company.strip().lower()
-        df["회사명_키워드목록"] = df["회사명"].fillna("").apply(extract_all_names)
-
-        all_related_names = set()
-        for names in df["회사명_키워드목록"]:
-            if any(search in name for name in names):
-                all_related_names.update(names)
-
-        df = df[df["회사명_키워드목록"].apply(
-            lambda names: any(name in all_related_names for name in names)
-        )]
-
+        query += " AND 회사명 LIKE ?"
+        params.append(f"%{company}%")
     if product.strip():
-        product = product.strip()
-        df = df[df['제품'].fillna('').str.contains(product, case=False)]
+        query += " AND 제품 LIKE ?"
+        params.append(f"%{product}%")
+    if startDate.strip():
+        query += " AND 시작일자 >= ?"
+        params.append(startDate)
+    if endDate.strip():
+        query += " AND 종료일자 <= ?"
+        params.append(endDate)
 
-    results = []
-    for _, row in df.iterrows():
-        raw_date = row.get('시작날짜/\n종료날짜', '')
-        start_date, end_date = parse_korean_date_range(raw_date)
+    # 쿼리 실행
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
 
-        if query_start and query_end:
-            if not is_within_date_range(start_date, end_date, query_start, query_end):
-                continue  # 날짜 범위가 맞지 않으면 넘어가기
+    # 결과를 딕셔너리 형태로 변환
+    result = [dict(row) for row in rows]
 
-        results.append({
-            'a1': row.get('일련번호', ''),
-            'a2': row.get('인증번호', ''),
-            'a3': row.get('인증일자', ''),
-            'a4': row.get('회사명', ''),
-            'a5': row.get('제품', ''),
-            'a6': row.get('등급', ''),
-            'a7': row.get('시험번호', ''),
-            'a8': row.get('S/W분류', ''),
-            'a9': row.get('제품 설명', ''),
-            'a10': row.get('총WD', ''),
-            'a11': row.get('재계약', ''),
-            'a12': row.get('특이사항', ''),
-            'a13': raw_date,
-            'a14': row.get('시험원', '')
-        })
+    conn.close()
 
-    return results
+    return result
