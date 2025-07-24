@@ -49,21 +49,21 @@ def convert_csv_to_sqlite(csv_path, db_path):
     df = pd.read_csv(csv_path)
     df.columns = df.columns.str.strip()
 
-    # 날짜 변환
+    # Unnamed 컬럼 제거 (불필요한 컬럼)
+    df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+
+    # 날짜 처리
     df[['시작일자', '종료일자']] = df['시작날짜/\n종료날짜'].apply(
         lambda x: pd.Series(parse_korean_date_range(str(x)))
     )
 
     conn = sqlite3.connect(db_path)
 
-    # 기존 sw_data, sw_data_new 테이블 삭제
     conn.execute('DROP TABLE IF EXISTS sw_data')
     conn.execute('DROP TABLE IF EXISTS sw_data_new')
 
-    # 임시로 DataFrame 데이터를 sw_data에 저장
     df.to_sql('sw_data', conn, index=False, if_exists='replace')
 
-    # PRIMARY KEY 설정 위한 sw_data_new 테이블 생성
     columns_definition = ", ".join([f'"{col}" TEXT' for col in df.columns if col != '일련번호'])
     conn.execute(f'''
         CREATE TABLE sw_data_new (
@@ -72,16 +72,12 @@ def convert_csv_to_sqlite(csv_path, db_path):
         );
     ''')
 
-    # 특수 문자 처리 (컬럼 이름을 큰 따옴표로 감싸기)
     quoted_columns = ', '.join([f'"{col}"' for col in df.columns])
-
-    # 데이터 옮기기
     conn.execute(f'''
         INSERT INTO sw_data_new({quoted_columns})
         SELECT {quoted_columns} FROM sw_data;
     ''')
 
-    # 임시 테이블 삭제 후 이름 변경
     conn.execute('DROP TABLE sw_data;')
     conn.execute('ALTER TABLE sw_data_new RENAME TO sw_data;')
 
