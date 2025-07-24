@@ -33,6 +33,7 @@ def parse_korean_date_range(date_str):
                 parsed_dates.append(parsed_date)
                 break
             except:
+                print(date)
                 continue
 
     if not parsed_dates:
