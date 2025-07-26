@@ -27,13 +27,20 @@ def history(request):
         if not gsnum.strip() and not project.strip() and not company.strip() and not product.strip():
             context['response'] = '검색 조건 중 하나 이상을 입력해주세요.'
             return render(request, 'history.html', context)
-                
-        tables = GS_history(gsnum, project, company, product, startDate, endDate)
-        if isinstance(tables, dict):
-            tables = [tables]
 
-        tables = list(tables)[::-1]
-        context['response_tables'] = tables
+            tables = GS_history(gsnum, project, company, product, startDate, endDate)
+            
+            clean_tables = []
+            for table in tables:
+                clean_table = {
+                    key.strip().replace(" ", "_").replace("/", "_").replace("\n", "_"): value
+                    for key, value in table.items()
+                    if not key.startswith('Unnamed')  # 불필요한 Unnamed 컬럼 제거
+                }
+                clean_tables.append(clean_table)
+                
+            context['response_tables'] = clean_tables[::-1]
+            
         return render(request, 'history.html', context)
                
     # GET 요청 또는 POST 실패 시
