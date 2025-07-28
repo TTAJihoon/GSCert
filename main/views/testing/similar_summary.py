@@ -89,6 +89,7 @@ def summarize_text(text):
 @app.post("/summarize")
 async def summarize_document(file: UploadFile = File(...)):
     # 업로드된 파일에서 텍스트 추출
+    print(file)
     text = parse_file(file)
 
     # 지원하지 않는 형식이거나 내용 부족 시 에러 메시지 반환
@@ -100,6 +101,7 @@ async def summarize_document(file: UploadFile = File(...)):
     summary = summarize_text(clean_text)
 
     # 최종 요약 문장 반환
+    print(summary)
     return {"summary": summary}
 
 # FastAPI 서버 실행 (포트 8000)
