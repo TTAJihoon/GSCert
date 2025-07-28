@@ -2,7 +2,7 @@ from django.contrib.auth import views as auth_views
 from django.urls import path
 from main.views.init import index, similar, security, genspark, test
 from main.views.testing.history import history
-from main.views.testing.similar import summarize_document
+from main.views.testing.similar_summary import summarize_document
 from main.utils.reload_reference import reload_reference_view
 
 urlpatterns = [
