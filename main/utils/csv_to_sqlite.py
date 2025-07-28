@@ -59,7 +59,7 @@ def convert_csv_to_sqlite(csv_path, db_path):
     ]
 
     # 날짜 처리 및 새 컬럼 생성
-    df[['시작일자', '종료일자']] = df['시작날짜_종료날짜'].apply(
+    df[['시작일자', '종료일자']] = df['시작날짜\n종료날짜'].apply(
         lambda x: pd.Series(parse_korean_date_range(str(x)))
     )
 
