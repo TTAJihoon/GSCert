@@ -52,7 +52,7 @@ def parse_korean_date_range(date_str):
     start_date = min(parsed_dates).strftime('%Y-%m-%d')
     end_date = max(parsed_dates).strftime('%Y-%m-%d')
 
-    return start_date, end_datee
+    return start_date, end_date
 
 def convert_csv_to_sqlite(csv_path, db_path):
     df = pd.read_csv(csv_path)
