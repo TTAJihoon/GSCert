@@ -1,403 +1,632 @@
 <!DOCTYPE html>
+
 <html lang="ko">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DB 시험 이력 조회</title>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>세련된 파일 업로드 인터페이스</title>
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
+<style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
+      background-color: #f9fafb;
+      min-height: 720px;
+      height: 100vh;
+      overflow-x: hidden;
+    }
     
+    .app-container {
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
+      width: 100%;
+      max-width: 1280px;
+      margin: 0 auto;
+    }
+    
+    .header {
+      height: 64px;
+      background-color: white;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      z-index: 10;
+    }
+    
+    .header-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1e40af;
+    }
+    
+    .main-content {
+      display: flex;
+      flex: 1;
+      height: calc(100vh - 64px);
+      position: relative;
+    }
+    
+    .sidebar-container {
+      position: absolute;
+      left: 24px;
+      top: 24px;
+      width: 300px;
+      z-index: 5;
+    }
+    
+    .sidebar {
+      width: 100%;
+      background-color: white;
+      border-radius: 12px;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+      overflow: hidden;
+    }
+    
+    .content-area {
+      flex: 1;
+      padding: 24px 24px 24px 348px;
+      background-color: #f8fafc;
+      height: 100%;
+      overflow-y: auto;
+    }
+    
+    .content-card {
+      background-color: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      padding: 20px;
+      height: calc(100% - 40px);
+    }
+    
+    .file-upload-container {
+      width: 100%;
+      background-color: #ffffff;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    
+    .tab-container {
+      display: flex;
+    }
+    
+    .tab {
+      flex: 1;
+      padding: 12px;
+      text-align: center;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s ease;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    
+    .tab.active {
+      background-color: #e0f2fe;
+      border-bottom: 2px solid #3b82f6;
+    }
+    
+    .tab:not(.active) {
+      background-color: #f8fafc;
+      color: #64748b;
+    }
+    
+    .content-container {
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      height: calc(100% - 45px);
+    }
+    
+    .dropdown {
+      margin-bottom: 16px;
+    }
+    
+    select {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      background-color: #f8fafc;
+      font-size: 14px;
+    }
+    
+    .drop-area {
+      border: 2px dashed #d1d5db;
+      border-radius: 6px;
+      padding: 24px 16px;
+      text-align: center;
+      transition: all 0.2s ease;
+      background-color: #f8fafc;
+      cursor: pointer;
+    }
+    
+    .drop-area:hover, .drop-area.active {
+      border-color: #93c5fd;
+      background-color: #eff6ff;
+    }
+    
+    .drop-area p {
+      margin: 8px 0;
+      color: #64748b;
+    }
+    
+    .file-list {
+      margin: 16px 0;
+      padding: 8px;
+      border-radius: 4px;
+      background-color: #f8fafc;
+      border: 1px solid #e5e7eb;
+    }
+    
+    .file-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px;
+      border-radius: 4px;
+    }
+    
+    .file-name {
+      font-size: 14px;
+      color: #1e40af;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 220px;
+    }
+    
+    .remove-file {
+      color: #ef4444;
+      cursor: pointer;
+      padding: 4px;
+      border-radius: 50%;
+      transition: all 0.2s ease;
+    }
+    
+    .remove-file:hover {
+      background-color: #fee2e2;
+    }
+    
+    .action-button {
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      width: 100%;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      margin-top: auto;
+    }
+    
+    .action-button:hover {
+      background-color: #2563eb;
+    }
+    
+    .text-area {
+      width: 100%;
+      height: 180px;
+      padding: 12px;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      resize: none;
+      font-size: 14px;
+      background-color: #f8fafc;
+      margin-bottom: 16px;
+      flex: 1;
+    }
+    
+    .hidden {
+      display: none;
+    }
+    
+    .file-input {
+      display: none;
+    }
+    
+    .upload-limit-message {
+      font-size: 12px;
+      color: #64748b;
+      text-align: center;
+      margin-top: 8px;
+    }
+    
+    .results-container {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .results-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-bottom: 16px;
+      border-bottom: 1px solid #e5e7eb;
+      margin-bottom: 16px;
+    }
+    
+    .results-title {
+      font-size: 18px;
+      font-weight: 600;
+      color: #1e3a8a;
+    }
+    
+    .results-count {
+      background-color: #e0f2fe;
+      color: #1e40af;
+      padding: 4px 10px;
+      border-radius: 16px;
+      font-size: 13px;
+      font-weight: 500;
+    }
+    
+    .input-summary {
+      background-color: #f0f9ff;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      border-left: 3px solid #3b82f6;
+    }
+    
+    .summary-title {
+      font-size: 13px;
+      color: #64748b;
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+    
+    .summary-content {
+      font-size: 15px;
+      color: #1e3a8a;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .results-content {
+      flex: 1;
+      overflow-y: auto;
+    }
+    
+    .result-placeholder {
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+      text-align: center;
+      padding: 20px;
+    }
+    
+    .placeholder-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+      color: #cbd5e1;
+    }
+    
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      font-size: 13px;
+      color: #64748b;
+      margin-bottom: 16px;
+    }
+    
+    .breadcrumb-item {
+      padding: 0 4px;
+    }
+    
+    .breadcrumb-separator {
+      color: #cbd5e1;
+    }
+    
+    .similar-product {
+      background-color: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 12px;
+      transition: all 0.2s ease;
+    }
+    
+    .similar-product:hover {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+      border-color: #bfdbfe;
+    }
+    
+    .product-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    
+    .product-title {
+      font-weight: 600;
+      color: #1e40af;
+    }
+    
+    .similarity-score {
+      background-color: #dbeafe;
+      color: #1e40af;
+      padding: 2px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    
+    .product-description {
+      font-size: 14px;
+      color: #4b5563;
+      margin-bottom: 12px;
+    }
+    
+    .product-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    
+    .product-tag {
+      background-color: #f1f5f9;
+      color: #64748b;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    
+    .content-spacer {
+      flex: 1;
+    }
+    
+    .search-title {
+      margin-top: 6px;
+      margin-bottom: 16px;
+      font-size: 20px;
+      font-weight: 600;
+      color: #1e3a8a;
+      display: flex;
+      align-items: center;
+    }
+    
+    .search-icon {
+      color: #3b82f6;
+      margin-right: 10px;
+    }
+  </style>
 </head>
 <body>
-    <div class="container mx-auto p-4">
-        <div class="header p-4 mb-4 rounded">
-            <h1 class="text-2xl font-bold">DB 시험 이력 조회</h1>
-        </div>
-        
-        <div class="flex">
-            <!-- 좌측 검색 조건 패널 -->
-            <div class="search-panel p-4 rounded mr-4">
-                <h2 class="text-lg font-bold mb-4 text-blue-900">검색 조건 설정</h2>
-                
-                <div id="search-conditions">
-                    <!-- 검색 조건 1 -->
-                    <div class="condition-row">
-                        <div class="delete-condition" onclick="deleteThisCondition(this)">
-                            <i class="fas fa-times"></i>
-                        </div>
-                        <div class="flex items-center mb-2">
-                            <select class="field-select w-full p-2 mr-2 border rounded" onchange="checkDateField(this)">
-                                <option value="">컬럼 선택</option>
-                                <option value="certDate">인증일자</option>
-                                <option value="certNumber">인증번호</option>
-                                <option value="testNumber">시험번호</option>
-                                <option value="swCategory">SW분류</option>
-                                <option value="companyName">회사명</option>
-                                <option value="productName">제품명</option>
-                                <option value="productDesc">제품 개요</option>
-                                <option value="startEndDate">시작/종료 날짜</option>
-                                <option value="wd">WD</option>
-                            </select>
-                        </div>
-                        <div class="flex items-center">
-                            <div class="w-full relative">
-                                <input type="text" class="field-value w-full p-2 border rounded" placeholder="검색어 입력">
-                                <i class="date-icon fas fa-calendar absolute right-2 top-2 text-gray-500 hidden"></i>
-                            </div>
-                        </div>
-                        <div class="date-buttons justify-between mt-2 text-xs">
-                            <button class="btn-period px-2 py-1 rounded">3년</button>
-                            <button class="btn-period px-2 py-1 rounded">5년</button>
-                            <button class="btn-period px-2 py-1 rounded">7년</button>
-                            <button class="btn-period px-2 py-1 rounded">10년</button>
-                        </div>
-                    </div>
-                    
-                    <!-- 검색 조건 2 -->
-                    <div class="condition-row">
-                        <div class="delete-condition" onclick="deleteThisCondition(this)">
-                            <i class="fas fa-times"></i>
-                        </div>
-                        <div class="flex items-center mb-2">
-                            <select class="field-select w-full p-2 mr-2 border rounded" onchange="checkDateField(this)">
-                                <option value="">컬럼 선택</option>
-                                <option value="certDate">인증일자</option>
-                                <option value="certNumber">인증번호</option>
-                                <option value="testNumber">시험번호</option>
-                                <option value="swCategory">SW분류</option>
-                                <option value="companyName">회사명</option>
-                                <option value="productName">제품명</option>
-                                <option value="productDesc">제품 개요</option>
-                                <option value="startEndDate">시작/종료 날짜</option>
-                                <option value="wd">WD</option>
-                            </select>
-                        </div>
-                        <div class="flex items-center">
-                            <div class="w-full relative">
-                                <input type="text" class="field-value w-full p-2 border rounded" placeholder="검색어 입력">
-                                <i class="date-icon fas fa-calendar absolute right-2 top-2 text-gray-500 hidden"></i>
-                            </div>
-                        </div>
-                        <div class="date-buttons justify-between mt-2 text-xs">
-                            <button class="btn-period px-2 py-1 rounded">3년</button>
-                            <button class="btn-period px-2 py-1 rounded">5년</button>
-                            <button class="btn-period px-2 py-1 rounded">7년</button>
-                            <button class="btn-period px-2 py-1 rounded">10년</button>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="flex mt-4 justify-center">
-                    <button class="btn-add-condition p-2 rounded w-full" onclick="addCondition()">
-                        <i class="fas fa-plus mr-1"></i> 조건 추가
-                    </button>
-                </div>
-                
-                <div class="mt-8">
-                    <button class="btn-search w-full p-3 rounded font-bold" onclick="searchData()">
-                        <i class="fas fa-search mr-2"></i> 검색
-                    </button>
-                </div>
-            </div>
-            
-            <!-- 우측 검색 결과 패널 -->
-            <div class="result-panel bg-white p-4 rounded shadow">
-                <h2 class="text-lg font-bold mb-4 text-blue-900">검색 결과</h2>
-                
-                <div class="mb-2 text-right table-info">
-                    총 <span id="total-count">100</span>건 | <span id="page-info">1-20</span> 표시
-                </div>
-                
-                <div class="table-container border rounded">
-                    <table class="w-full border-collapse" id="result-table">
-                        <thead>
-                            <tr>
-                                <th class="p-3 border sticky top-0">인증일자</th>
-                                <th class="p-3 border sticky top-0">인증번호</th>
-                                <th class="p-3 border sticky top-0">시험번호</th>
-                                <th class="p-3 border sticky top-0">SW분류</th>
-                                <th class="p-3 border sticky top-0">회사명</th>
-                                <th class="p-3 border sticky top-0">제품명</th>
-                                <th class="p-3 border sticky top-0">시작일자</th>
-                                <th class="p-3 border sticky top-0">종료일자</th>
-                                <th class="p-3 border sticky top-0">WD</th>
-                            </tr>
-                        </thead>
-                        <tbody id="result-body">
-                            <!-- 데이터는 JavaScript로 동적 생성됩니다 -->
-                        </tbody>
-                    </table>
-                </div>
-                
-                <div class="mt-4 flex justify-between items-center">
-                    <div class="text-sm text-gray-600">
-                        페이지당 행: <strong>20</strong>
-                    </div>
-                    <nav class="flex items-center" id="pagination">
-                        <a href="#" class="px-3 py-1 rounded-l border border-blue-900 text-blue-900 hover:bg-blue-900 hover:text-white pagination-button" data-action="first">
-                            <i class="fas fa-angle-double-left"></i>
-                        </a>
-                        <a href="#" class="px-3 py-1 border-t border-b border-blue-900 text-blue-900 hover:bg-blue-900 hover:text-white pagination-button" data-action="prev">
-                            <i class="fas fa-angle-left"></i>
-                        </a>
-                        <div id="page-numbers" class="flex">
-                            <!-- 페이지 번호는 JavaScript로 동적 생성됩니다 -->
-                        </div>
-                        <a href="#" class="px-3 py-1 border-t border-b border-blue-900 text-blue-900 hover:bg-blue-900 hover:text-white pagination-button" data-action="next">
-                            <i class="fas fa-angle-right"></i>
-                        </a>
-                        <a href="#" class="px-3 py-1 rounded-r border border-blue-900 text-blue-900 hover:bg-blue-900 hover:text-white pagination-button" data-action="last">
-                            <i class="fas fa-angle-double-right"></i>
-                        </a>
-                    </nav>
-                </div>
-            </div>
-        </div>
-    </div>
+<div class="app-container">
+<header class="header">
+<div class="header-title">유사 제품 분석 시스템</div>
+</header>
+<div class="main-content">
+<!-- 좌측 파일 업로드 패널 (떠있는 느낌으로 수정) -->
+<div class="sidebar-container">
+<div class="search-title">
+<i class="fas fa-search search-icon"></i> 검색 조건
+</div>
+<div class="sidebar">
+<div class="file-upload-container">
+<div class="tab-container">
+<div class="tab active" id="tab-auto">자동 입력</div>
+<div class="tab" id="tab-manual">수동 입력</div>
+</div>
+<!-- 자동 입력 탭 내용 -->
+<div class="content-container" id="content-auto">
+<div class="dropdown">
+<select>
+<option value="manual">매뉴얼</option>
+<option value="functionList">기능리스트</option>
+</select>
+</div>
+<input class="file-input" id="fileInput" type="file"/>
+<div class="drop-area" id="dropArea">
+<i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
+<p>파일을 이곳에 드래그하거나</p>
+<p><span class="text-blue-500 font-medium">클릭</span>하여 업로드하세요</p>
+<p class="upload-limit-message">* 최대 1개 파일만 업로드할 수 있습니다</p>
+</div>
+<div class="file-list hidden" id="fileList">
+<div class="file-item">
+<div class="file-name" id="fileName"></div>
+<div class="remove-file" id="removeFile">
+<i class="fas fa-times"></i>
+</div>
+</div>
+</div>
+<div class="content-spacer"></div>
+<button class="action-button">유사 제품 조회</button>
+</div>
+<!-- 수동 입력 탭 내용 -->
+<div class="content-container hidden" id="content-manual">
+<h3 class="text-base font-medium mb-2">제품 설명</h3>
+<textarea class="text-area" id="manualInput" placeholder="제품에 대한 설명을 입력하세요..."></textarea>
+<button class="action-button">유사 제품 조회</button>
+</div>
+</div>
+</div>
+</div>
+<!-- 우측 콘텐츠 영역 -->
+<main class="content-area">
+<div class="breadcrumb">
+<span class="breadcrumb-item">홈</span>
+<span class="breadcrumb-separator"><i class="fas fa-chevron-right"></i></span>
+<span class="breadcrumb-item">유사 제품 분석</span>
+</div>
+<div class="content-card">
+<div class="results-container">
+<div class="results-header">
+<div class="results-title">유사 제품 분석 결과</div>
+<div class="results-count">3건</div>
+</div>
+<!-- 입력 요약 영역 -->
+<div class="input-summary" id="inputSummary">
+<div class="summary-title">분석 대상</div>
+<div class="summary-content" id="summaryContent">스마트폰용 블루투스 이어폰 - 노이즈 캔슬링 기능, 방수 기능, 터치 컨트롤 지원, 최대 8시간 재생</div>
+</div>
+<!-- 분석 결과 목록 -->
+<div class="results-content" id="resultsContent">
+<!-- 유사 제품 예시 -->
+<div class="similar-product">
+<div class="product-header">
+<div class="product-title">무선 블루투스 이어폰 X-500</div>
+<div class="similarity-score">유사도 95%</div>
+</div>
+<div class="product-description">
+액티브 노이즈 캔슬링 기능과 IPX7 방수 등급을 갖춘 프리미엄 무선 이어폰입니다. 터치 컨트롤과 최대 9시간 재생 시간을 지원합니다.
+</div>
+<div class="product-tags">
+<span class="product-tag">무선이어폰</span>
+<span class="product-tag">노이즈캔슬링</span>
+<span class="product-tag">방수</span>
+<span class="product-tag">터치컨트롤</span>
+</div>
+</div>
+<div class="similar-product">
+<div class="product-header">
+<div class="product-title">프로 사운드 이어버드 TWS-200</div>
+<div class="similarity-score">유사도 87%</div>
+</div>
+<div class="product-description">
+고품질 사운드와 노이즈 캔슬링 기술이 적용된 완전 무선 이어폰입니다. 생활 방수와 터치 컨트롤을 지원하며 최대 7시간 연속 재생이 가능합니다.
+</div>
+<div class="product-tags">
+<span class="product-tag">TWS</span>
+<span class="product-tag">노이즈캔슬링</span>
+<span class="product-tag">생활방수</span>
+<span class="product-tag">터치패널</span>
+</div>
+</div>
+<div class="similar-product">
+<div class="product-header">
+<div class="product-title">스포츠 블루투스 이어폰 R-300</div>
+<div class="similarity-score">유사도 82%</div>
+</div>
+<div class="product-description">
+스포츠 활동에 최적화된 인체공학적 디자인의 블루투스 이어폰입니다. IPX5 방수 등급과 물리 버튼 컨트롤, 최대 8시간 재생을 지원합니다.
+</div>
+<div class="product-tags">
+<span class="product-tag">스포츠이어폰</span>
+<span class="product-tag">블루투스5.0</span>
+<span class="product-tag">방수</span>
+<span class="product-tag">물리버튼</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</main>
+</div>
+</div>
+<script>
+  // 탭 전환 기능
+  const tabAuto = document.getElementById('tab-auto');
+  const tabManual = document.getElementById('tab-manual');
+  const contentAuto = document.getElementById('content-auto');
+  const contentManual = document.getElementById('content-manual');
+  const inputSummary = document.getElementById('inputSummary');
+  const summaryContent = document.getElementById('summaryContent');
+  const resultsContent = document.getElementById('resultsContent');
+  const manualInput = document.getElementById('manualInput');
+  
+  tabAuto.addEventListener('click', () => {
+    tabAuto.classList.add('active');
+    tabManual.classList.remove('active');
+    contentAuto.classList.remove('hidden');
+    contentManual.classList.add('hidden');
+  });
+  
+  tabManual.addEventListener('click', () => {
+    tabManual.classList.add('active');
+    tabAuto.classList.remove('active');
+    contentManual.classList.remove('hidden');
+    contentAuto.classList.add('hidden');
+  });
+  
+  // 파일 업로드 기능
+  const dropArea = document.getElementById('dropArea');
+  const fileInput = document.getElementById('fileInput');
+  const fileList = document.getElementById('fileList');
+  const fileName = document.getElementById('fileName');
+  const removeFile = document.getElementById('removeFile');
+  
+  dropArea.addEventListener('click', () => {
+    fileInput.click();
+  });
+  
+  fileInput.addEventListener('change', (e) => {
+    if (e.target.files.length > 0) {
+      uploadFile(e.target.files[0]);
+    }
+  });
+  
+  dropArea.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropArea.classList.add('active');
+  });
+  
+  dropArea.addEventListener('dragleave', () => {
+    dropArea.classList.remove('active');
+  });
+  
+  dropArea.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropArea.classList.remove('active');
     
-    <script>
-        // 전역 변수 설정
-        const ROWS_PER_PAGE = 20;
-        let currentPage = 1;
-        let totalData = [];
-        let totalPages = 0;
-        
-        // 데이터 초기화 및 페이지 렌더링
-        document.addEventListener('DOMContentLoaded', function() {
-            generateDummyData();
-            renderPage(1);
-            setupPagination();
-        });
-
-        // 더미 데이터 생성
-        function generateDummyData() {
-            const swTypes = ['응용 소프트웨어', '시스템 소프트웨어', '데이터베이스', '보안 소프트웨어', '임베디드 소프트웨어', '웹 애플리케이션', '모바일 앱', '게임 소프트웨어', '클라우드 솔루션'];
-            const companies = ['(주)소프트솔루션', '(주)테크시스', '데이터코어(주)', '시큐어테크(주)', '(주)임베딩크', '클라우드웨어(주)', '스마트시스템(주)', '모바일테크(주)', '(주)넥스트소프트'];
-            const products = ['클라우드 매니저', '서버 모니터링 시스템', '분산 데이터베이스', '엔드포인트 보안 솔루션', 'IoT 디바이스 컨트롤러', '웹 서비스 플랫폼', '모바일 백엔드 시스템', '데이터 분석 도구', '스마트 팩토리 솔루션'];
-            
-            for (let i = 1; i <= 100; i++) {
-                const year = 2025 - Math.floor(Math.random() * 3);
-                const month = Math.floor(Math.random() * 12) + 1;
-                const day = Math.floor(Math.random() * 28) + 1;
-                
-                const certDate = `${year}-${month.toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
-                
-                const startYear = year - Math.floor(Math.random() * 2);
-                const startMonth = Math.floor(Math.random() * 12) + 1;
-                const startDay = Math.floor(Math.random() * 28) + 1;
-                
-                const startDate = `${startYear}-${startMonth.toString().padStart(2, '0')}-${startDay.toString().padStart(2, '0')}`;
-                const endDate = `${year}-${month.toString().padStart(2, '0')}-${Math.min(day + 15, 28).toString().padStart(2, '0')}`;
-                
-                totalData.push({
-                    certDate: certDate,
-                    certNumber: `CERT-${year}-${i.toString().padStart(3, '0')}`,
-                    testNumber: `TEST-${i.toString().padStart(3, '0')}`,
-                    swCategory: swTypes[Math.floor(Math.random() * swTypes.length)],
-                    companyName: companies[Math.floor(Math.random() * companies.length)],
-                    productName: `${products[Math.floor(Math.random() * products.length)]} v${Math.floor(Math.random() * 5) + 1}.${Math.floor(Math.random() * 10)}`,
-                    startDate: startDate,
-                    endDate: endDate,
-                    wd: `WD${i.toString().padStart(3, '0')}`
-                });
-            }
-            
-            totalPages = Math.ceil(totalData.length / ROWS_PER_PAGE);
-            document.getElementById('total-count').textContent = totalData.length;
+    if (e.dataTransfer.files.length > 0) {
+      uploadFile(e.dataTransfer.files[0]);
+    }
+  });
+  
+  removeFile.addEventListener('click', () => {
+    fileList.classList.add('hidden');
+    dropArea.classList.remove('hidden');
+    fileInput.value = '';
+  });
+  
+  function uploadFile(file) {
+    fileName.textContent = file.name;
+    fileList.classList.remove('hidden');
+    dropArea.classList.add('hidden');
+    
+    // 업로드된 파일 이름을 요약 영역에 표시
+    summaryContent.textContent = file.name;
+  }
+  
+  // 유사 제품 조회 버튼들 이벤트 처리
+  const actionButtons = document.querySelectorAll('.action-button');
+  actionButtons.forEach(button => {
+    button.addEventListener('click', () => {
+      // 탭 상태에 따라 다른 처리
+      if (contentManual.classList.contains('hidden')) {
+        // 자동 입력 탭이 활성화된 경우
+        // 파일 업로드 여부 확인
+        if (fileList.classList.contains('hidden')) {
+          alert('파일을 먼저 업로드해주세요.');
+          return;
         }
-        
-        // 페이지 렌더링
-        function renderPage(page) {
-            currentPage = page;
-            const start = (page - 1) * ROWS_PER_PAGE;
-            const end = Math.min(start + ROWS_PER_PAGE, totalData.length);
-            
-            const tableBody = document.getElementById('result-body');
-            tableBody.innerHTML = '';
-            
-            for (let i = start; i < end; i++) {
-                const row = document.createElement('tr');
-                const item = totalData[i];
-                
-                row.innerHTML = `
-                    <td class="p-3 border">${item.certDate}</td>
-                    <td class="p-3 border">${item.certNumber}</td>
-                    <td class="p-3 border">${item.testNumber}</td>
-                    <td class="p-3 border">${item.swCategory}</td>
-                    <td class="p-3 border">${item.companyName}</td>
-                    <td class="p-3 border">${item.productName}</td>
-                    <td class="p-3 border">${item.startDate}</td>
-                    <td class="p-3 border">${item.endDate}</td>
-                    <td class="p-3 border">${item.wd}</td>
-                `;
-                
-                tableBody.appendChild(row);
-            }
-            
-            // 페이지 정보 업데이트
-            document.getElementById('page-info').textContent = `${start + 1}-${end}`;
-            
-            // 페이지 버튼 활성화 상태 업데이트
-            updatePaginationButtons();
+      } else {
+        // 수동 입력 탭이 활성화된 경우
+        if (!manualInput.value.trim()) {
+          alert('제품 설명을 입력해주세요.');
+          return;
         }
-        
-        // 페이지네이션 설정
-        function setupPagination() {
-            const pageNumbers = document.getElementById('page-numbers');
-            pageNumbers.innerHTML = '';
-            
-            // 페이지 번호 생성
-            updatePageNumbers();
-            
-            // 페이지네이션 버튼 이벤트 설정
-            document.querySelectorAll('.pagination-button[data-action]').forEach(button => {
-                button.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    const action = this.getAttribute('data-action');
-                    
-                    switch (action) {
-                        case 'first':
-                            renderPage(1);
-                            break;
-                        case 'prev':
-                            if (currentPage > 1) renderPage(currentPage - 1);
-                            break;
-                        case 'next':
-                            if (currentPage < totalPages) renderPage(currentPage + 1);
-                            break;
-                        case 'last':
-                            renderPage(totalPages);
-                            break;
-                    }
-                    
-                    updatePageNumbers();
-                });
-            });
-        }
-        
-        // 페이지 번호 업데이트
-        function updatePageNumbers() {
-            const pageNumbers = document.getElementById('page-numbers');
-            pageNumbers.innerHTML = '';
-            
-            // 표시할 페이지 범위 계산
-            let startPage = Math.max(1, currentPage - 2);
-            let endPage = Math.min(totalPages, startPage + 4);
-            
-            if (endPage - startPage < 4) {
-                startPage = Math.max(1, endPage - 4);
-            }
-            
-            for (let i = startPage; i <= endPage; i++) {
-                const pageButton = document.createElement('a');
-                pageButton.href = '#';
-                pageButton.className = `px-3 py-1 border-t border-b border-blue-900 text-blue-900 hover:bg-blue-900 hover:text-white pagination-button ${i === currentPage ? 'active' : ''}`;
-                pageButton.textContent = i;
-                
-                pageButton.addEventListener('click', function(e) {
-                    e.preventDefault();
-                    renderPage(i);
-                    updatePageNumbers();
-                });
-                
-                pageNumbers.appendChild(pageButton);
-            }
-        }
-        
-        // 페이지네이션 버튼 상태 업데이트
-        function updatePaginationButtons() {
-            const prevButtons = document.querySelectorAll('.pagination-button[data-action="first"], .pagination-button[data-action="prev"]');
-            const nextButtons = document.querySelectorAll('.pagination-button[data-action="last"], .pagination-button[data-action="next"]');
-            
-            prevButtons.forEach(button => {
-                button.classList.toggle('opacity-50', currentPage === 1);
-            });
-            
-            nextButtons.forEach(button => {
-                button.classList.toggle('opacity-50', currentPage === totalPages);
-            });
-        }
-        
-        // 검색 기능
-        function searchData() {
-            // 실제 검색 기능 구현은 백엔드와 연동 필요
-            // 여기서는 더미 데이터를 다시 생성하고 첫 페이지로 이동하는 것으로 시뮬레이션
-            totalData = [];
-            generateDummyData();
-            renderPage(1);
-            setupPagination();
-            alert('검색이 완료되었습니다.');
-        }
-        
-        // 날짜 필드 확인 및 날짜 UI 표시
-        function checkDateField(select) {
-            const row = select.closest('.condition-row');
-            const dateIcon = row.querySelector('.date-icon');
-            const dateButtons = row.querySelector('.date-buttons');
-            const input = row.querySelector('.field-value');
-            
-            if (select.value === 'certDate' || select.value === 'startEndDate') {
-                dateIcon.classList.remove('hidden');
-                row.classList.add('date-condition');
-                input.type = 'date';
-            } else {
-                dateIcon.classList.add('hidden');
-                row.classList.remove('date-condition');
-                input.type = 'text';
-            }
-        }
-        
-        // 개별 조건 삭제
-        function deleteThisCondition(button) {
-            const conditions = document.getElementById('search-conditions');
-            const conditionRow = button.closest('.condition-row');
-            
-            // 최소 1개의 조건은 유지
-            if (conditions.children.length > 1) {
-                conditions.removeChild(conditionRow);
-            } else {
-                alert('최소 1개의 검색 조건이 필요합니다.');
-            }
-        }
-        
-        // 조건 추가
-        function addCondition() {
-            const conditions = document.getElementById('search-conditions');
-            const newCondition = document.createElement('div');
-            newCondition.className = 'condition-row';
-            newCondition.innerHTML = `
-                <div class="delete-condition" onclick="deleteThisCondition(this)">
-                    <i class="fas fa-times"></i>
-                </div>
-                <div class="flex items-center mb-2">
-                    <select class="field-select w-full p-2 mr-2 border rounded" onchange="checkDateField(this)">
-                        <option value="">컬럼 선택</option>
-                        <option value="certDate">인증일자</option>
-                        <option value="certNumber">인증번호</option>
-                        <option value="testNumber">시험번호</option>
-                        <option value="swCategory">SW분류</option>
-                        <option value="companyName">회사명</option>
-                        <option value="productName">제품명</option>
-                        <option value="productDesc">제품 개요</option>
-                        <option value="startEndDate">시작/종료 날짜</option>
-                        <option value="wd">WD</option>
-                    </select>
-                </div>
-                <div class="flex items-center">
-                    <div class="w-full relative">
-                        <input type="text" class="field-value w-full p-2 border rounded" placeholder="검색어 입력">
-                        <i class="date-icon fas fa-calendar absolute right-2 top-2 text-gray-500 hidden"></i>
-                    </div>
-                </div>
-                <div class="date-buttons justify-between mt-2 text-xs">
-                    <button class="btn-period px-2 py-1 rounded">3년</button>
-                    <button class="btn-period px-2 py-1 rounded">5년</button>
-                    <button class="btn-period px-2 py-1 rounded">7년</button>
-                    <button class="btn-period px-2 py-1 rounded">10년</button>
-                </div>
-            `;
-            conditions.appendChild(newCondition);
-        }
-    </script>
+        // 수동 입력 내용을 요약 영역에 표시
+        summaryContent.textContent = manualInput.value.trim();
+      }
+      
+      // 결과 영역 표시 (예시)
+      // 실제로는 서버에 요청하여 결과를 받아와야 함
+      inputSummary.classList.remove('hidden');
+    });
+  });
+</script>
 </body>
 </html>
