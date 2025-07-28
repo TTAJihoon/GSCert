@@ -1,239 +1,136 @@
-<!DOCTYPE html>
+{% extends 'header.html' %}
+{% load static %}
+{% block title %}유사 시험 조회{% endblock %}
 
-<html lang="ko">
-    <head>
-        <meta charset="utf-8"/>
-        <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
-        <title>세련된 파일 업로드 인터페이스</title>
-        <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
-        <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
-    </head>
-    <body>
-        <div class="app-container">
-            <header class="header">
-                <div class="header-title">유사 제품 분석 시스템</div>
-            </header>
-            <div class="main-content">
-                <!-- 좌측 파일 업로드 패널 (떠있는 느낌으로 수정) -->
-                <div class="sidebar-container">
-                    <div class="search-title">
-                        <i class="fas fa-search search-icon"></i> 검색 조건
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
+<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}"/>
+<script src="{% static 'scripts/similarListener.js' %}" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="app-container">
+    <header class="header">
+        <div class="header-title">유사 제품 분석 시스템</div>
+    </header>
+    <div class="main-content">
+        <!-- 좌측 파일 업로드 패널 (떠있는 느낌으로 수정) -->
+        <div class="sidebar-container">
+            <div class="search-title">
+                <i class="fas fa-search search-icon"></i> 검색 조건
+            </div>
+            <div class="sidebar">
+                <div class="file-upload-container">
+                    <div class="tab-container">
+                        <div class="tab active" id="tab-auto">자동 입력</div>
+                        <div class="tab" id="tab-manual">수동 입력</div>
                     </div>
-                    <div class="sidebar">
-                        <div class="file-upload-container">
-                            <div class="tab-container">
-                                <div class="tab active" id="tab-auto">자동 입력</div>
-                                <div class="tab" id="tab-manual">수동 입력</div>
+                    <!-- 자동 입력 탭 내용 -->
+                    <div class="content-container" id="content-auto">
+                        <div class="dropdown">
+                            <select>
+                                <option value="manual">매뉴얼</option>
+                                <option value="functionList">기능리스트</option>
+                            </select>
+                        </div>
+                        <input class="file-input" id="fileInput" type="file"/>
+                        <div class="drop-area" id="dropArea">
+                            <i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
+                            <p>파일을 이곳에 드래그하거나</p>
+                            <p><span class="text-blue-500 font-medium">클릭</span>하여 업로드하세요</p>
+                            <p class="upload-limit-message">* 최대 1개 파일만 업로드할 수 있습니다</p>
+                        </div>
+                        <div class="file-list hidden" id="fileList">
+                            <div class="file-item">
+                                <div class="file-name" id="fileName"></div>
+                                <div class="remove-file" id="removeFile">
+                                    <i class="fas fa-times"></i>
+                                </div>
                             </div>
-                            <!-- 자동 입력 탭 내용 -->
-                            <div class="content-container" id="content-auto">
-                                <div class="dropdown">
-                                    <select>
-                                        <option value="manual">매뉴얼</option>
-                                        <option value="functionList">기능리스트</option>
-                                    </select>
-                                </div>
-                                <input class="file-input" id="fileInput" type="file"/>
-                                <div class="drop-area" id="dropArea">
-                                    <i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
-                                    <p>파일을 이곳에 드래그하거나</p>
-                                    <p><span class="text-blue-500 font-medium">클릭</span>하여 업로드하세요</p>
-                                    <p class="upload-limit-message">* 최대 1개 파일만 업로드할 수 있습니다</p>
-                                </div>
-                                <div class="file-list hidden" id="fileList">
-                                    <div class="file-item">
-                                        <div class="file-name" id="fileName"></div>
-                                        <div class="remove-file" id="removeFile">
-                                            <i class="fas fa-times"></i>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="content-spacer"></div>
-                                <button class="action-button">유사 제품 조회</button>
+                        </div>
+                        <div class="content-spacer"></div>
+                        <button class="action-button">유사 제품 조회</button>
+                    </div>
+                    <!-- 수동 입력 탭 내용 -->
+                    <div class="content-container hidden" id="content-manual">
+                        <h3 class="text-base font-medium mb-2">제품 설명</h3>
+                        <textarea class="text-area" id="manualInput" placeholder="제품에 대한 설명을 입력하세요..."></textarea>
+                        <button class="action-button">유사 제품 조회</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- 우측 콘텐츠 영역 -->
+        <main class="content-area">
+            <div class="breadcrumb">
+                <span class="breadcrumb-item">홈</span>
+                <span class="breadcrumb-separator"><i class="fas fa-chevron-right"></i></span>
+                <span class="breadcrumb-item">유사 제품 분석</span>
+            </div>
+            <div class="content-card">
+                <div class="results-container">
+                    <div class="results-header">
+                        <div class="results-title">유사 제품 분석 결과</div>
+                        <div class="results-count">3건</div>
+                    </div>
+                    <!-- 입력 요약 영역 -->
+                    <div class="input-summary" id="inputSummary">
+                        <div class="summary-title">분석 대상</div>
+                        <div class="summary-content" id="summaryContent">스마트폰용 블루투스 이어폰 - 노이즈 캔슬링 기능, 방수 기능, 터치 컨트롤 지원, 최대 8시간 재생</div>
+                    </div>
+                    <!-- 분석 결과 목록 -->
+                    <div class="results-content" id="resultsContent">
+                        <!-- 유사 제품 예시 -->
+                        <div class="similar-product">
+                            <div class="product-header">
+                                <div class="product-title">무선 블루투스 이어폰 X-500</div>
+                                <div class="similarity-score">유사도 95%</div>
                             </div>
-                            <!-- 수동 입력 탭 내용 -->
-                            <div class="content-container hidden" id="content-manual">
-                                <h3 class="text-base font-medium mb-2">제품 설명</h3>
-                                <textarea class="text-area" id="manualInput" placeholder="제품에 대한 설명을 입력하세요..."></textarea>
-                                <button class="action-button">유사 제품 조회</button>
+                            <div class="product-description">
+                                액티브 노이즈 캔슬링 기능과 IPX7 방수 등급을 갖춘 프리미엄 무선 이어폰입니다. 터치 컨트롤과 최대 9시간 재생 시간을 지원합니다.
+                            </div>
+                            <div class="product-tags">
+                                <span class="product-tag">무선이어폰</span>
+                                <span class="product-tag">노이즈캔슬링</span>
+                                <span class="product-tag">방수</span>
+                                <span class="product-tag">터치컨트롤</span>
+                            </div>
+                        </div>
+                        <div class="similar-product">
+                            <div class="product-header">
+                                <div class="product-title">프로 사운드 이어버드 TWS-200</div>
+                                <div class="similarity-score">유사도 87%</div>
+                            </div>
+                            <div class="product-description">
+                                고품질 사운드와 노이즈 캔슬링 기술이 적용된 완전 무선 이어폰입니다. 생활 방수와 터치 컨트롤을 지원하며 최대 7시간 연속 재생이 가능합니다.
+                            </div>
+                            <div class="product-tags">
+                                <span class="product-tag">TWS</span>
+                                <span class="product-tag">노이즈캔슬링</span>
+                                <span class="product-tag">생활방수</span>
+                                <span class="product-tag">터치패널</span>
+                            </div>
+                        </div>
+                        <div class="similar-product">
+                            <div class="product-header">
+                                <div class="product-title">스포츠 블루투스 이어폰 R-300</div>
+                                <div class="similarity-score">유사도 82%</div>
+                            </div>
+                            <div class="product-description">
+                                스포츠 활동에 최적화된 인체공학적 디자인의 블루투스 이어폰입니다. IPX5 방수 등급과 물리 버튼 컨트롤, 최대 8시간 재생을 지원합니다.
+                            </div>
+                            <div class="product-tags">
+                                <span class="product-tag">스포츠이어폰</span>
+                                <span class="product-tag">블루투스5.0</span>
+                                <span class="product-tag">방수</span>
+                                <span class="product-tag">물리버튼</span>
                             </div>
                         </div>
                     </div>
                 </div>
-                <!-- 우측 콘텐츠 영역 -->
-                <main class="content-area">
-                    <div class="breadcrumb">
-                        <span class="breadcrumb-item">홈</span>
-                        <span class="breadcrumb-separator"><i class="fas fa-chevron-right"></i></span>
-                        <span class="breadcrumb-item">유사 제품 분석</span>
-                    </div>
-                    <div class="content-card">
-                        <div class="results-container">
-                            <div class="results-header">
-                                <div class="results-title">유사 제품 분석 결과</div>
-                                <div class="results-count">3건</div>
-                            </div>
-                            <!-- 입력 요약 영역 -->
-                            <div class="input-summary" id="inputSummary">
-                                <div class="summary-title">분석 대상</div>
-                                <div class="summary-content" id="summaryContent">스마트폰용 블루투스 이어폰 - 노이즈 캔슬링 기능, 방수 기능, 터치 컨트롤 지원, 최대 8시간 재생</div>
-                            </div>
-                            <!-- 분석 결과 목록 -->
-                            <div class="results-content" id="resultsContent">
-                                <!-- 유사 제품 예시 -->
-                                <div class="similar-product">
-                                    <div class="product-header">
-                                        <div class="product-title">무선 블루투스 이어폰 X-500</div>
-                                        <div class="similarity-score">유사도 95%</div>
-                                    </div>
-                                    <div class="product-description">
-                                        액티브 노이즈 캔슬링 기능과 IPX7 방수 등급을 갖춘 프리미엄 무선 이어폰입니다. 터치 컨트롤과 최대 9시간 재생 시간을 지원합니다.
-                                    </div>
-                                    <div class="product-tags">
-                                        <span class="product-tag">무선이어폰</span>
-                                        <span class="product-tag">노이즈캔슬링</span>
-                                        <span class="product-tag">방수</span>
-                                        <span class="product-tag">터치컨트롤</span>
-                                    </div>
-                                </div>
-                                <div class="similar-product">
-                                    <div class="product-header">
-                                        <div class="product-title">프로 사운드 이어버드 TWS-200</div>
-                                        <div class="similarity-score">유사도 87%</div>
-                                    </div>
-                                    <div class="product-description">
-                                        고품질 사운드와 노이즈 캔슬링 기술이 적용된 완전 무선 이어폰입니다. 생활 방수와 터치 컨트롤을 지원하며 최대 7시간 연속 재생이 가능합니다.
-                                    </div>
-                                    <div class="product-tags">
-                                        <span class="product-tag">TWS</span>
-                                        <span class="product-tag">노이즈캔슬링</span>
-                                        <span class="product-tag">생활방수</span>
-                                        <span class="product-tag">터치패널</span>
-                                    </div>
-                                </div>
-                                <div class="similar-product">
-                                    <div class="product-header">
-                                        <div class="product-title">스포츠 블루투스 이어폰 R-300</div>
-                                        <div class="similarity-score">유사도 82%</div>
-                                    </div>
-                                    <div class="product-description">
-                                        스포츠 활동에 최적화된 인체공학적 디자인의 블루투스 이어폰입니다. IPX5 방수 등급과 물리 버튼 컨트롤, 최대 8시간 재생을 지원합니다.
-                                    </div>
-                                    <div class="product-tags">
-                                        <span class="product-tag">스포츠이어폰</span>
-                                        <span class="product-tag">블루투스5.0</span>
-                                        <span class="product-tag">방수</span>
-                                        <span class="product-tag">물리버튼</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </main>
             </div>
-        </div>
-        <script>
-            // 탭 전환 기능
-            const tabAuto = document.getElementById('tab-auto');
-            const tabManual = document.getElementById('tab-manual');
-            const contentAuto = document.getElementById('content-auto');
-            const contentManual = document.getElementById('content-manual');
-            const inputSummary = document.getElementById('inputSummary');
-            const summaryContent = document.getElementById('summaryContent');
-            const resultsContent = document.getElementById('resultsContent');
-            const manualInput = document.getElementById('manualInput');
-            
-            tabAuto.addEventListener('click', () => {
-                tabAuto.classList.add('active');
-                tabManual.classList.remove('active');
-                contentAuto.classList.remove('hidden');
-                contentManual.classList.add('hidden');
-            });
-            
-            tabManual.addEventListener('click', () => {
-                tabManual.classList.add('active');
-                tabAuto.classList.remove('active');
-                contentManual.classList.remove('hidden');
-                contentAuto.classList.add('hidden');
-            });
-            
-            // 파일 업로드 기능
-            const dropArea = document.getElementById('dropArea');
-            const fileInput = document.getElementById('fileInput');
-            const fileList = document.getElementById('fileList');
-            const fileName = document.getElementById('fileName');
-            const removeFile = document.getElementById('removeFile');
-            
-            dropArea.addEventListener('click', () => {
-                fileInput.click();
-            });
-            
-            fileInput.addEventListener('change', (e) => {
-                if (e.target.files.length > 0) {
-                    uploadFile(e.target.files[0]);
-                }
-            });
-            
-            dropArea.addEventListener('dragover', (e) => {
-                e.preventDefault();
-                dropArea.classList.add('active');
-            });
-            
-            dropArea.addEventListener('dragleave', () => {
-                dropArea.classList.remove('active');
-            });
-            
-            dropArea.addEventListener('drop', (e) => {
-                e.preventDefault();
-                dropArea.classList.remove('active');
-                
-                if (e.dataTransfer.files.length > 0) {
-                    uploadFile(e.dataTransfer.files[0]);
-                }
-            });
-            
-            removeFile.addEventListener('click', () => {
-                fileList.classList.add('hidden');
-                dropArea.classList.remove('hidden');
-                fileInput.value = '';
-            });
-            
-            function uploadFile(file) {
-                fileName.textContent = file.name;
-                fileList.classList.remove('hidden');
-                dropArea.classList.add('hidden');
-                
-                // 업로드된 파일 이름을 요약 영역에 표시
-                summaryContent.textContent = file.name;
-            }
-            
-            // 유사 제품 조회 버튼들 이벤트 처리
-            const actionButtons = document.querySelectorAll('.action-button');
-            actionButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    // 탭 상태에 따라 다른 처리
-                    if (contentManual.classList.contains('hidden')) {
-                        // 자동 입력 탭이 활성화된 경우
-                        // 파일 업로드 여부 확인
-                        if (fileList.classList.contains('hidden')) {
-                            alert('파일을 먼저 업로드해주세요.');
-                            return;
-                        }
-                    } else {
-                        // 수동 입력 탭이 활성화된 경우
-                        if (!manualInput.value.trim()) {
-                            alert('제품 설명을 입력해주세요.');
-                            return;
-                        }
-                        // 수동 입력 내용을 요약 영역에 표시
-                        summaryContent.textContent = manualInput.value.trim();
-                    }
-                    
-                    // 결과 영역 표시 (예시)
-                    // 실제로는 서버에 요청하여 결과를 받아와야 함
-                    inputSummary.classList.remove('hidden');
-                });
-            });
-        </script>
-    </body>
-</html>
+        </main>
+    </div>
+</div>
+{% endblock %}
