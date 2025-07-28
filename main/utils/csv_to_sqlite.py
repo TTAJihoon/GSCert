@@ -27,14 +27,18 @@ def parse_korean_date_range(date_str):
     # 날짜 형식을 표준화
     parsed_dates = []
     for date in dates:
+        date_cleaned = date.strip()
+        parsed = False
         for fmt in ["%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%Y년 %m월 %d일"]:
             try:
-                parsed_date = datetime.strptime(date, fmt)
+                parsed_date = datetime.strptime(date_cleaned, fmt)
                 parsed_dates.append(parsed_date)
+                parsed = True
                 break
-            except:
-                print(date)
-                continue
+            except Exception as e:
+                print(f"[날짜 변환 오류] 날짜: '{date_cleaned}', 포맷: '{fmt}', 에러 메시지: {e}")
+        if not parsed:
+            print(f"[파싱 실패] 처리하지 못한 날짜 형식: '{date_cleaned}'")
 
     if not parsed_dates:
         return None, None
