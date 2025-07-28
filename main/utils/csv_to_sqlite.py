@@ -29,7 +29,7 @@ def parse_korean_date_range(date_str):
     for date in dates:
         date_cleaned = date.strip()
         parsed = False
-        for fmt in ["%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%Y년 %m월 %d일"]:
+        for fmt in ["%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%Y년 %m월 %d일", "%Y년%m월%d일"]:
             try:
                 parsed_date = datetime.strptime(date_cleaned, fmt)
                 parsed_dates.append(parsed_date)
