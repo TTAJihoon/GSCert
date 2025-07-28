@@ -22,7 +22,7 @@ def parse_korean_date_range(date_str):
     # 전체에서 날짜만 추출
     dates = []
     for pattern in date_patterns:
-        dates.extend(re.findall(pattern, date_str))
+        dates.extend(re.findall(pattern, date_str.replace('~', ' ').replace('\n', ' ')))
 
     cleaned_dates = []
     for date in dates:
