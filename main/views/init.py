@@ -12,7 +12,10 @@ def index(request):
     return render(request, 'index.html')
 
 def history(request):
-    return render(request, 'history.html')
+    return render(request, 'testing/history.html')
+
+def similar(request):
+    return render(request, 'testing/similar.html')
     
 def security(request):
     return render(request, 'security.html')
