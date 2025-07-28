@@ -8,44 +8,51 @@ def parse_korean_date_range(date_str):
     if pd.isna(date_str):
         return None, None
 
-    # 모든 날짜 패턴(yyyy.mm.dd, yyyy-mm-dd 등)을 찾아 리스트로 저장
+    # # 두 자리 연도 보정 (25.02.03 형태 처리)
+    def fix_two_digit_year(date):
+        return re.sub(r'^(\d{2})\.', r'20\1.', date)
+
+    # 날짜 패턴 추출 (모든 가능성 포함)
     date_patterns = [
-        r"\d{4}-\d{1,2}-\d{1,2}",
-        r"\d{4}\.\d{1,2}\.\d{1,2}",
-        r"\d{4}/\d{1,2}/\d{1,2}",
-        r"\d{4}년\s*\d{1,2}월\s*\d{1,2}일",
+        r'\d{4}\.\s?\d{1,2}\.\s?\d{1,2}\.?',
+        r'\d{2}\.\d{1,2}\.\d{1,2}\.?',
+        r'\d{4}년\s?\d{1,2}월\s?\d{1,2}일',
     ]
-    
+
+    # 전체에서 날짜만 추출
     dates = []
     for pattern in date_patterns:
         dates.extend(re.findall(pattern, date_str))
 
-    if not dates:
-        return None, None
-
-    # 날짜 형식을 표준화
-    parsed_dates = []
+    cleaned_dates = []
     for date in dates:
-        parsed_successfully = False
-        for fmt in ["%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%Y년 %m월 %d일"]:
+        date = fix_two_digit_year(date)  # 두 자리 연도 보정
+        date = re.sub(r'[년월일]', '.', date)
+        date = re.sub(r'\s+', '', date)
+        date = date.strip('.').strip()
+        cleaned_dates.append(date)
+
+    parsed_dates = []
+    for date in cleaned_dates:
+        parsed = False
+        for fmt in ["%Y.%m.%d"]:
             try:
                 parsed_date = datetime.strptime(date, fmt)
                 parsed_dates.append(parsed_date)
-                parsed_successfully = True
+                parsed = True
                 break
-            except ValueError as e:
+            except:
                 continue
-        if not parsed_successfully:
-            print(f"[날짜 변환 실패] 날짜: '{date}', 모든 포맷에 일치하지 않음")
+        if not parsed:
+            print(f"[날짜 변환 실패] 날짜: '{date}'")
 
     if not parsed_dates:
         return None, None
 
-    # 가장 빠른 날짜와 가장 늦은 날짜 선택
     start_date = min(parsed_dates).strftime('%Y-%m-%d')
     end_date = max(parsed_dates).strftime('%Y-%m-%d')
 
-    return start_date, end_date
+    return start_date, end_datee
 
 def convert_csv_to_sqlite(csv_path, db_path):
     df = pd.read_csv(csv_path)
