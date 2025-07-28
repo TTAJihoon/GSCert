@@ -54,13 +54,13 @@ def convert_csv_to_sqlite(csv_path, db_path):
 
     # 컬럼명 정리: 공백 제거, 특수문자 변경
     df.columns = [
-        col.strip().replace(" ", "_").replace("/", "_").replace("\n", "_")
+        col.strip().replace(" ", "").replace("/", "").replace("\n", "")
         for col in df.columns
     ]
     print(df.columns.tolist())
 
     # 날짜 처리 및 새 컬럼 생성
-    df[['시작일자', '종료일자']] = df['시작날짜/_종료날짜'].apply(
+    df[['시작일자', '종료일자']] = df['시작날짜종료날짜'].apply(
         lambda x: pd.Series(parse_korean_date_range(str(x)))
     )
 
