@@ -22,45 +22,59 @@
                 </span>
             </div>        
             <div class="sidebar">
-                <form id=queryForm method="post" action="{% url 'similar' %}">
-                <div class="file-upload-container">
-                    <div class="tab-container">
-                        <div class="tab active" id="tab-auto">자동 입력</div>
-                        <div class="tab" id="tab-manual">수동 입력</div>
+                
+<form id="queryForm" method="post" enctype="multipart/form-data" action="{% url 'similar' %}">
+    {% csrf_token %}
+    <div class="file-upload-container">
+        <div class="tab-container">
+            <div class="tab active" id="tab-auto">자동 입력</div>
+            <div class="tab" id="tab-manual">수동 입력</div>
+        </div>
+
+        <!-- 자동 입력 탭 내용 -->
+        <div class="content-container" id="content-auto">
+            <div class="dropdown">
+                <select name="fileType"> <!-- name 속성 추가 -->
+                    <option value="manual">매뉴얼</option>
+                    <option value="functionList">기능리스트</option>
+                </select>
+            </div>
+
+            <!-- 파일 업로드에 name 속성 추가 -->
+            <input class="file-input" id="fileInput" type="file" name="file"/>
+
+            <div class="drop-area" id="dropArea">
+                <i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
+                <p>파일을 이곳에 드래그하거나</p>
+                <p><span class="text-blue-500 font-medium">클릭</span>하여 업로드하세요</p>
+                <p class="upload-limit-message">* 최대 1개 파일만 업로드할 수 있습니다</p>
+            </div>
+
+            <div class="file-list hidden" id="fileList">
+                <div class="file-item">
+                    <div class="file-name" id="fileName"></div>
+                    <div class="remove-file" id="removeFile">
+                        <i class="fas fa-times"></i>
                     </div>
-                    <!-- 자동 입력 탭 내용 -->
-                    <div class="content-container" id="content-auto">
-                        <div class="dropdown">
-                            <select>
-                                <option value="manual">매뉴얼</option>
-                                <option value="functionList">기능리스트</option>
-                            </select>
-                        </div>
-                        <input class="file-input" id="fileInput" type="file"/>
-                        <div class="drop-area" id="dropArea">
-                            <i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
-                            <p>파일을 이곳에 드래그하거나</p>
-                            <p><span class="text-blue-500 font-medium">클릭</span>하여 업로드하세요</p>
-                            <p class="upload-limit-message">* 최대 1개 파일만 업로드할 수 있습니다</p>
-                        </div>
-                        <div class="file-list hidden" id="fileList">
-                            <div class="file-item">
-                                <div class="file-name" id="fileName"></div>
-                                <div class="remove-file" id="removeFile">
-                                    <i class="fas fa-times"></i>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="content-spacer"></div>
-                        <button class="action-button" type="submit">유사 제품 조회</button>
-                    </div>
-                    <!-- 수동 입력 탭 내용 -->
-                    <div class="content-container hidden" id="content-manual">
-                        <h3 class="text-base font-medium mb-2">제품 설명</h3>
-                        <textarea class="text-area" id="manualInput" placeholder="제품에 대한 설명을 입력하세요..."></textarea>
-                        <button class="action-button" type="submit">유사 제품 조회</button>
-                    </div>
-                    </form>
+                </div>
+            </div>
+
+            <div class="content-spacer"></div>
+            <button class="action-button" type="submit">유사 제품 조회</button>
+        </div>
+
+        <!-- 수동 입력 탭 내용 -->
+        <div class="content-container hidden" id="content-manual">
+            <h3 class="text-base font-medium mb-2">제품 설명</h3>
+
+            <!-- textarea에 name 속성 추가 -->
+            <textarea class="text-area" id="manualInput" name="manualInput" placeholder="제품에 대한 설명을 입력하세요..."></textarea>
+
+            <button class="action-button" type="submit">유사 제품 조회</button>
+        </div>
+    </div>
+</form>
+
                 </div>
             </div>
         </div>
