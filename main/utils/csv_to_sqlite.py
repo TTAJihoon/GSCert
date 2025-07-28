@@ -49,14 +49,21 @@ def convert_csv_to_sqlite(csv_path, db_path):
     df = pd.read_csv(csv_path)
     df.columns = df.columns.str.strip()
 
-    # Unnamed 컬럼 제거 (불필요한 컬럼)
+    # 불필요한 Unnamed 컬럼 제거
     df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
 
-    # 날짜 처리
-    df[['시작일자', '종료일자']] = df['시작날짜/\n종료날짜'].apply(
+    # 컬럼명 정리: 공백 제거, 특수문자 변경
+    df.columns = [
+        col.strip().replace(" ", "_").replace("/", "_").replace("\n", "_")
+        for col in df.columns
+    ]
+
+    # 날짜 처리 및 새 컬럼 생성
+    df[['시작일자', '종료일자']] = df['시작날짜_종료날짜'].apply(
         lambda x: pd.Series(parse_korean_date_range(str(x)))
     )
 
+    # SQLite에 연결 및 저장
     conn = sqlite3.connect(db_path)
 
     conn.execute('DROP TABLE IF EXISTS sw_data')
@@ -84,4 +91,4 @@ def convert_csv_to_sqlite(csv_path, db_path):
     conn.commit()
     conn.close()
 
-    print(f"✅ CSV({csv_path}) → SQLite({db_path}) 변환 완료")
+    print(f"✅ CSV({csv_path}) → SQLite({db_path}) 변환 및 데이터 정제 완료")
