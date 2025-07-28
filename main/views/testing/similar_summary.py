@@ -83,15 +83,19 @@ def summarize_text(text):
 @csrf_exempt
 def summarize_document(request):
     if request.method == 'POST':
-        uploaded_file = request.FILES.get('file')
+        file_type = request.POST.get('fileType', 'manual')  # dropdown 선택값
+        uploaded_file = request.FILES.get('file')  # 파일 입력값
+        manual_input = request.POST.get('manualInput', '').strip()  # textarea 입력값
 
-        if not uploaded_file:
-            return JsonResponse({"error": "파일이 제공되지 않았습니다."}, status=400)
-
-        text = parse_file(uploaded_file)
+        if uploaded_file:  # 자동 입력 탭의 파일 처리
+            text = parse_file(uploaded_file)
+        elif manual_input:  # 수동 입력 탭의 텍스트 처리
+            text = manual_input
+        else:
+            return JsonResponse({"error": "파일이나 제품 설명을 입력해주세요."}, status=400)
 
         if text is None or len(text.strip()) < 10:
-            return JsonResponse({"error": "지원되지 않는 파일 형식이거나 내용이 부족합니다."}, status=400)
+            return JsonResponse({"error": "내용이 부족하거나 지원되지 않는 형식입니다."}, status=400)
 
         clean_text = preprocess_text(text)
         summary = summarize_text(clean_text)
