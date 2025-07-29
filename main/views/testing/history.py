@@ -24,11 +24,11 @@ def history(request):
             'comment': comment,
         }
         
-        if not gsnum.strip() and not project.strip() and not company.strip() and not product.strip():
+        if not gsnum.strip() and not project.strip() and not company.strip() and not product.strip() and not comment.strip():
             context['response'] = '검색 조건 중 하나 이상을 입력해주세요.'
             return render(request, 'testing/history.html', context)
 
-        tables = GS_history(gsnum, project, company, product, startDate, endDate)
+        tables = GS_history(gsnum, project, company, product, comment, startDate, endDate)
             
         clean_tables = []
         for table in tables:
@@ -46,7 +46,7 @@ def history(request):
     # GET 요청 또는 POST 실패 시
     return render(request, 'testing/history.html')
 
-def GS_history(gsnum='', project='', company='', product='', startDate='', endDate='', db_path='main/data/reference.db'):
+def GS_history(gsnum='', project='', company='', product='', comment='', startDate='', endDate='', db_path='main/data/reference.db'):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row  # 컬럼명을 사용해서 결과를 가져올 수 있게 설정
     cursor = conn.cursor()
