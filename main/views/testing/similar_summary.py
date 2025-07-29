@@ -70,6 +70,7 @@ def preprocess_text(text):
 # 대표 문장 추출 (Sentence-BERT 이용)
 def summarize_text(text):
     sentences = re.split(r'(?<=[.!?])\s+', text)
+    print(sentences)
     if len(sentences) == 0:
         return "요약할 내용이 충분하지 않습니다."
 
