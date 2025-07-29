@@ -84,7 +84,6 @@ def GS_history(gsnum='', project='', company='', product='', comment='', startDa
 
     # 결과를 딕셔너리 형태로 변환
     result = [dict(row) for row in rows]
-    print(result)
 
     conn.close()
 
