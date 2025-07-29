@@ -72,7 +72,8 @@ def summarize_text(text):
     sentences = re.split(r'(?<=[.!?])\s+', text)
     
     with open("C:/Users/Administrator/Desktop/test.txt", "w", encoding="utf-8") as file:
-        file.write(sentences)
+        for sentence in sentences:
+            file.write(sentence + "\n")
     print("파일 저장 완료!")
 
     if len(sentences) == 0:
