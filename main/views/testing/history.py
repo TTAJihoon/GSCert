@@ -69,7 +69,7 @@ def GS_history(gsnum='', project='', company='', product='', comment='', startDa
         query += " AND 제품 LIKE ?"
         params.append(f"%{product}%")
     if comment.strip():
-        query += " AND 제품 설명 LIKE ?"
+        query += " AND 제품설명 LIKE ?"
         params.append(f"%{comment}%")
     if startDate.strip():
         query += " AND 시작일자 >= ?"
