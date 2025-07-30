@@ -107,8 +107,11 @@ def summarize_document(request):
             return context['response'] = "내용이 부족하거나 지원되지 않는 형식입니다."
 
         clean_text = preprocess_text(text)
-        summary = summarize_text(clean_text)
+        
+        sentences = re.split(r'(?<=[.!?])\s+', clean_text)
+        for sentence in sentences:
+            file.write(sentence + "\n")        
 
-        return context['response'] = summary
+        return context['response'] = sentence
 
     return context['response'] = "POST 메소드만 지원됩니다."
