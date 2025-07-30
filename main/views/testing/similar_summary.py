@@ -101,17 +101,17 @@ def summarize_document(request):
             print("입력 내용 확인 완료: ", manual_input)
             text = manual_input
         else:
-            return context['response'] = "파일이나 제품 설명을 입력해주세요."
+            return JsonResponse({'response': "파일이나 제품 설명을 입력해주세요."})
 
         if text is None or len(text.strip()) < 10:
-            return context['response'] = "내용이 부족하거나 지원되지 않는 형식입니다."
-
+            return JsonResponse({'response': "내용이 부족하거나 지원되지 않는 형식입니다."})
+            
         clean_text = preprocess_text(text)
         
         sentences = re.split(r'(?<=[.!?])\s+', clean_text)
         for sentence in sentences:
             file.write(sentence + "\n")        
 
-        return context['response'] = sentence
+        return JsonResponse({'response': sentence})
 
-    return context['response'] = "POST 메소드만 지원됩니다."
+    return JsonResponse({'response': "POST 메소드만 지원됩니다."})
