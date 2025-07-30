@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   actionButton.forEach(button => {
     button.addEventListener('click', async function (e) {
-      print(submit);
+      console.log('JS loaded!');
       e.preventDefault();
       
       // 탭 상태 구분: 수동입력 탭이 "안 보이면" 자동입력(파일 탭)
