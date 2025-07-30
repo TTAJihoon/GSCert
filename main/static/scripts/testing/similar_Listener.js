@@ -75,29 +75,63 @@ document.addEventListener('DOMContentLoaded', function () {
   
   // 유사 제품 조회 버튼들 이벤트 처리
   const actionButtons = document.querySelectorAll('.action-button');
+  const loading = document.getElementById('loadingContainer');
+  
+  // 로딩 유틸
+  function showLoading() { loading.classList.remove('hidden'); }
+  function hideLoading() { loading.classList.add('hidden'); }
+  
   actionButtons.forEach(button => {
-    button.addEventListener('click', () => {
-      // 탭 상태에 따라 다른 처리
+    button.addEventListener('click', async (e) => {
+      // 유효성 검사
       if (contentManual.classList.contains('hidden')) {
-        // 자동 입력 탭이 활성화된 경우
-        // 파일 업로드 여부 확인
-        if (fileList.classList.contains('hidden')) {
+        // 자동 입력 탭
+        if (!fileInput.files.length) { // 파일이 업로드 안 된 경우
           alert('파일을 먼저 업로드해주세요.');
           return;
         }
       } else {
-        // 수동 입력 탭이 활성화된 경우
+        // 수동 입력 탭
         if (!manualInput.value.trim()) {
           alert('제품 설명을 입력해주세요.');
           return;
         }
-        // 수동 입력 내용을 요약 영역에 표시
-        summaryContent.textContent = manualInput.value.trim();
       }
+      // 유효성 통과 시 로딩 표시
+      showLoading();
       
-      // 결과 영역 표시 (예시)
-      // 실제로는 서버에 요청하여 결과를 받아와야 함
-      inputSummary.classList.remove('hidden');
+      // 실제 서버에 데이터 전송 (AJAX 예시, 필요에 따라 수정)
+      try {
+        let response, data;
+        if (contentManual.classList.contains('hidden')) {
+          // 자동 입력(파일 업로드)
+          const formData = new FormData();
+          formData.append('file', fileInput.files[0]);
+          
+          response = await fetch('/your_upload_url/', {
+            method: 'POST',
+            body: formData
+          });
+          data = await response.json();
+          summaryContent.textContent = data.summary || "결과 없음";
+        } else {
+          // 수동 입력
+          response = await fetch('/your_manual_url/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ description: manualInput.value.trim() })
+          });
+          data = await response.json();
+          summaryContent.textContent = data.summary || manualInput.value.trim();
+        }
+        
+        // 결과 영역 표시
+        inputSummary.classList.remove('hidden');
+      } catch (err) {
+        alert('오류가 발생했습니다: ' + err.message);
+      } finally {
+        hideLoading();
+      }
     });
   });
 });
