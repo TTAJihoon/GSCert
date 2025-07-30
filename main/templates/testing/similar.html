@@ -24,6 +24,7 @@
             <div class="sidebar">
                 
 <form id="queryForm" method="post" enctype="multipart/form-data">
+    {% csrf_token %}
     <div class="file-upload-container">
         <div class="tab-container">
             <div class="tab active" id="tab-auto">자동 입력</div>
