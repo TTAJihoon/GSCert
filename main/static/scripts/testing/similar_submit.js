@@ -25,10 +25,12 @@ document.addEventListener('DOMContentLoaded', function () {
   function showLoading() { loading.classList.remove('hidden'); }
   function hideLoading() { loading.classList.add('hidden'); }
 
-  actionButton.addEventListener('click', async function () {
-    e.preventDefault();
-    // 탭 상태 구분: 수동입력 탭이 "안 보이면" 자동입력(파일 탭)
-    const isAutoTab = contentManual.classList.contains('hidden');
+  actionButton.forEach(button => {
+    button.addEventListener('click', async function (e) {
+      e.preventDefault();
+      
+      // 탭 상태 구분: 수동입력 탭이 "안 보이면" 자동입력(파일 탭)
+      const isAutoTab = contentManual.classList.contains('hidden');
 
     // 유효성 검사
     if (isAutoTab) {
@@ -79,4 +81,5 @@ document.addEventListener('DOMContentLoaded', function () {
       hideLoading();
     }
   });
+});
 });
