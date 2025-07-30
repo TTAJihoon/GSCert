@@ -1,3 +1,5 @@
+console.log('JS loaded!');
+
 document.addEventListener('DOMContentLoaded', function () {
   const actionButton = document.getElementById('actionButton'); // 제출 버튼
   const fileInput = document.getElementById('fileInput');       // 파일 input
@@ -27,7 +29,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   actionButton.forEach(button => {
     button.addEventListener('click', async function (e) {
-      console.log('JS loaded!');
       e.preventDefault();
       
       // 탭 상태 구분: 수동입력 탭이 "안 보이면" 자동입력(파일 탭)
