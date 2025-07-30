@@ -101,14 +101,14 @@ def summarize_document(request):
             print("입력 내용 확인 완료: ", manual_input)
             text = manual_input
         else:
-            return JsonResponse({"error": "파일이나 제품 설명을 입력해주세요."}, status=400)
+            return context['response'] = "파일이나 제품 설명을 입력해주세요."
 
         if text is None or len(text.strip()) < 10:
-            return JsonResponse({"error": "내용이 부족하거나 지원되지 않는 형식입니다."}, status=400)
+            return context['response'] = "내용이 부족하거나 지원되지 않는 형식입니다."
 
         clean_text = preprocess_text(text)
         summary = summarize_text(clean_text)
 
-        return JsonResponse({"summary": summary})
+        return context['response'] = summary
 
-    return JsonResponse({"error": "POST 메소드만 지원됩니다."}, status=405)
+    return context['response'] = "POST 메소드만 지원됩니다."
