@@ -199,10 +199,6 @@ select {
   flex: 1;
 }
 
-.hidden {
-  display: none;
-}
-
 .file-input {
   display: none;
 }
@@ -401,4 +397,8 @@ select {
   font-size: 14px;
   color: #64748b;
   margin-top: 8px;
+}
+
+.hidden {
+  display: none;
 }
