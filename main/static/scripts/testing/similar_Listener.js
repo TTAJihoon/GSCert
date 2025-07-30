@@ -108,7 +108,7 @@ document.addEventListener('DOMContentLoaded', function () {
           const formData = new FormData();
           formData.append('file', fileInput.files[0]);
           
-          response = await fetch('/your_upload_url/', {
+          response = await fetch('/similar/', {
             method: 'POST',
             body: formData
           });
@@ -116,7 +116,7 @@ document.addEventListener('DOMContentLoaded', function () {
           summaryContent.textContent = data.summary || "결과 없음";
         } else {
           // 수동 입력
-          response = await fetch('/your_manual_url/', {
+          response = await fetch('/similar/', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ description: manualInput.value.trim() })
