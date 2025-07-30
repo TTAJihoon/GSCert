@@ -1,7 +1,7 @@
 console.log('JS loaded!');
 
 document.addEventListener('DOMContentLoaded', function () {
-  const actionButton = document.getElementById('actionButton'); // 제출 버튼
+  const form = document.getElementById('queryForm'); // 제출 폼
   const fileInput = document.getElementById('fileInput');       // 파일 input
   const manualInput = document.getElementById('manualInput');   // 수동입력 textarea
   const contentManual = document.getElementById('contentManual'); // 수동입력 탭 컨테이너
@@ -27,14 +27,9 @@ document.addEventListener('DOMContentLoaded', function () {
   function showLoading() { loading.classList.remove('hidden'); }
   function hideLoading() { loading.classList.add('hidden'); }
 
-  actionButton.forEach(button => {
-    button.addEventListener('click', async function (e) {
-      e.preventDefault();
-      
-      // 탭 상태 구분: 수동입력 탭이 "안 보이면" 자동입력(파일 탭)
-      const isAutoTab = contentManual.classList.contains('hidden');
-
-    // 유효성 검사
+  form.addEventListener('submit', async function(e) {
+    e.preventDefault();  // <<<<< form submit 완벽 차단!
+    const isAutoTab = contentManual.classList.contains('hidden');
     if (isAutoTab) {
       if (!fileInput.files.length) {
         alert('파일을 먼저 업로드해주세요.');
@@ -47,35 +42,28 @@ document.addEventListener('DOMContentLoaded', function () {
       }
     }
 
-    // 로딩 표시
     showLoading();
     resultContent.innerHTML = "";
 
     try {
       const formData = new FormData();
-
-      // 자동입력 탭이면 파일만, 수동입력 탭이면 텍스트만 body에 포함
       if (isAutoTab) {
-        formData.append('fileType', 'functionList'); // 필요에 따라 수정
+        formData.append('fileType', 'functionList');
         formData.append('file', fileInput.files[0]);
         formData.append('manualInput', '');
       } else {
         formData.append('fileType', 'manual');
-        formData.append('file', ''); // 파일 없음
+        formData.append('file', '');
         formData.append('manualInput', manualInput.value.trim());
       }
-
       const csrftoken = getCookie('csrftoken');
       const response = await fetch('/summarize_document/', {
         method: 'POST',
         body: formData,
-        headers: {
-          'X-CSRFToken': csrftoken
-        }
+        headers: { 'X-CSRFToken': csrftoken }
       });
 
       const data = await response.json();
-
       resultContent.innerHTML = `<p>${(data.response || '결과 없음').replace(/\n/g, '<br>')}</p>`;
     } catch (err) {
       resultContent.innerHTML = `<span style="color:red;">에러: ${err.message}</span>`;
@@ -83,5 +71,4 @@ document.addEventListener('DOMContentLoaded', function () {
       hideLoading();
     }
   });
-});
 });
