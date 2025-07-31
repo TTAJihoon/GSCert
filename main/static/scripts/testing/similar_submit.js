@@ -2,7 +2,7 @@ console.log(document.getElementById('content-manual'));
 
 document.addEventListener('DOMContentLoaded', function () {
   console.log('DOMContentLoaded 실행!');
-  console.log(document.getElementById('content-manual'));
+  console.log(contentManual.classList.contains('hidden'););
   
   const form = document.getElementById('queryForm'); // 제출 폼
   const fileInput = document.getElementById('fileInput');       // 파일 input
