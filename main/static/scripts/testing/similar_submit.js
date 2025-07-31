@@ -1,5 +1,3 @@
-console.log('JS loaded!');
-
 document.addEventListener('DOMContentLoaded', function () {
   const form = document.getElementById('queryForm'); // 제출 폼
   const fileInput = document.getElementById('fileInput');       // 파일 input
@@ -28,6 +26,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function hideLoading() { loading.classList.add('hidden'); }
 
   form.addEventListener('submit', async function(e) {
+    console.log('폼 제출 이벤트 발생!');
     e.preventDefault();  // <<<<< form submit 완벽 차단!
     const isAutoTab = contentManual.classList.contains('hidden');
     if (isAutoTab) {
