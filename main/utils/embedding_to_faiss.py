@@ -46,9 +46,9 @@ def build_faiss_from_db(db_path):
     print(f"FAISS 인덱스에 저장된 벡터 개수: {index.ntotal}")
 
     # FAISS 인덱스 저장
-    faiss.write_index(index, "faiss_bge_m3_ko.index")
+    faiss.write_index(index, "main/data/faiss_bge_m3_ko.index")
 
     # 별도로 ID 리스트 저장 (추후 검색 시 id 매핑에 필요)
-    np.save("ids.npy", np.array(ids))
+    np.save("main/data/ids.npy", np.array(ids))
 
     print("FAISS 인덱스 및 ID 리스트 저장 완료")
