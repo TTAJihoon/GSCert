@@ -29,19 +29,14 @@ def parse_pdf(file_path):
 # DOCX 파일에서 텍스트 추출
 def parse_docx(file_path):
     from docx import Document
-    from docx.table import _Cell, Table
+    from docx.table import Table
     from docx.text.paragraph import Paragraph
+    from docx.oxml.ns import qn
 
     doc = Document(file_path)
     text_blocks = []
 
     def iter_block_items(parent):
-        """
-        문서 내 본문 순서대로 Paragraph, Table을 반환하는 제너레이터.
-        """
-        from docx.oxml import OxmlElement
-        from docx.oxml.ns import qn
-
         for child in parent.element.body.iterchildren():
             if child.tag == qn('w:p'):
                 yield Paragraph(child, parent)
@@ -49,18 +44,19 @@ def parse_docx(file_path):
                 yield Table(child, parent)
 
     def get_table_text(table):
-        """
-        표 내용을 행별로 텍스트로 추출
-        """
-        rows = []
+        lines = []
         for row in table.rows:
-            cells = []
+            row_cells = []
             for cell in row.cells:
-                # 셀 내부의 여러 문단 모두 추출
-                paragraphs = [para.text.strip() for para in cell.paragraphs if para.text.strip()]
-                cells.append(" ".join(paragraphs))
-            rows.append(" | ".join(cells))
-        return "\n".join(rows)
+                # 셀 내부 텍스트를 줄 단위로 최대한 쪼갬
+                para_texts = []
+                for para in cell.paragraphs:
+                    if para.text.strip():
+                        para_texts.extend([t for t in para.text.strip().split('\n') if t.strip()])
+                row_cells.append('\n'.join(para_texts))
+            # 한 줄로 합치지 않고 셀마다 줄바꿈 추가
+            lines.append('\n'.join(row_cells))
+        return '\n'.join(lines)
 
     for block in iter_block_items(doc):
         if isinstance(block, Paragraph):
@@ -72,7 +68,11 @@ def parse_docx(file_path):
             if tbl_txt.strip():
                 text_blocks.append(tbl_txt)
 
-    return "\n".join(text_blocks)
+    # 불필요한 연속 공백/중복 줄바꿈 정리
+    import re
+    joined_text = '\n'.join(text_blocks)
+    joined_text = re.sub(r'(\n\s*){2,}', '\n', joined_text)
+    return joined_text
 
 # PPTX 파일에서 텍스트 추출
 def parse_pptx(file_path):
