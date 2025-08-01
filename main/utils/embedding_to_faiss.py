@@ -4,7 +4,7 @@ from sentence_transformers import SentenceTransformer
 import faiss
 
 # (1) SQLite에서 데이터 조회하기
-def fetch_texts_from_sqlite(db_path, table_name, text_column):
+def fetch_texts_from_sqlite(db_path):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
