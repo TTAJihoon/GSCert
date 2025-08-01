@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', function () {
+  const allowedExt = ["docx", "pdf", "xlsx", "txt"];
   // 탭 전환 기능
   const tabAuto = document.getElementById('tab-auto');
   const tabManual = document.getElementById('tab-manual');
@@ -36,7 +37,12 @@ document.addEventListener('DOMContentLoaded', function () {
   
   fileInput.addEventListener('change', (e) => {
     if (e.target.files.length > 0) {
-      uploadFile(e.target.files[0]);
+      if (allowedExt.includes(e.target.files[0].name.split('.').at(-1).toLowerCase())) {
+        uploadFile(e.target.files[0]);
+      } else {
+        alert('docx, xlsx, pdf, pptx, txt 확장자만 업로드 가능합니다.');
+        return;
+      }
     }
   });
   
