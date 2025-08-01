@@ -5,7 +5,7 @@ class Command(BaseCommand):
     help = "DB 데이터를 FAISS로 임베딩합니다."
 
     def add_arguments(self, parser):
-        parser.add_argument("csv_path", type=str, help="CSV 파일 경로")
+        parser.add_argument("db_path", type=str, help="DB 파일 경로")
 
     def handle(self, *args, **options):
         csv_path = options["db_path"]
