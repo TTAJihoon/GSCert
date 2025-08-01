@@ -20,7 +20,7 @@ def fetch_texts_from_sqlite(db_path, table_name, text_column):
     
 def build_faiss_from_db(db_path):
     # (2) BGE-m3-ko 임베딩 모델 로드하기
-    model_name = "BAAI/bge-m3-ko"
+    model_name = "upskyy/bge-m3-korean"
     model = SentenceTransformer(model_name)
 
     # (3) 데이터 조회 및 임베딩 생성
