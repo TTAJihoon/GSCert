@@ -23,101 +23,99 @@
                 </span>
             </div>        
             <div class="sidebar">
-                
-<form id="queryForm" method="post" enctype="multipart/form-data">
-    {% csrf_token %}
-    <div class="file-upload-container">
-        <div class="tab-container">
-            <div class="tab active" id="tab-auto">자동 입력</div>
-            <div class="tab" id="tab-manual">수동 입력</div>
-        </div>
-
-        <!-- 자동 입력 탭 내용 -->
-        <div class="content-container" id="content-auto">
-            <div class="dropdown">
-                <select name="fileType"> <!-- name 속성 추가 -->
-                    <option value="manual">매뉴얼</option>
-                    <option value="functionList">기능리스트</option>
-                </select>
-            </div>
-
-            <!-- 파일 업로드에 name 속성 추가 -->
-            <input class="file-input" id="fileInput" type="file" name="file"/>
-
-            <div class="drop-area" id="dropArea">
-                <i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
-                <p>파일을 이곳에 드래그하거나</p>
-                <p><span class="text-blue-500 font-medium">클릭</span>하여 업로드하세요</p>
-                <p class="upload-limit-message">* 최대 1개 파일만 업로드할 수 있습니다</p>
-            </div>
-
-            <div class="file-list hidden" id="fileList">
-                <div class="file-item">
-                    <div class="file-name" id="fileName"></div>
-                    <div class="remove-file" id="removeFile">
-                        <i class="fas fa-times"></i>
+                <form id="queryForm" method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="file-upload-container">
+                        <div class="tab-container">
+                            <div class="tab active" id="tab-auto">자동 입력</div>
+                            <div class="tab" id="tab-manual">수동 입력</div>
+                        </div>
+                        
+                        <!-- 자동 입력 탭 내용 -->
+                        <div class="content-container" id="content-auto">
+                            <div class="dropdown">
+                                <select name="fileType"> <!-- name 속성 추가 -->
+                                    <option value="manual">매뉴얼</option>
+                                    <option value="functionList">기능리스트</option>
+                                </select>
+                            </div>
+                            
+                            <!-- 파일 업로드에 name 속성 추가 -->
+                            <input class="file-input" id="fileInput" type="file" name="file"/>
+                            
+                            <div class="drop-area" id="dropArea">
+                                <i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
+                                <p>파일을 이곳에 드래그하거나</p>
+                                <p><span class="text-blue-500 font-medium">클릭</span>하여 업로드하세요</p>
+                                <p class="upload-limit-message">* 최대 1개 파일만 업로드할 수 있습니다</p>
+                            </div>
+                            
+                            <div class="file-list hidden" id="fileList">
+                                <div class="file-item">
+                                    <div class="file-name" id="fileName"></div>
+                                    <div class="remove-file" id="removeFile">
+                                        <i class="fas fa-times"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="content-spacer"></div>
+                            <button class="action-button">유사 제품 조회</button>
+                        </div>
+                        
+                        <!-- 수동 입력 탭 내용 -->
+                        <div class="content-container hidden" id="content-manual">
+                            <h3 class="text-base font-medium mb-2">제품 설명</h3>
+                            
+                            <!-- textarea에 name 속성 추가 -->
+                            <textarea class="text-area" id="manualInput" name="manualInput" placeholder="제품에 대한 설명을 입력하세요..."></textarea>
+                            
+                            <button class="action-button">유사 제품 조회</button>
+                        </div>
                     </div>
-                </div>
+                </form>
             </div>
-
-            <div class="content-spacer"></div>
-            <button class="action-button">유사 제품 조회</button>
-        </div>
-
-        <!-- 수동 입력 탭 내용 -->
-        <div class="content-container hidden" id="content-manual">
-            <h3 class="text-base font-medium mb-2">제품 설명</h3>
-
-            <!-- textarea에 name 속성 추가 -->
-            <textarea class="text-area" id="manualInput" name="manualInput" placeholder="제품에 대한 설명을 입력하세요..."></textarea>
-
-            <button class="action-button">유사 제품 조회</button>
         </div>
     </div>
-</form>
-
-                </div>
+    <!-- 우측 콘텐츠 영역 -->
+    <main class="content-area">
+        <div class="content-card">
+            <div class="loading-container hidden" id="loadingContainer">
+                <div class="spinner"></div>
+                <div class="loading-text">분석 중...</div>
+                <div class="loading-description">업로드한 파일을 분석하고 유사 제품을 검색하고 있습니다.</div>
             </div>
-        </div>
-        <!-- 우측 콘텐츠 영역 -->
-        <main class="content-area">
-            <div class="content-card">
-                <div class="loading-container hidden" id="loadingContainer">
-                    <div class="spinner"></div>
-                    <div class="loading-text">분석 중...</div>
-                    <div class="loading-description">PDF 파일을 분석하고 유사 제품을 검색하고 있습니다.</div>
+            <div class="results-container">
+                <div class="results-header">
+                    <div class="results-title">유사 제품 분석 결과</div>
+                    <div class="results-count">3건</div>
                 </div>
-                <div class="results-container">
-                    <div class="results-header">
-                        <div class="results-title">유사 제품 분석 결과</div>
-                        <div class="results-count">3건</div>
-                    </div>
-                    <!-- 입력 요약 영역 -->
-                    <div class="input-summary" id="inputSummary">
-                        <div class="summary-title">분석 대상</div>
-                        <div class="summary-content" id="summaryContent">스마트폰용 블루투스 이어폰 - 노이즈 캔슬링 기능, 방수 기능, 터치 컨트롤 지원, 최대 8시간 재생</div>
-                    </div>
-                    <!-- 분석 결과 목록 -->
-                    <div class="results-content" id="resultsContent">
-                        <!-- 유사 제품 예시 -->
-                        <div class="similar-product">
-                            <div class="product-header">
-                                <div class="product-title">무선 블루투스 이어폰 X-500</div>
-                                <div class="similarity-score">유사도 95%</div>
-                            </div>
-                            <div class="product-description">
-                                액티브 노이즈 캔슬링 기능과 IPX7 방수 등급을 갖춘 프리미엄 무선 이어폰입니다. 터치 컨트롤과 최대 9시간 재생 시간을 지원합니다.
-                            </div>
-                            <div class="product-tags">
-                                <span class="product-tag">무선이어폰</span>
-                                <span class="product-tag">노이즈캔슬링</span>
-                                <span class="product-tag">방수</span>
-                                <span class="product-tag">터치컨트롤</span>
-                            </div>
+                <!-- 입력 요약 영역 -->
+                <div class="input-summary" id="inputSummary">
+                    <div class="summary-title">업로드 제품 개요 분석 결과</div>
+                    <div class="summary-content" id="summaryContent">제품 개요</div>
+                </div>
+                <!-- 분석 결과 목록 -->
+                <div class="results-content" id="resultsContent">
+                    <!-- 유사 제품 예시 -->
+                    <div class="similar-product">
+                        <div class="product-header">
+                            <div class="product-title">무선 블루투스 이어폰 X-500</div>
+                            <div class="similarity-score">유사도 95%</div>
                         </div>
-                        <div class="similar-product">
-                            <div class="product-header">
-                                <div class="product-title">프로 사운드 이어버드 TWS-200</div>
+                        <div class="product-description">
+                            액티브 노이즈 캔슬링 기능과 IPX7 방수 등급을 갖춘 프리미엄 무선 이어폰입니다. 터치 컨트롤과 최대 9시간 재생 시간을 지원합니다.
+                        </div>
+                        <div class="product-tags">
+                            <span class="product-tag">무선이어폰</span>
+                            <span class="product-tag">노이즈캔슬링</span>
+                            <span class="product-tag">방수</span>
+                            <span class="product-tag">터치컨트롤</span>
+                        </div>
+                    </div>
+                    <div class="similar-product">
+                        <div class="product-header">
+                            <div class="product-title">프로 사운드 이어버드 TWS-200</div>
                                 <div class="similarity-score">유사도 87%</div>
                             </div>
                             <div class="product-description">
