@@ -27,12 +27,12 @@ def select_data_from_db(indices):
   conn.close()
   return result
 
-def compare_from_index(conn):
+def compare_from_index(text):
   index = faiss.read_index("main/data/faiss_bge_m3_ko.index")
   db_ids = np.load("man/data/db_ids.npy")  # DB에서 SELECT한 실제 id들
 
   model = SentenceTransformer("upskyy/bge-m3-korean")
-  query_vec = model.encode(["검색 문장"], normalize_embeddings=True).astype('float32')
+  query_vec = model.encode([text], normalize_embeddings=True).astype('float32')
 
   D, I = index.search(query_vec, k=30)
 
