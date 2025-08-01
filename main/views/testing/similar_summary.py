@@ -6,7 +6,6 @@ from django.views.decorators.csrf import csrf_exempt
 
 # 텍스트 추출 관련 라이브러리
 import fitz  # PyMuPDF
-import docx
 from pptx import Presentation
 
 # 문장 처리 및 Sentence-BERT
@@ -28,51 +27,42 @@ def parse_pdf(file_path):
 
 # DOCX 파일에서 텍스트 추출
 def parse_docx(file_path):
-    from docx import Document
-    from docx.table import Table
-    from docx.text.paragraph import Paragraph
-    from docx.oxml.ns import qn
+    from zipfile import ZipFile
+    from lxml import etree, objectify
 
-    doc = Document(file_path)
+    WORD_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    with ZipFile(file_path) as z:
+        xml = z.read("word/document.xml")
+    root = objectify.fromstring(xml)
+
     text_blocks = []
 
-    def iter_block_items(parent):
-        for child in parent.element.body.iterchildren():
-            if child.tag == qn('w:p'):
-                yield Paragraph(child, parent)
-            elif child.tag == qn('w:tbl'):
-                yield Table(child, parent)
+    for child in root.body.iterchildren():
+        tag = child.tag.replace(WORD_NS, "")
+        if tag == "p":  # 문단
+            p_text = " ".join(t.text for t in child.iter(tag=WORD_NS+"t") if t.text)
+            if p_text.strip():
+                text_blocks.append(p_text.strip())
+        elif tag == "tbl":  # 표
+            for row in child.iter(tag=WORD_NS+"tr"):
+                cells = []
+                for tc in row.iter(tag=WORD_NS+"tc"):
+                    # 세로 병합(vMerge) 셀 'continue'는 skip
+                    tcPr = tc.tcPr if hasattr(tc, 'tcPr') else None
+                    vmerge = None
+                    if tcPr is not None and hasattr(tcPr, 'vMerge'):
+                        vmerge = getattr(tcPr.vMerge, "val", None)
+                        if vmerge is None or vmerge == "continue":
+                            continue  # 병합된 셀은 건너뜀
+                    cell_text = " ".join(t.text for t in tc.iter(tag=WORD_NS+"t") if t.text)
+                    if cell_text.strip():
+                        cells.append(cell_text.strip())
+                if cells:
+                    text_blocks.append(" | ".join(cells))
 
-    def get_table_text(table):
-        lines = []
-        for row in table.rows:
-            row_cells = []
-            for cell in row.cells:
-                # 셀 내부 텍스트를 줄 단위로 최대한 쪼갬
-                para_texts = []
-                for para in cell.paragraphs:
-                    if para.text.strip():
-                        para_texts.extend([t for t in para.text.strip().split('\n') if t.strip()])
-                row_cells.append('\n'.join(para_texts))
-            # 한 줄로 합치지 않고 셀마다 줄바꿈 추가
-            lines.append('\n'.join(row_cells))
-        return '\n'.join(lines)
-
-    for block in iter_block_items(doc):
-        if isinstance(block, Paragraph):
-            txt = block.text.strip()
-            if txt:
-                text_blocks.append(txt)
-        elif isinstance(block, Table):
-            tbl_txt = get_table_text(block)
-            if tbl_txt.strip():
-                text_blocks.append(tbl_txt)
-
-    # 불필요한 연속 공백/중복 줄바꿈 정리
-    import re
-    joined_text = '\n'.join(text_blocks)
-    joined_text = re.sub(r'(\n\s*){2,}', '\n', joined_text)
-    return joined_text
+    txt = "\n".join(text_blocks)
+    txt = re.sub(r'(\n\s*){2,}', '\n', txt)
+    return txt.strip()
 
 # PPTX 파일에서 텍스트 추출
 def parse_pptx(file_path):
