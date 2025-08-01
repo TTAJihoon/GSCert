@@ -1,97 +1,57 @@
-import os
-import re
-import pickle
-import pandas as pd
-from datetime import datetime
-from tqdm import tqdm
-from langchain_core.documents import Document
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.vectorstores import FAISS
+import sqlite3
+import numpy as np
+from sentence_transformers import SentenceTransformer
+import faiss
 
-def safe_str(value):
-    try:
-        if pd.isna(value):
-            return ""
-        v = str(value)
-        v = v.replace("\n", "_").replace("\r", "_").replace("\t", "_")
-        return v.strip()[:512]
-    except Exception:
-        return ""
-
-def parse_korean_date_range(text: str):
-    """
-    다양한 날짜 포맷(예: '2020년 1월 1일 ~ 2020년 2월 1일', '2020.1.1~2020.2.1')을
-    ISO8601 형식의 시작일자와 종료일자로 파싱
-    """
-    try:
-        text = re.sub(r"(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일", r"\1.\2.\3", text)
-        text = text.replace(" ", "")  # 공백 제거
-        text = text.replace("~", " ~ ")  # 파싱 안정성 확보
-        dates = re.findall(r"\d{4}\.\d{1,2}\.\d{1,2}", text)
-        if len(dates) == 2:
-            start = datetime.strptime(dates[0], "%Y.%m.%d").date().isoformat()
-            end = datetime.strptime(dates[1], "%Y.%m.%d").date().isoformat()
-            return start, end
-    except Exception:
-        pass
-    return None, None
-
-def build_faiss_from_csv(csv_path):
-    print("[INFO] CSV 로딩 중...")
-    df = pd.read_csv(csv_path)
-    df.columns = df.columns.str.strip()
-
-    # 설명 컬럼 감지
-    desc_col = next((col for col in df.columns if col in ["제품 설명", "설명"]), None)
-    if not desc_col:
-        raise ValueError("❌ '제품 설명'에 해당하는 컬럼이 없습니다.")
-
-    docs = []
-    for _, row in tqdm(df.iterrows(), total=len(df), desc="[STEP 3] 문서 생성 중"):
-        description = row.get(desc_col, "")
-        if pd.isna(description) or not str(description).strip():
-            continue
-
-        # 날짜 필드 감지
-        raw_date = row.get("시작날짜/\n종료날짜", "")
-        start, end = parse_korean_date_range(str(raw_date))
-
-        # 메타데이터 정리
-        clean_metadata = {
-            str(k).strip().replace("\n", "_").replace("/", "_").replace(" ", "_"): safe_str(v)
-            for k, v in row.to_dict().items()
-            if k not in ["시작날짜/\n종료날짜"]
-        }
-        clean_metadata["시작일자"] = start or ""
-        clean_metadata["종료일자"] = end or ""
-        clean_metadata["문서ID"] = safe_str(row["일련번호"])
-
-        docs.append(
-            Document(
-                page_content=str(description),
-                metadata=clean_metadata
-            )
-        )
-
-    print("[STEP 4] 임베딩 모델 로딩")
-    embedding = HuggingFaceEmbeddings(model_name="jhgan/ko-sbert-sts")
-
-    print("[STEP 5] FAISS 인덱스 생성 중...")
+# (1) SQLite에서 데이터 조회하기
+def fetch_texts_from_sqlite(db_path, table_name, text_column):
+    conn = sqlite3.connect(db_path)
+    cursor = conn.cursor()
     
-    # 최초 FAISS 인덱스 생성 (한번만!)
-    db = FAISS.from_documents(docs, embedding)
-
-    # 저장할 경로 지정 (반드시 절대 경로 추천)
-    base_dir = "C:/GSCert/myproject/main"
-    faiss_path = os.path.join(base_dir, "data", "faiss_index")
-
-    print("[STEP 6] FAISS 인덱스 저장 중...")
-    #FAISS 인덱스 저장
-    db.save_local("faiss_index")
+    cursor.execute(f"SELECT id, {text_column} FROM {table_name} WHERE 시작일자 >= '2016-01-01'")
+    rows = cursor.fetchall()
     
-    # 문서 ID를 생성한 FAISS 인덱스의 순서대로 저장 (필수!!)
-    doc_ids = [doc.metadata["문서ID"] for doc in docs]
-    with open(os.path.join(faiss_path, "doc_ids.pkl"), "wb") as f:
-        pickle.dump(doc_ids, f)
+    conn.close()
     
-    print("✅ FAISS 저장 완료. 문서 수:", len(docs))
+    ids = [row[0] for row in rows]
+    texts = [row[1] for row in rows]
+    
+    return ids, texts
+    
+def build_faiss_from_db(db_path):
+    # (2) BGE-m3-ko 임베딩 모델 로드하기
+    model_name = "BAAI/bge-m3-ko"
+    model = SentenceTransformer(model_name)
+
+    # (3) 데이터 조회 및 임베딩 생성
+    table_name = "sw_data"
+    text_column = "제품설명"
+
+    ids, texts = fetch_texts_from_sqlite(db_path, table_name, text_column)
+
+    print(f"조회된 텍스트 개수: {len(texts)}")
+
+    # 문장 임베딩 (정규화 적용 추천)
+    embeddings = model.encode(texts, normalize_embeddings=True, batch_size=32, show_progress_bar=True)
+    embeddings = np.array(embeddings).astype('float32')
+
+    print("임베딩 완료된 벡터 형태:", embeddings.shape)
+
+    # (4) FAISS 인덱스 생성 및 저장 (Flat 방식 예시)
+    dim = embeddings.shape[1]
+
+    #Flat 인덱스 생성 (가장 간단한 방식)
+    index = faiss.IndexFlatIP(dim)  # 코사인 유사도는 내적(IP)을 활용 (normalize_embeddings=True 필수)
+
+    # FAISS에 임베딩 벡터 추가
+    index.add(embeddings)
+
+    print(f"FAISS 인덱스에 저장된 벡터 개수: {index.ntotal}")
+
+    # FAISS 인덱스 저장
+    faiss.write_index(index, "faiss_bge_m3_ko.index")
+
+    # 별도로 ID 리스트 저장 (추후 검색 시 id 매핑에 필요)
+    np.save("ids.npy", np.array(ids))
+
+    print("FAISS 인덱스 및 ID 리스트 저장 완료")
