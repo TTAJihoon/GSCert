@@ -107,9 +107,7 @@ def summarize_document(request):
             return JsonResponse({'response': "내용이 부족하거나 지원되지 않는 형식입니다."})
             
         clean_text = preprocess_text(text)
-        
         sentences = re.split(r'(?<=[.!?])\s+', clean_text)        
-
-        return JsonResponse({'response': sentence})
+        return JsonResponse({'response': '\n'.join(sentences)})
 
     return JsonResponse({'response': "POST 메소드만 지원됩니다."})
