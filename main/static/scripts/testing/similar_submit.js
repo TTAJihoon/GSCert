@@ -1,5 +1,3 @@
-console.log(document.getElementById('content-manual'));
-
 document.addEventListener('DOMContentLoaded', function () {  
   const form = document.getElementById('queryForm'); // 제출 폼
   const fileInput = document.getElementById('fileInput');       // 파일 input
