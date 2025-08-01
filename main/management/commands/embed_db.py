@@ -8,6 +8,6 @@ class Command(BaseCommand):
         parser.add_argument("db_path", type=str, help="DB 파일 경로")
 
     def handle(self, *args, **options):
-        csv_path = options["db_path"]
+        db_path = options["db_path"]
         self.stdout.write(f"▶ DB 파일: {db_path}")
         build_faiss_from_db(db_path)
