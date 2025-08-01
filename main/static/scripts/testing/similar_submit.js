@@ -63,7 +63,16 @@ document.addEventListener('DOMContentLoaded', function () {
       });
 
       const data = await response.json();
-      resultContent.innerHTML = `<p>${(data.response || '결과 없음').replace(/\n/g, '<br>')}</p>`;
+      const newhtml = `<div class="similar-product">
+                        <div class="product-header">
+                            <div class="product-title">무선 블루투스 이어폰 X-500</div>
+                            <div class="similarity-score">유사도 95%</div>
+                        </div>
+                        <div class="product-description">
+                            ${data.response || '결과 없음').replace(/\n/g, '<br>')}
+                        </div>
+                    </div>`;
+      resultContent.innerHTML = newhtml;
     } catch (err) {
       resultContent.innerHTML = `<span style="color:red;">에러: ${err.message}</span>`;
     } finally {
