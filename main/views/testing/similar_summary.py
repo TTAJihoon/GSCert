@@ -27,7 +27,7 @@ def parse_pdf(file_path):
     return text
 
 # DOCX 파일에서 텍스트 추출
-def parse_docx_with_order(file_path):
+def parse_docx(file_path):
     from docx import Document
     from docx.table import _Cell, Table
     from docx.text.paragraph import Paragraph
