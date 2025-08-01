@@ -1,9 +1,6 @@
 console.log(document.getElementById('content-manual'));
 
-document.addEventListener('DOMContentLoaded', function () {
-  console.log('DOMContentLoaded 실행!');
-  console.log(contentManual.classList.contains('hidden'));
-  
+document.addEventListener('DOMContentLoaded', function () {  
   const form = document.getElementById('queryForm'); // 제출 폼
   const fileInput = document.getElementById('fileInput');       // 파일 input
   const manualInput = document.getElementById('manualInput');   // 수동입력 textarea
