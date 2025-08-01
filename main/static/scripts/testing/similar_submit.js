@@ -69,7 +69,7 @@ document.addEventListener('DOMContentLoaded', function () {
                             <div class="similarity-score">유사도 95%</div>
                         </div>
                         <div class="product-description">
-                            ${data.response || '결과 없음').replace(/\n/g, '<br>')}
+                            ${(data.response || '결과 없음').replace(/\n/g, '<br>')}
                         </div>
                     </div>`;
       resultContent.innerHTML = newhtml;
