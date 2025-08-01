@@ -108,9 +108,7 @@ def summarize_document(request):
             
         clean_text = preprocess_text(text)
         
-        sentences = re.split(r'(?<=[.!?])\s+', clean_text)
-        for sentence in sentences:
-            file.write(sentence + "\n")        
+        sentences = re.split(r'(?<=[.!?])\s+', clean_text)        
 
         return JsonResponse({'response': sentence})
 
