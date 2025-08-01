@@ -2,7 +2,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const form = document.getElementById('queryForm'); // 제출 폼
   const fileInput = document.getElementById('fileInput');       // 파일 input
   const manualInput = document.getElementById('manualInput');   // 수동입력 textarea
-  const contentManual = document.getElementById('content-Manual'); // 수동입력 탭 컨테이너
+  const contentManual = document.getElementById('content-manual'); // 수동입력 탭 컨테이너
   const loading = document.getElementById('loadingContainer');
   const resultContent = document.getElementById('resultsContent');
 
