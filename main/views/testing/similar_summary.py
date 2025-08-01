@@ -27,9 +27,52 @@ def parse_pdf(file_path):
     return text
 
 # DOCX 파일에서 텍스트 추출
-def parse_docx(file_path):
-    doc = docx.Document(file_path)
-    return "\n".join([para.text for para in doc.paragraphs])
+def parse_docx_with_order(file_path):
+    from docx import Document
+    from docx.table import _Cell, Table
+    from docx.text.paragraph import Paragraph
+
+    doc = Document(file_path)
+    text_blocks = []
+
+    def iter_block_items(parent):
+        """
+        문서 내 본문 순서대로 Paragraph, Table을 반환하는 제너레이터.
+        """
+        from docx.oxml import OxmlElement
+        from docx.oxml.ns import qn
+
+        for child in parent.element.body.iterchildren():
+            if child.tag == qn('w:p'):
+                yield Paragraph(child, parent)
+            elif child.tag == qn('w:tbl'):
+                yield Table(child, parent)
+
+    def get_table_text(table):
+        """
+        표 내용을 행별로 텍스트로 추출
+        """
+        rows = []
+        for row in table.rows:
+            cells = []
+            for cell in row.cells:
+                # 셀 내부의 여러 문단 모두 추출
+                paragraphs = [para.text.strip() for para in cell.paragraphs if para.text.strip()]
+                cells.append(" ".join(paragraphs))
+            rows.append(" | ".join(cells))
+        return "\n".join(rows)
+
+    for block in iter_block_items(doc):
+        if isinstance(block, Paragraph):
+            txt = block.text.strip()
+            if txt:
+                text_blocks.append(txt)
+        elif isinstance(block, Table):
+            tbl_txt = get_table_text(block)
+            if tbl_txt.strip():
+                text_blocks.append(tbl_txt)
+
+    return "\n".join(text_blocks)
 
 # PPTX 파일에서 텍스트 추출
 def parse_pptx(file_path):
