@@ -8,7 +8,7 @@ def fetch_texts_from_sqlite(db_path, table_name, text_column):
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    cursor.execute(f"SELECT id, {text_column} FROM {table_name} WHERE 시작일자 >= '2016-01-01'")
+    cursor.execute(f"SELECT 일련번호, 제품설명 FROM sw_data WHERE 시작일자 >= '2016-01-01'")
     rows = cursor.fetchall()
     
     conn.close()
@@ -24,10 +24,7 @@ def build_faiss_from_db(db_path):
     model = SentenceTransformer(model_name)
 
     # (3) 데이터 조회 및 임베딩 생성
-    table_name = "sw_data"
-    text_column = "제품설명"
-
-    ids, texts = fetch_texts_from_sqlite(db_path, table_name, text_column)
+    ids, texts = fetch_texts_from_sqlite(db_path)
 
     print(f"조회된 텍스트 개수: {len(texts)}")
 
