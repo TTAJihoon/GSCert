@@ -11,9 +11,6 @@ import re
 from .similar_GPT import run_openai_GPT
 from .similar_compare import compare_from_index
 
-# Sentence-BERT 모델 로딩 (한국어 모델)
-model = SentenceTransformer('snunlp/KR-SBERT-V40K-klueNLI-augSTS')
-
 # PDF 파일에서 텍스트 추출
 def parse_pdf(file_path):
     text = ""
