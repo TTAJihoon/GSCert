@@ -8,8 +8,8 @@ from pptx import Presentation
 
 import os
 import re
-from similar_GPT import run_openai_GPT
-from similar_compare import compare_from_index
+from .similar_GPT import run_openai_GPT
+from .similar_compare import compare_from_index
 
 # Sentence-BERT 모델 로딩 (한국어 모델)
 model = SentenceTransformer('snunlp/KR-SBERT-V40K-klueNLI-augSTS')
