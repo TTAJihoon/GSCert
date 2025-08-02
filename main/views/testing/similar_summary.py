@@ -1,5 +1,3 @@
-# similar_summary.py (Django 전용 버전)
-
 # Django에서 필요한 import
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
@@ -8,11 +6,8 @@ from django.views.decorators.csrf import csrf_exempt
 import fitz  # PyMuPDF
 from pptx import Presentation
 
-# 문장 처리 및 Sentence-BERT
-from sentence_transformers import SentenceTransformer
 import os
 import re
-from tempfile import NamedTemporaryFile
 
 # Sentence-BERT 모델 로딩 (한국어 모델)
 model = SentenceTransformer('snunlp/KR-SBERT-V40K-klueNLI-augSTS')
@@ -99,24 +94,6 @@ def preprocess_text(text):
     text = re.sub(r'\n+', '\n', text)
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
-
-# 대표 문장 추출 (Sentence-BERT 이용)
-def summarize_text(text):
-    sentences = re.split(r'(?<=[.!?])\s+', text)
-    
-    with open("C:/Users/Administrator/Desktop/test.txt", "w", encoding="utf-8") as file:
-        for sentence in sentences:
-            file.write(sentence + "\n")
-    print("파일 저장 완료!")
-
-    if len(sentences) == 0:
-        return "요약할 내용이 충분하지 않습니다."
-
-    embeddings = model.encode(sentences)
-    doc_embedding = embeddings.mean(axis=0)
-    scores = embeddings @ doc_embedding
-    best_sentence = sentences[scores.argmax()]
-    return best_sentence.strip()
 
 # Django 뷰 함수 (요약 API)
 @csrf_exempt
