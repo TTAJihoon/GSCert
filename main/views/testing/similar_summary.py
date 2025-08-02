@@ -8,6 +8,8 @@ from pptx import Presentation
 
 import os
 import re
+from similar_GPT import run_openai_GPT
+from similar_compare import compare_from_index
 
 # Sentence-BERT 모델 로딩 (한국어 모델)
 model = SentenceTransformer('snunlp/KR-SBERT-V40K-klueNLI-augSTS')
@@ -114,7 +116,11 @@ def summarize_document(request):
             text = manual_input
             
         clean_text = preprocess_text(text)
-        sentences = re.split(r'(?<=[.!?])\s+', clean_text)        
+        sentences = re.split(r'(?<=[.!?])\s+', clean_text)
+
+        summary_text = run_openai_GPT(sentences)
+        table = compare_from_index(summary_text)
+        
         return JsonResponse({'response': '\n'.join(sentences)})
 
     return JsonResponse({'response': "POST 메소드만 지원됩니다."})
