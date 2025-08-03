@@ -38,6 +38,7 @@ def compare_from_index(text):
 
   matched_db_ids = db_ids[I[0]]
   tables = select_data_from_db(matched_db_ids)[::-1]
+  print(tables)
   print("가장 유사한 DB id:", matched_db_ids)
 
   return tables 
