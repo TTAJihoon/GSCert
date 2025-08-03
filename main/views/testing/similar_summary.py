@@ -123,6 +123,9 @@ def summarize_document(request):
             for row in compare_result
         ]
         
-        return JsonResponse({'response': '\n'.join(sentences)})
+        return JsonResponse({
+            'summary': summary_text,
+            'response': '\n'.join(sentences)
+        })
 
     return JsonResponse({'response': "POST 메소드만 지원됩니다."})
