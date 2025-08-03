@@ -102,7 +102,6 @@ def summarize_document(request):
         file_type = request.POST.get('fileType', '')  # dropdown 선택값
         uploaded_file = request.FILES.get('file')  # 파일 입력값
         manual_input = request.POST.get('manualInput', '').strip()  # textarea 입력값
-        print(file_type, uploaded_file, manual_input)
 
         if uploaded_file:  # 자동 입력 탭의 파일 처리
             print("파일 확인 완료: ", uploaded_file)
@@ -115,6 +114,7 @@ def summarize_document(request):
             
         clean_text = preprocess_text(text)
         sentences = re.split(r'(?<=[.!?])\s+', clean_text)
+        print(sentences)
 
         summary_text = run_openai_GPT(sentences)
         compare_result = compare_from_index(summary_text)
