@@ -117,7 +117,11 @@ def summarize_document(request):
         sentences = re.split(r'(?<=[.!?])\s+', clean_text)
 
         summary_text = run_openai_GPT(sentences)
-        table = compare_from_index(summary_text)
+        compare_result = compare_from_index(summary_text)
+        sentences = [
+            ', '.join([f"{key}: {value}" for key, value in row.items()])
+            for row in compare_result
+        ]
         
         return JsonResponse({'response': '\n'.join(sentences)})
 
