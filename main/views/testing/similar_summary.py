@@ -1,6 +1,7 @@
 # Django에서 필요한 import
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
+from tempfile import NamedTemporaryFile
 
 # 텍스트 추출 관련 라이브러리
 import fitz  # PyMuPDF
