@@ -64,7 +64,7 @@ document.addEventListener('DOMContentLoaded', function () {
       });
 
       const data = await response.json();
-      const summaryhtml = ${(data.summary)}
+      const summaryhtml = `${data.summary || '요약 없음'}`;
       const resulthtml = `<div class="similar-product">
                         <div class="product-header">
                             <div class="product-title">무선 블루투스 이어폰 X-500</div>
