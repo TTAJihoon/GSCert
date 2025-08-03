@@ -18,6 +18,7 @@ def run_openai_GPT(query): # 문장당 유사제품 검색 개수
     print("[STEP 1] 사용자 질문 수신:", query)
     prompt = f"""
     너는 SW 프로그램의 매뉴얼의 내용을 참고해서 제 3자에게 제품을 설명하기 위한 한 문장의 제품 개요를 작성하는 SW 제품 설명 전문가야.
+    아래 내용을 참고해서 한 문장의 요약문 외의 말은 하지말아줘.
     1. 실무적이고 소프트웨어 중심의 톤으로 “~을 지원/제공하는 ~솔루션/시스템/플랫폼/프로그램” 형식의 100자 미만 문장으로 작성해줘.
     2. LLM, AI, 클라우드, IoT 등 제품에서 사용하는 특정 기술명이 포함된 내용이 있다면 작성해줘.
     3. 문장 끝은 ‘솔루션’, ‘시스템’, ‘플랫폼’, ‘프로그램’ 중 하나로만 작성해줘.
@@ -30,18 +31,11 @@ def run_openai_GPT(query): # 문장당 유사제품 검색 개수
     try:
         response = client.chat.completions.create(
             model="gpt-4.1-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
+            messages=[{"role": "user", "content": prompt}]
         )
-        print(response)
-
-        # JSON으로 파싱
-        response_json = json.loads(response.choices[0].message.content.strip())
-        print("[STEP 4] GPT 응답 완료")
-        print(response_json)
-
-        # GPT 결과 문장 반환
-        result_text = response_json.get("result", "")
+        # GPT 결과 문장만 추출
+        result_text = response.choices[0].message.content.strip()
+        print("[STEP 3] GPT 응답 완료:", result_text)
         return result_text
 
     except Exception as e:
