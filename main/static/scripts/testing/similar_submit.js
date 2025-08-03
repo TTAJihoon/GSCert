@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const manualInput = document.getElementById('manualInput');   // 수동입력 textarea
   const contentManual = document.getElementById('content-manual'); // 수동입력 탭 컨테이너
   const loading = document.getElementById('loadingContainer');
+  const summaryContent = document.getElementById('summaryContent');
   const resultContent = document.getElementById('resultsContent');
 
   function getCookie(name) {
@@ -63,7 +64,8 @@ document.addEventListener('DOMContentLoaded', function () {
       });
 
       const data = await response.json();
-      const newhtml = `<div class="similar-product">
+      const summaryhtml = ${(data.summary)}
+      const resulthtml = `<div class="similar-product">
                         <div class="product-header">
                             <div class="product-title">무선 블루투스 이어폰 X-500</div>
                             <div class="similarity-score">유사도 95%</div>
@@ -72,7 +74,8 @@ document.addEventListener('DOMContentLoaded', function () {
                             ${(data.response || '결과 없음').replace(/\n/g, '<br>')}
                         </div>
                     </div>`;
-      resultContent.innerHTML = newhtml;
+      summaryContent.innerHTML = summaryhtml;
+      resultContent.innerHTML = resulthtml;
     } catch (err) {
       resultContent.innerHTML = `<span style="color:red;">에러: ${err.message}</span>`;
     } finally {
