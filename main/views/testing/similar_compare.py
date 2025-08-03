@@ -12,7 +12,7 @@ def select_data_from_db(indices):
   params = []
 
   # 인덱스 리스트가 비어있지 않으면, 쿼리에 조건 추가
-  if indices.size > 0:
+  if len(indices) > 0:
     placeholders = ','.join('?' for _ in indices)
     query += f" 일련번호 IN ({placeholders})"
     params.extend(indices)
