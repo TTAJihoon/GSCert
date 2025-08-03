@@ -104,10 +104,10 @@ def summarize_document(request):
         print(file_type, uploaded_file, manual_input)
 
         if uploaded_file:  # 자동 입력 탭의 파일 처리
-            if text is None or len(text.strip()) < 10:
-                return JsonResponse({'response': "내용이 부족하거나 지원되지 않는 형식입니다."})
             print("파일 확인 완료: ", uploaded_file)
             text = parse_file(uploaded_file)
+            if text is None or len(text.strip()) < 10:
+                return JsonResponse({'response': "내용이 부족하거나 지원되지 않는 형식입니다."})
         elif manual_input:  # 수동 입력 탭의 텍스트 처리
             print("입력 내용 확인 완료: ", manual_input)
             text = manual_input
