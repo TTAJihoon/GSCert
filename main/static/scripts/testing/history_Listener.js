@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', function () {
         const project = document.getElementById('project').value.trim();
         const company = document.getElementById('company').value.trim();
         const product = document.getElementById('product').value.trim();
-        const product = document.getElementById('comment').value.trim();
+        const comment = document.getElementById('comment').value.trim();
 
         if (!gsnum && !project && !company && !product && !comment) {
             e.preventDefault();
