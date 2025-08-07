@@ -18,7 +18,7 @@ def similar(request):
     return render(request, 'testing/similar.html')
     
 def security(request):
-    return render(request, 'security.html')
+    return render(request, 'testing/security.html')
 
 def genspark(request):
     return render(request, 'genspark.html')
