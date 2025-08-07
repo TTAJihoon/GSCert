@@ -23,10 +23,6 @@ def history(request):
             'end_date': endDate,
             'comment': comment,
         }
-        
-        if not gsnum.strip() and not project.strip() and not company.strip() and not product.strip() and not comment.strip():
-            context['response'] = '검색 조건 중 하나 이상을 입력해주세요.'
-            return render(request, 'testing/history.html', context)
 
         tables = GS_history(gsnum, project, company, product, comment, startDate, endDate)
             
