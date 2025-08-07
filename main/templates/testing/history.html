@@ -100,6 +100,7 @@
           <thead>
             <tr>
               <th class="col-cert-date">인증일자</th>
+              <th class="col-cert-no">인증번호</th>
               <th class="col-test-no">시험번호</th>
               <th class="col-cmp-name">회사명</th>
               <th class="col-prd-name">제품명</th>
@@ -116,6 +117,7 @@
             {% for table in response_tables %}
             <tr>
               <td>{{ table.인증일자 }}</td>
+              <td>{{ table.인증번호 }}</td>
               <td>{{ table.시험번호 }}</td>
               <td>{{ table.회사명 }}</td>
               <td>{{ table.제품 }}</td>
