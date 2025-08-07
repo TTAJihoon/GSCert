@@ -147,17 +147,23 @@ html, body {
     flex-shrink: 0; 
 }
 
+.results-count {
+    color: #4a90e2;
+    font-weight: 500;
+}
+        
 .table-container {
-    flex: 1; 
-    overflow: auto; 
-    padding: 0; 
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 20px;
 }
 
 .scrollable-table-wrapper {
-    height: calc(100vh - 150px);  /* 60px header + 40px padding 고려 */
-    overflow-x: auto;
-    overflow-y: auto;
-    display: block;
+  height: calc(100vh - 150px);  /* 60px header + 40px padding 고려 */
+  overflow-x: auto;
+  overflow-y: auto;
+  display: block;
 }
 
 .results-table {
@@ -167,14 +173,17 @@ html, body {
     min-width: 1200px; 
 }
 
+.results-table thead {
+    background-color: #4a90e2;
+    color: white;
+    position: sticky;
+    top: 0;
+}
+
 .results-table th {
-    background: var(--tta-blue); 
-    color: white; 
-    padding: 12px 8px;
-    font-weight: bold; 
-    position: sticky; 
-    top: 0; 
-    border-right: 1px solid rgba(255,255,255,0.2); 
+    padding: 12px 15px;
+    text-align: left;
+    font-weight: 600; 
 }
 
 .results-table td {
