@@ -342,6 +342,7 @@ select {
 .product-cell {
   white-space: pre-line;
   overflow-wrap: break-word;
+  font-weight: 600;
 }
 
 .similarity-score {
