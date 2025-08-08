@@ -376,6 +376,7 @@ select {
   border-radius: 4px;
   margin-right: 10px;
   font-size: 14px;
+  height: 1%;
 }
 
 .content-spacer {
