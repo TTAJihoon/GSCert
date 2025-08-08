@@ -68,7 +68,17 @@ document.addEventListener('DOMContentLoaded', function () {
       const resulthtml = (data.response || []).map(row => `
       <div class="similar-product">
         <div class="product-header">
-          <div class="product-title">${(row['회사명'] || '-').replace(/\n/g, '<br>')} - ${(row['제품'] || '-').replace(/\n/g, '<br>')}</div>
+          <div class="product-title">
+            <table class="company-product-table">
+              <tbody>
+                <tr>
+                  <td class="company-cell">${(row['회사명'] || '-').replace(/\n/g, '<br>')}</td>
+                  <td class="separator-cell">-</td>
+                  <td class="product-cell">${(row['제품'] || '-').replace(/\n/g, '<br>')}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
           <div class="similarity-score">유사도 95%</div>
         </div>
         <div class="product-description">
