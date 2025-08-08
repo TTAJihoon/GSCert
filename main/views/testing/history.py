@@ -29,7 +29,7 @@ def history(request):
         clean_tables = []
         for table in tables:
             clean_table = {
-                key.strip().replace(" ", "_").replace("/", "_").replace("\n", "_"): value.strip().replace("None", "-")
+                key.strip().replace(" ", "_").replace("/", "_").replace("\n", "_"): str(value).strip().replace("None", "-")
                 for key, value in table.items()
                 if not key.startswith('Unnamed')  # 불필요한 Unnamed 컬럼 제거
             }
