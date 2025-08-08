@@ -85,11 +85,11 @@ document.addEventListener('DOMContentLoaded', function () {
           ${(row['제품설명'] || '-').replace(/\n/g, '<br>')}
         </div>
         <div class="product-tags">
-          <span class="product-tag">${(row['인증일자'] || '-').replace(/\n/g, '<br>')}</span>
-          <span class="product-tag">${(row['시험번호'] || '-').replace(/\n/g, '<br>')}</span>
-          <span class="product-tag">${(row['총WD'] || '-').toString()}</span>
-          <span class="product-tag">${(row['시작일자'] || '-')}~${(row['종료일자'] || '-')}</span>
-          <span class="product-tag">${(row['시험원'] || '-').replace(/\n/g, '<br>')}</span>
+          <p>인증일자: </p><span class="product-tag">${(row['인증일자'] || '-').replace(/\n/g, '<br>')}</span>
+          <p>시험번호: </p><span class="product-tag">${(row['시험번호'] || '-').replace(/\n/g, '<br>')}</span>
+          <p>WD: </p><span class="product-tag">${(row['총WD'] || '-').toString()}</span>
+          <p>시험기간: </p><span class="product-tag">${(row['시작일자'] || '-')}~${(row['종료일자'] || '-')}</span>
+          <p>시험원: </p><span class="product-tag">${(row['시험원'] || '-').replace(/\n/g, '<br>')}</span>
         </div>
       </div>
       `).join('');
