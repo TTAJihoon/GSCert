@@ -321,6 +321,7 @@ select {
   padding: 0;
   vertical-align: middle; /* 수직 중앙 정렬 */
   border: none; /* 테두리 안 보이게 */
+  font-weight: 600;
 }
 
 .company-cell {
@@ -342,11 +343,12 @@ select {
 .product-cell {
   white-space: pre-line;
   overflow-wrap: break-word;
-  font-weight: 600;
 }
 
 .similarity-score {
+  vertical-align: middle;
   background-color: #dbeafe;
+  height: 1%;
   color: #1e40af;
   padding: 2px 8px;
   border-radius: 12px;
