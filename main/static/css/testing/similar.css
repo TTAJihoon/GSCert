@@ -360,6 +360,7 @@ select {
 }
 
 .product-tags {
+  color: #64748b;
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -368,7 +369,6 @@ select {
 
 .product-tag {
   background-color: #f1f5f9;
-  color: #64748b;
   padding: 2px 8px;
   border-radius: 4px;
   margin-right: 10px;
