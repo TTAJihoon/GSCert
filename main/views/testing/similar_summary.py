@@ -118,14 +118,10 @@ def summarize_document(request):
 
         summary_text = run_openai_GPT(sentences)
         compare_result = compare_from_index(summary_text)
-        sentences = [
-            ', '.join([f"{key}: {value}" for key, value in row.items()])
-            for row in compare_result
-        ]
-        
+                
         return JsonResponse({
             'summary': summary_text,
-            'response': '\n'.join(sentences)
+            'response': compare_result
         })
 
     return JsonResponse({'response': "POST 메소드만 지원됩니다."})
