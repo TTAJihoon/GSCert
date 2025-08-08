@@ -65,15 +65,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
       const data = await response.json();
       const summaryhtml = `${data.summary || '요약 없음'}`;
-      const resulthtml = `<div class="similar-product">
-                        <div class="product-header">
-                            <div class="product-title">무선 블루투스 이어폰 X-500</div>
-                            <div class="similarity-score">유사도 95%</div>
-                        </div>
-                        <div class="product-description">
-                            ${(data.response || '결과 없음').replace(/\n/g, '<br>')}
-                        </div>
-                    </div>`;
+      const resulthtml = (data.response || []).map(row => `
+      <div class="similar-product">
+        <div class="product-header">
+          <div class="product-title">${(row['회사명'] || '-').replace(/\n/g, '<br>')} - ${(row['제품'] || '-').replace(/\n/g, '<br>')}</div>
+          <div class="similarity-score">유사도 95%</div>
+        </div>
+        <div class="product-description">
+          ${(row['제품설명'] || '-').replace(/\n/g, '<br>')}
+        </div>
+        <div class="product-tags">
+          <span class="product-tag">${(row['인증일자'] || '-').replace(/\n/g, '<br>')}</span>
+          <span class="product-tag">${(row['시험번호'] || '-').replace(/\n/g, '<br>')}</span>
+          <span class="product-tag">${(row['총WD'] || '-').replace(/\n/g, '<br>')}</span>
+          <span class="product-tag">${(row['시작일자'] || '-')}~${(row['종료일자'] || '-')}</span>
+          <span class="product-tag">${(row['시험원'] || '-').replace(/\n/g, '<br>')}</span>
+        </div>
+      </div>
+      `).join('');
       summaryContent.innerHTML = summaryhtml;
       resultContent.innerHTML = resulthtml;
     } catch (err) {
