@@ -77,7 +77,7 @@ document.addEventListener('DOMContentLoaded', function () {
         <div class="product-tags">
           <span class="product-tag">${(row['인증일자'] || '-').replace(/\n/g, '<br>')}</span>
           <span class="product-tag">${(row['시험번호'] || '-').replace(/\n/g, '<br>')}</span>
-          <span class="product-tag">${(row['총WD'] || '-').replace(/\n/g, '<br>')}</span>
+          <span class="product-tag">${(row['총WD'] || '-').join(.\n').replace(/\n/g, '<br>')}</span>
           <span class="product-tag">${(row['시작일자'] || '-')}~${(row['종료일자'] || '-')}</span>
           <span class="product-tag">${(row['시험원'] || '-').replace(/\n/g, '<br>')}</span>
         </div>
