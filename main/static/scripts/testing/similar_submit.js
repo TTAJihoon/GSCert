@@ -69,7 +69,7 @@ console.log('similarities:', data.similarities);
 console.log('response:', data.response);
       
       const summaryhtml = `${data.summary || '요약 없음'}`;
-      const similarities = `${data.similarities || []}`;
+      const similarities = data.similarities || [];
       const resulthtml = (data.response || []).map((row, idx) => `
       <div class="similar-product">
         <div class="product-header">
