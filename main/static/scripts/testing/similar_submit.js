@@ -65,7 +65,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
       const data = await response.json();
       const summaryhtml = `${data.summary || '요약 없음'}`;
-      const resulthtml = (data.response || []).map(row => `
+      const similarities = `${data.similarities || []}`;
+      const resulthtml = (data.response || []).map((row, idx) => `
       <div class="similar-product">
         <div class="product-header">
           <div class="product-title">
