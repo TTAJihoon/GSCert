@@ -6,7 +6,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const loading = document.getElementById('loadingContainer');
   const summaryContent = document.getElementById('summaryContent');
   const resultContent = document.getElementById('resultsContent');
-  const similarityScore = document.getElementById('similarity-score');
 
   function getCookie(name) {
     let cookieValue = null;
@@ -65,7 +64,6 @@ document.addEventListener('DOMContentLoaded', function () {
       });
 
       const data = await response.json();
-      const similarity = `${data.similarity || '유사도 없음'}`;
       const summaryhtml = `${data.summary || '요약 없음'}`;
       const resulthtml = (data.response || []).map(row => `
       <div class="similar-product">
@@ -81,7 +79,7 @@ document.addEventListener('DOMContentLoaded', function () {
               </tbody>
             </table>
           </div>
-          <--! <div class="similarity-score">유사도 95%</div> -->
+          <--! <div class="similarity-score">유사도 ${(similarities[idx] * 100).toFixed(2)}%</div> -->
         </div>
         <div class="product-description">
           ${(row['제품설명'] || '-').replace(/\n/g, '<br>')}
@@ -95,7 +93,6 @@ document.addEventListener('DOMContentLoaded', function () {
         </div>
       </div>
       `).join('');
-      similarityScore.innerHTML = similarity;
       summaryContent.innerHTML = summaryhtml;
       resultContent.innerHTML = resulthtml;
     } catch (err) {
