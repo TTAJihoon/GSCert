@@ -38,7 +38,12 @@ def compare_from_index(text):
 
   matched_db_ids = [int(db_ids[i]) for i in I[0]]
   tables = select_data_from_db(matched_db_ids)[::-1]
+  
+  # 거리 D는 배열 형태, D[0]에 30개 거리 있음
+  similarities = (1 - D[0]).tolist()  # 예: 거리를 1에서 빼서 유사도(0~1) 형태로 변환(조정 가능)
+
   print(tables)
   print("가장 유사한 DB id:", matched_db_ids)
+  print("유사도 리스트:", similarities)
 
-  return tables, D[0]
+  return tables, similarities
