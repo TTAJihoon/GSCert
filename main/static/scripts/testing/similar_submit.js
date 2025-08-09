@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', function () {
               </tbody>
             </table>
           </div>
-          <div class="similarity-score">유사도 95%</div>
+          <--! <div class="similarity-score">유사도 95%</div> -->
         </div>
         <div class="product-description">
           ${(row['제품설명'] || '-').replace(/\n/g, '<br>')}
