@@ -103,3 +103,5 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 });
+console.log('similarities:', data.similarities);
+console.log('response:', data.response);
