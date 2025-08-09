@@ -120,9 +120,9 @@ def summarize_document(request):
         compare_result, similarity = compare_from_index(summary_text)
                 
         return JsonResponse({
-            'similarity': similarity,
             'summary': summary_text,
-            'response': compare_result
+            'response': compare_result,
+            'similarities': similarity_list[::-1],
         })
 
     return JsonResponse({'response': "POST 메소드만 지원됩니다."})
