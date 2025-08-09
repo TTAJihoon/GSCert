@@ -117,7 +117,7 @@ def summarize_document(request):
         print(sentences)
 
         summary_text = run_openai_GPT(sentences)
-        compare_result, similarity = compare_from_index(summary_text)
+        compare_result, similarity_list = compare_from_index(summary_text)
                 
         return JsonResponse({
             'summary': summary_text,
