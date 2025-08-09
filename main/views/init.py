@@ -11,11 +11,14 @@ def login_test_view(request):
 def index(request):
     return render(request, 'index.html')
 
-def search(request):
-    return render(request, 'search.html')
+def history(request):
+    return render(request, 'testing/history.html')
+
+def similar(request):
+    return render(request, 'testing/similar.html')
     
 def security(request):
-    return render(request, 'security.html')
+    return render(request, 'testing/security.html')
 
 def genspark(request):
     return render(request, 'genspark.html')

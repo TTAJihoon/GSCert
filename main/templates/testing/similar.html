@@ -1,0 +1,133 @@
+{% extends 'header.html' %}
+{% load static %}
+{% block title %}유사 시험 조회{% endblock %}
+
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
+<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}"/>
+<link rel="stylesheet" href="{% static 'css/testing/helpbtn.css' %}"/>
+<script src="{% static 'scripts/testing/similar_Listener.js' %}" defer></script>
+<script src="{% static 'scripts/testing/similar_submit.js' %}" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="app-container">
+    <div class="main-content">
+        <!-- 좌측 파일 업로드 패널 (떠있는 느낌으로 수정) -->
+        <div class="sidebar-container">
+            <div class="search-title">
+                <i class="fas fa-search search-icon"></i> 검색 조건
+                <span class="tooltip">ⓘ
+                    <span class="tooltiptext">[자동 입력] 매뉴얼 또는 기능리스트를 자동 분석</BR>[수동 입력] 사용자가 직접 검색 문장을 입력</span>
+                </span>
+            </div>        
+            <div class="sidebar">
+                <form id="queryForm" method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="file-upload-container">
+                        <div class="tab-container">
+                            <div class="tab active" id="tab-auto">자동 입력</div>
+                            <div class="tab" id="tab-manual">수동 입력</div>
+                        </div>
+                        
+                        <!-- 자동 입력 탭 내용 -->
+                        <div class="content-container" id="content-auto">
+                            <div class="dropdown">
+                                <select name="fileType" disabled> <!-- name 속성 추가 -->
+                                    <option value="manual">매뉴얼</option>
+                                    <option value="functionList">기능리스트</option>
+                                </select>
+                            </div>
+                            
+                            <!-- 파일 업로드에 name 속성 추가 -->
+                            <input class="file-input" id="fileInput" type="file" name="file"/>
+                            
+                            <div class="drop-area" id="dropArea">
+                                <i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
+                                <p>파일을 이곳에 드래그하거나</p>
+                                <p><span class="text-blue-500 font-medium">클릭</span>하여 업로드하세요</p>
+                                <p class="upload-limit-message">* 최대 1개 파일만 업로드할 수 있습니다</p>
+                            </div>
+                            
+                            <div class="file-list hidden" id="fileList">
+                                <div class="file-item">
+                                    <div class="file-name" id="fileName"></div>
+                                    <div class="remove-file" id="removeFile">
+                                        <i class="fas fa-times"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="content-spacer"></div>
+                            <button class="action-button">유사 제품 조회</button>
+                        </div>
+                        
+                        <!-- 수동 입력 탭 내용 -->
+                        <div class="content-container hidden" id="content-manual">
+                            <h3 class="text-base font-medium mb-2">제품 설명</h3>
+                            
+                            <!-- textarea에 name 속성 추가 -->
+                            <textarea class="text-area" id="manualInput" name="manualInput" placeholder="제품에 대한 설명을 입력하세요..."></textarea>
+                            
+                            <button class="action-button">유사 제품 조회</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <!-- 우측 콘텐츠 영역 -->
+    <main class="content-area">
+        <div class="content-card">
+            <div class="loading-container hidden" id="loadingContainer">
+                <div class="spinner"></div>
+                <div class="loading-text">분석 중...</div>
+                <div class="loading-description">업로드한 파일을 분석하고 유사 제품을 검색하고 있습니다.</div>
+            </div>
+            <div class="results-container">
+                <div class="results-header">
+                    <div class="results-title">유사 제품 분석 결과</div>
+                    <div class="results-count">30개</div>
+                </div>
+                <!-- 입력 요약 영역 -->
+                <div class="input-summary" id="inputSummary">
+                    <div class="summary-title">업로드 매뉴얼 요약 문장</div>
+                    <div class="summary-content" id="summaryContent">제품 개요</div>
+                </div>
+                <!-- 분석 결과 목록 -->
+                <div class="results-content" id="resultsContent">
+                    <!-- 유사 제품 예시 --> 
+                    <div class="similar-product">
+                        <div class="product-header">
+                            <div class="product-title">
+                                <table class="company-product-table">
+                                    <tbody>
+                                        <tr>
+                                            <td class="company-cell">회사명</td>
+                                            <td class="separator-cell">-</td>
+                                            <td class="product-cell">제품명</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div class="similarity-score" id="similarity-score">유사도</div>
+                        </div>
+                        <div class="product-description">
+                            제품 설명
+                        </div>
+                        <div class="product-tags">
+                            <p>인증일자</p>
+                            <p>시험번호</p>
+                            <p>WD</p>
+                            <p>시험기간</p>
+                            <p>시험원</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        </main>
+    </div>
+</div>
+{% endblock %}

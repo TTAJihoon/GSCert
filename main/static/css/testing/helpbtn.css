@@ -9,7 +9,7 @@
 
 .tooltiptext {
   visibility: hidden;
-  width: 200px;
+  white-space: nowrap;
   background-color: #333;
   color: #fff;
   text-align: center;
