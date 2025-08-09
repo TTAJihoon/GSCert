@@ -64,6 +64,10 @@ document.addEventListener('DOMContentLoaded', function () {
       });
 
       const data = await response.json();
+
+console.log('similarities:', data.similarities);
+console.log('response:', data.response);
+      
       const summaryhtml = `${data.summary || '요약 없음'}`;
       const similarities = `${data.similarities || []}`;
       const resulthtml = (data.response || []).map((row, idx) => `
@@ -103,5 +107,3 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 });
-console.log('similarities:', data.similarities);
-console.log('response:', data.response);
