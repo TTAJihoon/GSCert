@@ -41,4 +41,4 @@ def compare_from_index(text):
   print(tables)
   print("가장 유사한 DB id:", matched_db_ids)
 
-  return tables 
+  return tables, D[0]
