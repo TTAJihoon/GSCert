@@ -69,35 +69,41 @@ console.log('similarities:', data.similarities);
 console.log('response:', data.response);
       
       const summaryhtml = `${data.summary || '요약 없음'}`;
-      const similarities = data.similarities || [];
-      const resulthtml = (data.response || []).map((row, idx) => `
-      <div class="similar-product">
-        <div class="product-header">
-          <div class="product-title">
-            <table class="company-product-table">
-              <tbody>
-                <tr>
-                  <td class="company-cell">${(row['회사명'] || '-').replace(/\n/g, '<br>')}</td>
-                  <td class="separator-cell">-</td>
-                  <td class="product-cell">${(row['제품'] || '-').replace(/\n/g, '<br>')}</td>
-                </tr>
-              </tbody>
-            </table>
+      const resulthtml = (data.response || []).map(row => {
+        const simVal = row.similarity;
+        const simPercent = (typeof simVal === 'number' && !isNaN(simVal))
+          ? (simVal * 100).toFixed(2)
+          : 'N/A';
+
+        return `
+          <div class="similar-product">
+            <div class="product-header">
+              <div class="product-title">
+                <table class="company-product-table">
+                  <tbody>
+                    <tr>
+                      <td class="company-cell">${(row['회사명'] || '-').replace(/\n/g, '<br>')}</td>
+                      <td class="separator-cell">-</td>
+                      <td class="product-cell">${(row['제품'] || '-').replace(/\n/g, '<br>')}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="similarity-score">유사도 ${simPercent}%</div>
+            </div>
+            <div class="product-description">
+              ${(row['제품설명'] || '-').replace(/\n/g, '<br>')}
+            </div>
+            <div class="product-tags">
+              <p>인증일자</p><span class="product-tag">${(row['인증일자'] || '-').replace(/\n/g, '<br>')}</span>
+              <p>시험번호</p><span class="product-tag">${(row['시험번호'] || '-').replace(/\n/g, '<br>')}</span>
+              <p>WD</p><span class="product-tag">${(row['총WD'] || '-').toString()}</span>
+              <p>시험기간</p><span class="product-tag">${(row['시작일자'] || '-')}~${(row['종료일자'] || '-')}</span>
+              <p>시험원</p><span class="product-tag">${(row['시험원'] || '-').replace(/\n/g, '<br>')}</span>
+            </div>
           </div>
-          <div class="similarity-score">유사도 ${(similarities[idx] * 100).toFixed(2)}%</div>
-        </div>
-        <div class="product-description">
-          ${(row['제품설명'] || '-').replace(/\n/g, '<br>')}
-        </div>
-        <div class="product-tags">
-          <p>인증일자</p><span class="product-tag">${(row['인증일자'] || '-').replace(/\n/g, '<br>')}</span>
-          <p>시험번호</p><span class="product-tag">${(row['시험번호'] || '-').replace(/\n/g, '<br>')}</span>
-          <p>WD</p><span class="product-tag">${(row['총WD'] || '-').toString()}</span>
-          <p>시험기간</p><span class="product-tag">${(row['시작일자'] || '-')}~${(row['종료일자'] || '-')}</span>
-          <p>시험원</p><span class="product-tag">${(row['시험원'] || '-').replace(/\n/g, '<br>')}</span>
-        </div>
-      </div>
-      `).join('');
+        `;
+      }).join('');
       summaryContent.innerHTML = summaryhtml;
       resultContent.innerHTML = resulthtml;
     } catch (err) {
