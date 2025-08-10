@@ -243,7 +243,8 @@ select {
 .results-controls {
   display: flex;
   align-items: center;
-  gap: 8px; /* 버튼과 카운트 사이 간격 */
+  gap: 12px;
+  flex-wrap: nowrap;  /* 줄바꿈 방지 */
 }
 
 .results-title {
