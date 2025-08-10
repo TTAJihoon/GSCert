@@ -247,6 +247,15 @@ select {
   flex-wrap: nowrap;  /* 줄바꿈 방지 */
 }
 
+.sort {
+  background-color: #e0f2fe;
+  color: #1e40af;
+  padding: 4px 10px;
+  border-radius: 16px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
 .results-title {
   font-size: 18px;
   font-weight: 600;
