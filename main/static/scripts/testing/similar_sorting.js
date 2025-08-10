@@ -9,10 +9,24 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // 날짜 문자열을 Date 객체로 변환하는 함수 (시작일자 기준)
   function parseStartDate(productElem) {
-    // 시험기간 텍스트 예시: "2023-01-01~2023-12-31"
-    const periodText = productElem.querySelector('.product-tags p:nth-child(4)').nextElementSibling.textContent.trim();
-    // 대략 “시작일자~종료일자” 구조라 가정하고 ~로 분리
-    const startDateStr = periodText.split('~')[0];
+    const pTags = productElem.querySelectorAll('.product-tags > p');
+    let startDateStr = null;
+
+    for (const p of pTags) {
+      if (p.textContent.trim() === '시험기간') {
+        const span = p.nextElementSibling;
+        if (span) {
+          const periodText = span.textContent.trim(); // 예: "2017-10-18~2017-11-14"
+          startDateStr = periodText.split('~')[0]; // 시작 날짜만 추출
+        }
+        break;
+      }
+    }
+
+    if (!startDateStr) {
+      return new Date(0);  // 기본값 (1970-01-01)
+    }
+
     return new Date(startDateStr);
   }
 
