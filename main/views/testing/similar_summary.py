@@ -122,7 +122,7 @@ def summarize_document(request):
         return JsonResponse({
             'summary': summary_text,
             'response': compare_result,
-            'similarities': similarity_list[::-1],
+            'similarities': similarity_list,
         })
 
     return JsonResponse({'response': "POST 메소드만 지원됩니다."})
