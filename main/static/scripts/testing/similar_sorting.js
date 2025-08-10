@@ -14,10 +14,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     for (const p of pTags) {
       if (p.textContent.trim() === '시험기간') {
-        const span = p.nextElementSibling;
-        if (span && span.textContent) {
-          const periodText = span.textContent.trim(); // 예: "2017-10-18~2017-11-14"
-          startDateStr = periodText.split('~')[0]; // 시작 날짜만 추출
+        if (p.nextElementSibling && p.nextElementSibling.textContent) {
+          const periodText = p.nextElementSibling.textContent.trim();
+          startDateStr = periodText.split('~')[0];
         }
         break;
       }
