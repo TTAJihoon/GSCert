@@ -28,23 +28,35 @@ def select_data_from_db(indices):
   return result
 
 def compare_from_index(text):
-  index = faiss.read_index("main/data/faiss_bge_m3_ko.index")
-  db_ids = np.load("main/data/db_ids.npy")  # DB에서 SELECT한 실제 id들
+    index = faiss.read_index("main/data/faiss_bge_m3_ko.index")
+    db_ids = np.load("main/data/db_ids.npy")
 
-  model = SentenceTransformer("upskyy/bge-m3-korean")
-  query_vec = model.encode([text], normalize_embeddings=True).astype('float32')
+    model = SentenceTransformer("upskyy/bge-m3-korean")
+    query_vec = model.encode([text], normalize_embeddings=True).astype('float32')
 
-  D, I = index.search(query_vec, k=30)
+    D, I = index.search(query_vec, k=30)
 
-  matched_db_ids = [int(db_ids[i]) for i in I[0]]
-  tables = select_data_from_db(matched_db_ids)[::-1]
-  
-  distances = D[0]
-  similarities = 1 - (distances ** 2) / 2
-  similarities = similarities.tolist()
+    matched_db_ids = [int(db_ids[i]) for i in I[0]]
 
-  print(tables)
-  print("가장 유사한 DB id:", matched_db_ids)
-  print("유사도 리스트:", similarities)
+    # DB에서 id들로 조회 (순서는 보장 안 됨)
+    tables_unsorted = select_data_from_db(matched_db_ids)
 
-  return tables, similarities
+    distances = D[0]
+    similarities = 1 - (distances ** 2) / 2
+    similarities = similarities.tolist()
+
+    # id->테이블 항목 딕셔너리 생성
+    id_to_table = {item['일련번호']: item for item in tables_unsorted}
+
+    # matched_db_ids 순서대로 정렬 (순서 보장)
+    tables_sorted = [id_to_table[id_] for id_ in matched_db_ids if id_ in id_to_table]
+
+    # 유사도와 같이 묶어서 각 항목에 유사도 추가
+    for table, sim in zip(tables_sorted, similarities):
+        table['similarity'] = sim
+
+    print("정렬된 결과:", tables_sorted)
+    print("가장 유사한 DB id:", matched_db_ids)
+    print("유사도 리스트:", similarities)
+
+    return tables_sorted, similarities
