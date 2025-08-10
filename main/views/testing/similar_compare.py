@@ -49,4 +49,7 @@ def compare_from_index(text):
     for table, sim in zip(tables_sorted, similarities):
         table['similarity'] = sim
 
+    # 유사도 내림차순 정렬
+    tables_sorted.sort(key=lambda x: x['similarity'], reverse=True)
+
     return tables_sorted, similarities
