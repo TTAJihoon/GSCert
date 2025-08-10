@@ -37,26 +37,16 @@ def compare_from_index(text):
     D, I = index.search(query_vec, k=30)
 
     matched_db_ids = [int(db_ids[i]) for i in I[0]]
-
-    # DB에서 id들로 조회 (순서는 보장 안 됨)
     tables_unsorted = select_data_from_db(matched_db_ids)
 
     distances = D[0]
     similarities = 1 - (distances ** 2) / 2
     similarities = similarities.tolist()
 
-    # id->테이블 항목 딕셔너리 생성
     id_to_table = {item['일련번호']: item for item in tables_unsorted}
-
-    # matched_db_ids 순서대로 정렬 (순서 보장)
     tables_sorted = [id_to_table[id_] for id_ in matched_db_ids if id_ in id_to_table]
 
-    # 유사도와 같이 묶어서 각 항목에 유사도 추가
     for table, sim in zip(tables_sorted, similarities):
         table['similarity'] = sim
-
-    print("정렬된 결과:", tables_sorted)
-    print("가장 유사한 DB id:", matched_db_ids)
-    print("유사도 리스트:", similarities)
 
     return tables_sorted, similarities
