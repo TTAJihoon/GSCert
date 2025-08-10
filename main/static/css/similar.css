@@ -233,11 +233,17 @@ select {
 
 .results-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: space-between; /* 좌우 양 끝 정렬 */
   align-items: center;
   padding-bottom: 16px;
   border-bottom: 1px solid #e5e7eb;
   margin-bottom: 16px;
+}
+
+.results-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px; /* 버튼과 카운트 사이 간격 */
 }
 
 .results-title {
