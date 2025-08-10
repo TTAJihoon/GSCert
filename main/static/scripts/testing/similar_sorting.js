@@ -15,7 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     for (const p of pTags) {
       if (p.textContent.trim() === '인증일자') {
         if (p.nextElementSibling && p.nextElementSibling.textContent) {
-          const startDateStr = p.nextElementSibling.textContent.trim();
+          startDateStr = p.nextElementSibling.textContent.trim();
         }
         break;
       }
