@@ -13,10 +13,9 @@ document.addEventListener('DOMContentLoaded', () => {
     let startDateStr = null;
 
     for (const p of pTags) {
-      if (p.textContent.trim() === '시험기간') {
+      if (p.textContent.trim() === '인증일자') {
         if (p.nextElementSibling && p.nextElementSibling.textContent) {
-          const periodText = p.nextElementSibling.textContent.trim();
-          startDateStr = periodText.split('~')[0];
+          const startDateStr = p.nextElementSibling.textContent.trim();
         }
         break;
       }
