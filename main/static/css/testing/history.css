@@ -213,33 +213,26 @@ html, body {
 }
 
 /* ── 열 너비: px로 고정, 개요만 auto ── */
-.results-table col.col-cert-date { width: 60px; }
-.results-table col.col-cert-no   { width: 60px; }
-.results-table col.col-test-no   { width: 80px; }
-.results-table col.col-cmp-name  { width: 130px; }
-.results-table col.col-prd-name  { width: 130px; }
+.results-table col.col-cert-date { width: 100px; }
+.results-table col.col-cert-no   { width: 100px; }
+.results-table col.col-test-no   { width: 120px; }
+.results-table col.col-cmp-name  { width: 200px; }
+.results-table col.col-prd-name  { width: 200px; }
 .results-table col.col-overview  { width: auto; }
-.results-table col.col-date      { width: 60px; }
-.results-table col.col-tester    { width: 100px; }
-.results-table col.col-wd        { width: 40px; }
-.results-table col.col-renewal   { width: 40px; }
-.results-table col.col-download  { width: 50px; }
+.results-table col.col-date      { width: 100px; }
+.results-table col.col-tester    { width: 150px; }
+.results-table col.col-wd        { width: 80px; }
+.results-table col.col-renewal   { width: 100px; }
+.results-table col.col-download  { width: 70px; }
 
 /* 첫 행(th)에도 동일 폭 부여 → 브라우저가 확정적으로 채택 */
-.results-table th.col-cert-date  { width: 60px; }
-.results-table th.col-cert-no    { width: 60px; }
-.results-table th.col-test-no    { width: 80px; }
-.results-table th.col-cmp-name   { width: 130px; }
-.results-table th.col-prd-name   { width: 130px; }
-.results-table th.col-date       { width: 60px; }
-.results-table th.col-tester     { width: 100px; }
-.results-table th.col-wd         { width: 40px; }
-.results-table th.col-renewal    { width: 40px; }
-.results-table th.col-download   { width: 50px; }
-
-/* 개요 칸은 말줄임 처리(선택) */
-.results-table th, .results-table td {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
+.results-table th.col-cert-date  { width: 100px; }
+.results-table th.col-cert-no    { width: 100px; }
+.results-table th.col-test-no    { width: 120px; }
+.results-table th.col-cmp-name   { width: 200px; }
+.results-table th.col-prd-name   { width: 200px; }
+.results-table th.col-date       { width: 100px; }
+.results-table th.col-tester     { width: 150px; }
+.results-table th.col-wd         { width: 80px; }
+.results-table th.col-renewal    { width: 100px; }
+.results-table th.col-download   { width: 70px; }
