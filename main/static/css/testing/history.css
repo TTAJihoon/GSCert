@@ -240,15 +240,36 @@ html, body {
     margin-bottom: 10px; 
 }
 
-.col-cert-date { min-width: 60px; text-align: center; vertical-align: middle; } 
-.col-cert-no { min-width: 60px; text-align: center; vertical-align: middle; }
-.col-test-no { min-width: 80px; text-align: center; vertical-align: middle; } 
-.col-sw-class { min-width: 90px; text-align: center; vertical-align: middle; } 
-.col-cmp-name { min-width: 130px; text-align: center; vertical-align: middle; } 
-.col-prd-name { min-width: 130px; text-align: center; vertical-align: middle; } 
-.col-overview { min-width: 350px; text-align: center; vertical-align: middle; } 
-.col-date { min-width: 60px; text-align: center; vertical-align: middle; } 
-.col-tester { min-width: 100px; text-align: center; vertical-align: middle; } 
-.col-wd { min-width: 40px; text-align: center; vertical-align: middle; } 
-.col-renewal { min-width: 40px; text-align: center; vertical-align: middle; } 
-.col-download { min-width: 50px; text-align: center; vertical-align: middle; } 
+.results-table col.col-cert-date { width: clamp(60px, 6%, 120px); }
+.results-table col.col-cert-no   { width: clamp(60px, 6%, 120px); }
+.results-table col.col-test-no   { width: clamp(80px, 7%, 140px); }
+.results-table col.col-cmp-name  { width: clamp(130px, 10%, 220px); }
+.results-table col.col-prd-name  { width: clamp(130px, 10%, 220px); }
+
+/* 개요 컬럼은 남는 폭 흡수 (최소폭만 보장하고 나머지 자동) */
+.results-table col.col-overview  { width: auto; } /* 남는 공간 가져감 */
+ /* 필요하면 최소폭만 보장하려면:  th/td에 min-width */
+.results-table th.col-overview, .results-table td:nth-child(6) { min-width: 350px; }
+
+.results-table col.col-date      { width: clamp(60px, 6%, 120px); }  /* 시작/종료 동일 적용 */
+.results-table col.col-tester    { width: clamp(100px, 8%, 180px); }
+.results-table col.col-wd        { width: clamp(40px, 4%, 80px); }
+.results-table col.col-renewal   { width: clamp(40px, 4%, 80px); }
+.results-table col.col-download  { width: clamp(50px, 5%, 90px); }
+
+/* 2) 정렬/세로정렬은 th/td에 */
+.results-table th.col-cert-date,   .results-table td:nth-child(1),
+.results-table th.col-cert-no,     .results-table td:nth-child(2),
+.results-table th.col-test-no,     .results-table td:nth-child(3),
+.results-table th.col-cmp-name,    .results-table td:nth-child(4),
+.results-table th.col-prd-name,    .results-table td:nth-child(5),
+.results-table th.col-overview,    .results-table td:nth-child(6),
+.results-table th.col-date,        .results-table td:nth-child(7),
+.results-table th.col-date,        .results-table td:nth-child(8),
+.results-table th.col-tester,      .results-table td:nth-child(9),
+.results-table th.col-wd,          .results-table td:nth-child(10),
+.results-table th.col-renewal,     .results-table td:nth-child(11),
+.results-table th.col-download,    .results-table td:nth-child(12) {
+  text-align: center;
+  vertical-align: middle;
+}
