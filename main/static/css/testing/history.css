@@ -167,6 +167,7 @@ html, body {
 }
 
 .results-table {
+    table-layout: fixed;
     width: 100%; 
     border-collapse: collapse; 
     font-size: 14px; 
@@ -239,15 +240,15 @@ html, body {
     margin-bottom: 10px; 
 }
 
-.col-cert-date { width: 60px; text-align: center; vertical-align: middle; } 
-.col-cert-no { width: 60px; text-align: center; vertical-align: middle; }
-.col-test-no { width: 60px; text-align: center; vertical-align: middle; } 
-.col-sw-class { width: 90px; text-align: center; vertical-align: middle; } 
-.col-cmp-name { width: 130px; text-align: center; vertical-align: middle; } 
-.col-prd-name { width: 130px; text-align: center; vertical-align: middle; } 
-.col-overview { width: 350px; text-align: center; vertical-align: middle; } 
-.col-date { width: 50px; text-align: center; vertical-align: middle; } 
-.col-tester { width: 100px; text-align: center; vertical-align: middle; } 
-.col-wd { width: 40px; text-align: center; vertical-align: middle; } 
-.col-renewal { width: 40px; text-align: center; vertical-align: middle; } 
-.col-download { width: 50px; text-align: center; vertical-align: middle; } 
+.col-cert-date { min-width: 60px; text-align: center; vertical-align: middle; } 
+.col-cert-no { min-width: 60px; text-align: center; vertical-align: middle; }
+.col-test-no { min-width: 80px; text-align: center; vertical-align: middle; } 
+.col-sw-class { min-width: 90px; text-align: center; vertical-align: middle; } 
+.col-cmp-name { min-width: 130px; text-align: center; vertical-align: middle; } 
+.col-prd-name { min-width: 130px; text-align: center; vertical-align: middle; } 
+.col-overview { min-width: 350px; text-align: center; vertical-align: middle; } 
+.col-date { min-width: 60px; text-align: center; vertical-align: middle; } 
+.col-tester { min-width: 100px; text-align: center; vertical-align: middle; } 
+.col-wd { min-width: 40px; text-align: center; vertical-align: middle; } 
+.col-renewal { min-width: 40px; text-align: center; vertical-align: middle; } 
+.col-download { min-width: 50px; text-align: center; vertical-align: middle; } 
