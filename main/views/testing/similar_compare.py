@@ -50,6 +50,6 @@ def compare_from_index(text):
         table['similarity'] = sim
 
     # 유사도 내림차순 정렬
-    tables_sorted.sort(key=lambda x: x['similarity'], reverse=True)
+    tables_sorted.sort(key=lambda x: int(x['일련번호']), reverse=True)
 
     return tables_sorted, similarities
