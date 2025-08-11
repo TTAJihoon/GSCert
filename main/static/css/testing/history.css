@@ -6,152 +6,137 @@
     --tta-border: #e9ecef; 
 }
 
-* {
-    box-sizing: border-box; 
-}
+* { box-sizing: border-box; }
 
 html, body {
-    height: 100%; 
-    margin: 0; 
-    padding: 0; 
-    font-family: 'Malgun Gothic', sans-serif; 
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Malgun Gothic', sans-serif;
 }
 
 .header {
-    height: 60px; 
-    background: white; 
-    border-bottom: 2px solid var(--tta-blue); 
-    display: flex; 
-    align-items: center; 
-    padding: 0 20px; 
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
-    flex-shrink: 0; 
+    height: 60px;
+    background: white;
+    border-bottom: 2px solid var(--tta-blue);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    flex-shrink: 0;
 }
 
 .nav-menu {
-    height: 50px; 
-    background: var(--tta-blue); 
-    display: flex; 
-    align-items: center; 
-    padding: 0 20px; 
-    flex-shrink: 0; 
+    height: 50px;
+    background: var(--tta-blue);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    flex-shrink: 0;
 }
 
 .content-area {
-    flex: 1; 
-    display: flex; 
+    flex: 1;
+    display: flex;
 }
 
 .sidebar {
     width: 300px;
     height: 100%;
-    background: var(--tta-gray); 
-    border-right: 1px solid var(--tta-border); 
-    padding: 20px;  
-    flex-shrink: 0; 
+    background: var(--tta-gray);
+    border-right: 1px solid var(--tta-border);
+    padding: 20px;
+    flex-shrink: 0;
 }
 
 .logo-section {
-    display: flex; 
-    align-items: center; 
-    cursor: pointer; 
+    display: flex;
+    align-items: center;
+    cursor: pointer;
 }
 
 .logo-text {
-    font-size: 24px; 
-    font-weight: bold; 
-    color: var(--tta-blue); 
-    margin-left: 10px; 
+    font-size: 24px;
+    font-weight: bold;
+    color: var(--tta-blue);
+    margin-left: 10px;
 }
 
 .nav-item {
-    color: white; 
-    padding: 10px 20px; 
-    margin-right: 20px; 
-    border-radius: 5px; 
-    transition: background-color 0.3s; 
-    cursor: pointer; 
-    white-space: nowrap; 
+    color: white;
+    padding: 10px 20px;
+    margin-right: 20px;
+    border-radius: 5px;
+    transition: background-color 0.3s;
+    cursor: pointer;
+    white-space: nowrap;
 }
 
-.nav-item:hover {
-    background: var(--tta-light-blue); 
-}
-
-.nav-item.active {
-    background: var(--tta-dark-blue); 
-}
+.nav-item:hover { background: var(--tta-light-blue); }
+.nav-item.active { background: var(--tta-dark-blue); }
 
 .search-section {
-    background: white; 
-    border-radius: 8px; 
-    padding: 20px; 
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1); 
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
-.form-group {
-    margin-bottom: 15px; 
-}
+.form-group { margin-bottom: 15px; }
 
 .form-label {
-    display: block; 
-    margin-bottom: 5px; 
-    font-weight: bold; 
-    color: #333; 
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+    color: #333;
 }
 
 .form-input {
-    width: 100%; 
-    padding: 8px 12px; 
-    border: 1px solid #ddd; 
-    border-radius: 4px; 
-    font-size: 14px; 
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
 }
 
 .form-input:focus {
-    outline: none; 
-    border-color: var(--tta-blue); 
-    box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2); 
+    outline: none;
+    border-color: var(--tta-blue);
+    box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.2);
 }
 
 .search-btn {
-    width: 100%; 
-    padding: 12px; 
-    background: var(--tta-blue); 
-    color: white; 
-    border: none; 
-    border-radius: 5px; 
-    font-size: 16px; 
-    font-weight: bold; 
-    cursor: pointer; 
-    transition: background-color 0.3s; 
+    width: 100%;
+    padding: 12px;
+    background: var(--tta-blue);
+    color: white;
+    border: none;
+    border-radius: 5px;
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s;
 }
 
-.search-btn:hover {
-    background: var(--tta-dark-blue); 
-}
+.search-btn:hover { background: var(--tta-dark-blue); }
 
 .main-content {
     width: 100%;
     height: 100%;
     flex: 1;
-    display: flex; 
-    flex-direction: column; 
-    background: white; 
+    display: flex;
+    flex-direction: column;
+    background: white;
 }
 
 .content-header {
-    padding: 20px; 
-    border-bottom: 1px solid var(--tta-border); 
-    background: white; 
-    flex-shrink: 0; 
+    padding: 20px;
+    border-bottom: 1px solid var(--tta-border);
+    background: white;
+    flex-shrink: 0;
 }
 
-.results-count {
-    color: #4a90e2;
-    font-weight: 500;
-}
-        
+/* ✅ 첫 번째 results-count(파란색) 선언 삭제됨 — 아래 회색 선언 유지 */
 .table-container {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
     border-radius: 8px;
@@ -160,7 +145,7 @@ html, body {
 }
 
 .scrollable-table-wrapper {
-  height: calc(100vh - 150px);  /* 60px header + 40px padding 고려 */
+  height: calc(100vh - 150px);
   overflow-x: auto;
   overflow-y: auto;
   display: block;
@@ -168,10 +153,10 @@ html, body {
 
 .results-table {
     table-layout: fixed;
-    width: 100%; 
-    border-collapse: collapse; 
-    font-size: 14px; 
-    min-width: 1200px; 
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+    min-width: 1200px;
 }
 
 .results-table thead {
@@ -183,93 +168,78 @@ html, body {
 
 .results-table th {
     padding: 12px 15px;
-    text-align: left;
-    font-weight: 600; 
+    /* ❌ text-align: left;  ← 전 컬럼에서 아래에서 다시 지정하므로 제거 */
+    font-weight: 600;
 }
 
 .results-table td {
-    padding: 10px 8px; 
-    border-bottom: 1px solid #eee; 
-    border-right: 1px solid #eee; 
-    vertical-align: top; 
+    padding: 10px 8px;
+    border-bottom: 1px solid #eee;
+    border-right: 1px solid #eee;
+    /* ❌ vertical-align: top;  ← 아래에서 모든 td를 middle로 지정하므로 제거 */
 }
 
-.results-table tbody tr:nth-child(even) {
-    background: #f8f9fa; 
-}
-
-.results-table tbody tr:hover {
-    background: #e3f2fd; 
-}
+.results-table tbody tr:nth-child(even) { background: #f8f9fa; }
+.results-table tbody tr:hover { background: #e3f2fd; }
 
 .download-btn {
-    background: var(--tta-blue); 
-    color: white; 
-    border: none; 
-    padding: 6px 12px; 
-    border-radius: 4px; 
-    cursor: pointer; 
-    font-size: 12px; 
-    transition: background-color 0.3s; 
+    background: var(--tta-blue);
+    color: white;
+    border: none;
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    transition: background-color 0.3s;
 }
 
-.download-btn:hover {
-    background: var(--tta-dark-blue); 
-}
+.download-btn:hover { background: var(--tta-dark-blue); }
 
 .status-badge {
-    padding: 4px 8px; 
-    border-radius: 12px; 
-    font-size: 12px; 
-    font-weight: bold; 
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: bold;
 }
 
-.status-complete {
-    background: #d4edda; 
-    color: #155724; 
-}
+.status-complete { background: #d4edda; color: #155724; }
+.status-progress { background: #fff3cd; color: #856404; }
 
-.status-progress {
-    background: #fff3cd; 
-    color: #856404; 
-}
-
+/* ✅ 이 선언만 유지 (회색, 작은 글씨) */
 .results-count {
-    color: #666; 
-    font-size: 14px; 
-    margin-bottom: 10px; 
+    color: #666;
+    font-size: 14px;
+    margin-bottom: 10px;
 }
 
-.results-table col.col-cert-date { width: clamp(60px, 6%, 120px); }
-.results-table col.col-cert-no   { width: clamp(60px, 6%, 120px); }
-.results-table col.col-test-no   { width: clamp(80px, 7%, 140px); }
-.results-table col.col-cmp-name  { width: clamp(130px, 10%, 220px); }
-.results-table col.col-prd-name  { width: clamp(130px, 10%, 220px); }
+/* ── 열 너비: px로 고정, 개요만 auto ── */
+.results-table col.col-cert-date { width: 60px; }
+.results-table col.col-cert-no   { width: 60px; }
+.results-table col.col-test-no   { width: 80px; }
+.results-table col.col-cmp-name  { width: 130px; }
+.results-table col.col-prd-name  { width: 130px; }
+.results-table col.col-overview  { width: auto; }
+.results-table col.col-date      { width: 60px; }
+.results-table col.col-tester    { width: 100px; }
+.results-table col.col-wd        { width: 40px; }
+.results-table col.col-renewal   { width: 40px; }
+.results-table col.col-download  { width: 50px; }
 
-/* 개요 컬럼은 남는 폭 흡수 (최소폭만 보장하고 나머지 자동) */
-.results-table col.col-overview  { width: auto; } /* 남는 공간 가져감 */
- /* 필요하면 최소폭만 보장하려면:  th/td에 min-width */
-.results-table th.col-overview, .results-table td:nth-child(6) { min-width: 350px; }
+/* 첫 행(th)에도 동일 폭 부여 → 브라우저가 확정적으로 채택 */
+.results-table th.col-cert-date  { width: 60px; }
+.results-table th.col-cert-no    { width: 60px; }
+.results-table th.col-test-no    { width: 80px; }
+.results-table th.col-cmp-name   { width: 130px; }
+.results-table th.col-prd-name   { width: 130px; }
+.results-table th.col-date       { width: 60px; }
+.results-table th.col-tester     { width: 100px; }
+.results-table th.col-wd         { width: 40px; }
+.results-table th.col-renewal    { width: 40px; }
+.results-table th.col-download   { width: 50px; }
 
-.results-table col.col-date      { width: clamp(60px, 6%, 120px); }  /* 시작/종료 동일 적용 */
-.results-table col.col-tester    { width: clamp(100px, 8%, 180px); }
-.results-table col.col-wd        { width: clamp(40px, 4%, 80px); }
-.results-table col.col-renewal   { width: clamp(40px, 4%, 80px); }
-.results-table col.col-download  { width: clamp(50px, 5%, 90px); }
-
-/* 2) 정렬/세로정렬은 th/td에 */
-.results-table th.col-cert-date,   .results-table td:nth-child(1),
-.results-table th.col-cert-no,     .results-table td:nth-child(2),
-.results-table th.col-test-no,     .results-table td:nth-child(3),
-.results-table th.col-cmp-name,    .results-table td:nth-child(4),
-.results-table th.col-prd-name,    .results-table td:nth-child(5),
-.results-table th.col-overview,    .results-table td:nth-child(6),
-.results-table th.col-date,        .results-table td:nth-child(7),
-.results-table th.col-date,        .results-table td:nth-child(8),
-.results-table th.col-tester,      .results-table td:nth-child(9),
-.results-table th.col-wd,          .results-table td:nth-child(10),
-.results-table th.col-renewal,     .results-table td:nth-child(11),
-.results-table th.col-download,    .results-table td:nth-child(12) {
-  text-align: center;
-  vertical-align: middle;
+/* 개요 칸은 말줄임 처리(선택) */
+.results-table th, .results-table td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
