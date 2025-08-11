@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('five-years-btn').click();
+  document.getElementById('ten-years-btn').click();
 });
 
 function setYearsAgo(years) {
