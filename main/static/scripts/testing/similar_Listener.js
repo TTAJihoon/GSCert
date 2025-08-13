@@ -1,5 +1,5 @@
 document.addEventListener('DOMContentLoaded', function () {
-  const allowedExt = ["docx", "pdf", "xlsx", "txt"];
+  const allowedExt = ["docx", "xlsx", "pdf", "pptx", "txt"];
   // 탭 전환 기능
   const tabAuto = document.getElementById('tab-auto');
   const tabManual = document.getElementById('tab-manual');
@@ -60,7 +60,15 @@ document.addEventListener('DOMContentLoaded', function () {
     dropArea.classList.remove('active');
     
     if (e.dataTransfer.files.length > 0) {
-      uploadFile(e.dataTransfer.files[0]);
+      if (allowedExt.includes(e.dataTransfer.files[0].name.split('.').at(-1).toLowerCase())) {
+        uploadFile(e.dataTransfer.files[0]);
+        const dt = new DataTransfer();
+        dt.items.add(e.dataTransfer.files[0]);
+        fileInput.files = dt.files;
+      } else {
+        alert('docx, xlsx, pdf, pptx, txt 확장자만 업로드 가능합니다.');
+        return;
+      }
     }
   });
   
@@ -74,8 +82,5 @@ document.addEventListener('DOMContentLoaded', function () {
     fileName.textContent = file.name;
     fileList.classList.remove('hidden');
     dropArea.classList.add('hidden');
-    
-    // 업로드된 파일 이름을 요약 영역에 표시
-    summaryContent.textContent = file.name;
   }
 });
