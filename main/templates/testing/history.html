@@ -16,7 +16,7 @@
       <form id=queryForm method="post" action="{% url 'history' %}">
         {% csrf_token %}
         <div style="margin-bottom: 20px; color: var(--tta-blue); font-size: 18px; font-weight: 600px;">
-          <i class="fas fa-search"></i> 검색 조건 
+          <i class="fa-search"></i> 검색 조건 
           <span class="tooltip">ⓘ
             <span class="tooltiptext">입력한 검색어에 해당하는</BR>시험 이력을 조회합니다.</span>
           </span>
@@ -89,7 +89,7 @@
     {% if response_tables %}
     <div class="content-header">
       <div style="margin: 0; color: var(--tta-blue); font-size: 24px;">
-        <i class="fas fa-list-alt"></i> 시험 이력 조회 결과
+        <i class="fa-list-alt"></i> 시험 이력 조회 결과
       </div>
       <div class="results-count" id="resultsCount">🔍 총 {{ response_tables|length }}건의 검색 결과</div>
     </div>
@@ -151,7 +151,7 @@
     {% else %}
     <div class="content-header">
       <div style="margin: 0; color: var(--tta-blue); font-size: 24px;">
-        <i class="fas fa-list-alt"></i> 시험 이력 조회 결과
+        <i class="fa-list-alt"></i> 시험 이력 조회 결과
       </div>
       <div class="results-count" id="resultsCount">🔍 검색 결과가 없습니다.</div>
     </div>
