@@ -40,9 +40,17 @@ document.addEventListener('DOMContentLoaded', function () {
   dropArea.addEventListener('drop', (e) => {
     e.preventDefault();
     dropArea.classList.remove('active');
-    
+
     if (e.dataTransfer.files.length > 0) {
-      uploadFile(e.dataTransfer.files[0]);
+      if (allowedExt.includes(e.dataTransfer.files[0].name.split('.').at(-1).toLowerCase())) {
+        uploadFile(e.dataTransfer.files[0]);
+        const dt = new DataTransfer();
+        dt.items.add(e.dataTransfer.files[0]);
+        fileInput.files = dt.files;
+      } else {
+        alert('html 확장자만 업로드 가능합니다.');
+        return;
+      }
     }
   });
   
