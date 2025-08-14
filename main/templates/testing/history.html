@@ -15,8 +15,8 @@
     <div class="search-section">
       <form id=queryForm method="post" action="{% url 'history' %}">
         {% csrf_token %}
-        <div style="margin-bottom: 20px; color: var(--tta-blue); font-size: 18px;">
-          <i class="fas fa-search"></i> <p style="font-weight: 600px;">검색 조건</p>
+        <div style="margin-bottom: 20px; color: var(--tta-blue); font-size: 18px; display: flex;">
+          <i class="fas fa-search"></i> <div style="font-weight: 600px;">검색 조건</div>
           <span class="tooltip">ⓘ
             <span class="tooltiptext">입력한 검색어에 해당하는</BR>시험 이력을 조회합니다.</span>
           </span>
