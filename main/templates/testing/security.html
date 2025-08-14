@@ -12,241 +12,118 @@
 {% endblock %}
 
 {% block content %}
-<div class="main-container mx-auto">
-<div class="header px-8 py-4 flex items-center justify-between">
-<div>
-<h1 class="text-2xl font-bold">보안성 결함 분석 도구</h1>
-<p class="text-sm opacity-80">템플릿과 결과 리포트를 비교하여 새로운 분석 결과를 생성합니다</p>
-</div>
-<div class="flex gap-4">
-<button class="button-outline px-4 py-2 rounded">도움말</button>
-<button class="button-blue px-4 py-2 rounded">설정</button>
-</div>
-</div>
-<div class="flex p-6 gap-6">
-<!-- 좌측: 파일 업로드 영역 -->
-<div class="w-1/3 flex flex-col gap-4">
-<div class="bg-white p-4 rounded shadow">
-<h2 class="text-xl font-semibold text-gray-800 mb-2">파일 업로드</h2>
-<p class="text-sm text-gray-600 mb-4">아래 영역에 파일을 드래그앤드롭하거나 클릭하여 업로드하세요.</p>
-<!-- 템플릿 파일 업로드 -->
-<div class="mb-4">
-<label class="block text-sm font-medium text-gray-700 mb-2">1. 보안성 결함 템플릿</label>
-<div class="upload-area h-24 flex flex-col items-center justify-center rounded cursor-pointer p-4">
-<i class="fas fa-file-upload text-2xl text-blue-500"></i>
-<p class="text-sm text-gray-500 mt-2">템플릿 파일을 드래그하거나 클릭하여 업로드</p>
-</div>
-</div>
-<!-- 결과 리포트 업로드 -->
-<div class="mb-4">
-<label class="block text-sm font-medium text-gray-700 mb-2">2. 보안성 결함 결과 리포트</label>
-<div class="upload-area h-24 flex flex-col items-center justify-center rounded cursor-pointer p-4">
-<i class="fas fa-file-upload text-2xl text-blue-500"></i>
-<p class="text-sm text-gray-500 mt-2">결과 리포트를 드래그하거나 클릭하여 업로드</p>
-</div>
-</div>
-<button class="button-blue w-full py-2 rounded mt-4 flex items-center justify-center">
-<i class="fas fa-sync-alt mr-2"></i> 분석 실행
-</button>
-</div>
-<div class="bg-white p-4 rounded shadow">
-<h2 class="text-lg font-semibold text-gray-800 mb-2">분석 설정</h2>
-<div class="mb-3">
-<label class="flex items-center">
-<input checked="" class="form-checkbox h-4 w-4 text-blue-500" type="checkbox"/>
-<span class="ml-2 text-sm">중요도 높음 항목만 표시</span>
-</label>
-</div>
-<div class="mb-3">
-<label class="flex items-center">
-<input checked="" class="form-checkbox h-4 w-4 text-blue-500" type="checkbox"/>
-<span class="ml-2 text-sm">불일치 항목 강조 표시</span>
-</label>
-</div>
-<div class="mb-3">
-<label class="flex items-center">
-<input class="form-checkbox h-4 w-4 text-blue-500" type="checkbox"/>
-<span class="ml-2 text-sm">상세 설명 포함</span>
-</label>
-</div>
-</div>
-</div>
-<!-- 우측: 결과 표시 영역 -->
-<div class="w-2/3 bg-white rounded shadow p-4">
-<div class="flex justify-between items-center mb-4">
-<h2 class="text-xl font-semibold text-gray-800">분석 결과</h2>
-<div class="flex gap-2">
-<button class="button-outline px-3 py-1 rounded text-sm flex items-center">
-<i class="fas fa-copy mr-1"></i> 엑셀 복사
-</button>
-<button class="button-outline px-3 py-1 rounded text-sm flex items-center">
-<i class="fas fa-download mr-1"></i> 내보내기
-</button>
-</div>
-</div>
-<!-- 엑셀형 그리드 테이블 -->
-<div class="excel-grid-container border rounded">
-<div class="excel-toolbar bg-gray-100 p-2 border-b flex items-center gap-3">
-<button class="px-2 py-1 text-sm border rounded hover:bg-gray-200" id="select-all"><i class="fas fa-check-square mr-1"></i> 전체선택</button>
-<button class="px-2 py-1 text-sm border rounded hover:bg-gray-200" id="copy-selection"><i class="fas fa-copy mr-1"></i> 선택 복사</button>
-<button class="px-2 py-1 text-sm border rounded hover:bg-gray-200" id="sort-asc"><i class="fas fa-sort-alpha-down mr-1"></i> 오름차순</button>
-<button class="px-2 py-1 text-sm border rounded hover:bg-gray-200" id="sort-desc"><i class="fas fa-sort-alpha-down-alt mr-1"></i> 내림차순</button>
-<div class="border-r h-6 mx-2"></div>
-<span class="text-xs text-gray-500">행/열을 드래그하여 순서를 변경할 수 있습니다</span>
-</div>
-<table class="excel-grid">
-<thead>
-<tr class="excel-header-row" id="header-row">
-<th class="excel-header-cell row-number-cell">#</th>
-<th class="excel-header-cell" data-col="id">
-<i class="fas fa-grip-lines drag-handle col-handle"></i> ID
-                </th>
-<th class="excel-header-cell" data-col="category">
-<i class="fas fa-grip-lines drag-handle col-handle"></i> 분류
-                </th>
-<th class="excel-header-cell" data-col="item">
-<i class="fas fa-grip-lines drag-handle col-handle"></i> 결함 항목
-                </th>
-<th class="excel-header-cell" data-col="severity">
-<i class="fas fa-grip-lines drag-handle col-handle"></i> 중요도
-                </th>
-<th class="excel-header-cell" data-col="standard">
-<i class="fas fa-grip-lines drag-handle col-handle"></i> 템플릿 기준값
-                </th>
-<th class="excel-header-cell" data-col="result">
-<i class="fas fa-grip-lines drag-handle col-handle"></i> 결과값
-                </th>
-<th class="excel-header-cell" data-col="match">
-<i class="fas fa-grip-lines drag-handle col-handle"></i> 일치 여부
-                </th>
-</tr>
-</thead>
-<tbody id="data-body">
-<tr class="excel-row" data-id="SEC-001">
-<td class="excel-cell row-number-cell">
-<i class="fas fa-grip-lines-vertical drag-handle row-handle"></i>1
-                </td>
-<td class="excel-cell">SEC-001</td>
-<td class="excel-cell">인증</td>
-<td class="excel-cell">비밀번호 복잡성 요구사항</td>
-<td class="excel-cell">상</td>
-<td class="excel-cell">영문, 숫자, 특수문자 포함 8자 이상</td>
-<td class="excel-cell">영문, 숫자만 포함</td>
-<td class="excel-cell"><span class="text-red-500 font-semibold">불일치</span></td>
-</tr>
-<tr class="excel-row" data-id="SEC-002">
-<td class="excel-cell row-number-cell">
-<i class="fas fa-grip-lines-vertical drag-handle row-handle"></i>2
-                </td>
-<td class="excel-cell">SEC-002</td>
-<td class="excel-cell">인증</td>
-<td class="excel-cell">계정 잠금 임계값</td>
-<td class="excel-cell">상</td>
-<td class="excel-cell">5회 실패 시 잠금</td>
-<td class="excel-cell">5회 실패 시 잠금</td>
-<td class="excel-cell"><span class="text-green-500 font-semibold">일치</span></td>
-</tr>
-<tr class="excel-row" data-id="SEC-003">
-<td class="excel-cell row-number-cell">
-<i class="fas fa-grip-lines-vertical drag-handle row-handle"></i>3
-                </td>
-<td class="excel-cell">SEC-003</td>
-<td class="excel-cell">접근통제</td>
-<td class="excel-cell">세션 타임아웃</td>
-<td class="excel-cell">중</td>
-<td class="excel-cell">30분</td>
-<td class="excel-cell">60분</td>
-<td class="excel-cell"><span class="text-red-500 font-semibold">불일치</span></td>
-</tr>
-<tr class="excel-row" data-id="SEC-004">
-<td class="excel-cell row-number-cell">
-<i class="fas fa-grip-lines-vertical drag-handle row-handle"></i>4
-                </td>
-<td class="excel-cell">SEC-004</td>
-<td class="excel-cell">암호화</td>
-<td class="excel-cell">전송 데이터 암호화</td>
-<td class="excel-cell">상</td>
-<td class="excel-cell">TLS 1.2 이상</td>
-<td class="excel-cell">TLS 1.2</td>
-<td class="excel-cell"><span class="text-green-500 font-semibold">일치</span></td>
-</tr>
-<tr class="excel-row" data-id="SEC-005">
-<td class="excel-cell row-number-cell">
-<i class="fas fa-grip-lines-vertical drag-handle row-handle"></i>5
-                </td>
-<td class="excel-cell">SEC-005</td>
-<td class="excel-cell">암호화</td>
-<td class="excel-cell">저장 데이터 암호화</td>
-<td class="excel-cell">상</td>
-<td class="excel-cell">AES-256</td>
-<td class="excel-cell">AES-128</td>
-<td class="excel-cell"><span class="text-red-500 font-semibold">불일치</span></td>
-</tr>
-<tr class="excel-row" data-id="SEC-006">
-<td class="excel-cell row-number-cell">
-<i class="fas fa-grip-lines-vertical drag-handle row-handle"></i>6
-                </td>
-<td class="excel-cell">SEC-006</td>
-<td class="excel-cell">로깅</td>
-<td class="excel-cell">보안 이벤트 로깅</td>
-<td class="excel-cell">중</td>
-<td class="excel-cell">모든 인증 이벤트 기록</td>
-<td class="excel-cell">성공한 인증만 기록</td>
-<td class="excel-cell"><span class="text-red-500 font-semibold">불일치</span></td>
-</tr>
-<tr class="excel-row" data-id="SEC-007">
-<td class="excel-cell row-number-cell">
-<i class="fas fa-grip-lines-vertical drag-handle row-handle"></i>7
-                </td>
-<td class="excel-cell">SEC-007</td>
-<td class="excel-cell">구성</td>
-<td class="excel-cell">불필요한 서비스 비활성화</td>
-<td class="excel-cell">중</td>
-<td class="excel-cell">모든 미사용 서비스 중지</td>
-<td class="excel-cell">일부 미사용 서비스 실행 중</td>
-<td class="excel-cell"><span class="text-red-500 font-semibold">불일치</span></td>
-</tr>
-<tr class="excel-row" data-id="SEC-008">
-<td class="excel-cell row-number-cell">
-<i class="fas fa-grip-lines-vertical drag-handle row-handle"></i>8
-                </td>
-<td class="excel-cell">SEC-008</td>
-<td class="excel-cell">네트워크</td>
-<td class="excel-cell">방화벽 규칙</td>
-<td class="excel-cell">상</td>
-<td class="excel-cell">최소 권한 원칙 적용</td>
-<td class="excel-cell">최소 권한 원칙 적용</td>
-<td class="excel-cell"><span class="text-green-500 font-semibold">일치</span></td>
-</tr>
-</tbody>
-</table>
-</div>
-<!-- 엑셀 시트 탭 -->
-<div class="excel-sheet-tabs mt-1">
-<div class="excel-sheet-tab active">보안성 결함 분석</div>
-<div class="excel-sheet-tab">상세 검토 결과</div>
-<div class="excel-sheet-tab">조치 권고사항</div>
-<div class="excel-sheet-tab"><i class="fas fa-plus text-xs"></i></div>
-</div>
-<!-- 결과 요약 -->
-<div class="mt-6 p-4 bg-blue-50 rounded">
-<h3 class="text-lg font-semibold text-gray-800 mb-2">분석 요약</h3>
-<div class="flex gap-6">
-<div class="flex items-center">
-<div class="w-3 h-3 rounded-full bg-green-500 mr-2"></div>
-<span class="text-sm">일치: 3개 항목</span>
-</div>
-<div class="flex items-center">
-<div class="w-3 h-3 rounded-full bg-red-500 mr-2"></div>
-<span class="text-sm">불일치: 5개 항목</span>
-</div>
-<div class="flex items-center">
-<div class="w-3 h-3 rounded-full bg-yellow-500 mr-2"></div>
-<span class="text-sm">중요 불일치: 3개 항목</span>
-</div>
-</div>
-</div>
-</div>
-</div>
+<div class="app-container">
+    <div class="main-content">
+        <!-- 좌측 파일 업로드 패널 (떠있는 느낌으로 수정) -->
+        <div class="sidebar-container">
+            <div class="search-title">
+                <i class="fas fa-search search-icon"></i> 보안성 결과 보고서 업로드
+                <span class="tooltip">ⓘ
+                    <span class="tooltiptext">Invicti 결과 보고서(.html) 파일을 업로드 하시면</BR>결함리포트(.xlsx) 파일을 만들어 드립니다.</span>
+                </span>
+            </div>        
+            <div class="sidebar">
+                <form id="queryForm" method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="file-upload-container">
+                        <div class="content-container" id="content-auto">
+                            <!-- 파일 업로드에 name 속성 추가 -->
+                            <input class="file-input" id="fileInput" type="file" name="file"/>
+                            
+                            <div class="drop-area" id="dropArea">
+                                <i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
+                                <p>파일을 이곳에 드래그하거나</p>
+                                <p><span class="text-blue-500 font-medium">클릭</span>하여 업로드하세요</p>
+                                <p class="upload-limit-message">* html 파일을 업로드 해주세요.</p>
+                            </div>
+                            
+                            <div class="file-list hidden" id="fileList">
+                                <div class="file-item">
+                                    <div class="file-name" id="fileName"></div>
+                                    <div class="remove-file" id="removeFile">
+                                        <i class="fas fa-times"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="content-spacer"></div>
+                            <button class="action-button">결함 리포트 생성</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    <!-- 우측 콘텐츠 영역 -->
+    <main class="content-area">
+        <div class="content-card">
+            <div class="loading-container hidden" id="loadingContainer">
+                <div class="spinner"></div>
+                <div class="loading-text">분석 중...</div>
+                <div class="loading-description">업로드한 파일을 분석하고 유사 제품을 검색하고 있습니다.</div>
+            </div>
+            <div class="results-container">
+                <div class="results-header">
+                    <div class="results-title">유사 제품 분석 결과</div>
+                    <div class="results-count">3건</div>
+                </div>
+                <!-- 입력 요약 영역 -->
+                <div class="input-summary" id="inputSummary">
+                    <div class="summary-title">업로드 제품 개요 분석 결과</div>
+                    <div class="summary-content" id="summaryContent">제품 개요</div>
+                </div>
+                <!-- 분석 결과 목록 -->
+                <div class="results-content" id="resultsContent">
+                    <!-- 유사 제품 예시 -->
+                    <div class="similar-product">
+                        <div class="product-header">
+                            <div class="product-title">무선 블루투스 이어폰 X-500</div>
+                            <div class="similarity-score">유사도 95%</div>
+                        </div>
+                        <div class="product-description">
+                            액티브 노이즈 캔슬링 기능과 IPX7 방수 등급을 갖춘 프리미엄 무선 이어폰입니다. 터치 컨트롤과 최대 9시간 재생 시간을 지원합니다.
+                        </div>
+                        <div class="product-tags">
+                            <span class="product-tag">무선이어폰</span>
+                            <span class="product-tag">노이즈캔슬링</span>
+                            <span class="product-tag">방수</span>
+                            <span class="product-tag">터치컨트롤</span>
+                        </div>
+                    </div>
+                    <div class="similar-product">
+                        <div class="product-header">
+                            <div class="product-title">프로 사운드 이어버드 TWS-200</div>
+                                <div class="similarity-score">유사도 87%</div>
+                            </div>
+                            <div class="product-description">
+                                고품질 사운드와 노이즈 캔슬링 기술이 적용된 완전 무선 이어폰입니다. 생활 방수와 터치 컨트롤을 지원하며 최대 7시간 연속 재생이 가능합니다.
+                            </div>
+                            <div class="product-tags">
+                                <span class="product-tag">TWS</span>
+                                <span class="product-tag">노이즈캔슬링</span>
+                                <span class="product-tag">생활방수</span>
+                                <span class="product-tag">터치패널</span>
+                            </div>
+                        </div>
+                        <div class="similar-product">
+                            <div class="product-header">
+                                <div class="product-title">스포츠 블루투스 이어폰 R-300</div>
+                                <div class="similarity-score">유사도 82%</div>
+                            </div>
+                            <div class="product-description">
+                                스포츠 활동에 최적화된 인체공학적 디자인의 블루투스 이어폰입니다. IPX5 방수 등급과 물리 버튼 컨트롤, 최대 8시간 재생을 지원합니다.
+                            </div>
+                            <div class="product-tags">
+                                <span class="product-tag">스포츠이어폰</span>
+                                <span class="product-tag">블루투스5.0</span>
+                                <span class="product-tag">방수</span>
+                                <span class="product-tag">물리버튼</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
 </div>
 {% endblock %}
