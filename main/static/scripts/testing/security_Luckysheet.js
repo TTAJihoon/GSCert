@@ -1,13 +1,6 @@
 document.addEventListener("DOMContentLoaded", function () {
-  // div가 렌더된 뒤 호출
-  const el = document.getElementById("luckysheet");
-  if (!el) {
-    console.error("#luckysheet 컨테이너를 찾을 수 없습니다.");
-    return;
-  }
-  // 라이브러리 로드 확인
-  if (typeof luckysheet === "undefined") {
-    console.error("Luckysheet 라이브러리가 로드되지 않았습니다.");
+  if (!window.luckysheet || typeof window.luckysheet.create !== "function") {
+    console.error("Luckysheet 라이브러리가 로드되지 않았거나 create가 없습니다.", window.luckysheet);
     return;
   }
 
