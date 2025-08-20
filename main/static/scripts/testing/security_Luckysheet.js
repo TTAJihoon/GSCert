@@ -11,8 +11,8 @@ document.addEventListener("DOMContentLoaded", function () {
     return;
   }
 
-  luckysheet.create({
-    container: "luckysheet",
+  window.luckysheet.create({
+    container: "luckysheetContainer",
     title: "보안성 결과 임시 시트",
     lang: "en", // ko 리소스 별도 없으면 en 권장
     data: [{
