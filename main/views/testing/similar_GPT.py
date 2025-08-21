@@ -36,7 +36,7 @@ def run_openai_GPT(query): # 문장당 유사제품 검색 개수
     print("[STEP 2] GPT 요청 시작")
     try:
         response = client.chat.completions.create(
-            model="gpt-4.1-nano",
+            model="gpt-5-nano",
             messages=[{"role": "user", "content": prompt}]
         )
         # GPT 결과 문장만 추출
