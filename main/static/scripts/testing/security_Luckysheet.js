@@ -1,6 +1,14 @@
 document.addEventListener("DOMContentLoaded", function () {
-  if (!window.luckysheet || typeof window.luckysheet.create !== "function") {
-    console.error("Luckysheet 라이브러리가 로드되지 않았거나 create가 없습니다.", window.luckysheet);
+  // UMD 전역 확인
+  if (!window.Luckysheet || typeof window.Luckysheet.create !== "function") {
+    console.error("Luckysheet 라이브러리가 로드되지 않았거나 create가 없습니다.", window.Luckysheet);
+    return;
+  }
+
+  // 컨테이너 존재 확인
+  const el = document.getElementById("luckysheetContainer");
+  if (!el) {
+    console.error("#luckysheetContainer를 찾을 수 없습니다.");
     return;
   }
 
