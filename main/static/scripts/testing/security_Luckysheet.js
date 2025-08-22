@@ -8,16 +8,15 @@ document.addEventListener("DOMContentLoaded", function () {
   }
 
   // 2) 전역 심볼 유연하게 선택 (UMD/Bundle 차이, CDN 빌드 차이 대비)
-  const LS = window.Luckysheet || window.luckysheet;
+  const LS = window.luckysheet;
   if (!LS || typeof LS.create !== "function") {
     console.error("Luckysheet 라이브러리가 아직 전역에 없습니다.", {
-      Luckysheet: window.Luckysheet,
       luckysheet: window.luckysheet
     });
     return;
   }
 
-  Luckysheet.create({
+  luckysheet.create({
     container: "luckysheetContainer",
     title: "보안성 결과 임시 시트",
     lang: "en", // ko 리소스 별도 없으면 en 권장
