@@ -402,3 +402,7 @@ select {
 .hidden {
   display: none;
 }
+
+.luckysheet-share-logo {
+  height: 0px;
+}
