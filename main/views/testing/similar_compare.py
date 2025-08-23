@@ -1,5 +1,7 @@
 import faiss
 import sqlite3
+import re
+import unicodedata
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
@@ -45,8 +47,26 @@ def _pick_anchors(qv, vocab, idf, V_ng, v_gen, topk_vocab=12, num_anchors=2):
     aux_terms   = [vocab[i] for i in idx[order[num_anchors:]]]
     return anchors_str, anchors_vec, aux_terms
 
+def _norm(s: str) -> str:
+    """
+    유니코드 정규화 + 공백/일부 기호 제거로 표기 차이 흡수
+    예: '인장 관리' / '인장-관리' / '인장관리' → 동일 매칭
+    """
+    s = unicodedata.normalize("NFKC", s)
+    s = re.sub(r"[ \t\r\n\-_/]", "", s)  # 공백/하이픈/슬래시 등 제거
+    return s
+
+def _contains_anchor(text: str, anchor: str) -> bool:
+    if not text or not anchor:
+        return False
+    if anchor in text:
+        return True
+    return _norm(anchor) in _norm(text)
+
 def _softgate_feats(text, cand_vec, anchors_str, anchors_vec):
-    exact_hits = sum(1 for a in anchors_str if a in text)  # 문자 일치
+    # 문자 일치: 공백/기호 차이를 허용
+    exact_hits = sum(1 for a in anchors_str if _contains_anchor(text, a))
+    # 의미 일치: 앵커 벡터들 중 최대 코사인
     sem_hit = float((anchors_vec @ cand_vec).max()) if len(anchors_vec) else 0.0
     return exact_hits, sem_hit
 
