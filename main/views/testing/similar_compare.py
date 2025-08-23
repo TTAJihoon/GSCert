@@ -51,56 +51,52 @@ def _softgate_feats(text, cand_vec, anchors_str, anchors_vec):
     return exact_hits, sem_hit
 
 # 소프트게이트 재랭킹 추가
-def compare_from_index(text):
-    # 0) 인덱스/ID 로드
+def compare_from_index(text, topM=100, topk=30,
+                       hard_gate=False, tau=0.50,
+                       # base 가중치를 0으로 ↓↓↓
+                       w_emb=0.0, w_sem=0.8, w_lex=0.6, w_gen=0.4, w_aux=0.1):
     index = faiss.read_index("main/data/faiss_bge_m3_ko.index")
     db_ids = np.load("main/data/db_ids.npy", allow_pickle=True)
-
-    # 1) 쿼리 임베딩
     model = SentenceTransformer("upskyy/bge-m3-korean")
-    query_vec = model.encode([text], normalize_embeddings=True).astype('float32')
+    qv = model.encode([text], normalize_embeddings=True).astype('float32')
 
-    # 2) 1차 검색 (상위 30)
-    D, I = index.search(query_vec, k=30)         # D=inner product(=cosine), I=인덱스(0..N-1)
+    # D(점수)는 버려도 됨. I(인덱스)는 필요.
+    _, I = index.search(qv, k=topM)
     faiss_idx = I[0]
-    base_sims = D[0].tolist()                    # 그대로 코사인 유사도
 
-    # 3) 매칭된 DB id로 원문 조회
     matched_db_ids = [int(db_ids[i]) for i in faiss_idx]
-    tables_unsorted = select_data_from_db(matched_db_ids)
+    rows = select_data_from_db(matched_db_ids)
+    id2row = {r['일련번호']: r for r in rows}
+    tables = [id2row.get(int(db_ids[i]), {}) for i in faiss_idx]
 
-    # 4) id → row 매핑 (원래 순서를 유지하려고)
-    id_to_table = {item['일련번호']: item for item in tables_unsorted}
-    tables = [id_to_table.get(int(db_ids[i]), {}) for i in faiss_idx]
-
-    # 5) n-gram 테이블 로드 → 앵커 추출
+    # n-gram 로드 & 앵커
     vocab, idf, V_ng, v_gen = _load_ngram_assets("main/data/ngram_table.npz")
-    anchors_str, anchors_vec, aux_terms = _pick_anchors(query_vec[0], vocab, idf, V_ng, v_gen,
+    anchors_str, anchors_vec, aux_terms = _pick_anchors(qv[0], vocab, idf, V_ng, v_gen,
                                                         topk_vocab=12, num_anchors=2)
 
-    # 6) 후보 벡터 재구성(IndexFlatIP는 reconstruct 지원)
+    # 후보 벡터 재구성
     cand_vecs = np.vstack([ index.reconstruct(int(i)) for i in faiss_idx ]).astype("float32")
 
-    # 7) 소프트게이트 재점수
-    #    final = w_emb*base + w_sem*sem + w_lex*log1p(exact) - w_gen*(generic)
-    w_emb, w_sem, w_lex, w_gen, w_aux = 1.0, 0.6, 0.4, 0.4, 0.1
-    finals = []
-    for t, base, v in zip(tables, base_sims, cand_vecs):
-        if not t:   # 방어
-            finals.append(-1e9); continue
+    scored = []
+    for t, v in zip(tables, cand_vecs):
+        if not t:
+            continue
         exact, sem = _softgate_feats(t.get("제품설명",""), v, anchors_str, anchors_vec)
+        if hard_gate and (exact == 0 and sem < tau):
+            continue
         generic_penalty = float(v @ v_gen)
-        aux_hits = sum(1 for a in aux_terms if a in t.get("제품설명",""))
-        final = (w_emb*base + w_sem*sem + w_lex*np.log1p(exact) - w_gen*generic_penalty
-                 + w_aux*np.log1p(aux_hits))
-        t['base_similarity'] = float(base)
+        aux_hits = sum(1 for a in aux_terms if _contains_anchor(t.get("제품설명",""), a))
+
+        # ★ base를 쓰지 않음: w_emb=0.0
+        final = (w_sem*sem + w_lex*np.log1p(exact)
+                 - w_gen*generic_penalty + w_aux*np.log1p(aux_hits))
+
+        t['final_score'] = float(final)
         t['anchor_exact_hits'] = int(exact)
         t['anchor_sem_hit'] = float(sem)
         t['aux_hits'] = int(aux_hits)
-        t['final_score'] = float(final)
-        finals.append(final)
+        scored.append(t)
 
-    # 8) 최종 정렬: final_score 내림차순
-    tables_sorted = sorted(tables, key=lambda x: x.get('final_score', -1e9), reverse=True)
-
-    return tables_sorted, base_sims
+    tables_sorted = sorted(scored, key=lambda x: x['final_score'], reverse=True)[:topk]
+    final_scores  = [t['final_score'] for t in tables_sorted]
+    return tables_sorted, final_scores
