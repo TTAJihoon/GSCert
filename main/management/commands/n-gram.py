@@ -1,5 +1,5 @@
 from django.core.management.base import BaseCommand
-from main.utils.n-gram_to_faiss import build_ngram_table
+from main.utils.n_gram_to_faiss import build_ngram_table
 
 class Command(BaseCommand):
     help = "DB 데이터를 FAISS로 임베딩합니다."
