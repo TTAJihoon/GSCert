@@ -10,4 +10,4 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         db_path = options["db_path"]
         self.stdout.write(f"▶ DB 파일: {db_path}")
-        build_faiss_from_db(db_path)
+        build_ngram_table(db_path)
