@@ -45,22 +45,6 @@ body {
   overflow: hidden;
 }
 
-.content-area {
-  flex: 1;
-  padding: 24px 24px 24px 348px;
-  background-color: #f8fafc;
-  height: 100%;
-  overflow-y: auto;
-}
-
-.content-card {
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  padding: 20px;
-  height: calc(100% - 40px);
-}
-
 .file-upload-container {
   width: 100%;
   background-color: #ffffff;
@@ -97,19 +81,6 @@ body {
   display: flex;
   flex-direction: column;
   height: calc(100% - 45px);
-}
-
-.dropdown {
-  margin-bottom: 16px;
-}
-
-select {
-  width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 4px;
-  background-color: #f8fafc;
-  font-size: 14px;
 }
 
 .drop-area {
@@ -186,19 +157,6 @@ select {
   background-color: #2563eb;
 }
 
-.text-area {
-  width: 100%;
-  height: 180px;
-  padding: 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 6px;
-  resize: none;
-  font-size: 14px;
-  background-color: #f8fafc;
-  margin-bottom: 16px;
-  flex: 1;
-}
-
 .file-input {
   display: none;
 }
@@ -208,136 +166,6 @@ select {
   color: #64748b;
   text-align: center;
   margin-top: 8px;
-}
-
-.results-container {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.results-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #e5e7eb;
-  margin-bottom: 16px;
-}
-
-.results-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1e3a8a;
-}
-
-.results-count {
-  background-color: #e0f2fe;
-  color: #1e40af;
-  padding: 4px 10px;
-  border-radius: 16px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.input-summary {
-  background-color: #f0f9ff;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  border-left: 3px solid #3b82f6;
-}
-
-.summary-title {
-  font-size: 13px;
-  color: #64748b;
-  font-weight: 500;
-  margin-bottom: 6px;
-}
-
-.summary-content {
-  font-size: 15px;
-  color: #1e3a8a;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.results-content {
-  flex: 1;
-  overflow-y: auto;
-}
-
-.result-placeholder {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  color: #94a3b8;
-  text-align: center;
-  padding: 20px;
-}
-
-.placeholder-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  color: #cbd5e1;
-}
-
-.similar-product {
-  background-color: white;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 12px;
-  transition: all 0.2s ease;
-}
-
-.similar-product:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  border-color: #bfdbfe;
-}
-
-.product-header {
-  display: flex;
-  justify-content: space-between;
-  margin-bottom: 8px;
-}
-
-.product-title {
-  font-weight: 600;
-  color: #1e40af;
-}
-
-.similarity-score {
-  background-color: #dbeafe;
-  color: #1e40af;
-  padding: 2px 8px;
-  border-radius: 12px;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.product-description {
-  font-size: 14px;
-  color: #4b5563;
-  margin-bottom: 12px;
-}
-
-.product-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.product-tag {
-  background-color: #f1f5f9;
-  color: #64748b;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-size: 12px;
 }
 
 .content-spacer {
@@ -401,4 +229,23 @@ select {
 
 .hidden {
   display: none;
+}
+
+@font-face {
+  font-family: 'luckysheet-icon';
+  src: url('https://unpkg.com/luckysheet@2.1.13/dist/plugins/fonts/iconfont.woff2') format('woff2'),
+       url('https://unpkg.com/luckysheet@2.1.13/dist/plugins/fonts/iconfont.woff')  format('woff'),
+       url('https://unpkg.com/luckysheet@2.1.13/dist/plugins/fonts/iconfont.ttf')   format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: block;
+}
+
+/* 2) 다른 CSS가 덮어쓰는 경우 대비: 폰트 패밀리 보정 */
+.luckysheet .iconfont,
+.luckysheet-toolbar .iconfont {
+  font-family: 'luckysheet-icon' !important;
+  font-style: normal !important;
+  font-weight: normal !important;
+  speak: none;
 }
