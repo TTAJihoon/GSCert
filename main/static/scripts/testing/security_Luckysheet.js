@@ -20,6 +20,7 @@ document.addEventListener("DOMContentLoaded", function () {
     container: "luckysheetContainer",
     title: "보안성 결과 임시 시트",
     lang: "en", // ko 리소스 별도 없으면 en 권장
+    showinfobar: false,
     data: [{
       name: "Sheet1",
       index: "sheet1",
