@@ -7,8 +7,8 @@ ORIGIN_XLSX_PATH = os.path.join(settings.BASE_DIR, "main/data/prdinfo.xlsx")
 
 def source_excel_view(request):
     # (선택) 인증/권한 체크
-    if not request.user.is_authenticated:
-        return HttpResponse(status=401)
+    #if not request.user.is_authenticated:
+    #    return HttpResponse(status=401)
     if not os.path.exists(ORIGIN_XLSX_PATH):
         raise Http404()
     resp = FileResponse(open(ORIGIN_XLSX_PATH, "rb"),
