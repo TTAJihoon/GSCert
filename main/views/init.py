@@ -11,6 +11,7 @@ def login_test_view(request):
 def index(request):
     return render(request, 'index.html')
 
+
 def history(request):
     return render(request, 'testing/history.html')
 
@@ -19,6 +20,11 @@ def similar(request):
     
 def security(request):
     return render(request, 'testing/security.html')
+
+
+def prdinfo(request):
+    return render(request, 'certy/prdinfo.html')
+
 
 def genspark(request):
     return render(request, 'genspark.html')
