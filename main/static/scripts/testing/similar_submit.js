@@ -43,6 +43,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     showLoading();
+    summaryContent.innerHTML = "";
     resultContent.innerHTML = "";
 
     try {
