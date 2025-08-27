@@ -6,6 +6,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const loading = document.getElementById('loadingContainer');
   const summaryContent = document.getElementById('summaryContent');
   const resultContent = document.getElementById('resultsContent');
+  const resultHeader = document.getElementById('resultHeader');
+  const inputSummary = document.getElementById('inputSummary');
 
   function getCookie(name) {
     let cookieValue = null;
@@ -23,8 +25,16 @@ document.addEventListener('DOMContentLoaded', function () {
     return cookieValue;
   }
   
-  function showLoading() { loading.classList.remove('hidden'); }
-  function hideLoading() { loading.classList.add('hidden'); }
+  function showLoading() {
+    loading.classList.remove('hidden');
+    resultHeader.classList.add('hidden');
+    inputSummary.classList.add('hidden');
+  }
+  function hideLoading() {
+    loading.classList.add('hidden');
+    resultHeader.classList.remove('hidden');
+    inputSummary.classList.remove('hidden');
+  }
 
   form.addEventListener('submit', async function(e) {
     console.log('폼 제출 이벤트 발생!');
@@ -43,8 +53,6 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     showLoading();
-    summaryContent.innerHTML = "";
-    resultContent.innerHTML = "";
 
     try {
       const formData = new FormData();
