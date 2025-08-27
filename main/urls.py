@@ -14,6 +14,7 @@ urlpatterns = [
     path('security/', security, name='security'),
 
     path('prdinfo/', prdinfo, name='prdinfo'),
+    path('source-excel/', source_excel_view, name='source-excel'),
     
     path('genspark/', genspark, name='genspark'),
     path('test/', test, name='genspark2'),
