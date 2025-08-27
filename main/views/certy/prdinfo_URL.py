@@ -1,4 +1,4 @@
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from django.conf import settings
 import os
 
