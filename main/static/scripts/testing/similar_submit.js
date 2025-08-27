@@ -5,8 +5,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const contentManual = document.getElementById('content-manual'); // 수동입력 탭 컨테이너
   const loading = document.getElementById('loadingContainer');
   const summaryContent = document.getElementById('summaryContent');
-  const resultContent = document.getElementById('resultsContent');
-  const resultHeader = document.getElementById('resultHeader');
+  const resultsContent = document.getElementById('resultsContent');
+  const resultsHeader = document.getElementById('resultsHeader');
   const inputSummary = document.getElementById('inputSummary');
 
   function getCookie(name) {
@@ -27,13 +27,15 @@ document.addEventListener('DOMContentLoaded', function () {
   
   function showLoading() {
     loading.classList.remove('hidden');
-    resultHeader.classList.add('hidden');
+    resultsHeader.classList.add('hidden');
     inputSummary.classList.add('hidden');
+    resultsContent.classList.add('hidden');
   }
   function hideLoading() {
     loading.classList.add('hidden');
-    resultHeader.classList.remove('hidden');
+    resultsHeader.classList.remove('hidden');
     inputSummary.classList.remove('hidden');
+    resultsContent.classList.remove('hidden');
   }
 
   form.addEventListener('submit', async function(e) {
@@ -114,9 +116,9 @@ console.log('response:', data.response);
         `;
       }).join('');
       summaryContent.innerHTML = summaryhtml;
-      resultContent.innerHTML = resulthtml;
+      resultsContent.innerHTML = resulthtml;
     } catch (err) {
-      resultContent.innerHTML = `<span style="color:red;">에러: ${err.message}</span>`;
+      resultsContent.innerHTML = `<span style="color:red;">에러: ${err.message}</span>`;
     } finally {
       hideLoading();
     }
