@@ -44,3 +44,4 @@ document.addEventListener("DOMContentLoaded", async function () {
     console.error("원본 엑셀 → Luckysheet 변환 실패:", e);
     alert("원본 파일을 표시하는 중 오류가 발생했습니다.");
   }
+});
