@@ -5,7 +5,7 @@ from main.views.init import index, similar, security, prdinfo, genspark, test
 from main.views.testing.history import history
 from main.views.testing.similar_summary import summarize_document
 
-from main.view.certy.prdinfo_URL import source_excel_view
+from main.views.certy.prdinfo_URL import source_excel_view
 
 urlpatterns = [
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
