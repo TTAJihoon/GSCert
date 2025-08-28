@@ -1,3 +1,4 @@
+// static/scripts/certy/prdinfo_generate.js
 document.addEventListener('DOMContentLoaded', function () {
   const form         = document.getElementById('queryForm');
   const fileInput    = document.getElementById('fileInput');
@@ -27,20 +28,18 @@ document.addEventListener('DOMContentLoaded', function () {
     return cookieValue;
   }
 
-  // 기본 form submit은 사용하지 않음(AJAX만 사용)
+  // 폼 기본 제출 막기 (페이지 이동 방지)
   form?.addEventListener('submit', (e) => e.preventDefault());
 
   btnGenerate?.addEventListener('click', async (e) => {
     e.preventDefault();
 
-    // 1) 클라이언트 검증: 파일 3개 & 각 그룹 충족
+    // 1) 클라이언트 검증: 정확히 3개 & 각 그룹 충족
     const files = Array.from(fileInput.files || []);
     if (files.length !== 3) {
       alert('합의서, 성적서, 결함리포트를 모두 업로드하였는지 확인해주세요');
       return;
     }
-
-    // 그룹 충족 체크
     const coverage = REQUIRED_GROUPS.map(() => false);
     for (const f of files) {
       const name = (f.name || '').toLowerCase();
@@ -75,9 +74,8 @@ document.addEventListener('DOMContentLoaded', function () {
       const data = await resp.json();
       if (!data.fillMap) throw new Error('fillMap이 비었습니다.');
 
-      // 3) Luckysheet에 반영
       await applyFillMapToLucky(data.fillMap);
-      // 필요 시 gsNumber(data.gsNumber) 등을 화면에 표시할 수 있음
+      // 필요 시 data.gsNumber 로 화면 표시 가능
     } catch (err) {
       console.error(err);
       alert('생성 중 오류가 발생했습니다.\n' + err.message);
@@ -86,7 +84,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  // ------------------ Luckysheet 반영 유틸 ------------------
+  // -------- Luckysheet 반영 유틸 --------
   async function applyFillMapToLucky(fillMap) {
     const LS = window.luckysheet || window.Luckysheet;
     if (!LS || typeof LS.create !== 'function') throw new Error('Luckysheet 전역이 없습니다.');
@@ -100,14 +98,13 @@ document.addEventListener('DOMContentLoaded', function () {
       const colLetters = m[1].toUpperCase();
       let c = 0; for (let i=0;i<colLetters.length;i++) c = c*26 + (colLetters.charCodeAt(i)-64);
       const r = parseInt(m[2],10);
-      return { r: r-1, c: c-1 }; // 0-based
+      return { r: r-1, c: c-1 };
     };
 
     for (const [sheetName, cells] of Object.entries(fillMap)) {
       const sheet = files.find(s => s.name === sheetName) || files[0];
       if (!sheet) continue;
 
-      // 시트 활성화(선택사항)
       if (typeof LS.setSheetActive === 'function' && typeof sheet.index === 'number') {
         try { LS.setSheetActive(sheet.index); } catch(_) {}
       }
@@ -116,16 +113,14 @@ document.addEventListener('DOMContentLoaded', function () {
         const rc = a1ToRC(addr);
         if (!rc) continue;
 
-        // 표준 API 우선
         let ok = false;
         try {
           if (typeof LS.setCellValue === 'function') {
-            LS.setCellValue(rc.r, rc.c, value); // 활성 시트 기준
+            LS.setCellValue(rc.r, rc.c, value);
             ok = true;
           }
         } catch (_) {}
 
-        // Fallback: 데이터 직접 덮기
         if (!ok) {
           const s = files.find(s => s.name === sheetName) || sheet;
           s.data = s.data || [];
@@ -134,8 +129,6 @@ document.addEventListener('DOMContentLoaded', function () {
         }
       }
     }
-
-    // Fallback 수정이 있었다면 리프레시
     if (typeof luckysheet?.refresh === 'function') {
       try { luckysheet.refresh(); } catch (_) {}
     }
