@@ -1,4 +1,3 @@
-// static/scripts/certy/prdinfo_upload.js
 document.addEventListener('DOMContentLoaded', function () {
   const fileInput   = document.getElementById('fileInput');
   const dropArea    = document.getElementById('dropArea');
