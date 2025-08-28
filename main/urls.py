@@ -5,6 +5,7 @@ from main.views.init import index, similar, security, prdinfo, genspark, test
 from main.views.testing.history import history
 from main.views.testing.similar_summary import summarize_document
 
+from main.views.certy.prdinfo_generate import generate_prdinfo
 from main.views.certy.prdinfo_URL import source_excel_view
 
 urlpatterns = [
@@ -17,6 +18,7 @@ urlpatterns = [
     path('security/', security, name='security'),
 
     path('prdinfo/', prdinfo, name='prdinfo'),
+    path('generate_prdinfo/', generate_prdinfo, name='generate_prdinfo'),
     path('source-excel/', source_excel_view, name='source-excel'),
     
     path('genspark/', genspark, name='genspark'),
