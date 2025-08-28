@@ -1,24 +1,25 @@
 {% extends 'header.html' %}
 {% load static %}
-{% block title %}제품 정보 요청 엑셀 (Univer){% endblock %}
+{% block title %}제품 정보 요청 엑셀{% endblock %}
 
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
 
-<script src="https://cdn.jsdelivr.net/npm/@univerjs/presets/dist/index.umd.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/@univerjs/core/dist/index.umd.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets-core/dist/index.umd.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets-ui/dist/index.umd.js" defer></script>
-<script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets-xlsx/dist/index.umd.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/css/pluginsCss.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/plugins.css"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/css/luckysheet.css"/>
+<script src="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/js/plugin.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/luckysheet.umd.js" defer></script>
+<script src="https://unpkg.com/luckyexcel/dist/luckyexcel.umd.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js" defer></script>
 
 <link rel="stylesheet" href="{% static 'css/certy/prdinfo.css' %}"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
-
 <script src="{% static 'scripts/certy/prdinfo_Listener.js' %}" defer></script>
 <script src="{% static 'scripts/certy/prdinfo_submit.js' %}" defer></script>
-<script src="{% static 'scripts/certy/prdinfo_Univer_view.js' %}" defer></script>
-<script src="{% static 'scripts/certy/prdinfo_Univer_download.js' %}" defer></script>
+<script src="{% static 'scripts/certy/prdinfo_Luckysheet.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -76,7 +77,7 @@
                     <button class="action-button download" id="btn-download">다운로드</button>
                 </div>
                 <!-- 입력 요약 영역 -->
-                <div id="app" class="univerContainer"></div>
+                <div class="luckysheetContainer" id="app"></div>
             </div>
         </main>
     </div>
