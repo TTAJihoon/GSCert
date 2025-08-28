@@ -62,25 +62,63 @@
 {% endblock %}
 
 {% block content %}
-<!-- 본문 구조는 동일 (컨테이너 id 재사용) -->
 <div class="app-container">
-  ...
-  <main class="content-area">
-    <div class="content-card">
-      <div class="loading-container hidden" id="loadingContainer">
-        <div class="spinner"></div>
-        <div class="loading-text">분석 중...</div>
-        <div class="loading-description">제품 정보 요청 엑셀 파일을 생성하고 있습니다.</div>
-      </div>
-      <div class="results-container">
-        <div class="results-header">
-          <div class="results-title">제품 정보 요청 엑셀 파일</div>
-          <button class="action-button download" id="btn-download">다운로드</button>
+    <div class="main-content">
+        <div class="sidebar-container">
+            <div class="search-title">
+                <i class="fas fa-search search-icon"></i> 제품 정보 요청 엑셀파일 생성
+                <span class="tooltip">ⓘ
+                    <span class="tooltiptext">시험성적서, 시험합의서, 결함리포트 파일을 업로드 하시면</BR>제품 정보 요청 엑셀 파일을 만들어 드립니다.</span>
+                </span>
+            </div>        
+            <div class="sidebar">
+                <form id="queryForm" method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="file-upload-container">
+                        <div class="content-container" id="content-auto">
+                            <input class="file-input" id="fileInput" type="file" name="file"/>
+                            
+                            <div class="drop-area" id="dropArea">
+                                <i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
+                                <p>파일을 이곳에 드래그하거나</p>
+                                <p><span class="text-blue-500 font-medium">클릭</span>하여 업로드하세요</p>
+                                <p class="upload-limit-message">* pdf, docx, xlsx 파일을 업로드 해주세요.</p>
+                            </div>
+                            
+                            <div class="file-list hidden" id="fileList">
+                                <div class="file-item">
+                                    <div class="file-name" id="fileName"></div>
+                                    <div class="remove-file" id="removeFile">
+                                        <i class="fas fa-times"></i>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="content-spacer"></div>
+                            <button class="action-button" id="btn-generate">제품 정보 요청 엑셀 파일 생성</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
         </div>
-        <!-- ✅ Univer UI가 이 컨테이너에 렌더링됩니다 -->
-        <div id="luckysheetContainer"></div>
-      </div>
     </div>
-  </main>
+    <!-- 우측 콘텐츠 영역 -->
+    <main class="content-area">
+        <div class="content-card">
+            <div class="loading-container hidden" id="loadingContainer">
+                <div class="spinner"></div>
+                <div class="loading-text">분석 중...</div>
+                <div class="loading-description">제품 정보 요청 엑셀 파일을 생성하고 있습니다.</div>
+            </div>
+            <div class="results-container">
+                <div class="results-header">
+                    <div class="results-title">제품 정보 요청 엑셀 파일</div>
+                    <button class="action-button download" id="btn-download">다운로드</button>
+                </div>
+                <!-- 입력 요약 영역 -->
+                <div id="luckysheetContainer"></div>
+            </div>
+        </main>
+    </div>
 </div>
 {% endblock %}
