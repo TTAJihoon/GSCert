@@ -1,46 +1,64 @@
-document.addEventListener('DOMContentLoaded', async () => {
-  // 필수 UMD 존재 확인
-  if (!window.UniverPresets || !window.UniverCore || !window.UniverPresetSheetsCore || !window.UniverPresetSheetsUI) {
-    console.error('Univer UMD가 로드되지 않았습니다.');
-    return;
-  }
-  if (!window.UniverSheetsXlsx && !window.UniverPresetSheetsXlsx) {
-    console.error('XLSX 임포트 플러그인이 없습니다. (@univerjs/sheets-xlsx)');
-    return;
-  }
+document.addEventListener('DOMContentLoaded', () => {
+  (async function () {
+    const GLOBAL = (window.PRDINFO ||= {});
+    if (GLOBAL.ready) return; // 재실행 방지
 
-  const { createUniver } = window.UniverPresets;
-  const hostEl = document.getElementById('app');
+    function waitForUniverUMD(timeoutMs = 5000) {
+      const start = Date.now();
+      return new Promise((resolve, reject) => {
+        (function tick() {
+          const hasPresets = !!window.UniverPresets?.createUniver;
+          const hasUniver  = !!window.Univer?.createUniver; // 어떤 빌드는 여기 노출
+          const XlsxNS     = window.UniverPresetSheetsXlsx || window.UniverSheetsXlsx;
 
-  // Univer 인스턴스 생성
-  const univer = createUniver(hostEl, {
-    theme: 'light',
-    locales: [] // 필요시 ko-KR 로케일 주입
-  });
+          if ((hasPresets || hasUniver) && XlsxNS) {
+            resolve({
+              createUniver: (window.UniverPresets?.createUniver || window.Univer?.createUniver),
+              XlsxNS,
+            });
+            return;
+          }
+          if (Date.now() - start > timeoutMs) {
+            reject(new Error('Univer UMD를 찾지 못했습니다. (전역 심벌 미노출/로딩 실패)'));
+            return;
+          }
+          setTimeout(tick, 50);
+        })();
+      });
+    }
 
-  // XLSX 플러그인 인스턴스(빌드에 따라 네임스페이스가 다를 수 있어 둘 다 시도)
-  const XlsxNS = window.UniverPresetSheetsXlsx || window.UniverSheetsXlsx;
-  const xlsx = new XlsxNS.Xlsx(univer);
+    GLOBAL.ready = (async () => {
+      // 1) UMD 준비 대기
+      const { createUniver, XlsxNS } = await waitForUniverUMD();
 
-  // 서버에서 엑셀 다운로드 (이미 urls.py에 매핑된 엔드포인트)
-  const res = await fetch('/source-excel/', { credentials: 'same-origin' });
-  if (!res.ok) {
-    console.error('엑셀 다운로드 실패:', res.status, await res.text().catch(()=> ''));
-    return;
-  }
-  const blob = await res.blob();
-  const file = new File(
-    [blob],
-    'prdinfo.xlsx',
-    { type: blob.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }
-  );
+      // 2) 컨테이너
+      const hostEl = document.getElementById('app');
+      if (!hostEl) throw new Error('#app 컨테이너가 없습니다.');
 
-  // ✅ 모든 시트/서식/병합/유효성 최대한 보존하여 로드
-  if (typeof xlsx.open === 'function') {
-    await xlsx.open({ file });
-  } else if (typeof xlsx.import === 'function') {
-    await xlsx.import({ file });
-  } else {
-    console.error('sheets-xlsx API(open/import) 미탑재 빌드입니다.');
-  }
+      // 3) Univer/xlsx 생성(한 번만)
+      const univer = createUniver(hostEl, { theme: 'light', locales: [] });
+      const xlsx   = new XlsxNS.Xlsx(univer);
+
+      // 4) 서버 엑셀 로드
+      const res = await fetch('/source-excel/', { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('엑셀 다운로드 실패: ' + res.status);
+
+      const blob = await res.blob();
+      const file = new File([blob], 'prdinfo.xlsx', {
+        type: blob.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+      if (typeof xlsx.open === 'function')       await xlsx.open({ file });
+      else if (typeof xlsx.import === 'function') await xlsx.import({ file });
+      else console.error('sheets-xlsx API(open/import) 미탑재 빌드입니다.');
+
+      // 5) 전역 공유
+      GLOBAL.univer = univer;
+      GLOBAL.xlsx   = xlsx;
+
+      return GLOBAL;
+    })().catch((err) => {
+      console.error('[PRDINFO] init+view 실패:', err);
+    });
+  })();
 });
