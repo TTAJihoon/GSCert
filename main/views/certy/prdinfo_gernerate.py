@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Dict, Any
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST
-from django.contrib.auth.decorators import login_required
 from django.conf import settings
 
 from docx import Document
@@ -13,10 +12,10 @@ from PyPDF2 import PdfReader
 import openpyxl
 from openpyxl.utils import get_column_letter
 
-# 웹에서 Luckysheet로 불러오는 원본 엑셀(템플릿) 경로
+# Luckysheet로 불러오는 원본 엑셀(템플릿)
 ORIGIN_XLSX_PATH = Path(getattr(settings, "BASE_DIR")) / "main/data/prdinfo.xlsx"
 
-# ------------------------------- 파일 파서 -------------------------------
+# -------------------- 파일 파서 --------------------
 def extract_text(fp: Path) -> str:
     fp = Path(fp)
     ext = fp.suffix.lower()
@@ -64,7 +63,7 @@ def extract_product_description_and_features(text: str) -> tuple[str, str]:
             break
     return desc, "\n".join(features)
 
-# ----------------------- 템플릿 → 채우기 좌표 맵 -----------------------
+# -------------------- 템플릿 → 채우기 맵 --------------------
 def _addr(r: int, c: int) -> str: return f"{get_column_letter(c)}{r}"
 
 def build_fill_map_from_template(data: Dict[str, Any], tpl_path: Path) -> Dict[str, Dict[str, Any]]:
@@ -124,27 +123,23 @@ def build_fill_map_from_template(data: Dict[str, Any], tpl_path: Path) -> Dict[s
                         m[_addr(cell.row+2, cell.column)] = data.get("결함차수","1"); break
     return fill_map
 
-# ----------------------- 간단 규칙 기반 데이터 생성 -----------------------
-def build_data_without_llm(text_score: str, text_agreement: str, defect_summary: Dict[str,int],
-                           score_name: str, defect_filename: str) -> Dict[str, Any]:
+# -------------------- 규칙 기반 데이터 생성 --------------------
+def build_data(text_score: str, text_agree: str, defect_summary: Dict[str,int],
+               score_name: str, defect_filename: str) -> Dict[str, Any]:
     data: Dict[str, Any] = {}
-
-    # 회사명/제품명 (라벨 기준 간단 추정 → 없으면 파일명 보정)
     def find_one(pats, text):
         for p in pats:
             m = re.search(p, text, re.I)
             if m: return m.group(1).strip()
         return ""
 
-    data["회사명"] = (find_one([r"회사명[:：]\s*([^\n]+)", r"상\s*호[:：]\s*([^\n]+)"], text_agreement)
+    data["회사명"] = (find_one([r"회사명[:：]\s*([^\n]+)", r"상\s*호[:：]\s*([^\n]+)"], text_agree)
                       or find_one([r"회사명[:：]\s*([^\n]+)"], text_score))
     data["제품명"] = (find_one([r"제품명[:：]\s*([^\n]+)"], text_score) or Path(score_name).stem)
 
-    # 기간(예: 2024.07.01 ~ 2024.08.15)
     period = find_one([r"(\d{4}\.\d{2}\.\d{2})\s*[~\-]\s*(\d{4}\.\d{2}\.\d{2})"], text_score)
     data["결과서 기재 시험 기간"] = period.replace("-", "~") if period else ""
 
-    # 연락/기본 정보(없으면 공란)
     for k, pats in {
         "사업자등록번호": [r"사업자등록번호[:：]\s*([0-9\-]+)"],
         "대표자":       [r"대표자[:：]\s*([^\n]+)"],
@@ -160,29 +155,28 @@ def build_data_without_llm(text_score: str, text_agreement: str, defect_summary:
         "성적서 구분":  [r"(성적서\s*구분)[:：]\s*([^\n]+)"],
         "총WD":         [r"총\s*WD[:：]?\s*(\d+)", r"WD\s*합계[:：]?\s*(\d+)"],
     }.items():
-        val = find_one(pats, text_score + "\n" + text_agreement)
+        val = find_one(pats, text_score + "\n" + text_agree)
         data[k] = val or ""
 
-    # 제품설명/주요기능 (간단 추출)
     desc, feats = extract_product_description_and_features(text_score)
     data.setdefault("제품설명(시험 결과서 개요)", desc)
     data.setdefault("제품 주요기능(시험 결과서 개요 부분 주요 기능)", feats)
 
-    # GS 번호: 파일명에서 추정
     m = re.search(r"(GS-[A-Z]-\d{2}-\d{4})", score_name)
     data["GS번호"] = m.group(1) if m else "GS-A-00-0000"
 
-    # 결함 요약 + 차수
     data.update(defect_summary)
     ver = re.search(r"v(\d+)", Path(defect_filename).stem, re.I)
     data["결함차수"] = ver.group(1) if ver else "1"
-
     return data
 
-# ---------------------------- Django View ----------------------------
-@login_required
+# -------------------- Django View (AJAX JSON 전용) --------------------
 @require_POST
 def generate_prdinfo(request):
+    # 로그인 리다이렉트(302) 방지: JSON 401 반환
+    if not request.user.is_authenticated:
+        return JsonResponse({'detail': 'Unauthorized'}, status=401)
+
     files = request.FILES.getlist("file")
     if not files or len(files) != 3:
         return HttpResponseBadRequest("파일 3개를 업로드하세요.")
@@ -200,7 +194,7 @@ def generate_prdinfo(request):
             for chunk in f.chunks(): out.write(chunk)
         if "성적서" in name: kw["성적서"] = p
         elif "합의서" in name: kw["합의서"] = p
-        elif "결함" in name: kw["결함"] = p
+        elif ("결함리포트" in name) or ("결함" in name): kw["결함"] = p
 
     if not all(kw.values()):
         return HttpResponseBadRequest("합의서, 성적서, 결함리포트를 모두 업로드했는지 확인하세요.")
@@ -210,18 +204,17 @@ def generate_prdinfo(request):
     text_agree = extract_text(kw["합의서"])
     defect_summary = extract_defect_counts(kw["결함"])
 
-    # 2) 규칙 기반으로 필요한 값 구성(LLM 없음)
-    data = build_data_without_llm(
+    # 2) 규칙 기반 데이터
+    data = build_data(
         text_score=text_score,
-        text_agreement=text_agree,
+        text_agree=text_agree,
         defect_summary=defect_summary,
         score_name=kw["성적서"].name,
         defect_filename=kw["결함"].name,
     )
 
-    # 3) 템플릿 기준 좌표맵 생성 → 프론트에서 Luckysheet에 반영
+    # 3) 템플릿 → 좌표맵
     tpl_path = ORIGIN_XLSX_PATH if ORIGIN_XLSX_PATH.exists() else \
                list(Path.cwd().glob("GS-*_제품_정보_요청_첨부_v*.xlsx"))[0]
     fill_map = build_fill_map_from_template(data, tpl_path)
-
     return JsonResponse({"fillMap": fill_map, "gsNumber": data.get("GS번호","")})
