@@ -32,7 +32,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     URL.revokeObjectURL(url);
   }
 
-  btn?.addEventListener('click', async (e) => {
+  btn.addEventListener('click', async (e) => {
     e.preventDefault();
     const ts = new Date().toISOString().slice(0,19).replace(/[:T]/g,'-'); // 2025-08-28-10-30-00
     const fileName = `prdinfo-${ts}.xlsx`;
