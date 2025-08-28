@@ -1,6 +1,8 @@
+// static/scripts/certy/prdinfo_Luckysheet.js
 document.addEventListener("DOMContentLoaded", async function () {
   const containerId = "luckysheetContainer";
   const LS = window.luckysheet || window.Luckysheet;
+
   if (!LS || typeof LS.create !== "function") {
     console.error("Luckysheet 전역이 없습니다.", { luckysheet: window.luckysheet, Luckysheet: window.Luckysheet });
     return;
@@ -14,43 +16,39 @@ document.addEventListener("DOMContentLoaded", async function () {
     return;
   }
 
-  // 다운로드 파일명에 사용할 메타
   let workbookInfo = { name: "Workbook", creator: "" };
 
+  // 서버 원본 XLSX → LuckyJSON → 렌더
   try {
-    const url = "/source-excel/";
-    const res = await fetch(url, { credentials: "same-origin" });
+    const res = await fetch("/source-excel/", { credentials: "same-origin" });
     if (!res.ok) throw new Error("엑셀 파일을 불러오지 못했습니다: " + res.status);
     const blob = await res.blob();
     const file = new File([blob], "server.xlsx", {
       type: blob.type || "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     });
 
-    await new Promise((resolve, reject) => {
+    const exportJson = await new Promise((resolve, reject) => {
       window.LuckyExcel.transformExcelToLucky(
         file,
-        (exportJson) => {
-          try {
-            workbookInfo = {
-              name: (exportJson.info && exportJson.info.name) || "Workbook",
-              creator: (exportJson.info && exportJson.info.creator) || ""
-            };
-            if (LS.destroy) LS.destroy();
-            LS.create({
-              container: containerId,
-              lang: "en",
-              showinfobar: false,
-              title: workbookInfo.name,
-              userInfo: workbookInfo.creator,
-              data: exportJson.sheets
-            });
-            resolve();
-          } catch (e) {
-            reject(e);
-          }
-        },
+        (json) => (json && Array.isArray(json.sheets) ? resolve(json) : reject(new Error("변환 결과가 비어있습니다."))),
         (err) => reject(err)
       );
+    });
+
+    workbookInfo = {
+      name: (exportJson.info && exportJson.info.name) || "Workbook",
+      creator: (exportJson.info && exportJson.info.creator) || ""
+    };
+
+    if (LS.destroy) { try { LS.destroy(); } catch (_) {} }
+
+    LS.create({
+      container: containerId, // 또는 document.getElementById(containerId)
+      lang: "en",
+      showinfobar: false,
+      title: workbookInfo.name,
+      userInfo: workbookInfo.creator,
+      data: exportJson.sheets
     });
   } catch (e) {
     console.error("원본 엑셀 → Luckysheet 변환 실패:", e);
@@ -58,7 +56,7 @@ document.addEventListener("DOMContentLoaded", async function () {
     return;
   }
 
-  // 다운로드: 현재 Luckysheet → .xlsx (파일명 = D5 + 접미사)
+  // 다운로드: 현재 Luckysheet → .xlsx (파일명 = D5 값 + 접미사)
   const $btn = document.getElementById("btn-download");
   if ($btn) {
     $btn.addEventListener("click", (ev) => {
@@ -76,8 +74,7 @@ document.addEventListener("DOMContentLoaded", async function () {
           return;
         }
 
-        // D5 값 읽기(0-index 기준 row=4, col=3). API와 파일구조 둘 다 시도.
-        const d5Value = readCellD5(LS, 4, 3);
+        const d5Value = readCellD5(LS); // D5 = (r=4,c=3)
         const safeName = sanitizeFilename(d5Value || workbookInfo.name || "Workbook");
 
         const luckyFile = {
@@ -94,8 +91,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     });
   }
 
-  // D5 값 읽기 유틸
-  function readCellD5(LS, r, c) {
+  function readCellD5(LS) {
+    const r = 4, c = 3;
     try {
       if (typeof LS.getCellValue === "function") {
         const v = LS.getCellValue(r, c);
@@ -112,10 +109,8 @@ document.addEventListener("DOMContentLoaded", async function () {
     return "";
   }
 
-  // 파일명에 쓸 수 없는 문자 정리
   function sanitizeFilename(name) {
     const cleaned = String(name).replace(/[\\/:*?"<>|]/g, "_").replace(/\s+/g, " ").trim();
-    // Windows의 마지막 마침표/공백 금지 등 추가 방어
     return cleaned.replace(/[. ]+$/, "") || "Workbook";
   }
 });
