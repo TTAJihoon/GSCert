@@ -268,6 +268,11 @@ body {
   color: #1e3a8a;
 }
 
+#luckysheetContainer {
+  flex: 1;
+  width: 100%;
+}
+
 .download {
   width: 100px;
   text-align: center;
