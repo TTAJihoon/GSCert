@@ -174,8 +174,8 @@ def build_data(text_score: str, text_agree: str, defect_summary: Dict[str,int],
 @require_POST
 def generate_prdinfo(request):
     # 로그인 리다이렉트(302) 방지: JSON 401 반환
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Unauthorized'}, status=401)
+    #if not request.user.is_authenticated:
+    #    return JsonResponse({'detail': 'Unauthorized'}, status=401)
 
     files = request.FILES.getlist("file")
     if not files or len(files) != 3:
