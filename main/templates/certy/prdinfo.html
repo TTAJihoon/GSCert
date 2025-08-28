@@ -6,50 +6,9 @@
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
 
-<!-- ✅ Univer: 필수 런타임 -->
-<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js" defer></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js" defer></script>
-<script src="https://unpkg.com/rxjs@7.8.1/dist/bundles/rxjs.umd.min.js" defer></script>
-<script src="https://unpkg.com/echarts@5.6.0/dist/echarts.min.js" defer></script>
-<script src="https://unpkg.com/@wendellhu/redi/dist/umd/index.js" defer></script>
-<script src="https://unpkg.com/@wendellhu/redi/dist/umd/react-bindings/index.js" defer></script>
-
-<!-- ✅ Univer: 스타일 -->
-<link rel="stylesheet" href="https://unpkg.com/@univerjs/design/lib/index.css"/>
-<link rel="stylesheet" href="https://unpkg.com/@univerjs/ui/lib/index.css"/>
-<link rel="stylesheet" href="https://unpkg.com/@univerjs/docs-ui/lib/index.css"/>
-<link rel="stylesheet" href="https://unpkg.com/@univerjs/sheets-ui/lib/index.css"/>
-<link rel="stylesheet" href="https://unpkg.com/@univerjs/sheets-formula-ui/lib/index.css"/>
-<link rel="stylesheet" href="https://unpkg.com/@univerjs/sheets-numfmt-ui/lib/index.css"/>
-<link rel="stylesheet" href="https://unpkg.com/@univerjs/sheets-data-validation-ui/lib/index.css"/>
-
-<!-- ✅ Univer: 플러그인 (UMD) -->
-<script src="https://unpkg.com/@univerjs/core/lib/umd/facade.js" defer></script>
-<script src="https://unpkg.com/@univerjs/ui/lib/umd/index.js" defer></script>
-<script src="https://unpkg.com/@univerjs/docs/lib/umd/index.js" defer></script>
-<script src="https://unpkg.com/@univerjs/docs-ui/lib/umd/index.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets/lib/umd/index.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets-ui/lib/umd/index.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets-formula/lib/umd/index.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets-formula-ui/lib/umd/index.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets-numfmt/lib/umd/index.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets-numfmt-ui/lib/umd/index.js" defer></script>
-<script src="https://unpkg.com/@univerjs/data-validation/lib/umd/index.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets-data-validation/lib/umd/index.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets-data-validation-ui/lib/umd/index.js" defer></script>
-
-<!-- ✅ Univer: 로케일 -->
-<script src="https://unpkg.com/@univerjs/design/lib/umd/locale/en-US.js" defer></script>
-<script src="https://unpkg.com/@univerjs/ui/lib/umd/locale/en-US.js" defer></script>
-<script src="https://unpkg.com/@univerjs/docs-ui/lib/umd/locale/en-US.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets/lib/umd/locale/en-US.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets-ui/lib/umd/locale/en-US.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets-formula-ui/lib/umd/locale/en-US.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets-numfmt-ui/lib/umd/locale/en-US.js" defer></script>
-<script src="https://unpkg.com/@univerjs/sheets-data-validation-ui/lib/umd/locale/en-US.js" defer></script>
-
-<!-- ⛳️ (선택) 서버 없이 값만 읽는 Fallback을 위한 SheetJS -->
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.19.3/dist/xlsx.full.min.js" defer></script>
+<!-- Univer 올인원 UMD + 스타일 -->
+<script src="https://unpkg.com/@univerjs/umd/lib/univer.full.umd.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@univerjs/umd/lib/univer.css">
 
 <link rel="stylesheet" href="{% static 'css/certy/prdinfo.css' %}"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
