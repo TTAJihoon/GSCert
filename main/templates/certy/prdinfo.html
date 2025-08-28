@@ -6,30 +6,17 @@
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
 
-<!-- React / RxJS / ECharts (UMD 전역 필요) -->
-<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
-<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/rxjs@7.8.1/dist/bundles/rxjs.umd.min.js"></script>
-<script src="https://unpkg.com/echarts@5.6.0/dist/echarts.min.js"></script>
-
-<!-- Univer Presets (핵심) + Sheets Core 프리셋 + 로케일 + CSS -->
-<script src="https://unpkg.com/@univerjs/presets@0.10.5/lib/umd/index.js"></script>
-<script src="https://unpkg.com/@univerjs/preset-sheets-core@0.10.5/lib/umd/index.js"></script>
-<script src="https://unpkg.com/@univerjs/preset-sheets-core@0.10.5/lib/umd/locales/en-US.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/@univerjs/preset-sheets-core@0.10.5/lib/index.css" />
-
-<!-- (옵션) 데이터 검증 프리셋: 드롭다운/체크박스 UI -->
-<script src="https://unpkg.com/@univerjs/preset-sheets-data-validation@0.10.5/lib/umd/index.js"></script>
-<script src="https://unpkg.com/@univerjs/preset-sheets-data-validation@0.10.5/lib/umd/locales/en-US.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/@univerjs/preset-sheets-data-validation@0.10.5/lib/index.css" />
+<script src="https://cdn.jsdelivr.net/npm/@univerjs/presets/dist/index.umd.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@univerjs/core/dist/index.umd.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets-core/dist/index.umd.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets-ui/dist/index.umd.js" defer></script>
+<script src="https://cdn.jsdelivr.net/npm/@univerjs/sheets-xlsx/dist/index.umd.js" defer></script>
 
 <link rel="stylesheet" href="{% static 'css/certy/prdinfo.css' %}"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 
 <script src="{% static 'scripts/certy/prdinfo_Listener.js' %}" defer></script>
 <script src="{% static 'scripts/certy/prdinfo_submit.js' %}" defer></script>
-
-<!-- ⬇️ Luckysheet용 파일은 제거하고, 새 JS로 교체 -->
 <script src="{% static 'scripts/certy/prdinfo_Univer.js' %}" defer></script>
 {% endblock %}
 
