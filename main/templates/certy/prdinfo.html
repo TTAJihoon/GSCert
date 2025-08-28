@@ -6,9 +6,22 @@
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
 
-<!-- Univer 올인원 UMD + 스타일 -->
-<script src="https://unpkg.com/@univerjs/umd/lib/univer.full.umd.js"></script>
-<link rel="stylesheet" href="https://unpkg.com/@univerjs/umd/lib/univer.css">
+<!-- React / RxJS / ECharts (UMD 전역 필요) -->
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/rxjs@7.8.1/dist/bundles/rxjs.umd.min.js"></script>
+<script src="https://unpkg.com/echarts@5.6.0/dist/echarts.min.js"></script>
+
+<!-- Univer Presets (핵심) + Sheets Core 프리셋 + 로케일 + CSS -->
+<script src="https://unpkg.com/@univerjs/presets@0.10.5/lib/umd/index.js"></script>
+<script src="https://unpkg.com/@univerjs/preset-sheets-core@0.10.5/lib/umd/index.js"></script>
+<script src="https://unpkg.com/@univerjs/preset-sheets-core@0.10.5/lib/umd/locales/en-US.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@univerjs/preset-sheets-core@0.10.5/lib/index.css" />
+
+<!-- (옵션) 데이터 검증 프리셋: 드롭다운/체크박스 UI -->
+<script src="https://unpkg.com/@univerjs/preset-sheets-data-validation@0.10.5/lib/umd/index.js"></script>
+<script src="https://unpkg.com/@univerjs/preset-sheets-data-validation@0.10.5/lib/umd/locales/en-US.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/@univerjs/preset-sheets-data-validation@0.10.5/lib/index.css" />
 
 <link rel="stylesheet" href="{% static 'css/certy/prdinfo.css' %}"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
@@ -75,7 +88,7 @@
                     <button class="action-button download" id="btn-download">다운로드</button>
                 </div>
                 <!-- 입력 요약 영역 -->
-                <div id="app univerContainer"></div>
+                <div id="app" class="univerContainer"></div>
             </div>
         </main>
     </div>
