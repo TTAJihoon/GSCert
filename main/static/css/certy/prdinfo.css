@@ -4,14 +4,14 @@ body {
   font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
   background-color: #f9fafb;
   min-height: 720px;
-  height: 100vh;
+  height: 100%;
   overflow-x: hidden;
 }
 
 .app-container {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  height: 100%;
   width: 100%;
   margin: 0 auto;
 }
@@ -25,7 +25,7 @@ body {
 .main-content {
   display: flex;
   flex: 1;
-  height: calc(100vh - 60px);
+  height: 100%;
   position: relative;
 }
 
@@ -244,7 +244,7 @@ body {
   border-radius: 8px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   padding: 20px;
-  height: calc(100% - 40px);
+  height: 100%;
 }
 
 .results-container {
