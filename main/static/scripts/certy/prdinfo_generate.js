@@ -4,11 +4,10 @@ document.addEventListener('DOMContentLoaded', function () {
   const btnGenerate = document.getElementById('btn-generate');
   const loading     = document.getElementById('loadingContainer');
 
-  // 업로드 검증: 각 그룹에서 최소 1개씩 포함
   const REQUIRED_GROUPS = [
-    ['합의서'],            // 1번(.docx)
-    ['성적서'],            // 2번(.docx)
-    ['결함리포트', '결함'] // 3번(.xlsx)
+    ['합의서'],
+    ['성적서'],
+    ['결함리포트', '결함']
   ];
 
   const showLoading = () => loading && loading.classList.remove('hidden');
@@ -26,17 +25,14 @@ document.addEventListener('DOMContentLoaded', function () {
     return null;
   }
 
-  // 폼 기본 submit 방지(페이지 이동 X)
   form?.addEventListener('submit', (e) => e.preventDefault());
 
-  // 클릭 → 서버 호출 → fillMap 반영
   btnGenerate?.addEventListener('click', async (e) => {
     e.preventDefault();
 
-    // 1) 파일 검증(정확히 3개 + 그룹 충족)
     const files = Array.from(fileInput?.files || []);
     if (files.length !== 3) {
-      alert('합의서, 성적서, 결함리포트를 모두 업로드해주세요(총 3개).');
+      alert('합의서, 성적서, 결함리포트(또는 결함)를 모두 업로드해주세요(총 3개).');
       return;
     }
     const coverage = REQUIRED_GROUPS.map(() => false);
@@ -54,11 +50,10 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
-    // 2) 서버 전송
     showLoading();
     try {
       const fd = new FormData();
-      files.forEach(f => fd.append('file', f)); // 같은 key 'file'로 3개 전송
+      files.forEach(f => fd.append('file', f));
       const csrftoken = getCookie('csrftoken');
 
       const resp = await fetch('/generate_prdinfo/', {
@@ -72,19 +67,20 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       const data = await resp.json();
+      console.log('[DEBUG] list1:', data.list1);
+      console.log('[DEBUG] list2:', data.list2);
+      console.log('[DEBUG] list3:', data.list3);
+      console.log('[DEBUG] fillMap:', data.fillMap);
+
       if (!data || !data.fillMap) throw new Error('서버 응답에 fillMap이 없습니다.');
 
-      // 3) Luckysheet 셀 채우기
       if (window.PrdinfoFill?.apply) {
         await window.PrdinfoFill.apply(data.fillMap);
       } else {
-        // (백업) 이 파일에 직접 구현된 간이 채움 로직
         await applyFillMapToLucky_Fallback(data.fillMap);
       }
 
-      // (선택) data.gsNumber 로 파일명/화면 표시 등에 활용 가능
       console.log('GS Number:', data.gsNumber);
-
     } catch (err) {
       console.error(err);
       alert('생성 중 오류가 발생했습니다.\n' + err.message);
@@ -93,7 +89,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  // ───────────────── 백업용(모듈 미로드 시) ─────────────────
+  // ───────────────── 백업용(모듈 누락 시) ─────────────────
   async function applyFillMapToLucky_Fallback(fillMap) {
     const LS = window.luckysheet || window.Luckysheet;
     if (!LS || typeof LS.create !== 'function') throw new Error('Luckysheet 전역이 없습니다.');
