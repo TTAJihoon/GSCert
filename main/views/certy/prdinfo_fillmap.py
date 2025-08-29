@@ -20,7 +20,7 @@ def build_fill_map(obj1: dict, obj2: dict, obj3: dict):
         "I7": obj1.get("담당자-Mobile", ""),
         "J7": obj1.get("담당자-FAX번호", ""),
         "K7": obj1.get("담당자-E- Mail", ""),
-        "L7": "\n".join([obj1.get("제조자", ""), obj1.get("제조국가", "")]).strip("\n"),
+        "L7": "\n\/".join([obj1.get("제조자", ""), obj1.get("제조국가", "")]).strip("\n"),
         "M7": obj1.get("홈페이지", ""),
         "C5": "\n".join([obj1.get("국문명:", ""), obj1.get("영문명:", "")]).strip("\n"),
 
