@@ -197,11 +197,13 @@ def _extract_company_kr_en(rows):
 def _extract_product_names(rows):
     """
     제품명 및 버전 블록:
-    - '제품명 및 버전' 라벨 다음 '값 셀' 안에 '국문명:' / '영문명:'이 줄바꿈으로 함께 존재.
-    - 보조: 라벨 셀 자체가 '국문명:' / '영문명:'인 경우도 지원.
+    - (A) '제품명 및 버전' 라벨 다음 '값 셀' 안에서 '국문명:' / '영문명:' 추출
+    - (B) 라벨 셀 자체가 '국문명:' / '영문명:'인 경우
+    - (C) 보강: 표의 '모든 셀'에서 라벨+값 패턴을 스캔 (병합/행분리 대비)
     """
     kr = en = ""
-    # (A) '제품명 및 버전' → 다음 셀 문장 안에서 찾기
+
+    # (A) '제품명 및 버전' → 다음 셀 텍스트 안에서 추출
     for r_i, row in enumerate(rows):
         for c_i, cell in enumerate(row):
             if "제품명 및 버전" in cell:
@@ -209,15 +211,34 @@ def _extract_product_names(rows):
                 if val:
                     m_kr = re.search(r"(?:^|\n)\s*국문명\s*:\s*([^\n]+)", val)
                     m_en = re.search(r"(?:^|\n)\s*영문명\s*:\s*([^\n]+)", val)
-                    if m_kr:
+                    if m_kr and not kr:
                         kr = m_kr.group(1).strip()
-                    if m_en:
+                    if m_en and not en:
                         en = m_en.group(1).strip()
+
     # (B) 라벨 셀 자체가 '국문명:' / '영문명:'인 레이아웃
     if not kr:
         kr = _find_value_by_label(rows, ["국문명:"], require_colon=True)
     if not en:
         en = _find_value_by_label(rows, ["영문명:"], require_colon=True)
+
+    # (C) 최종 보강: 표의 모든 셀을 스캔 (값셀 내부에 라벨이 있는 경우)
+    if not kr or not en:
+        for row in rows:
+            for cell in row:
+                if not kr:
+                    m_kr = re.search(r"(?:^|\n)\s*국문명\s*:\s*([^\n]+)", cell)
+                    if m_kr:
+                        kr = m_kr.group(1).strip()
+                if not en:
+                    m_en = re.search(r"(?:^|\n)\s*영문명\s*:\s*([^\n]+)", cell)
+                    if m_en:
+                        en = m_en.group(1).strip()
+                if kr and en:
+                    break
+            if kr and en:
+                break
+
     return kr, en
 
 # ─────────────────────────────────────────────────────────────
