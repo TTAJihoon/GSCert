@@ -35,21 +35,21 @@ def generate_prdinfo(request):
 
     for f in p1_files[:1]:
         try:
-            result = extract_process1_docx_basic(io.BytesIO(f.read()), f.name)
+            result = extract_process1_docx_basic(f.read(), f.name)
             list1.append(result)
         except Exception:
             list1.append(f"({f.name}) 내용에 문제가 있습니다")
 
     for f in p2_files[:1]:
         try:
-            result = extract_process2_docx_overview(io.BytesIO(f.read()), f.name)
+            result = extract_process2_docx_overview(f.read(), f.name)
             list2.append(result)
         except Exception:
             list2.append(f"({f.name}) 내용에 문제가 있습니다")
 
     for f in p3_files[:1]:
         try:
-            result = extract_process3_xlsx_defects(io.BytesIO(f.read()), f.name)
+            result = extract_process3_xlsx_defects(f.read(), f.name)
             list3.append(result)
         except Exception:
             list3.append(f"({f.name}) 내용에 문제가 있습니다")
