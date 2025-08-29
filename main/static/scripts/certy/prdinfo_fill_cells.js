@@ -1,8 +1,6 @@
-// 역할: fillMap({시트명: {A1:'값', ...}}) 을 받아 Luckysheet 셀을 채움
 (() => {
   const LS = () => (window.luckysheet || window.Luckysheet);
 
-  /** "A1" → { r, c } */
   function a1ToRC(a1) {
     const m = String(a1).match(/^([A-Z]+)(\d+)$/i);
     if (!m) return null;
@@ -13,7 +11,6 @@
     return { r: r - 1, c: c - 1 };
   }
 
-  /** Luckysheet가 로드됐는지 확인 */
   function ensureLSReady() {
     const api = LS();
     if (!api || typeof api.create !== "function") {
@@ -26,7 +23,6 @@
     return { api, files };
   }
 
-  /** 핵심: fillMap을 Luckysheet에 반영 */
   async function apply(fillMap) {
     const { api, files } = ensureLSReady();
 
@@ -34,17 +30,14 @@
       const sheet = files.find(s => s.name === sheetName) || files[0];
       if (!sheet) continue;
 
-      // 시트 활성화(가능하면)
       if (typeof api.setSheetActive === "function" && typeof sheet.index === "number") {
         try { api.setSheetActive(sheet.index); } catch (_) {}
       }
 
-      // 각 셀 채우기
       for (const [addr, value] of Object.entries(cells || {})) {
         const rc = a1ToRC(addr);
         if (!rc) continue;
 
-        // 1순위: 공식 API
         let ok = false;
         try {
           if (typeof api.setCellValue === "function") {
@@ -53,7 +46,6 @@
           }
         } catch (_) {}
 
-        // 2순위: 내부 data 직접 수정(구버전 호환)
         if (!ok) {
           const s = files.find(s => s.name === sheetName) || sheet;
           s.data = s.data || [];
@@ -63,10 +55,8 @@
       }
     }
 
-    // 화면 갱신
     try { (window.luckysheet && window.luckysheet.refresh && window.luckysheet.refresh()); } catch (_) {}
   }
 
-  // 전역 노출
   window.PrdinfoFill = { apply };
 })();
