@@ -115,7 +115,10 @@ def _extract_period_lines(doc_root):
         if "7. 시험방법" in text:
             break
         if _contains_date_like(text):
-            lines.append(_normalize_ws(text))
+            t = _normalize_ws(text)
+            # 접두어 "6. 시험기간 :" 혹은 "시험기간 :" 제거
+            t = re.sub(r"^\s*(?:\d+\.\s*)?시험기간\s*[:：]\s*", "", t)
+            lines.append(t)
     # 중복 제거(순서 보존)
     seen, out = set(), []
     for x in lines:
@@ -139,23 +142,29 @@ def _extract_description(doc_root):
 # ─────────────────────────────────────────────────────────────
 def _extract_features(doc_root):
     blob = "\n".join([text for _, text in _iterate_body_as_lines(doc_root)])
-    m = re.search(r"다음과\s*같다(?::|\.|\s)*\s*(?P<section>.*?)\s*(?:※\s*상세기능은|상세\s*기능은)", blob, re.DOTALL)
+    m = re.search(
+        r"다음과\s*같다(?::|\.|\s)*\s*(?P<section>.*?)\s*(?:※\s*상세기능은|상세\s*기능은)",
+        blob, re.DOTALL
+    )
     if not m:
         return []
     section = m.group("section")
 
-    # 불릿/숫자목록 우선
-    items = re.findall(r"^\s*(?:[-–—•·○●▪◦\*]|\d+[.)])\s*(.+)$", section, flags=re.MULTILINE)
+    # 불릿/숫자목록 우선 추출
+    items = re.findall(r"^\s*(?:[-–—•·○●▪◦\*]|\d+[.)])\s*(.+)$",
+                       section, flags=re.MULTILINE)
     if not items:
         # 불릿이 없으면 줄 단위
         items = [s.strip() for s in section.splitlines() if s.strip()]
 
-    # 공백 정규화 + 중복 제거(순서 보존)
+    # 공백 정규화 + 중복 제거(순서 보존) + 항상 "- " 접두
     seen, out = set(), []
     for it in items:
         itn = _normalize_ws(it)
         if itn and itn not in seen:
-            seen.add(itn); out.append(itn)
+            seen.add(itn)
+            # 원문 불릿과 무관하게 항상 "- " 붙여서 반환
+            out.append(f"- {itn}")
     return out
 
 # ─────────────────────────────────────────────────────────────
