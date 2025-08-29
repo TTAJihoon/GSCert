@@ -1,122 +1,249 @@
+# -*- coding: utf-8 -*-
+"""
+extract_process2_docx_overview(byts, filename) :
+- '시험성적서 및 시험결과서' 형식에서 아래 4가지를 추출
+  1) 시험기간(상단~첫 '7. 시험방법' 전) 중 날짜 포함 라인
+  2) 개요 및 특성(설명)
+  3) 개요 및 특성(주요 기능) 목록
+  4) 소요일수 합계(모든 표의 '소요일수/소요 일수' 열 숫자 합)
+"""
+
+from io import BytesIO
+from zipfile import ZipFile
+from lxml import etree
 import re
-from docx import Document
 
-# ── 유틸 (agreement 모듈과 동일 내용) ─────────────────
-def normalize_spaces(s: str) -> str:
-    if s is None:
-        return ""
-    return re.sub(r"\s+", " ", str(s).replace("\u200b", " ").replace("\xa0", " ")).strip()
+NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
-def flat(s: str) -> str:
-    return re.sub(r"\s+", "", normalize_spaces(s))
-
-def text_lines_from_docx(doc: Document):
-    lines = []
-    for p in doc.paragraphs:
-        t = normalize_spaces(p.text)
-        if t:
-            lines.append(t)
-    for tbl in doc.tables:
-        for row in tbl.rows:
-            row_texts = [normalize_spaces(c.text) for c in row.cells]
-            for t in row_texts:
-                if t:
-                    for sub in [normalize_spaces(x) for x in re.split(r"[\r\n]+", t) if normalize_spaces(x)]:
-                        lines.append(sub)
-            for i in range(0, len(row_texts)-1):
-                l, v = row_texts[i], row_texts[i+1]
-                if l or v:
-                    lines.append(f"{l} : {v}".strip(" :"))
-    return lines
-
-# ── 날짜 패턴 ────────────────────────────
-_DATE_PATTERNS = [
-    re.compile(r"\d{4}\s*년\s*\d{1,2}\s*월\s*\d{1,2}\s*일"),
-    re.compile(r"\d{4}\.\d{1,2}\.\d{1,2}"),
-    re.compile(r"\b\d{1,2}/\d{1,2}\b"),
-]
-
-# ── 메인: 성적서 파서 ─────────────────────
-def extract_process2_docx_overview(byts, filename):
-    doc = Document(byts)
-    lines = text_lines_from_docx(doc)
-    if not lines:
-        return {"시험기간": [], "개요 및 특성(설명)": "", "개요 및 특성(주요 기능)": [], "소요일수": 0, "파일명": filename}
-
-    # "6. 시험기간" 블록 추출
-    start_idx, end_idx = 0, len(lines)
-    for i, t in enumerate(lines):
-        if re.search(r"6[.)]?\s*시험기간", t):
-            start_idx = i
-            break
-    for i, t in enumerate(lines[start_idx:], start=start_idx):
-        if re.search(r"7[.)]?\s*시험방법", t):
-            end_idx = i
-            break
-
-    block_text = "\n".join(lines[start_idx:end_idx])  # 줄바꿈 유지
-    period_pat = re.compile(
-        r"(?:\((?P<label>[^)]+)\)\s*)?"
-        r"(?P<start>\d{4}[^~\n]+?(?:일|[0-9]))"
-        r"\s*[~\-]?\s*[\r\n ]+"
-        r"(?P<end>\d{4}[^)\n]+?(?:일|[0-9]))"
-    )
-    exam_periods = []
-    for m in period_pat.finditer(block_text):
-        label = normalize_spaces(m.group("label") or "")
-        s, e = normalize_spaces(m.group("start")), normalize_spaces(m.group("end"))
-        line = f"({label}) {s} ~ {e}" if label else f"{s} ~ {e}"
-        if line not in exam_periods:
-            exam_periods.append(line)
-
-    # 폴백: 날짜 포함 줄
-    if not exam_periods:
-        cap_lines = []
-        for t in lines[start_idx:end_idx]:
-            if any(p.search(t) for p in _DATE_PATTERNS):
-                cap_lines.append(normalize_spaces(t))
-        exam_periods = list(dict.fromkeys(cap_lines))
-
-    # 개요/주요 기능
-    whole = " ".join(lines)
-    desc = ""
-    m = re.search(r"본\s*제품은(.*?)(?:으로\s*주요\s*기능은\s*다음과\s*같다)", whole)
-    if m:
-        desc = normalize_spaces(m.group(1))
-
-    feats = []
-    m2 = re.search(r"다음과\s*같다[^\S\r\n]*[:：]?(.*?)(?:※\s*상세기능은|$)", whole, re.S)
-    if m2:
-        block = normalize_spaces(m2.group(1))
-        for seg in re.split(r"[•\-\∙\·\u2219;]|[\r\n]+", block):
-            s = normalize_spaces(seg)
-            if s:
-                feats.append(s)
-
-    # 소요일수(표 합)
-    total_days = 0
-    for tbl in doc.tables:
-        header_idx, days_col = None, None
-        for r, row in enumerate(tbl.rows):
-            cells = [normalize_spaces(c.text) for c in row.cells]
-            if any("소요일수" in x for x in cells):
-                header_idx = r
-                for c_idx, txt in enumerate(cells):
-                    if "소요일수" in txt:
-                        days_col = c_idx
-                        break
-                break
-        if header_idx is not None and days_col is not None:
-            for row in tbl.rows[header_idx+1:]:
-                t = normalize_spaces(row.cells[days_col].text)
-                t = re.sub(r"[^\d]", "", t)
-                if t.isdigit():
-                    total_days += int(t)
-
+# ─────────────────────────────────────────────────────────────
+# 결과 템플릿
+# ─────────────────────────────────────────────────────────────
+def _empty_process2():
     return {
-        "시험기간": exam_periods,
-        "개요 및 특성(설명)": desc,
-        "개요 및 특성(주요 기능)": feats,
-        "소요일수": total_days,
-        "파일명": filename,
+        "시험기간": [],                 # list[str]
+        "개요 및 특성(설명)": "",       # str
+        "개요 및 특성(주요 기능)": [],  # list[str]
+        "소요일수 합계": 0,            # int
     }
+
+# ─────────────────────────────────────────────────────────────
+# DOCX → word/document.xml 로드
+# ─────────────────────────────────────────────────────────────
+def _read_document_xml_from_docx_bytes(byts: bytes):
+    with ZipFile(BytesIO(byts)) as zf:
+        with zf.open("word/document.xml") as f:
+            return etree.parse(f).getroot()
+
+# ─────────────────────────────────────────────────────────────
+# 텍스트 유틸
+# ─────────────────────────────────────────────────────────────
+def _tc_text(tc) -> str:
+    """표 셀 텍스트: 줄바꿈/문단 유지"""
+    parts = []
+    for p in tc.findall(".//w:p", namespaces=NS):
+        buf = []
+        for node in p.iter():
+            if node.tag == "{%s}t" % NS["w"]:
+                buf.append(node.text or "")
+            elif node.tag == "{%s}br" % NS["w"]:
+                buf.append("\n")
+        parts.append("".join(buf))
+    if not parts:
+        parts = ["".join(t.text or "" for t in tc.findall(".//w:t", namespaces=NS))]
+    text = "\n".join(parts)
+    # 공백 정리(줄바꿈은 유지)
+    text = re.sub(r"[ \t]+", " ", text)
+    return text.strip()
+
+def _paragraph_text(p):
+    return "".join(t.text or "" for t in p.findall(".//w:t", namespaces=NS)).strip()
+
+def _normalize_ws(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").strip())
+
+# 문서 바디를 순서대로 직렬화: (kind, text) -> kind: 'p' | 'tbl_cell'
+def _iterate_body_as_lines(doc_root):
+    body = doc_root.find(".//w:body", namespaces=NS)
+    for child in body:
+        tag = etree.QName(child.tag).localname
+        if tag == "p":
+            txt = _paragraph_text(child)
+            if txt:
+                yield ("p", txt)
+        elif tag == "tbl":
+            for tr in child.findall("./w:tr", namespaces=NS):
+                cells = tr.findall("./w:tc", namespaces=NS)
+                for tc in cells:
+                    t = _tc_text(tc)
+                    if t:
+                        for line in t.splitlines():
+                            line = line.strip()
+                            if line:
+                                yield ("tbl_cell", line)
+
+# ─────────────────────────────────────────────────────────────
+# 1) 시험기간 : 날짜 포함 라인 수집 (상단~첫 '7. 시험방법' 전)
+# ─────────────────────────────────────────────────────────────
+# 날짜 탐지 패턴(여러 형식 지원)
+_DATE_PATTERNS = [
+    # 2025년 6월 23일 / 2025년 6월
+    re.compile(r"\b(19|20)\d{2}\s*년\s*\d{1,2}\s*월(\s*\d{1,2}\s*일)?\b"),
+    # 2024.12.24 / 2024-12-24 / 2024/12/24
+    re.compile(r"\b(19|20)\d{2}\s*[./-]\s*(0?[1-9]|1[0-2])\s*[./-]\s*(0?[1-9]|[12]\d|3[01])\b"),
+    # 01/15  (MM/DD)
+    re.compile(r"\b(0?[1-9]|1[0-2])/(0?[1-9]|[12]\d|3[01])\b"),
+]
+# 기간 예시 패턴(사용자 예시; 라인 내에 start~end가 연속 등장하는 경우)
+_PERIOD_EXAMPLE = re.compile(
+    r"(?:\((?P<label>[^)]+)\)\s*)?"
+    r"(?P<start>\d{4}.*?(?:일|\\d))"
+    r"\s*[~\-]?\s*[\r\n ]+"
+    r"(?P<end>\d{4}.*?(?:일|\\d))"
+)
+
+def _contains_date_like(s: str) -> bool:
+    if _PERIOD_EXAMPLE.search(s):
+        return True
+    for p in _DATE_PATTERNS:
+        if p.search(s):
+            return True
+    return False
+
+def _extract_period_lines(doc_root):
+    lines = []
+    for kind, text in _iterate_body_as_lines(doc_root):
+        if "7. 시험방법" in text:
+            break
+        if _contains_date_like(text):
+            lines.append(_normalize_ws(text))
+    # 중복 제거(순서 보존)
+    seen, out = set(), []
+    for x in lines:
+        if x not in seen:
+            seen.add(x); out.append(x)
+    return out
+
+# ─────────────────────────────────────────────────────────────
+# 2) 개요 및 특성(설명) : "본 제품은" ~ "으로 주요 기능은 다음과 같다" 직전
+# ─────────────────────────────────────────────────────────────
+def _extract_description(doc_root):
+    blob = "\n".join([text for _, text in _iterate_body_as_lines(doc_root)])
+    # 엄격 → 완화 순으로 시도
+    m = re.search(r"본\s*제품은\s*(?P<desc>.+?)\s*으로\s*주요\s*기능은\s*다음과\s*같다", blob, re.DOTALL)
+    if not m:
+        m = re.search(r"본\s*제품은\s*(?P<desc>.+?)\s*(?:으로|이며|로서)\s*주요\s*기능은\s*다음과\s*같", blob, re.DOTALL)
+    return _normalize_ws(m.group("desc")) if m else ""
+
+# ─────────────────────────────────────────────────────────────
+# 3) 개요 및 특성(주요 기능) : "다음과 같다" 이후 ~ "※ 상세기능은" 직전
+# ─────────────────────────────────────────────────────────────
+def _extract_features(doc_root):
+    blob = "\n".join([text for _, text in _iterate_body_as_lines(doc_root)])
+    m = re.search(r"다음과\s*같다(?::|\.|\s)*\s*(?P<section>.*?)\s*(?:※\s*상세기능은|상세\s*기능은)", blob, re.DOTALL)
+    if not m:
+        return []
+    section = m.group("section")
+
+    # 불릿/숫자목록 우선
+    items = re.findall(r"^\s*(?:[-–—•·○●▪◦\*]|\d+[.)])\s*(.+)$", section, flags=re.MULTILINE)
+    if not items:
+        # 불릿이 없으면 줄 단위
+        items = [s.strip() for s in section.splitlines() if s.strip()]
+
+    # 공백 정규화 + 중복 제거(순서 보존)
+    seen, out = set(), []
+    for it in items:
+        itn = _normalize_ws(it)
+        if itn and itn not in seen:
+            seen.add(itn); out.append(itn)
+    return out
+
+# ─────────────────────────────────────────────────────────────
+# 4) 소요일수 합계 : 모든 표에서 '소요일수' 헤더 열의 숫자 합계
+# ─────────────────────────────────────────────────────────────
+def _extract_tables(doc_root):
+    return doc_root.findall(".//w:tbl", namespaces=NS)
+
+def _table_to_rows(tbl):
+    rows = []
+    for tr in tbl.findall("./w:tr", namespaces=NS):
+        cells = tr.findall("./w:tc", namespaces=NS)
+        rows.append([_tc_text(tc) for tc in cells])
+    return rows
+
+def _parse_int_like(s: str):
+    if s is None:
+        return None
+    s2 = re.sub(r"[,\s]", "", s)
+    return int(s2) if re.fullmatch(r"\d+", s2) else None
+
+def _sum_days(doc_root) -> int:
+    total = 0
+    for tbl in _extract_tables(doc_root):
+        rows = _table_to_rows(tbl)
+        if not rows:
+            continue
+        # 헤더에서 '소요일수/소요 일수' 위치 찾기
+        header_idx = None
+        col_idx = None
+        for r_i, row in enumerate(rows):
+            for c_i, cell in enumerate(row):
+                if ("소요일수" in cell) or ("소요 일수" in cell):
+                    header_idx = r_i
+                    col_idx = c_i
+                    break
+            if header_idx is not None:
+                break
+        if header_idx is None or col_idx is None:
+            continue
+        # 숫자만 합산
+        for r_i in range(header_idx + 1, len(rows)):
+            row = rows[r_i]
+            if col_idx >= len(row):
+                continue
+            n = _parse_int_like(row[col_idx])
+            if n is not None:
+                total += n
+    return total
+
+# ─────────────────────────────────────────────────────────────
+# 메인: byts, filename → out
+# ─────────────────────────────────────────────────────────────
+def extract_process2_docx_overview(byts: bytes, filename: str):
+    """
+    Parameters
+    ----------
+    byts : bytes   # .docx 파일 바이트
+    filename : str # 파일명(로그용; 파싱엔 미사용)
+
+    Returns
+    -------
+    out : dict
+      {
+        "시험기간": [ ... ],
+        "개요 및 특성(설명)": "...",
+        "개요 및 특성(주요 기능)": [ ... ],
+        "소요일수 합계": 0
+      }
+    """
+    out = _empty_process2()
+
+    # 문서 파싱
+    try:
+        doc_root = _read_document_xml_from_docx_bytes(byts)
+    except Exception:
+        return out
+
+    # 1) 시험기간
+    out["시험기간"] = _extract_period_lines(doc_root)
+
+    # 2) 개요 및 특성(설명)
+    out["개요 및 특성(설명)"] = _extract_description(doc_root)
+
+    # 3) 개요 및 특성(주요 기능)
+    out["개요 및 특성(주요 기능)"] = _extract_features(doc_root)
+
+    # 4) 소요일수 합계
+    out["소요일수 합계"] = _sum_days(doc_root)
+
+    return out
