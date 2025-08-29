@@ -1,4 +1,3 @@
-# certy/parsers/prdinfo_extractors.py
 """
 프롬포트 스펙을 충실히 반영한 파서 모음.
 - 1번 과정(.docx, '합의서'): 기업/제품 기본정보 추출
