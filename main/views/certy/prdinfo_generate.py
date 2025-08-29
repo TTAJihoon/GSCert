@@ -1,17 +1,3 @@
-    """
-    요청: multipart/form-data, key='file' * 3개
-    응답(JSON):
-    {
-      "list1": [...],  # 1번 과정 결과 리스트
-      "list2": [...],  # 2번 과정 결과 리스트
-      "list3": [...],  # 3번 과정 결과 리스트
-      "fillMap": {     # Luckysheet 입력용
-         "제품 정보 요청": { "A1": "...", ... },
-         "결함정보":     { "B4": 3, ... }
-      },
-      "gsNumber": "GS-B-25-0079"  # (있으면) 파일명에 사용할 값
-    }
-    """
 from django.http import JsonResponse, HttpResponseBadRequest
 from django.views.decorators.http import require_POST
 import io
@@ -90,7 +76,22 @@ def generate_prdinfo(request):
 
     fill_map = build_fill_map(obj1, obj2, obj3)
     gs_number = obj1.get("시험신청번호", "") if isinstance(obj1, dict) else ""
-
+    
+    """
+    요청: multipart/form-data, key='file' * 3개
+    응답(JSON):
+    {
+      "list1": [...],  # 1번 과정 결과 리스트
+      "list2": [...],  # 2번 과정 결과 리스트
+      "list3": [...],  # 3번 과정 결과 리스트
+      "fillMap": {     # Luckysheet 입력용
+         "제품 정보 요청": { "A1": "...", ... },
+         "결함정보":     { "B4": 3, ... }
+      },
+      "gsNumber": "GS-B-25-0079"  # (있으면) 파일명에 사용할 값
+    }
+    """
+    
     return JsonResponse({
         "list1": list1,
         "list2": list2,
