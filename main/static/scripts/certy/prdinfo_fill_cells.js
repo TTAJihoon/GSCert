@@ -40,44 +40,42 @@
     return { api, files };
   }
 
-  // fillMap 적용
+  // 시트 data에 직접 기록(활성 시트/옵션 사용 안 함 → order 오류/머지 로그 방지)
+  function setDataCell(sheet, r, c, value) {
+    sheet.data = sheet.data || [];
+    // 행 확장
+    while (sheet.data.length <= r) sheet.data.push([]);
+    // 열 확장
+    sheet.data[r] = sheet.data[r] || [];
+    while (sheet.data[r].length <= c) sheet.data[r].push(null);
+
+    const isNumber = typeof value === "number" && isFinite(value);
+    const v = isNumber ? value : String(value == null ? "" : value);
+    sheet.data[r][c] = { v, m: String(v) };
+  }
+
+  // 메인 적용 함수
   async function apply(fillMap) {
     const { api, files } = ensureLSReady();
+
     for (const [sheetName, cells] of Object.entries(fillMap || {})) {
       const sheet = findSheet(files, sheetName);
       if (!sheet) continue;
 
-      // 문자열 index도 허용
-      if (typeof api.setSheetActive === "function" && sheet.index) {
-        try { api.setSheetActive(sheet.index); } catch (_) {}
-      }
-
       for (const [addr, value] of Object.entries(cells || {})) {
         const rc = a1ToRC(addr);
         if (!rc) continue;
-
-        let ok = false;
-        try {
-          if (typeof api.setCellValue === "function") {
-            api.setCellValue(rc.r, rc.c, value);
-            ok = true;
-          }
-        } catch (_) {}
-
-        // API 실패 시 파일 데이터 직접 쓰기
-        if (!ok) {
-          const s = findSheet(files, sheetName);
-          s.data = s.data || [];
-          s.data[rc.r] = s.data[rc.r] || [];
-          s.data[rc.r][rc.c] = { v: value, m: String(value) };
-        }
+        setDataCell(sheet, rc.r, rc.c, value);
       }
     }
 
     try {
-      if (LS() && LS().refresh) LS().refresh();
+      // 데이터 직접 수정 후 화면 갱신
+      const inst = LS();
+      if (inst && typeof inst.refresh === "function") inst.refresh();
     } catch (_) {}
   }
 
+  // 전역 노출
   window.PrdinfoFill = { apply };
 })();
