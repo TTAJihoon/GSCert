@@ -12,7 +12,7 @@ from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from django.utils.text import slugify
 
 import io, re
-from .parsers.prdinfo_extractors import (
+from .prdinfo_parsers import (
     extract_process1_docx_basic,
     extract_process2_docx_overview,
     extract_process3_xlsx_defects,
