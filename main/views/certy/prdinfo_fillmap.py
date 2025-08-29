@@ -16,11 +16,11 @@ def build_fill_map(obj1: dict, obj2: dict, obj3: dict):
         "E7": obj1.get("대표 전화번호", ""),
         "F7": obj1.get("대표자 E-Mail", ""),
         "G7": obj1.get("주 소", ""),
-        "H7": "\n".join([obj1.get("담당자-성 명", ""), obj1.get("담당자-부서/직급", "")]).strip("\n")
+        "H7": "\n".join([obj1.get("담당자-성 명", ""), obj1.get("담당자-부서/직급", "")]).strip("\n"),
         "I7": obj1.get("담당자-Mobile", ""),
         "J7": obj1.get("담당자-FAX번호", ""),
         "K7": obj1.get("담당자-E- Mail", ""),
-        "L7": "\n".join([obj1.get("제조자", ""), obj1.get("제조국가", "")]).strip("\n")
+        "L7": "\n".join([obj1.get("제조자", ""), obj1.get("제조국가", "")]).strip("\n"),
         "M7": obj1.get("홈페이지", ""),
         "C5": "\n".join([obj1.get("국문명:", ""), obj1.get("영문명:", "")]).strip("\n"),
 
