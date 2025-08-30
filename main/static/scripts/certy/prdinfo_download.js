@@ -79,7 +79,7 @@
     } catch (e) {
       console.error(e); alert(e.message || "다운로드 중 오류가 발생했습니다.");
     } finally {
-      if (btn) { btn.disabled = false; btn.textContent = "엑셀 다운로드"; }
+      if (btn) { btn.disabled = false; btn.textContent = "다운로드" }
     }
   }
 
