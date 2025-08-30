@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const ENDPOINT = "/certy/prdinfo/download-filled/";
+  const ENDPOINT = "/download-filled/";
   const FNAME    = "prdinfo_filled.xlsx";
   const SHEET_PRD = "제품 정보 요청";
   const SHEET_DEF = "결함정보";
