@@ -46,6 +46,7 @@ def build_fill_map(obj1: dict, obj2: dict, obj3: dict):
         "L4": obj3.get("High", {}).get("수정전", 0),
         "M4": obj3.get("Medium", {}).get("수정전", 0),
         "N4": obj3.get("Low", {}).get("수정전", 0),
+        "O4": obj3.get("합계", {}).get("수정전", 0),
     }
 
     return {
