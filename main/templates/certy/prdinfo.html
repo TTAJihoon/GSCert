@@ -129,11 +129,11 @@
                   <label class="form-label">SaaS형 제품</label>
                   <div class="radio-group">
                     <div class="radio-item">
-                      <input type="radio" id="saas_yes" name="saas_enabled" value="yes">
+                      <input type="radio" id="saas_yes" name="saas_config" value="yes">
                       <label for="saas_yes">O</label>
                     </div>
                     <div class="radio-item">
-                      <input type="radio" id="saas_no" name="saas_enabled" value="no" checked>
+                      <input type="radio" id="saas_no" name="saas_config" value="no" checked>
                       <label for="saas_no">X</label>
                     </div>
                   </div>
@@ -141,8 +141,8 @@
               </div>
             </div>
 
-            <!-- 재인증증 여부 섹션 -->
-            <div class="form-section hidden-section" id="reapprovalSection">
+            <!-- 재인증 여부 섹션 -->
+            <div class="form-section">
               <div class="form-item">
                 <div class="form-input-group">
                   <label class="form-label">재인증 구분</label>
@@ -163,29 +163,29 @@
                   <label class="form-label">보안성 시험 면제 여부</label>
                   <div class="radio-group">
                     <div class="radio-item">
-                      <input type="radio" id="security_yes" name="security_exempt" value="yes">
+                      <input type="radio" id="security_yes" name="security_config" value="yes">
                       <label for="security_yes">O</label>
                     </div>
                     <div class="radio-item">
-                      <input type="radio" id="security_no" name="security_exempt" value="no" checked>
+                      <input type="radio" id="security_no" name="security_config" value="no" checked>
                       <label for="security_no">X</label>
                     </div>
                   </div>
                 </div>
                 
-                <div class="sub-section">
+                <div class="sub-section hidden-section" id="securitySection">
                   <div class="sub-label">보안 인증 종류</div>
-                  <textarea class="form-textarea" id="securityType" placeholder="보안 인증 종류를 입력하세요..."></textarea>
+                  <textarea class="form-textarea" id="security1"></textarea>
                 </div>
                 
-                <div class="sub-section">
+                <div class="sub-section hidden-section" id="securitySection">
                   <div class="sub-label">인증번호</div>
-                  <textarea class="form-textarea" id="certificationNumber" placeholder="인증번호를 입력하세요..."></textarea>
+                  <textarea class="form-textarea" id="security2"></textarea>
                 </div>
                 
-                <div class="sub-section">
+                <div class="sub-section hidden-section" id="securitySection">
                   <div class="sub-label">인증일</div>
-                  <textarea class="form-textarea" id="certificationDate" placeholder="인증일을 입력하세요..."></textarea>
+                  <textarea class="form-textarea" id="security3"></textarea>
                 </div>
               </div>
             </div>
