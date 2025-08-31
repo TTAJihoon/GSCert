@@ -67,7 +67,7 @@
     </div>
   </div>
 
-  <!-- 우측 콘텐츠 영역 -->
+<!-- 우측 콘텐츠 영역 -->
   <main class="content-area">
     <div class="content-card">
       <div class="loading-container hidden" id="loadingContainer">
@@ -85,7 +85,98 @@
           </div>
           <button type="button" class="action-button download" id="btn-download">다운로드</button>
         </div>
-        <div id="luckysheetContainer" style="width:100%;min-height:600px;height:80vh;"></div>
+        
+        <!-- 탭 컨테이너 -->
+        <div class="main-tab-container">
+          <div class="main-tab active" data-tab="preInput">사전 입력 사항</div>
+          <div class="main-tab" data-tab="resultSheet">결과 시트</div>
+        </div>
+
+        <!-- 사전 입력 사항 탭 내용 -->
+        <div class="tab-content active" id="preInputContent">
+          <div class="input-form-container">
+            
+            <!-- 클라우드 환경 구성 섹션 -->
+            <div class="form-section">
+              <div class="form-item">
+                <div class="form-input-group">
+                  <label class="form-label">클라우드 환경 구성</label>
+                  <div class="radio-group">
+                    <div class="radio-item">
+                      <input type="radio" id="cloud_yes" name="cloud_config" value="yes">
+                      <label for="cloud_yes">O</label>
+                    </div>
+                    <div class="radio-item">
+                      <input type="radio" id="cloud_no" name="cloud_config" value="no" checked>
+                      <label for="cloud_no">X</label>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="sub-section hidden-section" id="cloudEnvironmentSection">
+                  <div class="sub-label">시험환경</div>
+                  <textarea class="form-textarea" id="testEnvironment" placeholder="시험환경을 입력하세요..."></textarea>
+                </div>
+              </div>
+            </div>
+
+            <!-- SaaS형 제품 섹션 -->
+            <div class="form-section">
+              <div class="form-item">
+                <div class="form-input-group">
+                  <label class="form-label">SaaS형 제품</label>
+                  <select class="form-select" id="saasType">
+                    <option value="해당사항 없음">해당사항 없음</option>
+                    <option value="간소화 재인증(품질 개선)">간소화 재인증(품질 개선)</option>
+                    <option value="간소화 재인증(부분 변경)">간소화 재인증(부분 변경)</option>
+                    <option value="중요 변경 재인증">중요 변경 재인증</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- 보안성 시험 면제 여부 섹션 -->
+            <div class="form-section">
+              <div class="form-item">
+                <div class="form-input-group">
+                  <label class="form-label">보안성 시험 면제 여부</label>
+                  <div class="radio-group">
+                    <div class="radio-item">
+                      <input type="radio" id="security_yes" name="security_exempt" value="yes">
+                      <label for="security_yes">O</label>
+                    </div>
+                    <div class="radio-item">
+                      <input type="radio" id="security_no" name="security_exempt" value="no" checked>
+                      <label for="security_no">X</label>
+                    </div>
+                  </div>
+                </div>
+                
+                <div class="sub-section">
+                  <div class="sub-label">보안 인증 종류</div>
+                  <textarea class="form-textarea" id="securityType" placeholder="보안 인증 종류를 입력하세요..."></textarea>
+                </div>
+                
+                <div class="sub-section">
+                  <div class="sub-label">인증번호</div>
+                  <textarea class="form-textarea" id="certificationNumber" placeholder="인증번호를 입력하세요..."></textarea>
+                </div>
+                
+                <div class="sub-section">
+                  <div class="sub-label">인증일</div>
+                  <textarea class="form-textarea" id="certificationDate" placeholder="인증일을 입력하세요..."></textarea>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- 결과 시트 탭 내용 -->
+        <div class="tab-content" id="resultSheetContent">
+          <div id="luckysheetContainer" style="width:100%;min-height:600px;height:80vh;"></div>
+        </div>
+
       </div>
     </div>
   </main>
