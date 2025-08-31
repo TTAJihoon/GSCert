@@ -15,9 +15,7 @@ import re
 
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
-# ─────────────────────────────────────────────────────────────
 # 결과 템플릿
-# ─────────────────────────────────────────────────────────────
 def _empty_process2():
     return {
         "시험기간": [],                 # list[str]
@@ -26,17 +24,13 @@ def _empty_process2():
         "소요일수 합계": 0,            # int
     }
 
-# ─────────────────────────────────────────────────────────────
 # DOCX → word/document.xml 로드
-# ─────────────────────────────────────────────────────────────
 def _read_document_xml_from_docx_bytes(byts: bytes):
     with ZipFile(BytesIO(byts)) as zf:
         with zf.open("word/document.xml") as f:
             return etree.parse(f).getroot()
 
-# ─────────────────────────────────────────────────────────────
 # 텍스트 유틸
-# ─────────────────────────────────────────────────────────────
 def _tc_text(tc) -> str:
     """표 셀 텍스트: 줄바꿈/문단 유지"""
     parts = []
@@ -81,9 +75,7 @@ def _iterate_body_as_lines(doc_root):
                             if line:
                                 yield ("tbl_cell", line)
 
-# ─────────────────────────────────────────────────────────────
 # 1) 시험기간 : 날짜 포함 라인 수집 (상단~첫 '7. 시험방법' 전)
-# ─────────────────────────────────────────────────────────────
 # 날짜 탐지 패턴(여러 형식 지원)
 _DATE_PATTERNS = [
     # 2025년 6월 23일 / 2025년 6월
@@ -126,9 +118,7 @@ def _extract_period_lines(doc_root):
             seen.add(x); out.append(x)
     return out
 
-# ─────────────────────────────────────────────────────────────
 # 2) 개요 및 특성(설명) : "본 제품은" ~ "으로 주요 기능은 다음과 같다" 직전
-# ─────────────────────────────────────────────────────────────
 def _extract_description(doc_root):
     blob = "\n".join([text for _, text in _iterate_body_as_lines(doc_root)])
     # 엄격 → 완화 순으로 시도
@@ -137,9 +127,7 @@ def _extract_description(doc_root):
         m = re.search(r"본\s*제품은\s*(?P<desc>.+?)\s*(?:으로|이며|로서)\s*주요\s*기능은\s*다음과\s*같", blob, re.DOTALL)
     return _normalize_ws(m.group("desc")) if m else ""
 
-# ─────────────────────────────────────────────────────────────
 # 3) 개요 및 특성(주요 기능) : "다음과 같다" 이후 ~ "※ 상세기능은" 직전
-# ─────────────────────────────────────────────────────────────
 def _extract_features(doc_root):
     blob = "\n".join([text for _, text in _iterate_body_as_lines(doc_root)])
     m = re.search(
@@ -163,8 +151,10 @@ def _extract_features(doc_root):
         itn = _normalize_ws(it)
         if itn and itn not in seen:
             seen.add(itn)
-            # 원문 불릿과 무관하게 항상 "- " 붙여서 반환
-            out.append(f"- {itn}")
+            if not out:
+                out.append(f"'- {itn}")
+            else:
+                out.append(f"- {itn}")
     return out
 
 # ─────────────────────────────────────────────────────────────
