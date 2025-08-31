@@ -32,7 +32,7 @@ QUAL_ORDER = [
     "적합성", "효율성", "호환성", "사용성", "신뢰성",
     "보안성", "유지보수성", "이식성", "요구사항",
 ]
-DEG_ORDER = ["High", "Medium", "Low"]
+DEG_ORDER = ["High", "Medium", "Low", "합계",]
 
 def extract_process3_xlsx_defects(byts_or_io, filename):
     # bytes/BytesIO 모두 허용
