@@ -93,11 +93,11 @@ def extract_process3_xlsx_defects(byts_or_io, filename):
         for i, key in enumerate(QUAL_ORDER):
             out[key]["수정전"] = vals[i]
 
-    # 2) 결함정도별 결함내역: D에서 찾고 E열 r+2..r+4 → 3개 (High, Medium, Low)
+    # 2) 결함정도별 결함내역: D에서 찾고 E열 r+2..r+5 → 4개 (High, Medium, Low, 합계)
     rB = find_row_in_col_d("결함정도별 결함내역")
     if rB is not None:
-        vals = pick_e_series(rB + 2, rB + 4)
-        vals = (vals + [0] * 3)[:3]
+        vals = pick_e_series(rB + 2, rB + 5)
+        vals = (vals + [0] * 4)[:4]
         for i, key in enumerate(DEG_ORDER):
             out[key]["수정전"] = vals[i]
 
