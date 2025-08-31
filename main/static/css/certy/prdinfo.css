@@ -239,7 +239,7 @@ body {
   padding: 24px 24px 24px 348px;
   background-color: #f8fafc;
   height: 100%;
-  overflow-y: auto;
+  min-height: 800px;
 }
 
 .content-card {
