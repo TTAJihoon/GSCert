@@ -248,6 +248,7 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   padding: 20px;
   height: calc(100% - 40px);
+  min-height: 770px;
 }
 
 .results-container {
