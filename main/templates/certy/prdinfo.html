@@ -127,7 +127,26 @@
               <div class="form-item">
                 <div class="form-input-group">
                   <label class="form-label">SaaS형 제품</label>
-                  <select class="form-select" id="saasType">
+                  <div class="radio-group">
+                    <div class="radio-item">
+                      <input type="radio" id="saas_yes" name="saas_enabled" value="yes">
+                      <label for="saas_yes">O</label>
+                    </div>
+                    <div class="radio-item">
+                      <input type="radio" id="saas_no" name="saas_enabled" value="no" checked>
+                      <label for="saas_no">X</label>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 재인증증 여부 섹션 -->
+            <div class="form-section hidden-section" id="reapprovalSection">
+              <div class="form-item">
+                <div class="form-input-group">
+                  <label class="form-label">재인증 구분</label>
+                  <select class="form-select" id="reCertType">
                     <option value="해당사항 없음">해당사항 없음</option>
                     <option value="간소화 재인증(품질 개선)">간소화 재인증(품질 개선)</option>
                     <option value="간소화 재인증(부분 변경)">간소화 재인증(부분 변경)</option>
