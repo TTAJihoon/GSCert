@@ -34,19 +34,17 @@ def build_faiss_from_db(db_path):
 
     print("임베딩 완료된 벡터 형태:", embeddings.shape)
 
-    # (4) FAISS 인덱스 생성 및 저장 (Flat 방식 예시)
+    # (4) 인덱스 생성 및 저장 (IndexIDMap2 사용)
     dim = embeddings.shape[1]
+    base_index = faiss.IndexFlatIP(dim)
+    index = faiss.IndexIDMap2(base_index)
 
-    #Flat 인덱스 생성 (가장 간단한 방식)
-    index = faiss.IndexFlatIP(dim)  # 코사인 유사도는 내적(IP)을 활용 (normalize_embeddings=True 필수)
+    # ids 배열을 int64로 맞춰서 DB id와 함께 저장
+    ids_np = np.array(ids, dtype=np.int64)
+    index.add_with_ids(embeddings, ids_np)
 
-    # FAISS에 임베딩 벡터 추가
-    index.add(embeddings)
-
-    print(f"FAISS 인덱스에 저장된 벡터 개수: {index.ntotal}")
-
-    # FAISS 인덱스 저장
-    faiss.write_index(index, "main/data/faiss_bge_m3_ko.index")
+    faiss.write_index(index, "main/data/faiss_bge_m3_ko.idmap.index")
+    print("FAISS 인덱스 저장 완료 (IndexIDMap2)")
 
     # 별도로 ID 리스트 저장 (추후 검색 시 id 매핑에 필요)
     np.save("main/data/ids.npy", np.array(ids))
