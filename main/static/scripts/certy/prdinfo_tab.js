@@ -56,11 +56,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // 보안성 시험 면제 여부: O일 때만 세부영역 표시
   const securityRadios = document.querySelectorAll('input[name="security_config"]');
-  const securitySection = document.getElementById('securitySection');
+  const securitySection1 = document.getElementById('securitySection1');
+  const securitySection2 = document.getElementById('securitySection2');
+  const securitySection3 = document.getElementById('securitySection3');
 
   function updateSecurityVisibility() {
     const isYes = document.getElementById('security_yes').checked;
-    securitySection.classList.toggle('hidden-section', !isYes);
+    securitySection1.classList.toggle('hidden-section', !isYes);
+    securitySection2.classList.toggle('hidden-section', !isYes);
+    securitySection3.classList.toggle('hidden-section', !isYes);
   }
   securityRadios.forEach(r => r.addEventListener('change', updateSecurityVisibility));
   updateSecurityVisibility(); // 초기 상태 반영
