@@ -27,6 +27,8 @@ Thumbs.db
 # 임베딩 캐시
 *.index
 *.npy
+*.csv
+*.db
 
 # Static files
 /staticfiles/
