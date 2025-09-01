@@ -282,10 +282,7 @@ body {
   height: 100%;
   min-height: 600px;
   max-height: 850px;
-}
-
-.luckysheet {
-  position: realtive;
+  position: relative;
 }
 
 .download {
