@@ -1,16 +1,16 @@
 {% load static %}
 <!DOCTYPE html>
 <html lang="ko">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>AI 서포터즈 센터</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="{% static 'css/header.css' %}"/>
-  {% block head %}
-  {% endblock %}
-</head>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>AI 서포터즈 센터</title>
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'css/header.css' %}"/>
+    {% block head %}
+    {% endblock %}
+  </head>
   <body class="bg-gray-100">
     <div class="main-container">
       <!-- 공통 상단 바 -->
@@ -43,11 +43,9 @@
       </header>
       
       <!-- 페이지 개별 내용 -->
-      <main>
       {% block content %}
       {% endblock %}
-    </main>
 
-  </div>
-</body>
+    </div>
+  </body>
 </html>
