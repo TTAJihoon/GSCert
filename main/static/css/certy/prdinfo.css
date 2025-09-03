@@ -6,6 +6,7 @@
 .main-content {
   width: 339px;
   position: relative;
+  padding: 25px;
 }
 
 .sidebar-container {
@@ -28,10 +29,8 @@
   margin-right: 10px;
 }
 
-.header-title {
-  font-size: 18px;
-  font-weight: 600;
-  color: #1e40af;
+.upload {
+  margin-left: -155px;
 }
 
 .sidebar {
@@ -47,30 +46,6 @@
   background-color: #ffffff;
   border-radius: 8px;
   overflow: hidden;
-}
-
-.tab-container {
-  display: flex;
-}
-
-.tab {
-  flex: 1;
-  padding: 12px;
-  text-align: center;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.tab.active {
-  background-color: #e0f2fe;
-  border-bottom: 2px solid #3b82f6;
-}
-
-.tab:not(.active) {
-  background-color: #f8fafc;
-  color: #64748b;
 }
 
 .content-container {
@@ -98,6 +73,13 @@
 .drop-area p {
   margin: 8px 0;
   color: #64748b;
+}
+
+.upload-limit-message {
+  font-size: 12px;
+  color: #64748b;
+  text-align: center;
+  margin-top: 8px;
 }
 
 .file-list {
@@ -158,16 +140,56 @@
   display: none;
 }
 
-.upload-limit-message {
-  font-size: 12px;
-  color: #64748b;
-  text-align: center;
-  margin-top: 8px;
-}
-
 .content-spacer {
   flex: 1;
 }
+
+.content-area {
+  padding-top: 25px;
+  width: 100%
+  height: calc(100vh - 70px);
+}
+
+.content-card {
+  background-color: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 20px;
+  height: calc(100% - 40px);
+  min-height: 770px;
+  min-width: 1280px;
+}
+
+
+
+
+
+
+.tab-container {
+  display: flex;
+}
+
+.tab {
+  flex: 1;
+  padding: 12px;
+  text-align: center;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.tab.active {
+  background-color: #e0f2fe;
+  border-bottom: 2px solid #3b82f6;
+}
+
+.tab:not(.active) {
+  background-color: #f8fafc;
+  color: #64748b;
+}
+
+
 
 .loading-container {
   display: flex;
@@ -211,23 +233,6 @@
 
 .hidden {
   display: none;
-}
-
-.content-area {
-  padding: 24px 24px 24px 348px;
-  background-color: #f8fafc;
-  height: 100%;
-  min-height: 800px;
-}
-
-.content-card {
-  background-color: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  padding: 20px;
-  height: calc(100% - 40px);
-  min-height: 770px;
-  min-width: 1280px;
 }
 
 .results-container {
