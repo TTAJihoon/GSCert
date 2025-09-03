@@ -1,26 +1,31 @@
-main {
-  height: calc(100vh - 60px)
-}
-
-body {
-  margin: 0;
-  padding: 0;
-  font-family: 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
-  background-color: #f9fafb;
-  min-width: 1280px;
-  min-height: 720px;
-  height: 100vh;
-  overflow-x: auto;
-}
-
 .app-container {
   display: flex;
-  flex-direction: column;
-  height: 100%;
-  width: 100%;
-  margin: 0 auto;
-  overflow-x: hidden;
-  overflow-y: auto;
+  flex-direction: row;
+}
+
+.main-content {
+  width: 339px;
+  position: relative;
+}
+
+.sidebar-container {
+  width: 300px;
+  margin: 25px;
+}
+
+.search-title {
+  margin-top: 6px;
+  margin-bottom: 16px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1e3a8a;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  color: #3b82f6;
+  margin-right: 10px;
 }
 
 .header-title {
@@ -29,23 +34,8 @@ body {
   color: #1e40af;
 }
 
-.main-content {
-  display: flex;
-  flex: 1;
-  height: calc(100vh - 60px);
-  position: relative;
-}
-
-.sidebar-container {
-  position: absolute;
-  left: 24px;
-  top: 24px;
-  width: 300px;
-  z-index: 5;
-}
-
 .sidebar {
-  width: 100%;
+  width: 280px;
   background-color: white;
   border-radius: 12px;
   box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
@@ -177,21 +167,6 @@ body {
 
 .content-spacer {
   flex: 1;
-}
-
-.search-title {
-  margin-top: 6px;
-  margin-bottom: 16px;
-  font-size: 20px;
-  font-weight: 600;
-  color: #1e3a8a;
-  display: flex;
-  align-items: center;
-}
-
-.search-icon {
-  color: #3b82f6;
-  margin-right: 10px;
 }
 
 .loading-container {
