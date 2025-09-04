@@ -9,8 +9,6 @@ body {
   height: 100%;
   min-width: 1280px;
   width: 100%;
-  overflow-x: auto;
-  overflow-y: auto;
 }
 
 .top-bar {
