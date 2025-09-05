@@ -43,6 +43,19 @@ document.addEventListener('DOMContentLoaded', function () {
     ro.observe(res);
   }
 
+  // 재계약/WD 특이사항 여부: O일 때만 세부영역 표시
+  const spcRadios = document.querySelectorAll('input[name="spc_config"]');
+  const reContract = document.getElementById('securitySection1');
+  const wdspc = document.getElementById('securitySection2');
+
+  function updateSpcVisibility() {
+    const isYes = document.getElementById('spc_yes').checked;
+    reContract.classList.toggle('hidden-section', !isYes);
+    wdspc.classList.toggle('hidden-section', !isYes);
+  }
+  spcRadios.forEach(r => r.addEventListener('change', updateSpcVisibility));
+  updateSpcVisibility(); // 초기 상태 반영
+  
   // 클라우드 환경 구성: O/X에 따라 세부영역 표시
   const cloudRadios = document.querySelectorAll('input[name="cloud_config"]');
   const cloudEnvironmentSection = document.getElementById('cloudEnvironmentSection');
