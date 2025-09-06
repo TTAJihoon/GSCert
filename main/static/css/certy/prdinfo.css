@@ -239,6 +239,24 @@ body {
   position: relative;
 }
 
+#luckysheet .luckysheet-toolbar,
+  #luckysheet-toolbar,
+  .luckysheet-toolbar {
+    display: flex;
+    flex-wrap: nowrap;       /* 줄바꿈 금지 */
+    overflow-x: auto;        /* 가로 스크롤바 표시 */
+    overflow-y: hidden;
+    white-space: nowrap;
+    scrollbar-width: thin;   /* FF */
+    -ms-overflow-style: auto;
+  }
+  /* 자식들이 줄바꿈 없이 가로로만 늘어나도록 */
+  #luckysheet .luckysheet-toolbar > *,
+  #luckysheet-toolbar > *,
+  .luckysheet-toolbar > * {
+    flex: 0 0 auto;
+  }
+
 .download {
   width: 100px;
   text-align: center;
