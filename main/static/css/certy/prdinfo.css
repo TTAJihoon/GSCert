@@ -155,39 +155,8 @@ body {
   margin-top: 20px;
   height: calc(100% - 40px);
   min-height: 770px;
-  min-width: 1280px;
+  min-width: 941px;
 }
-
-
-
-
-
-
-.tab-container {
-  display: flex;
-}
-
-.tab {
-  flex: 1;
-  padding: 12px;
-  text-align: center;
-  cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s ease;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.tab.active {
-  background-color: #e0f2fe;
-  border-bottom: 2px solid #3b82f6;
-}
-
-.tab:not(.active) {
-  background-color: #f8fafc;
-  color: #64748b;
-}
-
-
 
 .loading-container {
   display: flex;
