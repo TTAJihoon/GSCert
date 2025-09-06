@@ -39,9 +39,6 @@
 .input-form-container {
   padding: 20px;
   background-color: #f9fafb;
-  border-radius: 8px;
-  height: calc(80vh - 100px);
-  overflow-y: auto;
 }
 
 .form-section {
