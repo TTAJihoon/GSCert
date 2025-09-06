@@ -224,8 +224,8 @@ def extract_process1_docx_basic(byts: bytes, filename: str):
     out = _empty_process1()
     try:
         doc_root = _read_document_xml_from_docx_bytes(byts)
-    except Exception e:
-        print(e)
+    except Exception as e:
+        print(f"[print_out error] {e}")
         return out
 
     rows = _all_table_rows(doc_root)
@@ -282,7 +282,8 @@ def _print_out(out: dict) -> None:
 def extract_recert_text_and_wd(byts: bytes, filename: str) -> str:
     try:
         doc_root = _read_document_xml_from_docx_bytes(byts)
-    except Exception:
+    except Exception as e:
+        print(f"[print_out error] {e}")
         return "-"
 
     rows = _all_table_rows(doc_root)
