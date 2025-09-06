@@ -262,8 +262,19 @@ def extract_process1_docx_basic(byts: bytes, filename: str):
 
     out["제조자"]   = _find_value_by_label(rows, ["제조자"])
     out["제조국가"] = _find_value_by_label(rows, ["제조국가"])
+    _print_out(out)
     return out
 
+def _print_out(out: dict) -> None:
+    """out의 키/값을 순서대로 모두 출력."""
+    try:
+        print("=== extract_process1_docx_basic: 결과 out ===")
+        for k, v in out.items():   # 파이썬3.7+ dict는 삽입 순서 보존
+            print(f"{k}: {v}")
+        print("=== end of out ===")
+    except Exception as e:
+        print(f"[print_out error] {e}")
+        
 # ─────────────────────────────────────────────────────────────
 # 메인(2): 재인증 본문+WD (이전 시그니처 유지, 내부는 리팩토링 헬퍼 재사용)
 # ─────────────────────────────────────────────────────────────
