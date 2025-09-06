@@ -51,6 +51,9 @@ body {
   background-color: #f8fafc;
   height: 100%;
   overflow-y: auto;
+  width: 100%;
+  min-width: 932px;
+  position: absolute;
 }
 
 .content-card {
@@ -59,9 +62,6 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   padding: 20px;
   height: calc(100vh - 40px);
-  width: 100%;
-  min-width: 932px;
-  position: absolute;
 }
 
 .file-upload-container {
