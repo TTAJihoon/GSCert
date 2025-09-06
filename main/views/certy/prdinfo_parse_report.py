@@ -11,7 +11,7 @@ extract_process2_docx_overview(byts, filename) :
 from io import BytesIO
 from zipfile import ZipFile
 from lxml import etree
-from prdinfo_GPT import classify_sw_and_keywords
+from .prdinfo_GPT import classify_sw_and_keywords
 import re
 
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
