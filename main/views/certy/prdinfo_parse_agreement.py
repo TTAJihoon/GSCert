@@ -224,7 +224,8 @@ def extract_process1_docx_basic(byts: bytes, filename: str):
     out = _empty_process1()
     try:
         doc_root = _read_document_xml_from_docx_bytes(byts)
-    except Exception:
+    except Exception e:
+        print(e)
         return out
 
     rows = _all_table_rows(doc_root)
