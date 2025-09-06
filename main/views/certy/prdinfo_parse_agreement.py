@@ -1,23 +1,25 @@
 # -*- coding: utf-8 -*-
 """
-DOCX 바이트(byts) → word/document.xml 파싱 후 '시험합의서' 21개 항목 추출
-- 형식 불변(본 대화의 양식) 가정
-- 대표자/담당자 E-mail 충돌 방지:
-  · 대표자: 라벨에 '대표자' 포함된 E-mail 라벨만 허용
-  · 담당자: 라벨이 정확히 'E-mail'/'E- Mail'/'Email' 등일 때만,
-           같은 행 또는 최근 N행(LOOKBACK) 안에 '담당자'가 존재해야 함,
-           그리고 '대표자' 토큰이 보이면 즉시 제외
+DOCX 바이트(byts) → word/document.xml 파싱 후 '시험합의서' 항목 추출 + 재인증 부가정보
+- 기존 21개 항목 추출 로직 유지
+- 추가:
+  1) _detect_cert_apply_type(rows): '신규인증/재인증' 중 체크(V/√/✔/✓)된 항목 탐지
+  2) extract_recert_text_and_wd(byts, filename): 재인증 시 '※ 재인증 신청 시 기재사항' 셀 하단 텍스트(변수1) 추출,
+     '기 인증번호:' 값을 변수2로 파싱, reference.db에서 해당 인증번호의 '총WD'(변수3) 조회 후
+     '{변수1}\n기 인증 제품 WD: {변수3}' 반환. 신규인증이면 "-" 반환.
 """
 
 from io import BytesIO
 from zipfile import ZipFile
 from lxml import etree
 import re
+import sqlite3
+import os
 
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 # ─────────────────────────────────────────────────────────────
-# 0) 빈 결과 템플릿
+# 0) 빈 결과 템플릿 (기존)
 # ─────────────────────────────────────────────────────────────
 def _empty_process1():
     return {
@@ -44,17 +46,11 @@ def _empty_process1():
         "제조국가": "",
     }
 
-# ─────────────────────────────────────────────────────────────
-# 1) DOCX → word/document.xml 로드
-# ─────────────────────────────────────────────────────────────
 def _read_document_xml_from_docx_bytes(byts: bytes):
     with ZipFile(BytesIO(byts)) as zf:
         with zf.open("word/document.xml") as f:
             return etree.parse(f).getroot()
 
-# ─────────────────────────────────────────────────────────────
-# 2) 셀 텍스트 추출(줄바꿈/문단 보존)
-# ─────────────────────────────────────────────────────────────
 def _tc_text_with_newlines(tc) -> str:
     parts = []
     for p in tc.findall(".//w:p", namespaces=NS):
@@ -67,9 +63,9 @@ def _tc_text_with_newlines(tc) -> str:
         parts.append("".join(buf))
     if not parts:
         parts = ["".join(t.text or "" for t in tc.findall(".//w:t", namespaces=NS))]
+    import re as _re
     text = "\n".join(parts)
-    # 공백 정리(줄바꿈은 유지)
-    text = re.sub(r"[ \t]+", " ", text)
+    text = _re.sub(r"[ \t]+", " ", text)  # 줄바꿈 유지, 연속 공백 정규화
     return text.strip()
 
 def _all_table_rows(doc_root):
@@ -80,17 +76,11 @@ def _all_table_rows(doc_root):
             rows.append([_tc_text_with_newlines(tc) for tc in cells])
     return rows
 
-# ─────────────────────────────────────────────────────────────
-# 3) 라벨/토큰 매칭 유틸
-# ─────────────────────────────────────────────────────────────
 def _norm(s: str) -> str:
-    """라벨 비교용 정규화: 소문자 + 모든 공백/개행 + 콜론 + 다양한 하이픈 제거"""
-    if s is None:
-        return ""
+    if s is None: return ""
     s2 = s.lower()
     s2 = re.sub(r"[\s\u00A0]+", "", s2)
     s2 = s2.replace(":", "")
-    # 하이픈/대시 계열 제거(‐-‒–—― 포함)
     s2 = re.sub(r"[-‐-‒–—―]", "", s2)
     return s2
 
@@ -102,18 +92,11 @@ def _next_cell(rows, r_idx, c_idx) -> str:
     return row[c_idx + 1].strip() if (c_idx + 1 < len(row)) else ""
 
 def _find_value_by_label(rows, label_variants, require_colon=None) -> str:
-    """
-    표에서 '라벨 셀'을 찾아 바로 오른쪽 셀 값을 반환.
-    - label_variants: ["주 소", "주        소", "주소"] 등
-    - require_colon:  None(무시) / True(라벨에 콜론 必) / False(라벨에 콜론 없어야 함)
-    """
     targets = [_norm(v) for v in label_variants]
     for r_i, row in enumerate(rows):
         for c_i, cell in enumerate(row):
-            if require_colon is True and not _has_colon(cell):
-                continue
-            if require_colon is False and _has_colon(cell):
-                continue
+            if require_colon is True and not _has_colon(cell):   continue
+            if require_colon is False and _has_colon(cell):      continue
             if _norm(cell) in targets:
                 return _next_cell(rows, r_i, c_i)
     return ""
@@ -122,50 +105,29 @@ def _row_has_token(row, token: str) -> bool:
     tok = _norm(token)
     return any(tok in _norm(x) for x in row)
 
-# ─────────────────────────────────────────────────────────────
-# 4) 충돌 방지: 담당자 E-mail 전용 스캐너
-# ─────────────────────────────────────────────────────────────
 def _find_contact_email(rows, lookback: int = 2) -> str:
-    """
-    담당자 E-mail 추출 규칙:
-      - 라벨은 정확히 'E-mail' / 'E- Mail' / 'Email' 계열만 허용(부분일치 X)
-      - 같은 행 또는 최근 lookback행 내에 '담당자' 토큰이 있어야 함(블록 스코프)
-      - 같은 행 또는 최근 lookback행 내에 '대표자' 토큰이 있으면 제외
-    """
     label_set = {_norm("E-mail"), _norm("E- Mail"), _norm("Email")}
     for r_i, row in enumerate(rows):
         for c_i, cell in enumerate(row):
             if _norm(cell) in label_set:
-                # 1) 대표자 토큰이 보이면 제외
-                if _row_has_token(row, "대표자"):
+                if _row_has_token(row, "대표자"):  # 대표자 맥락 제외
                     continue
                 bad = False
                 for k in range(1, lookback + 1):
                     if r_i - k >= 0 and _row_has_token(rows[r_i - k], "대표자"):
-                        bad = True
-                        break
-                if bad:
-                    continue
-
-                # 2) 반드시 '담당자' 맥락이어야 함
+                        bad = True; break
+                if bad: continue
                 ok = _row_has_token(row, "담당자")
                 if not ok:
                     for k in range(1, lookback + 1):
                         if r_i - k >= 0 and _row_has_token(rows[r_i - k], "담당자"):
-                            ok = True
-                            break
-                if not ok:
-                    continue
-
-                # 3) 통과 시 라벨 오른쪽 값을 반환
+                            ok = True; break
+                if not ok: continue
                 return _next_cell(rows, r_i, c_i)
     return ""
 
-# ─────────────────────────────────────────────────────────────
-# 5) 항목별 규칙
-# ─────────────────────────────────────────────────────────────
+# 기존: 성적서(TTA/KOLAS) 구분
 def _detect_score_type(rows) -> str:
-    """성적서 구분: 'TTA 성적서 (V/√/✔/✓)' / 'KOLAS 성적서 (…)' 중 체크된 항목"""
     mark = r"[Vv√✔✓]"
     for row in rows:
         joined = " ".join(row)
@@ -173,17 +135,37 @@ def _detect_score_type(rows) -> str:
             s = re.sub(r"\s+", " ", joined)
             tta = re.search(r"TTA\s*성적서\s*\(\s*(" + mark + r")\s*\)", s)
             kol = re.search(r"KOLAS\s*성적서\s*\(\s*(" + mark + r")\s*\)", s)
-            if tta and tta.group(1):
-                return "TTA 성적서"
-            if kol and kol.group(1):
-                return "KOLAS 성적서"
+            if tta and tta.group(1): return "TTA 성적서"
+            if kol and kol.group(1): return "KOLAS 성적서"
+    return ""
+
+# 신규 추가: 신청 유형(신규인증/재인증) 체크 탐지
+def _detect_cert_apply_type(rows) -> str:
+    """
+    표의 한 행/셀에 '신규인증( V )', '재인증( V )' 둘 다 나타나는 형태를 가정.
+    체크 마크는 V/v/√/✔/✓ 허용.
+    """
+    mark = r"[Vv√✔✓]"
+    for row in rows:
+        joined = " ".join(row)
+        s = re.sub(r"\s+", " ", joined)
+        m_new = re.search(r"신규\s*인증|신규인증", s)
+        m_re  = re.search(r"재\s*인증|재인증", s)
+        if m_new or m_re:
+            new_mark = re.search(r"신규\s*인증|신규인증.*?\(\s*(" + mark + r")\s*\)", s)
+            re_mark  = re.search(r"재\s*인증|재인증.*?\(\s*(" + mark + r")\s*\)", s)
+            # 좀 더 강건하게: 두 구문 각각 다시 정규식
+            new_mark = re.search(r"신규\s*인증|신규인증\s*\(\s*(" + mark + r")\s*\)", s) or \
+                       re.search(r"신규인증\s*\(\s*(" + mark + r")\s*\)", s)
+            re_mark  = re.search(r"재\s*인증|재인증\s*\(\s*(" + mark + r")\s*\)", s) or \
+                       re.search(r"재인증\s*\(\s*(" + mark + r")\s*\)", s)
+            if re_mark and re_mark.group(0):
+                return "재인증"
+            if new_mark and new_mark.group(0):
+                return "신규인증"
     return ""
 
 def _extract_company_kr_en(rows):
-    """
-    신청기업(기관)명 블록:
-    - 라벨 '국문명' / '영문명' (콜론 없음) 셀이 있고, 바로 오른쪽 셀에 값이 들어있는 구조.
-    """
     kr = en = ""
     for r_i, row in enumerate(rows):
         for c_i, cell in enumerate(row):
@@ -195,15 +177,7 @@ def _extract_company_kr_en(rows):
     return kr, en
 
 def _extract_product_names(rows):
-    """
-    제품명 및 버전 블록:
-    - (A) '제품명 및 버전' 라벨 다음 '값 셀' 안에서 '국문명:' / '영문명:' 추출
-    - (B) 라벨 셀 자체가 '국문명:' / '영문명:'인 경우
-    - (C) 보강: 표의 '모든 셀'에서 라벨+값 패턴을 스캔 (병합/행분리 대비)
-    """
     kr = en = ""
-
-    # (A) '제품명 및 버전' → 다음 셀 텍스트 안에서 추출
     for r_i, row in enumerate(rows):
         for c_i, cell in enumerate(row):
             if "제품명 및 버전" in cell:
@@ -211,74 +185,47 @@ def _extract_product_names(rows):
                 if val:
                     m_kr = re.search(r"(?:^|\n)\s*국문명\s*:\s*([^\n]+)", val)
                     m_en = re.search(r"(?:^|\n)\s*영문명\s*:\s*([^\n]+)", val)
-                    if m_kr and not kr:
-                        kr = m_kr.group(1).strip()
-                    if m_en and not en:
-                        en = m_en.group(1).strip()
-
-    # (B) 라벨 셀 자체가 '국문명:' / '영문명:'인 레이아웃
+                    if m_kr and not kr: kr = m_kr.group(1).strip()
+                    if m_en and not en: en = m_en.group(1).strip()
     if not kr:
         kr = _find_value_by_label(rows, ["국문명:"], require_colon=True)
     if not en:
         en = _find_value_by_label(rows, ["영문명:"], require_colon=True)
-
-    # (C) 최종 보강: 표의 모든 셀을 스캔 (값셀 내부에 라벨이 있는 경우)
     if not kr or not en:
         for row in rows:
             for cell in row:
                 if not kr:
                     m_kr = re.search(r"(?:^|\n)\s*국문명\s*:\s*([^\n]+)", cell)
-                    if m_kr:
-                        kr = m_kr.group(1).strip()
+                    if m_kr: kr = m_kr.group(1).strip()
                 if not en:
                     m_en = re.search(r"(?:^|\n)\s*영문명\s*:\s*([^\n]+)", cell)
-                    if m_en:
-                        en = m_en.group(1).strip()
-                if kr and en:
-                    break
-            if kr and en:
-                break
-
+                    if m_en: en = m_en.group(1).strip()
+                if kr and en: break
+            if kr and en: break
     return kr, en
 
 # ─────────────────────────────────────────────────────────────
-# 6) 메인: 합의서 파서 (byts, filename) → out
+# 메인(기존): 합의서 파서
 # ─────────────────────────────────────────────────────────────
 def extract_process1_docx_basic(byts: bytes, filename: str):
-    """
-    Parameters
-    ----------
-    byts : bytes
-        .docx 파일 바이트
-    filename : str
-        파일명(로그/디버깅 용도; 파싱엔 미사용)
-
-    Returns
-    -------
-    out : dict
-        지정된 21개 키를 갖는 결과 딕셔너리
-    """
     out = _empty_process1()
-
     try:
         doc_root = _read_document_xml_from_docx_bytes(byts)
     except Exception:
-        return out  # 손상 파일 등 예외 시 빈 결과
+        return out
 
     rows = _all_table_rows(doc_root)
 
-    # 1) 시험신청번호
     out["시험신청번호"] = _find_value_by_label(rows, ["시험신청번호"])
-
-    # 2) 성적서 구분
     out["성적서 구분"] = _detect_score_type(rows)
 
-    # 3) 4) 신청기업(기관)명 - 국/영문 (콜론 없음)
+    # 신청 유형(신규인증/재인증)도 함께 추가로 리턴(호환성 위해 새 키로 추가)
+    out["신청유형"] = _detect_cert_apply_type(rows)  # ← 신규 추가
+
     kr_company, en_company = _extract_company_kr_en(rows)
     out["국문명"] = kr_company
     out["영문명"] = en_company
 
-    # 5) ~ 11)
     out["사업자등록번호"] = _find_value_by_label(rows, ["사업자등록번호", "사업자 등록번호"])
     out["법인등록번호"]   = _find_value_by_label(rows, ["법인등록번호", "법인 등록번호"])
     out["대표자"]         = _find_value_by_label(rows, ["대표자"])
@@ -287,24 +234,101 @@ def extract_process1_docx_basic(byts: bytes, filename: str):
     out["홈페이지"]       = _find_value_by_label(rows, ["홈페이지", "Website", "웹사이트"])
     out["주 소"]          = _find_value_by_label(rows, ["주        소", "주 소", "주소"])
 
-    # 12) ~ 17) (담당자)
     out["담당자-성 명"]    = _find_value_by_label(rows, ["성   명", "성 명"])
     out["담당자-전화번호"]  = _find_value_by_label(rows, ["전화번호", "담당자 전화번호"])
     out["담당자-Mobile"]   = _find_value_by_label(rows, ["Mobile", "모바일"])
-
-    # ★ 충돌 방지 로직 적용(담당자 E-mail)
     out["담당자-E- Mail"]  = _find_contact_email(rows)
-
     out["담당자-FAX번호"]   = _find_value_by_label(rows, ["FAX번호", "팩스번호", "FAX 번호"])
     out["담당자-부서/직급"]  = _find_value_by_label(rows, ["부서/직급", "부서 / 직급", "부서", "직급"])
 
-    # 18) 19) (제품명 및 버전 - 콜론 있음)
     kr_prod, en_prod = _extract_product_names(rows)
     out["국문명:"] = kr_prod
     out["영문명:"] = en_prod
 
-    # 20) 21)
     out["제조자"]   = _find_value_by_label(rows, ["제조자"])
     out["제조국가"] = _find_value_by_label(rows, ["제조국가"])
-
     return out
+
+# ─────────────────────────────────────────────────────────────
+# 신규: 재인증 기재사항 텍스트 + '기 인증 제품 WD' 조회
+# ─────────────────────────────────────────────────────────────
+def extract_recert_text_and_wd(byts: bytes, filename: str) -> str:
+    """
+    반환:
+      - '신규인증' 체크 시: "-"
+      - '재인증' 체크 시:
+        변수1 = '※ 재인증 신청 시 기재사항'이 포함된 '해당 셀'의 **다음 줄부터** 끝까지(좌우 공백/양끝 줄바꿈 제거)
+        변수2 = 변수1에서 '기 인증번호:' 뒤 값
+        변수3 = sqlite(main/data/reference.db)에서 인증번호=변수2 인 행의 '총WD'
+        return f"{변수1}\n기 인증 제품 WD: {변수3}"
+    """
+    try:
+        doc_root = _read_document_xml_from_docx_bytes(byts)
+    except Exception:
+        return "-"
+
+    rows = _all_table_rows(doc_root)
+    cert_type = _detect_cert_apply_type(rows)
+    if cert_type != "재인증":
+        return "-"  # 명세 1-6
+
+    # '※ 재인증 신청 시 기재사항' 문구가 들어있는 '셀'을 찾아 그 '셀'의 아래 줄부터 수집
+    target = None
+    for row in rows:
+        for cell in row:
+            if "재인증 신청 시 기재사항" in cell:
+                target = cell
+                break
+        if target: break
+    if not target:
+        return "-"
+
+    # 셀 내에서 '문구가 있는 그 줄' 다음 줄부터 끝까지
+    lines = target.splitlines()
+    idx = -1
+    for i, ln in enumerate(lines):
+        if "재인증 신청 시 기재사항" in ln:
+            idx = i; break
+    text_after = "\n".join(lines[idx+1:]) if idx >= 0 else ""
+    var1 = text_after.strip()  # 양끝만 정리(내부 공백/줄바꿈 유지)
+
+    # 변수2: '기 인증번호:' 뒤의 값
+    m = re.search(r"기\s*인증번호\s*:\s*([^\n\r]+)", var1)
+    var2 = m.group(1).strip() if m else ""
+
+    # 변수3: reference.db 조회(테이블 미지정 → '인증번호'와 '총WD' 컬럼을 가진 테이블 자동 탐색)
+    var3 = ""
+    db_path_candidates = [
+        os.path.join("main", "data", "reference.db"),
+        os.path.join(os.path.dirname(__file__), "..", "data", "reference.db"),
+        os.path.join(os.getcwd(), "main", "data", "reference.db"),
+    ]
+    db_path = next((p for p in db_path_candidates if os.path.exists(os.path.abspath(p))), None)
+    if db_path and var2:
+        try:
+            conn = sqlite3.connect(db_path)
+            cur = conn.cursor()
+            # '인증번호' & '총WD'가 있는 테이블 자동 탐색
+            tbls = cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+            table_name = None
+            for (tname,) in tbls:
+                cols = cur.execute(f"PRAGMA table_info('{tname}')").fetchall()
+                colnames = {c[1] for c in cols}
+                if "인증번호" in colnames and "총WD" in colnames:
+                    table_name = tname
+                    break
+            if table_name:
+                row = cur.execute(
+                    f"SELECT \"총WD\" FROM \"{table_name}\" WHERE \"인증번호\"=? LIMIT 1", (var2,)
+                ).fetchone()
+                if row and row[0] is not None:
+                    var3 = str(row[0])
+        except Exception:
+            var3 = ""
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    return f"{var1}\n기 인증 제품 WD: {var3}" if var1 else "-"
