@@ -33,7 +33,11 @@ body {
 }
 
 .tooltiptext.upload {
-  margin-left: -155px;
+  margin-left: -150px;
+}
+
+.tooltiptext.result {
+  margin-left: -115px;
 }
 
 .sidebar {
@@ -221,6 +225,8 @@ body {
   font-size: 18px;
   font-weight: 600;
   color: #1e3a8a;
+  display: flex;
+  align-items: center;
 }
 
 #luckysheetContainer {
