@@ -5,7 +5,7 @@ body {
   background-color: #f9fafb;
   min-height: 720px;
   height: 100vh;
-  overflow-x: hidden;
+  overflow-x: auto;
 }
 
 .app-container {
@@ -50,7 +50,7 @@ body {
   padding: 24px 24px 24px 348px;
   background-color: #f8fafc;
   height: 100%;
-  overflow-y: auto;
+  overflow-y: hidden;
   width: 100%;
   min-width: 932px;
   position: absolute;
