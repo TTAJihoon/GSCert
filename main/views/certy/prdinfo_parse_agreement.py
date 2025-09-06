@@ -1,13 +1,4 @@
 # -*- coding: utf-8 -*-
-"""
-DOCX 바이트(byts) → word/document.xml 파싱 후 '시험합의서' 항목 추출 + 재인증 부가정보
-- 기존 21개 항목 추출 로직 유지
-- 추가:
-  1) _detect_cert_apply_type(rows): '신규인증/재인증' 중 체크(V/√/✔/✓)된 항목 탐지
-  2) extract_recert_text_and_wd(byts, filename): 재인증 시 '※ 재인증 신청 시 기재사항' 셀 하단 텍스트(변수1) 추출,
-     '기 인증번호:' 값을 변수2로 파싱, reference.db에서 해당 인증번호의 '총WD'(변수3) 조회 후
-     '{변수1}\n기 인증 제품 WD: {변수3}' 반환. 신규인증이면 "-" 반환.
-"""
 
 from io import BytesIO
 from zipfile import ZipFile
@@ -19,12 +10,15 @@ import os
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 
 # ─────────────────────────────────────────────────────────────
-# 0) 빈 결과 템플릿 (기존)
+# 0) 빈 결과 템플릿 (신청유형/재인증 여부/재인증 정보 포함)
 # ─────────────────────────────────────────────────────────────
 def _empty_process1():
     return {
         "시험신청번호": "",
         "성적서 구분": "",
+        "신청유형": "",
+        "재인증 여부": "",   # 재인증: "O", 신규인증: "X", 그 외: ""
+        "재인증 정보": "-",  # 재인증 아닐 때는 "-"
         "국문명": "",
         "영문명": "",
         "사업자등록번호": "",
@@ -65,7 +59,7 @@ def _tc_text_with_newlines(tc) -> str:
         parts = ["".join(t.text or "" for t in tc.findall(".//w:t", namespaces=NS))]
     import re as _re
     text = "\n".join(parts)
-    text = _re.sub(r"[ \t]+", " ", text)  # 줄바꿈 유지, 연속 공백 정규화
+    text = _re.sub(r"[ \t]+", " ", text)
     return text.strip()
 
 def _all_table_rows(doc_root):
@@ -110,7 +104,7 @@ def _find_contact_email(rows, lookback: int = 2) -> str:
     for r_i, row in enumerate(rows):
         for c_i, cell in enumerate(row):
             if _norm(cell) in label_set:
-                if _row_has_token(row, "대표자"):  # 대표자 맥락 제외
+                if _row_has_token(row, "대표자"):
                     continue
                 bad = False
                 for k in range(1, lookback + 1):
@@ -126,7 +120,9 @@ def _find_contact_email(rows, lookback: int = 2) -> str:
                 return _next_cell(rows, r_i, c_i)
     return ""
 
-# 기존: 성적서(TTA/KOLAS) 구분
+# ─────────────────────────────────────────────────────────────
+# 체크형 필드 탐지
+# ─────────────────────────────────────────────────────────────
 def _detect_score_type(rows) -> str:
     mark = r"[Vv√✔✓]"
     for row in rows:
@@ -139,73 +135,90 @@ def _detect_score_type(rows) -> str:
             if kol and kol.group(1): return "KOLAS 성적서"
     return ""
 
-# 신규 추가: 신청 유형(신규인증/재인증) 체크 탐지
 def _detect_cert_apply_type(rows) -> str:
-    """
-    표의 한 행/셀에 '신규인증( V )', '재인증( V )' 둘 다 나타나는 형태를 가정.
-    체크 마크는 V/v/√/✔/✓ 허용.
-    """
+    """한 행에 '신규인증(...)'과 '재인증(...)'이 함께 있고 괄호 안에 체크가 있는 경우만 판정"""
     mark = r"[Vv√✔✓]"
     for row in rows:
         joined = " ".join(row)
-        s = re.sub(r"\s+", " ", joined)
-        m_new = re.search(r"신규\s*인증|신규인증", s)
-        m_re  = re.search(r"재\s*인증|재인증", s)
-        if m_new or m_re:
-            new_mark = re.search(r"신규\s*인증|신규인증.*?\(\s*(" + mark + r")\s*\)", s)
-            re_mark  = re.search(r"재\s*인증|재인증.*?\(\s*(" + mark + r")\s*\)", s)
-            # 좀 더 강건하게: 두 구문 각각 다시 정규식
-            new_mark = re.search(r"신규\s*인증|신규인증\s*\(\s*(" + mark + r")\s*\)", s) or \
-                       re.search(r"신규인증\s*\(\s*(" + mark + r")\s*\)", s)
-            re_mark  = re.search(r"재\s*인증|재인증\s*\(\s*(" + mark + r")\s*\)", s) or \
-                       re.search(r"재인증\s*\(\s*(" + mark + r")\s*\)", s)
-            if re_mark and re_mark.group(0):
+        if ("신규인증" in joined) and ("재인증" in joined):
+            s = re.sub(r"\s+", " ", joined)
+            new_mark = re.search(r"신규인증\s*\(\s*(" + mark + r")\s*\)", s)
+            re_mark  = re.search(r"재인증\s*\(\s*(" + mark + r")\s*\)", s)
+            if re_mark and re_mark.group(1):
                 return "재인증"
-            if new_mark and new_mark.group(0):
+            if new_mark and new_mark.group(1):
                 return "신규인증"
     return ""
 
-def _extract_company_kr_en(rows):
-    kr = en = ""
-    for r_i, row in enumerate(rows):
-        for c_i, cell in enumerate(row):
-            cell_n = _norm(cell)
-            if cell_n == _norm("국문명") and not _has_colon(cell):
-                kr = kr or _next_cell(rows, r_i, c_i)
-            if cell_n == _norm("영문명") and not _has_colon(cell):
-                en = en or _next_cell(rows, r_i, c_i)
-    return kr, en
+# ─────────────────────────────────────────────────────────────
+# 재인증 전용 헬퍼 (리팩토링 포인트)
+# ─────────────────────────────────────────────────────────────
+def _recert_find_body_text(rows) -> str:
+    """'재인증 신청 시 기재사항'을 포함하는 셀의 다음 줄부터 끝까지 텍스트 반환. 없으면 ''."""
+    for row in rows:
+        for cell in row:
+            if "재인증 신청 시 기재사항" in cell:
+                lines = cell.splitlines()
+                for i, ln in enumerate(lines):
+                    if "재인증 신청 시 기재사항" in ln:
+                        return "\n".join(lines[i+1:]).strip()
+                return ""  # 문구는 있었으나 다음 줄이 없는 경우
+    return ""
 
-def _extract_product_names(rows):
-    kr = en = ""
-    for r_i, row in enumerate(rows):
-        for c_i, cell in enumerate(row):
-            if "제품명 및 버전" in cell:
-                val = _next_cell(rows, r_i, c_i)
-                if val:
-                    m_kr = re.search(r"(?:^|\n)\s*국문명\s*:\s*([^\n]+)", val)
-                    m_en = re.search(r"(?:^|\n)\s*영문명\s*:\s*([^\n]+)", val)
-                    if m_kr and not kr: kr = m_kr.group(1).strip()
-                    if m_en and not en: en = m_en.group(1).strip()
-    if not kr:
-        kr = _find_value_by_label(rows, ["국문명:"], require_colon=True)
-    if not en:
-        en = _find_value_by_label(rows, ["영문명:"], require_colon=True)
-    if not kr or not en:
-        for row in rows:
-            for cell in row:
-                if not kr:
-                    m_kr = re.search(r"(?:^|\n)\s*국문명\s*:\s*([^\n]+)", cell)
-                    if m_kr: kr = m_kr.group(1).strip()
-                if not en:
-                    m_en = re.search(r"(?:^|\n)\s*영문명\s*:\s*([^\n]+)", cell)
-                    if m_en: en = m_en.group(1).strip()
-                if kr and en: break
-            if kr and en: break
-    return kr, en
+def _recert_parse_cert_no(text: str) -> str:
+    """본문에서 '기 인증번호:' 뒤의 값을 한 줄 범위에서 추출."""
+    m = re.search(r"기\s*인증번호\s*:\s*([^\n\r]+)", text or "")
+    return m.group(1).strip() if m else ""
+
+def _recert_fetch_total_wd(cert_no: str, db_path: str) -> str:
+    """main/data/reference.db에서 인증번호=cert_no의 '총WD' 조회. 실패/미발견 시 ''."""
+    if not cert_no:
+        return ""
+    db_path = os.path.abspath(db_path)
+    if not os.path.exists(db_path):
+        return ""
+    conn = None
+    try:
+        conn = sqlite3.connect(db_path)
+        cur = conn.cursor()
+        tbls = cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
+        target = None
+        for (tname,) in tbls:
+            cols = cur.execute(f"PRAGMA table_info('{tname}')").fetchall()
+            colnames = {c[1] for c in cols}
+            if "인증번호" in colnames and "총WD" in colnames:
+                target = tname
+                break
+        if not target:
+            return ""
+        row = cur.execute(
+            f"SELECT \"총WD\" FROM \"{target}\" WHERE \"인증번호\"=? LIMIT 1",
+            (cert_no,),
+        ).fetchone()
+        return "" if not row or row[0] is None else str(row[0])
+    except Exception:
+        return ""
+    finally:
+        try:
+            if conn: conn.close()
+        except Exception:
+            pass
+
+def _build_recert_info(rows, db_path: str = os.path.join("main", "data", "reference.db")) -> str:
+    """
+    재인증일 때만 호출하도록 설계.
+    - 본문 텍스트 추출 → 인증번호 파싱 → WD 조회 → 결합 문자열 반환
+    - 본문 없으면 "-"
+    """
+    body = _recert_find_body_text(rows)
+    if not body:
+        return "-"
+    cert_no = _recert_parse_cert_no(body)
+    wd = _recert_fetch_total_wd(cert_no, db_path) if cert_no else ""
+    return f"{body}\n기 인증 제품 WD: {wd}"
 
 # ─────────────────────────────────────────────────────────────
-# 메인(기존): 합의서 파서
+# 메인(1): 합의서 파서 (신청유형/재인증 여부/재인증 정보 포함)
 # ─────────────────────────────────────────────────────────────
 def extract_process1_docx_basic(byts: bytes, filename: str):
     out = _empty_process1()
@@ -219,8 +232,10 @@ def extract_process1_docx_basic(byts: bytes, filename: str):
     out["시험신청번호"] = _find_value_by_label(rows, ["시험신청번호"])
     out["성적서 구분"] = _detect_score_type(rows)
 
-    # 신청 유형(신규인증/재인증)도 함께 추가로 리턴(호환성 위해 새 키로 추가)
-    out["신청유형"] = _detect_cert_apply_type(rows)  # ← 신규 추가
+    cert_type = _detect_cert_apply_type(rows)
+    out["신청유형"] = cert_type
+    out["재인증 여부"] = "O" if cert_type == "재인증" else ("X" if cert_type == "신규인증" else "")
+    out["재인증 정보"] = _build_recert_info(rows) if cert_type == "재인증" else "-"
 
     kr_company, en_company = _extract_company_kr_en(rows)
     out["국문명"] = kr_company
@@ -250,18 +265,9 @@ def extract_process1_docx_basic(byts: bytes, filename: str):
     return out
 
 # ─────────────────────────────────────────────────────────────
-# 신규: 재인증 기재사항 텍스트 + '기 인증 제품 WD' 조회
+# 메인(2): 재인증 본문+WD (이전 시그니처 유지, 내부는 리팩토링 헬퍼 재사용)
 # ─────────────────────────────────────────────────────────────
 def extract_recert_text_and_wd(byts: bytes, filename: str) -> str:
-    """
-    반환:
-      - '신규인증' 체크 시: "-"
-      - '재인증' 체크 시:
-        변수1 = '※ 재인증 신청 시 기재사항'이 포함된 '해당 셀'의 **다음 줄부터** 끝까지(좌우 공백/양끝 줄바꿈 제거)
-        변수2 = 변수1에서 '기 인증번호:' 뒤 값
-        변수3 = sqlite(main/data/reference.db)에서 인증번호=변수2 인 행의 '총WD'
-        return f"{변수1}\n기 인증 제품 WD: {변수3}"
-    """
     try:
         doc_root = _read_document_xml_from_docx_bytes(byts)
     except Exception:
@@ -270,65 +276,6 @@ def extract_recert_text_and_wd(byts: bytes, filename: str) -> str:
     rows = _all_table_rows(doc_root)
     cert_type = _detect_cert_apply_type(rows)
     if cert_type != "재인증":
-        return "-"  # 명세 1-6
-
-    # '※ 재인증 신청 시 기재사항' 문구가 들어있는 '셀'을 찾아 그 '셀'의 아래 줄부터 수집
-    target = None
-    for row in rows:
-        for cell in row:
-            if "재인증 신청 시 기재사항" in cell:
-                target = cell
-                break
-        if target: break
-    if not target:
         return "-"
 
-    # 셀 내에서 '문구가 있는 그 줄' 다음 줄부터 끝까지
-    lines = target.splitlines()
-    idx = -1
-    for i, ln in enumerate(lines):
-        if "재인증 신청 시 기재사항" in ln:
-            idx = i; break
-    text_after = "\n".join(lines[idx+1:]) if idx >= 0 else ""
-    var1 = text_after.strip()  # 양끝만 정리(내부 공백/줄바꿈 유지)
-
-    # 변수2: '기 인증번호:' 뒤의 값
-    m = re.search(r"기\s*인증번호\s*:\s*([^\n\r]+)", var1)
-    var2 = m.group(1).strip() if m else ""
-
-    # 변수3: reference.db 조회(테이블 미지정 → '인증번호'와 '총WD' 컬럼을 가진 테이블 자동 탐색)
-    var3 = ""
-    db_path_candidates = [
-        os.path.join("main", "data", "reference.db"),
-        os.path.join(os.path.dirname(__file__), "..", "data", "reference.db"),
-        os.path.join(os.getcwd(), "main", "data", "reference.db"),
-    ]
-    db_path = next((p for p in db_path_candidates if os.path.exists(os.path.abspath(p))), None)
-    if db_path and var2:
-        try:
-            conn = sqlite3.connect(db_path)
-            cur = conn.cursor()
-            # '인증번호' & '총WD'가 있는 테이블 자동 탐색
-            tbls = cur.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-            table_name = None
-            for (tname,) in tbls:
-                cols = cur.execute(f"PRAGMA table_info('{tname}')").fetchall()
-                colnames = {c[1] for c in cols}
-                if "인증번호" in colnames and "총WD" in colnames:
-                    table_name = tname
-                    break
-            if table_name:
-                row = cur.execute(
-                    f"SELECT \"총WD\" FROM \"{table_name}\" WHERE \"인증번호\"=? LIMIT 1", (var2,)
-                ).fetchone()
-                if row and row[0] is not None:
-                    var3 = str(row[0])
-        except Exception:
-            var3 = ""
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
-
-    return f"{var1}\n기 인증 제품 WD: {var3}" if var1 else "-"
+    return _build_recert_info(rows)
