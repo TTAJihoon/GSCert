@@ -173,6 +173,7 @@ def _extract_json(s: str):
         return None
 
 def classify_sw_and_keywords(input_text: str):
+    print("[STEP 1] GPT 요청 시작")
     prompt = _PROMPT_TEMPLATE.replace("{INPUT}", input_text)
     resp = _client.responses.create(
         model="gpt-5-nano",
@@ -181,11 +182,13 @@ def classify_sw_and_keywords(input_text: str):
     # responses API: 첫 메시지 텍스트 추출
     try:
         content = resp.output_text
+        print(content)
     except Exception:
         # 구버전 SDK 호환
         try:
             content = resp.choices[0].message["content"]
-        except Exception:
+        except Exception as e:
+            print("GPT 에러 발생" + e)
             content = ""
 
     data = _extract_json(content or "")
