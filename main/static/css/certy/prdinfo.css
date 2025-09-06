@@ -5,6 +5,8 @@ body {
 .app-container {
   display: flex;
   flex-direction: row;
+  height: calc(100% - 70px);
+  min-height: 770px;
 }
 
 .main-content {
@@ -157,8 +159,7 @@ body {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
   padding: 20px;
   margin-top: 20px;
-  height: calc(100% - 40px);
-  min-height: 770px;
+  width: calc(100% - 339px);
   min-width: 941px;
 }
 
