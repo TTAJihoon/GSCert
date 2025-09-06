@@ -230,7 +230,8 @@ def extract_process2_docx_overview(byts: bytes, filename: str):
     # 문서 파싱
     try:
         doc_root = _read_document_xml_from_docx_bytes(byts)
-    except Exception:
+    except Exception as e:
+        print("결과보고서 파싱 실패:\n " + e)
         return out
 
     # 1) 시험기간
