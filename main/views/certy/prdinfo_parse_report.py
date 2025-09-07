@@ -247,6 +247,36 @@ def extract_process2_docx_overview(byts: bytes, filename: str):
     # 4) 소요일수 합계
     out["소요일수 합계"] = _sum_days(doc_root)
 
-    #classify_sw_and_keywords(out["개요 및 특성(설명)"] + "\n" + out["개요 및 특성(주요 기능)"])
+    try:
+        desc = out.get("개요 및 특성(설명)", "") or ""
+        feats = out.get("개요 및 특성(주요 기능)", []) or []
+        feats_text = "\n".join(feats) if isinstance(feats, list) else str(feats or "")
+        payload = (desc + ("\n" if desc and feats_text else "") + feats_text).strip()
+
+        if payload:
+            res = classify_sw_and_keywords(payload)  # ~GPT.py: (SW분류, 키워드1, 키워드2) 리턴
+
+            sw, k1, k2 = "", "", ""
+
+            # ① tuple/list(3값) 형태 지원
+            if isinstance(res, (list, tuple)) and len(res) >= 3:
+                sw, k1, k2 = str(res[0] or ""), str(res[1] or ""), str(res[2] or "")
+
+            # ② dict 형태도 겸용 지원(예방적)
+            elif isinstance(res, dict):
+                sw = str(res.get("SW") or res.get("sw") or res.get("SW분류") or "")
+                k1 = str(res.get("keyword1") or res.get("키워드1") or "")
+                k2 = str(res.get("keyword2") or res.get("키워드2") or "")
+
+            # 결과 저장
+            if sw:
+                out["SW분류"] = sw
+            keywords_joined = ", ".join([k for k in (k1, k2) if k])
+            if keywords_joined:
+                out["키워드"] = keywords_joined
+
+      except Exception as e:
+        print("GPT 호출 실패: "+e)
+        pass
 
     return out
