@@ -26,9 +26,11 @@ def build_fill_map(obj1: dict, obj2: dict, obj3: dict):
 
         # (2번 과정: 성적서/결과서)
         "K5": "\n".join(obj2.get("시험기간", []) or []),
+        "E5": obj2.get("SW분", "") or "",
         "F5": obj2.get("개요 및 특성(설명)", "") or "",
         "G5": "\n".join(obj2.get("개요 및 특성(주요 기능)", []) or []),
         "H5": obj2.get("소요일수 합계", 0),
+        "N7": obj2.get("키워드", "") or "",
     }
 
     # 3번 → “결함정보”
