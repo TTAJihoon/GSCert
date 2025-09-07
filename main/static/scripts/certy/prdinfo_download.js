@@ -13,7 +13,6 @@
   // 설정
   // ─────────────────────────────────────────────
   const ENDPOINT = "/download-filled/";
-  const DOWNLOAD_NAME = "prdinfo_filled.xlsx";
   const SHEET_PRD = "제품 정보 요청";
   const SHEET_DEF = "결함정보";
 
@@ -158,6 +157,11 @@
       const def = findSheetEntry(SHEET_DEF);
       if (!prd || !def) { alert("시트를 찾을 수 없습니다. (제품 정보 요청 / 결함정보)"); return; }
 
+      // 파일명: (D5셀 값)_제품 정보 요청 파일.xlsx
+      const d5raw = readCellStrict(prd, "D5");
+      const safeBase = (d5raw || "파일").replace(/[\\/:*?"<>|]/g, "_").trim();
+      const downloadName = `${safeBase}_제품 정보 요청 파일.xlsx`;
+      
       // 제품 정보 요청
       const prdinfo = {
         row_B5_N5: readRowRangeStrict(prd, 5, "B", "N"),
@@ -181,7 +185,7 @@
       });
       if (!res.ok) throw new Error(await res.text().catch(() => `HTTP ${res.status}`));
 
-      await downloadBlob(res, DOWNLOAD_NAME);
+      await downloadBlob(res, downloadName);
     } catch (e) {
       console.error(e);
       alert(e.message || "다운로드 중 오류가 발생했습니다.");
