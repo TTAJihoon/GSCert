@@ -247,6 +247,6 @@ def extract_process2_docx_overview(byts: bytes, filename: str):
     # 4) 소요일수 합계
     out["소요일수 합계"] = _sum_days(doc_root)
 
-    classify_sw_and_keywords(out["개요 및 특성(설명)"] + "\n" + out["개요 및 특성(주요 기능)"])
+    #classify_sw_and_keywords(out["개요 및 특성(설명)"] + "\n" + out["개요 및 특성(주요 기능)"])
 
     return out
