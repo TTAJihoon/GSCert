@@ -42,34 +42,15 @@ document.addEventListener("DOMContentLoaded", async function () {
 
     if (LS.destroy) { try { LS.destroy(); } catch (_) {} }
 
-    // 휠(세로 스크롤)을 가로 스크롤로 전환 – 마우스로 좌우도 편하게 움직이게
-  function enableToolbarHScroll(container = '#luckysheet') {
-    const candidates = [
-      `${container} .luckysheet-toolbar`,
-      `${container} #luckysheet-toolbar`,
-      `${container} .luckysheet-wa-toolbar`
-    ];
-    const el = candidates.map(q => document.querySelector(q)).find(Boolean);
-    if (!el) return;
-
-    el.addEventListener('wheel', (e) => {
-      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
-        el.scrollLeft += e.deltaY;
-        e.preventDefault();
-      }
-    }, { passive: false });
-  }
-    
     LS.create({
       container: containerId, // 또는 document.getElementById(containerId)
       lang: "en",
       showinfobar: false,
+      showtoolbar: false,
       title: workbookInfo.name,
       userInfo: workbookInfo.creator,
       data: exportJson.sheets
     });
-
-    requestAnimationFrame(() => enableToolbarHScroll('#luckysheet'));
   } catch (e) {
     console.error("원본 엑셀 → Luckysheet 변환 실패:", e);
     alert("원본 파일을 표시하는 중 오류가 발생했습니다.");
