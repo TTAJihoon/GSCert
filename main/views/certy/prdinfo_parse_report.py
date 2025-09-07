@@ -275,7 +275,7 @@ def extract_process2_docx_overview(byts: bytes, filename: str):
             if keywords_joined:
                 out["키워드"] = keywords_joined
 
-      except Exception as e:
+    except Exception as e:
         print("GPT 호출 실패: "+e)
         pass
 
