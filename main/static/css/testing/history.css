@@ -218,7 +218,7 @@ html, body {
 .results-table col.col-test-no   { width: 120px; }
 .results-table col.col-cmp-name  { width: 200px; }
 .results-table col.col-prd-name  { width: 200px; }
-.results-table col.col-overview  { width: auto; }
+.results-table col.col-overview  { width: 250px; }
 .results-table col.col-date      { width: 100px; }
 .results-table col.col-tester    { width: 150px; }
 .results-table col.col-wd        { width: 80px; }
@@ -231,6 +231,7 @@ html, body {
 .results-table th.col-test-no    { width: 120px; }
 .results-table th.col-cmp-name   { width: 200px; }
 .results-table th.col-prd-name   { width: 200px; }
+.results-table th.col-overview  { width: 250px; }
 .results-table th.col-date       { width: 100px; }
 .results-table th.col-tester     { width: 150px; }
 .results-table th.col-wd         { width: 80px; }
