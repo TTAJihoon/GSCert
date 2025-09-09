@@ -49,7 +49,7 @@ RQ_QUEUES = {
         "PORT": 6379,
         "DB": 0,
         "DEFAULT_TIMEOUT": 1800,
-        "WORKER_CLASS": 'django_rq.workers.SimpleWorker",
+        "WORKER_CLASS": "django_rq.workers.SimpleWorker",
     },
 }
 
