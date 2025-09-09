@@ -48,7 +48,8 @@ RQ_QUEUES = {
         "HOST": "127.0.0.1",
         "PORT": 6379,
         "DB": 0,
-        "DEFAULT_TIMEOUT": 1800,   # 30분
+        "DEFAULT_TIMEOUT": 1800,
+        "WORKER_CLASS": 'django_rq.workers.SimpleWorker",
     },
 }
 
