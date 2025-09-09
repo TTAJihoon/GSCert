@@ -26,7 +26,6 @@ Thumbs.db
 
 # 임베딩 캐시
 main/data/
-data/
 
 # Static files
 /staticfiles/
