@@ -25,10 +25,8 @@ Thumbs.db
 */migrations/*.py[cod]
 
 # 임베딩 캐시
-*.index
-*.npy
-*.csv
-*.db
+main/data/
+data/
 
 # Static files
 /staticfiles/
