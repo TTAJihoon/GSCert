@@ -119,7 +119,7 @@ async def _find_target_row(scope, 시험번호: str):
 
     return None
 
-# 새 헬퍼: 페이지/프레임 어디에 있든 문서명 span을 찾아 클릭
+# 페이지/프레임 어디에 있든 문서명 span을 찾아 클릭
 async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000) -> bool:
     """
     span.document-list-item-name-text-span.left.hcursor.ellipsis 을 클릭한다.
@@ -157,6 +157,120 @@ async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000)
         return True
     except Exception:
         return False
+
+# 모든 페이지/프레임을 순회하는 제너레이터
+def _all_scopes(page: Page):
+    yield page
+    for fr in page.frames:
+        yield fr
+
+# 복사 버튼 찾기 (여러 셀렉터/스코프에서 가시 요소 1개 반환)
+async def _find_copy_button(page: Page, timeout=15000):
+    selectors = [
+        "div#prop-view-document-btn-url-copy.prop-view-file-btn-internal-urlcopy.hcursor",
+        "#prop-view-document-btn-url-copy",
+        "div.prop-view-file-btn-internal-urlcopy[events='document-internal-url-click']",
+        "div[events='document-internal-url-click']",
+    ]
+    deadline = page.context._loop.time() + (timeout/1000.0)
+    last_err = None
+    while page.context._loop.time() < deadline:
+        for scope in _all_scopes(page):
+            for sel in selectors:
+                loc = scope.locator(sel)
+                try:
+                    # attach→visible 순으로 빠르게 판정
+                    await loc.first.wait_for(state="attached", timeout=500)
+                    if await loc.first.is_visible():
+                        return loc.first
+                except Exception as e:
+                    last_err = e
+        await page.wait_for_timeout(200)
+    raise RuntimeError(f"URL 복사 버튼을 찾지 못했습니다: {last_err}")
+
+# 복사 버튼 '확실히' 클릭(+ 알림/모달 처리)
+async def _click_copy_and_close_alert(page: Page, btn, timeout=4000):
+    # 버튼 활성 대기 (disabled/숨김/오버레이 회피)
+    try:
+        await btn.scroll_into_view_if_needed()
+        # 가시성/클릭 가능상태 점검
+        await expect(btn).to_be_visible(timeout=timeout)
+        try:
+            await btn.click()
+        except Exception:
+            # 오버레이/레이어가 가로막을 때
+            await btn.click(force=True)
+    except Exception:
+        # 최후 수단: DOM click() 직접 호출
+        try:
+            await btn.evaluate("(el) => el.click()")
+        except Exception as e:
+            raise RuntimeError(f"복사 버튼 클릭 실패: {e}")
+
+    # 네이티브 alert() 처리
+    try:
+        async with page.expect_event("dialog", timeout=1500) as dlg_info:
+            pass
+    except Exception:
+        dlg_info = None
+
+    if dlg_info:
+        dlg = await dlg_info.value
+        try:
+            await dlg.accept()
+        except Exception:
+            pass
+    else:
+        # in-page 모달(확인 버튼) 처리
+        ok_btn = page.locator("button:has-text('확인'), .ui-dialog-buttonset button:has-text('확인')")
+        if await ok_btn.count():
+            try:
+                await ok_btn.first.click()
+            except Exception:
+                pass
+
+# 복사된 텍스트 읽기 (클립보드 → 여러 입력 폴백)
+async def _read_copied_text(page: Page) -> str:
+    # 1) 클립보드 시도 (http 환경에선 실패 가능)
+    for scope in _all_scopes(page):
+        try:
+            txt = await scope.evaluate("navigator.clipboard.readText()")
+            if txt and txt.strip():
+                return txt
+        except Exception:
+            pass
+
+    # 2) 입력 상자 폴백: 알려진 id/name/패턴들 전수 검사
+    input_selectors = [
+        "input#prop-view-document-internal-url",
+        "input[name*='internal'][name*='url']",
+        "input[type='text'][id*='internal'][id*='url']",
+        "input[type='text'][name*='url']",
+    ]
+    for scope in _all_scopes(page):
+        for sel in input_selectors:
+            loc = scope.locator(sel)
+            if await loc.count():
+                try:
+                    val = await loc.first.input_value()
+                    if val and val.strip():
+                        return val
+                except Exception:
+                    continue
+
+    # 3) 기타 텍스트 영역 폴백(혹시 복사 텍스트가 textarea에 반영되는 UI)
+    for scope in _all_scopes(page):
+        loc = scope.locator("textarea, input[type='text']")
+        n = await loc.count()
+        for i in range(min(n, 20)):
+            try:
+                v = await loc.nth(i).input_value()
+                if v and ("http" in v or "://" in v):
+                    return v
+            except Exception:
+                continue
+
+    return ""
 
 async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호: str, 연도: str, 날짜: str, **kwargs) -> str:
     assert 시험번호 and 연도 and 날짜, "필수 인자(시험번호/연도/날짜)가 비었습니다."
@@ -212,40 +326,18 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
     await expect(checkbox.first).to_be_visible(timeout=10000)
     await checkbox.first.check(timeout=10000)
 
-    # 8) 내부 URL 복사
-    copy_btn = scope.locator(
-        "div#prop-view-document-btn-url-copy.prop-view-file-btn-internal-urlcopy.hcursor"
-    )
-    await expect(copy_btn).to_be_visible(timeout=20000)
+    # 8) 내부 URL 복사 버튼 찾기 + 클릭(강화)
+    copy_btn = await _find_copy_button(page, timeout=20000)
+    await _click_copy_and_close_alert(page, copy_btn, timeout=4000)
 
-    # 9) alert 처리
-    copied_text = ""
-    try:
-        async with page.expect_event("dialog", timeout=3000) as dlg_info:
-            await copy_btn.click()
-        dlg = await dlg_info.value
-        await dlg.accept()
-    except PWTimeout:
-        await copy_btn.click()
-        ok_btn = page.locator("button:has-text('확인'), .ui-dialog-buttonset button:has-text('확인')")
-        if await ok_btn.count():
-            await ok_btn.first.click()
-
-    # 클립보드/폴백
-    try:
-        copied_text = await scope.evaluate("navigator.clipboard.readText()")
-    except PWError:
-        try:
-            copied_text = await scope.locator("input#prop-view-document-internal-url").input_value()
-        except Exception:
-            copied_text = ""
-
+    # 9) 복사된 텍스트 읽기(강화)
+    copied_text = await _read_copied_text(page)
     if not copied_text:
-        # 디버깅에 도움되도록 현재 페이지 스샷 남김
+        # 디버그 스크린샷 저장 후 실패 처리
         await page.screenshot(path=str(job_dir / "list_after_copy_fail.png"), full_page=True)
         raise RuntimeError("복사 텍스트를 읽지 못했습니다.")
 
-    # 10) 3번째 줄 URL을 콘솔에 출력
+    # 10) 3번째 줄의 http URL을 콘솔에 출력
     lines = [ln.strip() for ln in copied_text.splitlines()]
     url_line = lines[2] if len(lines) >= 3 else ""
     if not url_line.startswith("http"):
@@ -253,7 +345,7 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
         url_line = m.group(0) if m else ""
     await page.evaluate("(u) => console.log('EXTRACTED_URL:', u)", url_line)
 
-    # 산출물
+    # 산출물 저장
     await page.screenshot(path=str(job_dir / "list_done.png"), full_page=True)
     (job_dir / "copied.txt").write_text(copied_text or "", encoding="utf-8")
 
