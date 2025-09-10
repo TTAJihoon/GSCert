@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-- Playwright Async API 전환
-- storage_state(auth_states/<USER_KEY>.json)로 세션 재사용 (에이전트가 로그인 유지 중인 환경 가정)
-- 잡 산출물(job_dir): <프로젝트>/main/runs/<job_id>/ 하위에 저장
-- Django ORM은 sync이므로 asgiref.sync.sync_to_async로 래핑
+- Playwright Async API 사용
+- storage_state(auth_states/<USER_KEY>.json)로 세션 재사용
+- 업스트림(JS)이 보내준 body json에서 '시험번호'와 '인증일자'(예: 2025.08.25)를 받아
+  - 연도 = 2025
+  - 날짜 = 20250825
+  - 시험번호 = 원문 그대로
+  를 계산해 history_scenarios.run_scenario_async에 넘긴다.
 """
 
 import os
+import re
 import pathlib
 import traceback
-from datetime import datetime
-
 from asgiref.sync import sync_to_async
 from django.utils import timezone
 from playwright.async_api import async_playwright, expect, TimeoutError as PWTimeout
@@ -25,10 +27,10 @@ RUNS_DIR.mkdir(parents=True, exist_ok=True)
 
 AUTH_DIR = pathlib.Path(__file__).resolve().parent.parent / "auth_states"
 AUTH_DIR.mkdir(parents=True, exist_ok=True)
-USER_KEY = os.getenv("PW_STATE_USER", "shared")  # 동시 다중 사용자면 계정/키를 다르게
+USER_KEY = os.getenv("PW_STATE_USER", "shared")
 AUTH_STATE_PATH = AUTH_DIR / f"{USER_KEY}.json"
 
-PW_CHANNEL  = os.getenv("PW_CHANNEL", "chrome")                 # 실제 Chrome
+PW_CHANNEL  = os.getenv("PW_CHANNEL", "chrome")
 PW_HEADLESS = os.getenv("PW_HEADLESS", "false").lower() == "true"
 TIMEZONE_ID = os.getenv("PW_TZ", "Asia/Seoul")
 BASE_ORIGIN = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
@@ -43,13 +45,12 @@ UA_CHROME = (
 # DB helpers (async-safe)
 
 @sync_to_async
-def _mark_status(job_id: str, status: str, **extra):
-    update_fields = ["status", "updated_at"]
+def _mark(job_id: str, status: str, **extra):
     extra.setdefault("updated_at", timezone.now())
     return Job.objects.filter(pk=job_id).update(status=status, **extra)
 
 # ────────────────────────────────────────────────────────────
-# 로그인 상태 판정/대기 (공통: async에서 쓰는 헬퍼)
+# 로그인 상태 판정/대기 (공통: async)
 
 async def _is_logged_in(page) -> bool:
     if "/auth/login" in page.url.lower():
@@ -77,19 +78,16 @@ async def _wait_login_completed(page, timeout=30000):
 # 세션 상태 부트스트랩/검증 (Async)
 
 async def _bootstrap_state(pw):
-    """상태가 없거나 만료 시 1회 접속해서 storage_state 저장"""
     browser = await pw.chromium.launch(
         channel=PW_CHANNEL, headless=False, args=["--start-maximized", "--disable-gpu", "--no-sandbox"]
     )
     context = await browser.new_context(user_agent=UA_CHROME, timezone_id=TIMEZONE_ID, locale="ko-KR")
     page = await context.new_page()
 
-    # 에이전트가 세션을 부여할 루트 접근
     await page.goto(BASE_ORIGIN + "/", wait_until="domcontentloaded")
     await page.wait_for_load_state("networkidle")
 
     if not await _is_logged_in(page):
-        # 로그인 페이지 재진입 (필요 시 자동 로그인)
         await page.goto(LOGIN_URL, wait_until="domcontentloaded")
         await page.wait_for_load_state("networkidle")
 
@@ -115,7 +113,7 @@ async def _bootstrap_state(pw):
 
     if not await _is_logged_in(page):
         await context.close(); await browser.close()
-        raise RuntimeError("세션 부트스트랩 실패: 에이전트/계정/정책을 확인하세요.")
+        raise RuntimeError("세션 부트스트랩 실패")
 
     await context.storage_state(path=str(AUTH_STATE_PATH))
     await context.close(); await browser.close()
@@ -140,16 +138,37 @@ async def _ensure_valid_state(pw):
         await _bootstrap_state(pw)
 
 # ────────────────────────────────────────────────────────────
+# 입력 파싱(helper)
+
+def _parse_fields_from_data(data: dict):
+    """
+    data: 업스트림(JS)에서 보낸 body json
+      - 시험번호: "시험번호" | "test_no" | "cert_no" 등
+      - 인증일자: "인증일자" | "cert_date" | "인증일"
+        예) "2025.08.25" 또는 "2025-08-25" → 연도=2025, 날짜=20250825
+    """
+    test_no = data.get("시험번호") or data.get("test_no") or data.get("cert_no") or ""
+    raw_date = data.get("인증일자") or data.get("cert_date") or data.get("인증일") or ""
+    digits = re.sub(r"\D", "", raw_date or "")
+    date8 = digits[:8] if len(digits) >= 8 else ""
+    year4 = date8[:4] if len(date8) == 8 else ""
+    if not test_no or not date8 or not year4:
+        raise ValueError(f"필수 값 누락: 시험번호={test_no!r}, 인증일자(raw)={raw_date!r} → (연도={year4!r}, 날짜={date8!r})")
+    return test_no, year4, date8
+
+# ────────────────────────────────────────────────────────────
 # 메인 태스크 (Async)
 
 async def run_playwright_job_task(job_id: str, data: dict):
-    await _mark_status(job_id, "RUNNING")
+    await _mark(job_id, "RUNNING")
 
     job_dir = RUNS_DIR / str(job_id)
     job_dir.mkdir(parents=True, exist_ok=True)
 
     page = None
     try:
+        test_no, year4, date8 = _parse_fields_from_data(data)
+
         async with async_playwright() as pw:
             # 1) 세션 상태 확보
             await _ensure_valid_state(pw)
@@ -162,41 +181,33 @@ async def run_playwright_job_task(job_id: str, data: dict):
                       "--disable-features=IsolateOrigins,site-per-process"],
             )
             context = await browser.new_context(
-                storage_state=str(AUTH_STATE_PATH),  # ★ 세션 재사용
+                storage_state=str(AUTH_STATE_PATH),
                 accept_downloads=True,
                 timezone_id=TIMEZONE_ID,
                 locale="ko-KR",
                 user_agent=UA_CHROME,
             )
 
-            # HTTPS일 때만 clipboard 권한 시도
-            try:
-                if BASE_ORIGIN.lower().startswith("https://"):
-                    await context.grant_permissions(
-                        permissions=["clipboard-read", "clipboard-write"],
-                        origin=BASE_ORIGIN
-                    )
-            except Exception as pe:
-                print("[WARN] grant_permissions 실패:", pe)
-
             page = await context.new_page()
 
-            test_no = data.get("시험번호") or data.get("test_no") or ""
-            copied_text = await run_scenario_async(page, job_dir, 시험번호=test_no)
+            copied_text = await run_scenario_async(
+                page, job_dir,
+                시험번호=test_no,
+                연도=year4,
+                날짜=date8
+            )
 
-            # 결과 저장
             (job_dir / "copied.txt").write_text(copied_text or "", encoding="utf-8")
 
             await context.close()
             await browser.close()
 
-        await _mark_status(job_id, "DONE", final_link=copied_text)
+        await _mark(job_id, "DONE", final_link=copied_text)
 
     except Exception as e:
-        # 실패 스크린샷
         try:
             if page:
                 await page.screenshot(path=str(job_dir / "error.png"), full_page=True)
         except Exception:
             pass
-        await _mark_status(job_id, "ERROR", error=f"{e}\n{traceback.format_exc()}")
+        await _mark(job_id, "ERROR", error=f"{e}\n{traceback.format_exc()}")
