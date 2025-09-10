@@ -3,7 +3,7 @@
 - 여기서는 전달받은 Page/Context만 사용 (절대 sync_playwright()를 열지 않음)
 - 흐름: 홈 진입 → 필요 시 로그인 처리 → 검색 → 결과 새창 → 내부 URL 복사 → 산출물 저장
 """
-import os
+import os, re
 import pathlib
 from playwright.sync_api import Page, expect, TimeoutError as PWTimeout
 
