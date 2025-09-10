@@ -1,9 +1,11 @@
 # -*- coding: utf-8 -*-
 """
-- 여기서는 전달받은 Page/Context만 사용 (절대 sync_playwright()를 열지 않음)
-- 흐름: 홈 진입 → 필요 시 로그인 처리 → 검색 → 결과 새창 → 내부 URL 복사 → 산출물 저장
+- 전달받은 Page/Context만 사용 (절대 sync_playwright() 생성 금지)
+- 흐름: 홈 진입 → 필요 시 로그인 처리 → 검색 → (수정) 타겟 타이틀 div 찾기 → 폴더로 이동 →
+        파일 목록에서 tr(시험번호+시험성적서) 체크 → 내부 URL 복사 → 산출물 저장
 """
-import os, re
+import os
+import re
 import pathlib
 from playwright.sync_api import Page, expect, TimeoutError as PWTimeout
 
@@ -64,72 +66,65 @@ def run_scenario_sync(page: Page, job_dir: pathlib.Path, *, 시험번호: str, *
     search_btn.click()
     page.wait_for_load_state("networkidle")
 
-    # 3) 결과 필터링 후 새창 열기
-    title_cards = page.locator("div.search_ftr_file_list_title.hcursor.ellipsis")
-    # ✅ 최소 1개가 보일 때까지(첫 번째) 기다린 뒤, 텍스트로 좁힘
-    title_cards.first.wait_for(state="visible", timeout=30000)
+    # ─────────────────────────────────────────────────────────────
+    # (요청하신 수정 구간) 조회된 화면에서 수행할 4단계
+    # 1) ". {시험번호}" 텍스트를 가진 리스트 타이틀 div 선택
+    #    예) ". GS-A-25-0099"
+    target_text_regex = re.compile(rf"\.\s*{re.escape(시험번호)}")
+    title_div = page.locator(
+        "div.search_ftr_file_list_title.hcursor.ellipsis"
+    ).filter(has_text=target_text_regex).first
+    expect(title_div).to_be_visible(timeout=30000)
+    print("[DEBUG] 타겟 타이틀 div 발견")
 
-    # 3-1) 우선: 시험번호 + 'docx' 포함으로 좁히기
-    cand = title_cards.filter(has_text=re.compile(re.escape(시험번호), re.I)) \
-                      .filter(has_text=re.compile(r"\bdocx\b", re.I))
-
-    # 3-2) 없으면 시험번호만
-    if cand.count() == 0:
-        cand = title_cards.filter(has_text=re.compile(re.escape(시험번호), re.I))
-
-    # 3-3) 그래도 없으면 전체에서 루프 탐색(기존 로직)
-    target_el = None
-    if cand.count() > 0:
-        target_el = cand.first
-    else:
-        count = title_cards.count()
-        print(f"[DEBUG] 결과 항목 수: {count}")
-        sv_lower = f"{시험번호}".lower()
-        for i in range(count):
-            txt = title_cards.nth(i).inner_text().strip()
-            low = txt.lower()
-            print(f"[DEBUG] [{i}] {txt}")
-            if (sv_lower in low) and ("docx" in low):
-                target_el = title_cards.nth(i)
-                break
-        if target_el is None and count > 0:
-            # 최후 수단: 첫 항목
-            target_el = title_cards.first
-
-    # 상위 컨테이너 → 새창 버튼 클릭
-    container = target_el.locator(
-        "xpath=ancestor::div[contains(@class,'search_ftr_file_cont')]"
+    # 2) 상위 컨테이너 .search_ftr_file_cont → '폴더로 이동' 버튼 클릭
+    container = title_div.locator("xpath=ancestor::div[contains(@class,'search_ftr_file_cont')]")
+    move_btn = container.locator(
+        "span.btn-folder-move.hcursor[events='folder-fullpath-click'][title='폴더로 이동']"
     )
-    newwin_btn = container.locator(
-        "span.search_ftr_path_newwindow.hcursor[events='edm-document-property-view-newWindow-click']"
+    expect(move_btn).to_be_visible(timeout=20000)
+    move_btn.click()
+    # 이동 후 목록/패널 로딩 대기
+    page.wait_for_load_state("networkidle")
+
+    # 3) #prop-view-file-list-tbody에서
+    #    title에 {시험번호}와 '시험성적서'가 모두 포함된 tr을 찾아 체크박스 클릭
+    tbody = page.locator("#prop-view-file-list-tbody")
+    expect(tbody).to_be_visible(timeout=30000)
+
+    # CSS 속성 선택자로 title 동시 포함 필터링
+    tr_sel = f'tr[title*="{시험번호}"][title*="시험성적서"]'
+    target_row = tbody.locator(tr_sel).first
+    expect(target_row).to_be_visible(timeout=20000)
+
+    checkbox = target_row.locator('td.prop-view-file-list-item-checkbox input.file-list-type')
+    # 체크 상태 강제 보장
+    checkbox.check(timeout=10000)
+    print("[DEBUG] 파일 목록 체크박스 체크 완료")
+
+    # 4) 내부 URL 복사 버튼 클릭 → 텍스트 획득
+    copy_btn = page.locator(
+        "div#prop-view-document-btn-url-copy.prop-view-file-btn-internal-urlcopy.hcursor"
     )
-
-    with page.expect_popup() as popup_info:
-        newwin_btn.click()
-    popup = popup_info.value
-    popup.wait_for_load_state("domcontentloaded")
-    popup.wait_for_load_state("networkidle")
-
-    # 4) 내부 URL 복사 (권한 실패 대비 폴백 포함)
-    copy_btn = popup.locator("div#prop-view-document-btn-url-copy.prop-view-file-btn-internal-urlcopy.hcursor")
-    expect(copy_btn).to_be_visible(timeout=15000)
+    expect(copy_btn).to_be_visible(timeout=20000)
     copy_btn.click()
 
     copied_text = ""
     try:
-        copied_text = popup.evaluate("navigator.clipboard.readText()")
+        copied_text = page.evaluate("navigator.clipboard.readText()")
     except Exception:
+        # 폴백: 내부 URL 입력창이 있으면 거기서 값 읽기
         try:
-            copied_text = popup.locator("input#prop-view-document-internal-url").input_value()
+            copied_text = page.locator("input#prop-view-document-internal-url").input_value()
         except Exception:
             copied_text = ""
 
-    # 5) 산출물 저장
-    popup.screenshot(path=str(job_dir / "popup_done.png"), full_page=True)
+    # 5) 산출물 저장 및 반환
     page.screenshot(path=str(job_dir / "list_done.png"), full_page=True)
     (job_dir / "copied.txt").write_text(copied_text or "", encoding="utf-8")
 
     if not copied_text:
         raise RuntimeError("복사된 문장을 읽지 못했습니다. 권한/정책/요소 변동을 확인하세요.")
 
+    print(f"[DEBUG] 복사된 문장: {copied_text!r}")
     return copied_text
