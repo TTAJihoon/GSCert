@@ -79,7 +79,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
           if (s.status === 'DONE') {
             console.log('복사된 문장:', s.final_link);
-            openInNewTab(url);
+            openInNewTab(s.final_link);
           } else if (s.status === 'ERROR') {
             console.error('실패:', s.error);
             alert('실패: ' + (s.error || '오류가 발생했습니다.'));
