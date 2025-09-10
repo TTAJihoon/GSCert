@@ -455,9 +455,11 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
 
     # 10) 클릭하면서 메시지 캡처
     msg = await _click_copy_and_get_message(page, copy_btn, timeout=4000)
+    print("msg: "+msg)
 
     # 11) 최종 텍스트 읽기 (우선순위: dialog/msg → 스니퍼 → 클립보드/폴백)
     copied_text = (msg or "").strip()
+    print("copied_text: "+copied_text)
     if not copied_text:
         copied_text = await _read_copied_text(page)
     if not copied_text:
