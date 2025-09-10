@@ -53,7 +53,7 @@ document.addEventListener('DOMContentLoaded', function () {
         } else if (s.status === 'ERROR') {
           clearInterval(timer);
           btn.disabled = false;
-          console.log('실패: ', s.error));
+          console.log('실패: ', s.error);
         }
       }, 1500);
 
