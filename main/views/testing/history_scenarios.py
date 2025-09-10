@@ -293,9 +293,11 @@ async def _click_copy_and_get_clipboard_text(page: Page, btn, *, retries: int = 
         await expect(btn).to_be_visible(timeout=4000)
         try:
             await btn.click()
-        except Exception:
+        except Exception as e:
+            print(e)
             await btn.click(force=True)
-    except Exception:
+    except Exception as e:
+        print(e)
         await btn.evaluate("(el) => el.click()")
 
     # 2) 읽기: 스니퍼 → navigator.clipboard → 폴백을 여러 번 재시도
@@ -303,9 +305,12 @@ async def _click_copy_and_get_clipboard_text(page: Page, btn, *, retries: int = 
         try:
             # _read_copied_text는 스니퍼/클립보드/입력/DOM 순으로 시도함
             txt = await _read_copied_text(page)
+            print("복사된 텍스트: "+txt)
             if txt and txt.strip():
+                print("복사된 텍스트(strip): "+txt)
                 return txt.strip()
-        except Exception:
+        except Exception as e:
+            print("pass: "+e)
             pass
         # 점증 백오프
         await page.wait_for_timeout(wait_ms * (i + 1))
