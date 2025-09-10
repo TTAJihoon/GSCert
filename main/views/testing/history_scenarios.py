@@ -169,18 +169,38 @@ def _all_scopes(page: Page):
     for fr in page.frames:
         yield fr
 
+async def _get_copy_seq(page: Page) -> int:
+    try:
+        return await page.evaluate("() => window.__copy_seq || 0")
+    except Exception:
+        return 0
+
+async def _wait_for_new_copy(page: Page, prev_seq: int, timeout_ms: int = 2000) -> bool:
+    try:
+        await page.wait_for_function(
+            "(prev) => (window.__copy_seq || 0) > prev",
+            prev_seq,
+            timeout=timeout_ms
+        )
+        return True
+    except Exception:
+        return False
+
 # 복사 스니퍼: writeText/execCommand/copy 이벤트를 가로채 마지막 복사 본문을 보관
 async def _prime_copy_sniffer(page: Page):
     inject_js = r"""
 (() => {
   try {
-    // 보관 버퍼
+    // 보관 버퍼 + 시퀀스
     window.__copied_texts = window.__copied_texts || [];
+    window.__copy_seq = window.__copy_seq || 0;
     const push = (t) => {
       try {
         if (typeof t === 'string' && t.trim()) {
           window.__last_copied = t;
           window.__copied_texts.push(t);
+          window.__copy_seq = (window.__copy_seq || 0) + 1;   // ★ 시퀀스 증가
+          window.__last_copied_at = Date.now();
         }
       } catch (e) {}
     };
@@ -188,10 +208,7 @@ async def _prime_copy_sniffer(page: Page):
     // navigator.clipboard.writeText 훅킹
     if (navigator.clipboard && navigator.clipboard.writeText && !navigator.clipboard.__pw_hooked) {
       const _origWrite = navigator.clipboard.writeText.bind(navigator.clipboard);
-      navigator.clipboard.writeText = async (t) => {
-        try { push(t); } catch(e) {}
-        return _origWrite(t);
-      };
+      navigator.clipboard.writeText = async (t) => { try { push(t); } catch(e) {} return _origWrite(t); };
       navigator.clipboard.__pw_hooked = true;
     }
 
@@ -201,7 +218,6 @@ async def _prime_copy_sniffer(page: Page):
       document.execCommand = function(cmd, ui, value) {
         if (String(cmd || '').toLowerCase() === 'copy') {
           try {
-            // value, selection, activeElement.value 등 후보를 모두 보관
             if (value) push(String(value));
             const sel = document.getSelection && document.getSelection();
             if (sel && sel.toString()) push(sel.toString());
@@ -281,41 +297,78 @@ async def _find_copy_button(page: Page, timeout=15000):
     raise RuntimeError("URL 복사 버튼을 찾지 못했습니다(XPATH 및 폴백 모두 실패).")
 
 # 복사 버튼 '확실히' 클릭(+ 알림/모달 처리)
-async def _click_copy_and_get_clipboard_text(page: Page, btn, *, retries: int = 8, wait_ms: int = 150) -> str:
-    """
-    복사 버튼을 클릭한 뒤, 스니퍼/클립보드/입력 폴백을 통해 실제 복사된 텍스트를 읽는다.
-    - alert/모달 메시지는 전혀 사용하지 않는다.
-    - retries 동안 점증(backoff) 대기하며 재시도.
-    """
-    # 1) 클릭
+async def _click_copy_and_get_clipboard_text(
+    page: Page,
+    btn,
+    *,
+    retries: int = 10,
+    wait_ms: int = 120
+) -> str:
+    # ★ 클릭 전 baseline 확보
+    prev_seq = await _get_copy_seq(page)
+    try:
+        prev_os = await asyncio.to_thread(_read_os_clipboard_windows)
+    except Exception:
+        prev_os = ""
+
+    # 클릭
     try:
         await btn.scroll_into_view_if_needed()
         await expect(btn).to_be_visible(timeout=4000)
         try:
             await btn.click()
-        except Exception as e:
-            print(e)
+        except Exception:
             await btn.click(force=True)
-    except Exception as e:
-        print(e)
+    except Exception:
         await btn.evaluate("(el) => el.click()")
 
-    # 2) 읽기: 스니퍼 → navigator.clipboard → 폴백을 여러 번 재시도
+    # ★ copy 이벤트를 우선 대기 (스니퍼 기준)
+    await _wait_for_new_copy(page, prev_seq, timeout_ms=1500)
+
+    # 재시도 루프: "baseline과 다른 값"만 채택
     for i in range(retries):
+        # 1) 스니퍼 값 (가장 신뢰)
         try:
-            # _read_copied_text는 스니퍼/클립보드/입력/DOM 순으로 시도함
-            txt = await _read_copied_text(page)
-            print("복사된 텍스트: "+txt)
-            if txt and txt.strip():
-                print("복사된 텍스트(strip): "+txt)
-                return txt.strip()
-        except Exception as e:
-            print("pass: "+e)
+            seq = await _get_copy_seq(page)
+            if seq > prev_seq:
+                t = await page.evaluate("() => window.__last_copied || ''")
+                if t and t.strip():
+                    return t.strip()
+        except Exception:
             pass
-        # 점증 백오프
+
+        # 2) 붙여넣기 우회: OS 클립보드를 textarea에 붙여넣기
+        try:
+            t = await _read_clipboard_via_paste(page)
+            if t and t.strip() and t != prev_os:        # ★ baseline과 달라야 인정
+                return t.strip()
+        except Exception:
+            pass
+
+        # 3) OS 클립보드 직접 읽기 (PowerShell)
+        try:
+            cur_os = await asyncio.to_thread(_read_os_clipboard_windows)
+            if cur_os and cur_os.strip() and cur_os != prev_os:  # ★ baseline과 달라야 인정
+                return cur_os.strip()
+        except Exception:
+            pass
+
+        # 4) (가능하면) navigator.clipboard.readText 차등 확인
+        try:
+            for scope in _all_scopes(page):
+                try:
+                    nav_t = await scope.evaluate("navigator.clipboard.readText()")
+                    if nav_t and nav_t.strip() and nav_t != prev_os:  # ★ baseline과 달라야 인정
+                        return nav_t.strip()
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
         await page.wait_for_timeout(wait_ms * (i + 1))
 
     return ""
+
 
 async def _read_clipboard_via_paste(page: Page) -> str:
     """
