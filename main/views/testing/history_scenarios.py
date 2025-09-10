@@ -1,11 +1,32 @@
 # -*- coding: utf-8 -*-
-import os, re, pathlib, asyncio
-from playwright.async_api import Page, expect, TimeoutError as PWTimeout
+"""
+새 시나리오(트리 탐색 버전)
+1) http://210.104.181.10 접속 → 필요시 로그인
+2) 좌측 트리 패널(submenu_type="Folder") 찾기
+3) name에 {연도} 포함된 a 클릭
+4) 하단 트리에서 name에 "GS인증심의위원회" 포함된 a 클릭
+5) 하단 트리에서 name에 {날짜} 포함된 a 클릭
+6) 하단 트리에서 name에 {시험번호} 포함된 a 클릭
+7) 전체 DOM에서 filename에 {시험번호}(=인증번호로 간주)와 "시험성적서" 동시 포함 tr → 체크박스 클릭
+8) 내부 URL 복사 버튼 클릭
+9) alert(확인) 닫기 (브라우저 네이티브 dialog 또는 in-page 모달 모두 처리)
+10) 복사된 텍스트의 3번째 줄(http로 시작)을 찾아 console 탭에 출력(console.log)
+"""
+
+import os
+import re
+import pathlib
+from playwright.async_api import Page, expect, TimeoutError as PWTimeout, Error as PWError
 
 BASE_ORIGIN = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
 LOGIN_URL   = os.getenv("LOGIN_URL", f"{BASE_ORIGIN}/auth/login/loginView.do")
 LOGIN_ID    = os.getenv("LOGIN_ID", "testingAI")
 LOGIN_PW    = os.getenv("LOGIN_PW", "12sqec34!")
+
+LEFT_TREE_SEL = (
+    "div.edm-left-panel-menu-sub-item.ui-accordion-content.ui-helper-reset."
+    "ui-widget-content.ui-corner-bottom.ui-accordion-content-active[submenu_type='Folder']"
+)
 
 async def _wait_login_completed(page: Page, timeout=30000):
     await page.wait_for_function(
@@ -21,32 +42,11 @@ async def _wait_login_completed(page: Page, timeout=30000):
         timeout=timeout,
     )
 
-async def _find_filelist_scope(page: Page, timeout=30000):
-    """#prop-view-file-list-tbody 가 있는 컨텍스트(Page or Frame)를 찾아 반환"""
-    # 1) 메인 페이지
-    try:
-        await page.wait_for_selector("#prop-view-file-list-tbody", timeout=timeout, state="attached")
-        return page
-    except Exception:
-        pass
-    # 2) 프레임들
-    for fr in page.frames:
-        try:
-            await fr.wait_for_selector("#prop-view-file-list-tbody", timeout=1000, state="attached")
-            return fr
-        except Exception:
-            continue
-    raise TimeoutError("파일 목록 tbody(#prop-view-file-list-tbody)가 나타나지 않았습니다.")
-
-async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호: str, **kwargs) -> str:
-    assert 시험번호, "시험번호가 비어 있습니다."
-    job_dir.mkdir(parents=True, exist_ok=True)
-
-    # 0) 홈 진입
+async def _ensure_logged_in(page: Page):
+    """BASE_ORIGIN 접속 → 필요시 로그인 처리"""
     await page.goto(f"{BASE_ORIGIN}/", wait_until="domcontentloaded")
     await page.wait_for_load_state("networkidle")
 
-    # 1) 로그인 필요 시 처리
     if "login" in page.url.lower() or await page.locator("#form-login").count() > 0:
         user = page.locator("input[name='user_id']")
         pwd  = page.locator("input[name='password']")
@@ -63,96 +63,103 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
             await btn.click(); await page.wait_for_load_state("networkidle")
         await _wait_login_completed(page, timeout=30000)
 
-    # 2) 검색
-    search_input = page.locator("input.top-search2-input[name='q']")
-    await expect(search_input).to_be_visible(timeout=60000)
+async def _tree_click_by_name_contains(scope, text: str, timeout=15000):
+    """
+    좌측 트리(scope=LEFT_TREE 컨테이너)에서 a[name*='text']를 찾아 클릭.
+    트리 로딩이 느리면 약간의 폴백 대기 포함.
+    """
+    link = scope.locator(f"a[name*='{text}']").first
+    await expect(link).to_be_visible(timeout=timeout)
+    await link.click()
 
-    search_value = f"{시험번호}"
-    print(f"[DEBUG] 검색값 = {search_value}")
-    await search_input.fill(search_value)
+async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호: str, 연도: str, 날짜: str, **kwargs) -> str:
+    assert 시험번호 and 연도 and 날짜, "필수 인자(시험번호/연도/날짜)가 비었습니다."
+    job_dir.mkdir(parents=True, exist_ok=True)
 
-    search_btn = page.locator("div.top-search2-btn.hcursor")
-    await expect(search_btn).to_be_visible(timeout=10000)
-    await search_btn.click()
+    # 1) 접속/로그인 보장
+    await _ensure_logged_in(page)
+
+    # 2) 좌측 트리 패널 등장 대기
+    left_tree = page.locator(LEFT_TREE_SEL)
+    await expect(left_tree).to_be_visible(timeout=30000)
+
+    # 3) 연도 포함 a 클릭 (예: name="2025 시험서비스")
+    await _tree_click_by_name_contains(left_tree, 연도, timeout=20000)
+
+    # 4) GS인증심의위원회 클릭
+    await _tree_click_by_name_contains(left_tree, "GS인증심의위원회", timeout=20000)
+
+    # 5) 날짜(YYYYMMDD) 클릭
+    await _tree_click_by_name_contains(left_tree, 날짜, timeout=20000)
+
+    # 6) 시험번호 클릭
+    await _tree_click_by_name_contains(left_tree, 시험번호, timeout=20000)
+
+    # 6-보강) 콘텐츠 패널 로딩 대기
     await page.wait_for_load_state("networkidle")
 
-    # ───────────────────────────────
-    # A) ". {시험번호}" 텍스트 가진 타이틀 div 찾기
-    target_text_regex = re.compile(rf"\.\s*{re.escape(시험번호)}")
-    title_div = page.locator(
-        "div.search_ftr_file_list_title.hcursor.ellipsis"
-    ).filter(has_text=target_text_regex).first
-    await expect(title_div).to_be_visible(timeout=30000)
-
-    # B) 상위 컨테이너의 '폴더로 이동' 클릭  → 같은 탭 전환/라우팅 안전 대기
-    container = title_div.locator("xpath=ancestor::div[contains(@class,'search_ftr_file_cont')]")
-    move_btn = container.locator(
-        "span.btn-folder-move.hcursor[events='folder-fullpath-click'][title='폴더로 이동']"
-    )
-    await expect(move_btn).to_be_visible(timeout=20000)
-
-    # 네비게이션 발생/미발생 모두 커버
-    try:
-        async with page.expect_navigation(wait_until="domcontentloaded", timeout=5000):
-            await move_btn.click()
-    except PWTimeout:
-        await move_btn.click()
-    # 전환 이후 리스트/패널이 뜰 때까지 대기
-    try:
-        scope = await _find_filelist_scope(page, timeout=20000)
-    except Exception:
-        # SPA 로딩이 느릴 때 한 번 더 대기
-        await page.wait_for_load_state("networkidle")
-        scope = await _find_filelist_scope(page, timeout=15000)
-
-    # C) 파일 목록에서 tr 선택(다단계 폴백)
-    tbody = scope.locator("#prop-view-file-list-tbody")
-    await expect(tbody).to_be_visible(timeout=30000)
-
-    # 1순위: tr[title*="시험번호"][title*="시험성적서"]
-    sel1 = f'tr[title*="{시험번호}"][title*="시험성적서"]'
-    row = tbody.locator(sel1).first
+    # 7) 파일 목록에서 filename에 시험번호(=인증번호 가정) & '시험성적서' 동시 포함 tr 찾기
+    #    (전역 검색 → 없으면 텍스트 기반 폴백)
+    row = page.locator(
+        f'tr[filename*="{시험번호}"][filename*="시험성적서"]'
+    ).first
     if await row.count() == 0:
-        # 2순위: tr:has([title*="..."][title*="시험성적서"])
-        row = tbody.locator(f'tr:has([title*="{시험번호}"][title*="시험성적서"])').first
-    if await row.count() == 0:
-        # 3순위: 텍스트 동시 포함 (AND) - 필드 어디에 있든
-        row = tbody.locator("tr").filter(has_text=시험번호).filter(has_text="시험성적서").first
+        # 폴백: 어떤 셀이라도 텍스트 동시 포함
+        row = page.locator("tr").filter(has_text=시험번호).filter(has_text="시험성적서").first
 
-    # 최종 존재 확인 (가시성보다 '존재'를 먼저 본 뒤, 보이기까지 대기)
     if await row.count() == 0:
-        raise RuntimeError(f'파일 목록에서 "{시험번호}" & "시험성적서" 조건을 만족하는 행을 찾지 못했습니다.')
+        raise RuntimeError(f'파일 목록에서 filename 또는 텍스트로 "{시험번호}" & "시험성적서"를 포함하는 행을 못 찾았습니다.')
+
     await expect(row).to_be_visible(timeout=20000)
 
     # 체크박스 클릭
-    checkbox = row.locator('td.prop-view-file-list-item-checkbox input.file-list-type')
+    checkbox = row.locator('td.prop-view-file-list-item-checkbox input[type="checkbox"].file-list-type')
     await checkbox.check(timeout=10000)
-    print("[DEBUG] 파일 목록 체크박스 체크 완료")
 
-    # D) 내부 URL 복사 버튼 클릭 → 텍스트 획득
-    #   (같은 탭/프레임 내에 있는 버튼을 같은 scope로 찾음)
-    copy_btn = scope.locator(
+    # 8) 내부 URL 복사 버튼 클릭
+    copy_btn = page.locator(
         "div#prop-view-document-btn-url-copy.prop-view-file-btn-internal-urlcopy.hcursor"
     )
     await expect(copy_btn).to_be_visible(timeout=20000)
-    await copy_btn.click()
 
     copied_text = ""
+    # 9) alert 처리 (브라우저 dialog / in-page 모달 모두 시도)
     try:
-        # 프레임일 수도 있으니 같은 scope에서 읽기
-        copied_text = await scope.evaluate("navigator.clipboard.readText()")
-    except Exception:
+        async with page.expect_event("dialog", timeout=3000) as dlg_info:
+            await copy_btn.click()
+        dlg = await dlg_info.value
+        await dlg.accept()
+    except PWTimeout:
+        # 네이티브 dialog가 아니라면 in-page 모달의 '확인' 버튼 시도
+        await copy_btn.click()
+        ok_btn = page.locator("button:has-text('확인'), .ui-dialog-buttonset button:has-text('확인')")
+        if await ok_btn.count():
+            await ok_btn.first.click()
+
+    # 클립보드/입력 폴백 읽기
+    try:
+        copied_text = await page.evaluate("navigator.clipboard.readText()")
+    except PWError:
         try:
-            copied_text = await scope.locator("input#prop-view-document-internal-url").input_value()
+            copied_text = await page.locator("input#prop-view-document-internal-url").input_value()
         except Exception:
             copied_text = ""
 
-    # E) 산출물
+    if not copied_text:
+        raise RuntimeError("복사 텍스트를 읽지 못했습니다.")
+
+    # 10) 3번째 줄의 http URL을 콘솔에 출력
+    lines = [ln.strip() for ln in copied_text.splitlines()]
+    url_line = lines[2] if len(lines) >= 3 else ""
+    if not url_line.startswith("http"):
+        # 폴백: 전체 텍스트에서 http(s) URL 1개 추출
+        m = re.search(r"https?://[^\s]+", copied_text)
+        url_line = m.group(0) if m else ""
+
+    await page.evaluate("(u) => console.log('EXTRACTED_URL:', u)", url_line)
+
+    # 산출물 저장
     await page.screenshot(path=str(job_dir / "list_done.png"), full_page=True)
     (job_dir / "copied.txt").write_text(copied_text or "", encoding="utf-8")
 
-    if not copied_text:
-        raise RuntimeError("복사된 문장을 읽지 못했습니다. 권한/정책/요소 변동을 확인하세요.")
-
-    print(f"[DEBUG] 복사된 문장: {copied_text!r}")
     return copied_text
