@@ -7,7 +7,7 @@ LOGIN_URL = "http://210.104.181.10/auth/login/loginView.do"
 LOGIN_ID  = os.getenv("LOGIN_ID", "testingAI")
 LOGIN_PW  = os.getenv("LOGIN_PW", "12sqec34!")  # 필요 시 환경변수로 덮어쓰기
 
-def main():
+def run_scenario_sync(page: Page, job_dir: pathlib.Path, *, 시험번호: str, **kwargs) -> str:
     with sync_playwright() as p:
         # 디버깅 시 headless=False 권장
         browser = p.chromium.launch(headless=False, args=["--start-maximized"])
@@ -59,5 +59,4 @@ def main():
         context.close()
         browser.close()
 
-if __name__ == "__main__":
-    main()
+    return "ok"
