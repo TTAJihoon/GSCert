@@ -57,7 +57,7 @@ def run_scenario_sync(page: Page, job_dir: pathlib.Path, *, 시험번호: str, *
     search_input = page.locator("input.top-search2-input[name='q']")
     expect(search_input).to_be_visible(timeout=60000)
 
-    search_value = f"{시험번호} 시험성적서"
+    search_value = f"{시험번호}"
     print(f"[DEBUG] 검색값 = {search_value}")
     search_input.fill(search_value)
 
@@ -66,9 +66,7 @@ def run_scenario_sync(page: Page, job_dir: pathlib.Path, *, 시험번호: str, *
     search_btn.click()
     page.wait_for_load_state("networkidle")
 
-    # ─────────────────────────────────────────────────────────────
-    # (요청하신 수정 구간) 조회된 화면에서 수행할 4단계
-    # 1) ". {시험번호}" 텍스트를 가진 리스트 타이틀 div 선택
+    # ". {시험번호}" 텍스트를 가진 리스트 타이틀 div 선택
     #    예) ". GS-A-25-0099"
     target_text_regex = re.compile(rf"\.\s*{re.escape(시험번호)}")
     title_div = page.locator(
