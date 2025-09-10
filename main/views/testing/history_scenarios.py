@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os, re, pathlib
+import asyncio
 from playwright.async_api import Page, expect, TimeoutError as PWTimeout, Error as PWError
 
 BASE_ORIGIN = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
@@ -242,11 +243,12 @@ async def _prime_copy_sniffer(page: Page):
 
 # 복사 버튼 찾기 (XPATH 최우선, 안 되면 기존 셀렉터 폴백)
 async def _find_copy_button(page: Page, timeout=15000):
-    deadline = page.context._loop.time() + (timeout / 1000.0)
+    now = asyncio.get_running_loop().time
+    deadline = now() + (timeout / 1000.0)
 
-    # 1) 제공된 full XPATH를 1순위로, 모든 스코프에서 시도
+    # 1) full XPATH
     if COPY_BTN_FULL_XPATH:
-        while page.context._loop.time() < deadline:
+        while now() < deadline:
             for scope in _all_scopes(page):
                 try:
                     loc = scope.locator(f"xpath={COPY_BTN_FULL_XPATH}")
@@ -257,14 +259,14 @@ async def _find_copy_button(page: Page, timeout=15000):
                     pass
             await page.wait_for_timeout(150)
 
-    # 2) 폴백: 알려진 CSS/속성 셀렉터들
+    # 2) 폴백 셀렉터들
     selectors = [
         "div#prop-view-document-btn-url-copy.prop-view-file-btn-internal-urlcopy.hcursor",
         "#prop-view-document-btn-url-copy",
         "div.prop-view-file-btn-internal-urlcopy[events='document-internal-url-click']",
         "div[events='document-internal-url-click']",
     ]
-    while page.context._loop.time() < deadline:
+    while now() < deadline:
         for scope in _all_scopes(page):
             for sel in selectors:
                 loc = scope.locator(sel)
@@ -279,46 +281,51 @@ async def _find_copy_button(page: Page, timeout=15000):
     raise RuntimeError("URL 복사 버튼을 찾지 못했습니다(XPATH 및 폴백 모두 실패).")
 
 # 복사 버튼 '확실히' 클릭(+ 알림/모달 처리)
-async def _click_copy_and_close_alert(page: Page, btn, timeout=4000):
-    # 버튼 활성 대기 (disabled/숨김/오버레이 회피)
+async def _click_copy_and_get_message(page: Page, btn, timeout=4000) -> str:
+    # 클릭 시도
     try:
         await btn.scroll_into_view_if_needed()
-        # 가시성/클릭 가능상태 점검
         await expect(btn).to_be_visible(timeout=timeout)
         try:
             await btn.click()
         except Exception:
-            # 오버레이/레이어가 가로막을 때
             await btn.click(force=True)
     except Exception:
-        # 최후 수단: DOM click() 직접 호출
-        try:
-            await btn.evaluate("(el) => el.click()")
-        except Exception as e:
-            raise RuntimeError(f"복사 버튼 클릭 실패: {e}")
+        await btn.evaluate("(el) => el.click()")
 
-    # 네이티브 alert() 처리
+    # 네이티브 alert() 메시지 캡처
     try:
-        async with page.expect_event("dialog", timeout=1500) as dlg_info:
+        async with page.expect_event("dialog", timeout=1500) as di:
             pass
     except Exception:
-        dlg_info = None
+        di = None
 
-    if dlg_info:
-        dlg = await dlg_info.value
+    if di:
+        dlg = await di.value
+        msg = (dlg.message or "").strip()
         try:
             await dlg.accept()
         except Exception:
             pass
-    else:
-        # in-page 모달(확인 버튼) 처리
-        ok_btn = page.locator("button:has-text('확인'), .ui-dialog-buttonset button:has-text('확인')")
-        if await ok_btn.count():
-            try:
-                await ok_btn.first.click()
-            except Exception:
-                pass
+        return msg
 
+    # in-page 모달(jQuery UI 등) 텍스트 캡처
+    try:
+        modal = page.locator(".ui-dialog:visible .ui-dialog-content:visible")
+        if await modal.count():
+            txt = (await modal.first.inner_text()).strip()
+            ok_btn = page.locator(".ui-dialog:visible .ui-dialog-buttonset button:has-text('확인')")
+            if await ok_btn.count():
+                try:
+                    await ok_btn.first.click()
+                except Exception:
+                    pass
+            return txt
+    except Exception:
+        pass
+
+    return ""
+    
 # 복사된 텍스트 읽기 (클립보드 → 여러 입력 폴백)
 async def _read_copied_text(page: Page) -> str:
     # 0) 스니퍼가 저장한 값 최우선
@@ -446,11 +453,13 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
     # 9) 내부 URL 복사 버튼 찾기 (XPATH 우선)
     copy_btn = await _find_copy_button(page, timeout=20000)
 
-    # 10) 클릭 + alert/모달 닫기
-    await _click_copy_and_close_alert(page, copy_btn, timeout=4000)
+    # 10) 클릭하면서 메시지 캡처
+    msg = await _click_copy_and_get_message(page, copy_btn, timeout=4000)
 
-    # 11) 복사된 텍스트 읽기 (스니퍼→클립보드→폴백)
-    copied_text = await _read_copied_text(page)
+    # 11) 최종 텍스트 읽기 (우선순위: dialog/msg → 스니퍼 → 클립보드/폴백)
+    copied_text = (msg or "").strip()
+    if not copied_text:
+        copied_text = await _read_copied_text(page)
     if not copied_text:
         await page.screenshot(path=str(job_dir / "list_after_copy_fail.png"), full_page=True)
         raise RuntimeError("복사 텍스트를 읽지 못했습니다.")
