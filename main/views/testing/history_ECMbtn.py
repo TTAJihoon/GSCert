@@ -1,28 +1,67 @@
 import json
+import re
 from django.http import JsonResponse, HttpResponseNotAllowed
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
 import django_rq
 from ...models import Job
-from .history_tasks import run_playwright_job_task
+from .history_tasks import run_playwright_job_task  # ← RQ에 넣을 타겟
+
+def _extract_fields(payload: dict):
+    """
+    payload에서 '시험번호'와 '인증일자'를 추출하고,
+    인증일자로부터 연도(YYYY), 날짜(YYYYMMDD)를 계산해 반환.
+    """
+    test_no = payload.get("시험번호") or payload.get("test_no") or payload.get("cert_no")
+    cert_date_raw = payload.get("인증일자") or payload.get("cert_date") or payload.get("인증일")
+
+    if not test_no:
+        raise ValueError("시험번호가 필요합니다.")
+
+    if not cert_date_raw:
+        raise ValueError("인증일자(예: 2025.08.25)가 필요합니다.")
+
+    # 2025.08.25 / 2025-08-25 / 20250825 등 모두 허용
+    digits = re.sub(r"\D", "", cert_date_raw)
+    if len(digits) < 8:
+        raise ValueError(f"인증일자 형식을 해석할 수 없습니다: {cert_date_raw!r}")
+
+    date8 = digits[:8]       # YYYYMMDD
+    year4 = date8[:4]        # YYYY
+
+    return test_no, year4, date8, cert_date_raw
 
 @csrf_exempt
 def start_job(request):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
+
+    # 원본 payload 파싱
     try:
-        data = json.loads(request.body.decode("utf-8"))
+        payload = json.loads(request.body.decode("utf-8") or "{}")
     except Exception:
-        data = request.POST.dict()
+        payload = request.POST.dict()
 
-    # 필수값 체크
-    test_no = data.get("시험번호") or data.get("test_no")
-    if not test_no:
-        return JsonResponse({"ok": False, "error": "시험번호가 필요합니다."}, status=400)
+    # 필수값 추출 & 파생값 계산
+    try:
+        test_no, year4, date8, cert_date_raw = _extract_fields(payload)
+    except ValueError as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=400)
 
+    # 태스크로 넘길 data 구성 (원본 + 표준화 키 추가)
+    data = dict(payload)  # 원본을 보존하면서
+    data["시험번호"] = test_no         # 표준 키로 통일
+    data["인증일자"] = cert_date_raw   # 원문도 같이 전달
+    data["연도"] = year4               # 예: "2025"
+    data["날짜"] = date8               # 예: "20250825"
+
+    # 잡 생성 & 큐 등록
     job = Job.objects.create(status="PENDING")
     queue = django_rq.get_queue("default")
-    # data(dict)를 그대로 전달 → 태스크에서 시나리오 입력으로 사용
+
+    # ⚠️ 주의: run_playwright_job_task가 async라면, RQ에서는 sync 래퍼를 enqueue 해야 합니다.
+    # (이 파일 그대로 쓰되, 당신의 history_tasks에 sync 엔트리 함수를 두셨다면
+    #   run_playwright_job_task_sync 같은 것으로 바꿔주세요.)
     queue.enqueue(run_playwright_job_task, str(job.id), data)
 
     return JsonResponse({"jobId": str(job.id), "status": job.status})
