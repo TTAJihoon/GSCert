@@ -15,21 +15,34 @@ def run_scenario_sync(page: Page, job_dir: pathlib.Path, *, 시험번호: str, *
     page.goto(f"{BASE_ORIGIN}/", wait_until="domcontentloaded")
     page.wait_for_load_state("networkidle")
 
-    # 로그인 페이지로 리다이렉트되었는지 빠르게 감지
+    # 로그인 리다이렉트 감지 → 안전하게 로그인
     if "login" in page.url.lower():
-        page.fill("input[name='user_id']", LOGIN_ID)
-        page.fill("input[name='password']", LOGIN_PW)
-        page.locator("input[name='password']").press("Enter")
+        user = page.locator("input[name='user_id']")
+        pwd  = page.locator("input[name='password']")
+        # ① 로그인 입력칸 가시성 대기
+        expect(user).to_be_visible(timeout=15000)
+        expect(pwd).to_be_visible(timeout=15000)
 
-    # 검색 인풋 등장까지 대기 (최대 60초, 1회 재시도)
+        user.fill(LOGIN_ID)
+        pwd.fill(LOGIN_PW)
+
+        # ② Enter 후 네트워크 안정 상태 대기(간헐적 폼비동기 처리 대비)
+        with page.expect_load_state("networkidle"):
+            pwd.press("Enter")
+
+    # ── 검색 인풋 등장까지 대기 (로그인 성공 판정 신뢰점)
     search_input = page.locator("input.top-search2-input[name='q']")
     try:
         expect(search_input).to_be_visible(timeout=60000)
+        # 로그인 실패 방지: 혹시 여전히 로그인 페이지면 실패 처리
+        if "login" in page.url.lower():
+            raise RuntimeError("로그인에 실패했습니다. 계정/권한 또는 사이트 상태를 확인하세요.")
     except Exception:
-        # 느린 초기 로딩/리다이렉트 대비 재시도
         page.reload(wait_until="domcontentloaded")
         page.wait_for_load_state("networkidle")
         expect(search_input).to_be_visible(timeout=30000)
+        if "login" in page.url.lower():
+            raise RuntimeError("로그인에 실패했습니다(재시도 후에도 로그인 화면).")
 
     # ── 1) 검색 ───────────────────────────────────────────
     search_value = f"{시험번호} 시험성적서"
