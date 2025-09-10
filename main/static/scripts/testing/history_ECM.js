@@ -98,5 +98,6 @@ document.addEventListener('DOMContentLoaded', function () {
     } finally {
       btn.disabled = false;
       hideLoading();
+    }
   });
 });
