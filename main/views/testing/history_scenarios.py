@@ -168,6 +168,78 @@ def _all_scopes(page: Page):
     for fr in page.frames:
         yield fr
 
+# 복사 스니퍼: writeText/execCommand/copy 이벤트를 가로채 마지막 복사 본문을 보관
+async def _prime_copy_sniffer(page: Page):
+    inject_js = r"""
+(() => {
+  try {
+    // 보관 버퍼
+    window.__copied_texts = window.__copied_texts || [];
+    const push = (t) => {
+      try {
+        if (typeof t === 'string' && t.trim()) {
+          window.__last_copied = t;
+          window.__copied_texts.push(t);
+        }
+      } catch (e) {}
+    };
+
+    // navigator.clipboard.writeText 훅킹
+    if (navigator.clipboard && navigator.clipboard.writeText && !navigator.clipboard.__pw_hooked) {
+      const _origWrite = navigator.clipboard.writeText.bind(navigator.clipboard);
+      navigator.clipboard.writeText = async (t) => {
+        try { push(t); } catch(e) {}
+        return _origWrite(t);
+      };
+      navigator.clipboard.__pw_hooked = true;
+    }
+
+    // document.execCommand('copy') 훅킹
+    if (!document.__exec_copy_hooked) {
+      const _origExec = document.execCommand.bind(document);
+      document.execCommand = function(cmd, ui, value) {
+        if (String(cmd || '').toLowerCase() === 'copy') {
+          try {
+            // value, selection, activeElement.value 등 후보를 모두 보관
+            if (value) push(String(value));
+            const sel = document.getSelection && document.getSelection();
+            if (sel && sel.toString()) push(sel.toString());
+            const el = document.activeElement;
+            if (el && 'value' in el && el.value) push(el.value);
+          } catch(e) {}
+        }
+        return _origExec(cmd, ui, value);
+      };
+      document.__exec_copy_hooked = true;
+    }
+
+    // copy 이벤트에서 clipboardData 읽기
+    if (!document.__copy_evt_hooked) {
+      document.addEventListener('copy', (e) => {
+        try {
+          const dt = e.clipboardData;
+          if (dt) {
+            const t = dt.getData('text/plain');
+            if (t) push(t);
+          }
+        } catch(e) {}
+      }, true);
+      document.__copy_evt_hooked = true;
+    }
+  } catch (e) {}
+})();
+"""
+    # 모든 스코프에 주입
+    for scope in _all_scopes(page):
+        try:
+            await scope.add_init_script(inject_js)  # 이후 로드에도 적용
+        except Exception:
+            pass
+        try:
+            await scope.evaluate(inject_js)         # 현재 문서에도 즉시 적용
+        except Exception:
+            pass
+
 # 복사 버튼 찾기 (XPATH 최우선, 안 되면 기존 셀렉터 폴백)
 async def _find_copy_button(page: Page, timeout=15000):
     deadline = page.context._loop.time() + (timeout / 1000.0)
@@ -249,7 +321,16 @@ async def _click_copy_and_close_alert(page: Page, btn, timeout=4000):
 
 # 복사된 텍스트 읽기 (클립보드 → 여러 입력 폴백)
 async def _read_copied_text(page: Page) -> str:
-    # 1) 클립보드 시도 (http 환경에선 실패 가능)
+    # 0) 스니퍼가 저장한 값 최우선
+    for scope in _all_scopes(page):
+        try:
+            txt = await scope.evaluate("window.__last_copied || (window.__copied_texts && window.__copied_texts.slice(-1)[0]) || ''")
+            if txt and txt.strip():
+                return txt
+        except Exception:
+            pass
+
+    # 1) 클립보드
     for scope in _all_scopes(page):
         try:
             txt = await scope.evaluate("navigator.clipboard.readText()")
@@ -258,7 +339,7 @@ async def _read_copied_text(page: Page) -> str:
         except Exception:
             pass
 
-    # 2) 입력 상자 폴백: 알려진 id/name/패턴들 전수 검사
+    # 2) 입력 상자 폴백
     input_selectors = [
         "input#prop-view-document-internal-url",
         "input[name*='internal'][name*='url']",
@@ -270,23 +351,38 @@ async def _read_copied_text(page: Page) -> str:
             loc = scope.locator(sel)
             if await loc.count():
                 try:
-                    val = await loc.first.input_value()
-                    if val and val.strip():
-                        return val
+                    v = await loc.first.input_value()
+                    if v and v.strip():
+                        return v
                 except Exception:
                     continue
 
-    # 3) 기타 텍스트 영역 폴백(혹시 복사 텍스트가 textarea에 반영되는 UI)
+    # 3) 화면 내 텍스트에서 URL 추출(최후의 수단)
     for scope in _all_scopes(page):
-        loc = scope.locator("textarea, input[type='text']")
-        n = await loc.count()
-        for i in range(min(n, 20)):
-            try:
-                v = await loc.nth(i).input_value()
-                if v and ("http" in v or "://" in v):
-                    return v
-            except Exception:
-                continue
+        try:
+            candidates = await scope.evaluate(r"""
+                () => {
+                  const vals = [];
+                  for (const el of document.querySelectorAll('a[href^="http"]')) {
+                    vals.push(el.href);
+                  }
+                  for (const el of document.querySelectorAll('input[type="text"], textarea')) {
+                    if (el.value) vals.push(el.value);
+                  }
+                  const it = document.createNodeIterator(document.body, NodeFilter.SHOW_TEXT);
+                  let n; while (n = it.nextNode()) {
+                    const t = n.nodeValue || '';
+                    if (t && t.includes('http')) vals.push(t);
+                  }
+                  return vals.slice(0, 200);
+                }
+            """)
+            for s in candidates:
+                m = re.search(r"https?://[^\s]+", s)
+                if m:
+                    return m.group(0)
+        except Exception:
+            pass
 
     return ""
 
@@ -344,18 +440,22 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
     await expect(checkbox.first).to_be_visible(timeout=10000)
     await checkbox.first.check(timeout=10000)
 
-    # 8) 내부 URL 복사 버튼 찾기 + 클릭(강화)
+    # 8) (신규) 복사 스니퍼 주입
+    await _prime_copy_sniffer(page)
+
+    # 9) 내부 URL 복사 버튼 찾기 (XPATH 우선)
     copy_btn = await _find_copy_button(page, timeout=20000)
+
+    # 10) 클릭 + alert/모달 닫기
     await _click_copy_and_close_alert(page, copy_btn, timeout=4000)
 
-    # 9) 복사된 텍스트 읽기(강화)
+    # 11) 복사된 텍스트 읽기 (스니퍼→클립보드→폴백)
     copied_text = await _read_copied_text(page)
     if not copied_text:
-        # 디버그 스크린샷 저장 후 실패 처리
         await page.screenshot(path=str(job_dir / "list_after_copy_fail.png"), full_page=True)
         raise RuntimeError("복사 텍스트를 읽지 못했습니다.")
 
-    # 10) 3번째 줄의 http URL을 콘솔에 출력
+    # 12) 3번째 줄 URL 콘솔 출력(그대로 유지)
     lines = [ln.strip() for ln in copied_text.splitlines()]
     url_line = lines[2] if len(lines) >= 3 else ""
     if not url_line.startswith("http"):
@@ -366,5 +466,4 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
     # 산출물 저장
     await page.screenshot(path=str(job_dir / "list_done.png"), full_page=True)
     (job_dir / "copied.txt").write_text(copied_text or "", encoding="utf-8")
-
     return copied_text
