@@ -403,20 +403,40 @@ async def _read_clipboard_via_paste(page: Page) -> str:
 
 def _read_os_clipboard_windows() -> str:
     """
-    Windows PowerShell로 OS 클립보드 텍스트를 직접 읽는다.
-    (웹 권한과 무관하게, 동일 세션이면 안정적으로 동작)
+    Windows PowerShell로 OS 클립보드 텍스트를 UTF-8로 강제 출력해 읽는다.
+    (서버 로캘/코드페이지와 무관)
     """
     try:
+        ps = r"$OutputEncoding = [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Clipboard -Raw"
         cp = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"],
+            ["powershell", "-NoLogo", "-NoProfile", "-Command", ps],
             capture_output=True, text=True, encoding="utf-8", timeout=3
         )
         if cp.returncode == 0:
-            # BOM/개행 정리
             out = cp.stdout.lstrip("\ufeff").replace("\r\n", "\n")
             return out.strip()
     except Exception:
         pass
+    return ""
+
+def _extract_url_fuzzy(text: str) -> str:
+    # 제로폭/특수 공백 제거
+    cleaned = re.sub(r"[\u200b\u200c\u200d\u2060]", "", text or "")
+    cleaned = cleaned.replace("\xa0", " ")
+
+    # 1) 표준 URL
+    m = re.search(r"https?://[^\s<>'\"()\[\]]+", cleaned, re.IGNORECASE)
+    if m:
+        return m.group(0)
+
+    # 2) 토큰 사이에 공백이 섞인 형태(h t t p s : / /)
+    spaced = re.sub(r"\s+", " ", cleaned)
+    m2 = re.search(r"h\s*t\s*t\s*p\s*(s?)\s*:\s*/\s*/\s*([^\s<>'\"()\[\]]+)", spaced, re.IGNORECASE)
+    if m2:
+        scheme = "https" if m2.group(1) else "http"
+        rest = re.sub(r"\s+", "", m2.group(2))
+        return f"{scheme}://{rest}"
+
     return ""
 
 # 복사된 텍스트 읽기 (클립보드 → 여러 입력 폴백)
@@ -550,21 +570,17 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
         await page.screenshot(path=str(job_dir / "url_extract_fail.png"), full_page=True)
         raise RuntimeError("복사는 되었지만 텍스트를 읽지 못했습니다.")
 
-    # 11) 3번째 줄에서 URL 추출 (없으면 본문 내 최초 http URL로 폴백)
-    lines = [ln.strip() for ln in copied_text.splitlines() if ln.strip()]
-    url = lines[2] if len(lines) >= 3 and lines[2].startswith(("http://", "https://")) else ""
-    if not url:
-        m = re.search(r"https?://[^\s\"'<>]+", copied_text)
-        url = m.group(0) if m else ""
+    # 11) URL 추출 (퍼지 추출기 우선, 실패 시 전체 본문 반환)
+    url = _extract_url_fuzzy(copied_text)
 
     if not url:
+        # 디버깅 아티팩트 남기고, 전체 본문을 반환(알림/로그엔 그대로 찍힘)
         (job_dir / "copied_raw.txt").write_text(copied_text, encoding="utf-8")
-        await page.screenshot(path=str(job_dir / "url_extract_fail2.png"), full_page=True)
-        raise RuntimeError("복사는 되었지만 URL을 찾지 못했습니다.")
+        await page.screenshot(path=str(job_dir / "url_extract_fail.png"), full_page=True)
+        url = copied_text.strip()
 
     # 로그/산출물
     await page.evaluate("(u) => console.log('EXTRACTED_URL:', u)", url)
     await page.screenshot(path=str(job_dir / "list_done.png"), full_page=True)
     (job_dir / "copied.txt").write_text(copied_text or "", encoding="utf-8")
-    
     return url
