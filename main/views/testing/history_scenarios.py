@@ -1,114 +1,63 @@
-from playwright.sync_api import Page, expect
-import os, pathlib
+# playwright_login_wait_then_exit.py
+from playwright.sync_api import sync_playwright, expect, TimeoutError as PlaywrightTimeoutError
+import os
+import time
 
 LOGIN_URL = "http://210.104.181.10/auth/login/loginView.do"
+LOGIN_ID  = os.getenv("LOGIN_ID", "testingAI")
+LOGIN_PW  = os.getenv("LOGIN_PW", "12sqec34!")  # 필요 시 환경변수로 덮어쓰기
 
-# 계정 정보는 사용하지 않음 (로그인 제거)
-LOGIN_ID = os.getenv("LOGIN_ID", "testingAI")
-LOGIN_PW = os.getenv("LOGIN_PW", "12sqec34!")
-BASE_ORIGIN = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
+def main():
+    with sync_playwright() as p:
+        # 디버깅 시 headless=False 권장
+        browser = p.chromium.launch(headless=False, args=["--start-maximized"])
+        context = browser.new_context(viewport={"width": 1920, "height": 1080})
+        context.set_default_timeout(15000)
+        page = context.new_page()
 
-def run_scenario_sync(page: Page, job_dir: pathlib.Path, *, 시험번호: str, **kwargs) -> str:
-    assert 시험번호, "시험번호가 비어 있습니다."
+        # 1) 로그인 페이지 진입
+        page.goto(LOGIN_URL, wait_until="domcontentloaded")
 
-    # ── 0) 홈으로 진입 후 '검색 입력창'이 보일 때까지 대기 ────────────────
-    page.goto(f"{BASE_ORIGIN}/", wait_until="domcontentloaded")
-    page.wait_for_load_state("networkidle")
-
-    # 로그인 리다이렉트 감지 → 안전하게 로그인
-    if "login" in page.url.lower():
+        # 2) ID/PW 입력
         user = page.locator("input[name='user_id']")
         pwd  = page.locator("input[name='password']")
-        # ① 로그인 입력칸 가시성 대기
-        expect(user).to_be_visible(timeout=15000)
-        expect(pwd).to_be_visible(timeout=15000)
+        expect(user).to_be_visible()
+        expect(pwd).to_be_visible()
         user.fill(LOGIN_ID)
         pwd.fill(LOGIN_PW)
-        page.locator("div.area-right.btn-login.hcursor").click()
 
-    # ── 검색 인풋 등장까지 대기 (로그인 성공 판정 신뢰점)
-    search_input = page.locator("input.top-search2-input[name='q']")
-    try:
-        expect(search_input).to_be_visible(timeout=60000)
-        # 로그인 실패 방지: 혹시 여전히 로그인 페이지면 실패 처리
-        if "login" in page.url.lower():
-            raise RuntimeError("로그인에 실패했습니다. 계정/권한 또는 사이트 상태를 확인하세요.")
-    except Exception:
-        page.reload(wait_until="domcontentloaded")
-        page.wait_for_load_state("networkidle")
-        expect(search_input).to_be_visible(timeout=30000)
-        if "login" in page.url.lower():
-            raise RuntimeError("로그인에 실패했습니다(재시도 후에도 로그인 화면).")
+        # 3) 로그인 버튼 클릭 (네비게이션/비네비게이션 모두 대비)
+        login_btn = page.locator('div[title="로그인"], div.area-right.btn-login.hcursor').first
+        expect(login_btn).to_be_visible()
 
-    # ── 1) 검색 ───────────────────────────────────────────
-    search_value = f"{시험번호} 시험성적서"
-    print(f"[DEBUG] 검색값 = {search_value}")
+        try:
+            # 클릭으로 실제 네비가 일어나면 여기에서 기다림
+            with page.expect_navigation(wait_until="networkidle", timeout=5000):
+                login_btn.click()
+        except PlaywrightTimeoutError:
+            # AJAX 로그인 등 네비가 없을 수도 있음 → 클릭 후 네트워크 안정까지 대기
+            login_btn.click()
+            page.wait_for_load_state("networkidle")
 
-    search_input.fill(search_value)
-    search_btn = page.locator("div.top-search2-btn.hcursor")
-    expect(search_btn).to_be_visible(timeout=10000)
+        # 4) 로그인 완료 판정 (URL/폼/바디 ID 변화 중 하나라도 만족)
+        page.wait_for_function(
+            """
+            () => {
+              const notLoginURL = !/\\/auth\\/login/i.test(location.href);
+              const form = document.querySelector('#form-login');
+              const formGoneOrHidden = !form || form.offsetParent === null || getComputedStyle(form).display === 'none';
+              const bodyChanged = document.body && document.body.id !== 'login';
+              return notLoginURL || formGoneOrHidden || bodyChanged;
+            }
+            """,
+            timeout=30000
+        )
 
-    with page.expect_load_state("networkidle"):
-        search_btn.click()
+        print("[INFO] 로그인 완료로 판단됨. 10초 대기 후 종료합니다…")
+        time.sleep(10)
 
-    # ── 2) 결과 필터링 ─────────────────────────────────────
-    title_cards = page.locator("div.search_ftr_file_list_title.hcursor.ellipsis")
-    expect(title_cards).to_be_visible(timeout=30000)
+        context.close()
+        browser.close()
 
-    count = title_cards.count()
-    print(f"[DEBUG] 결과 항목 수: {count}")
-    target_index = None
-    sv_lower = search_value.lower()
-
-    for i in range(count):
-        txt = title_cards.nth(i).inner_text().strip()
-        low = txt.lower()
-        print(f"[DEBUG] [{i}] {txt}")
-        if (sv_lower in low) and ("docx" in low):
-            target_index = i
-            print(f"[DEBUG] 매칭 성공 인덱스: {i}")
-            break
-
-    if target_index is None:
-        raise RuntimeError("검색 결과에서 (검색값 & 'docx') 조건에 맞는 항목을 찾지 못했습니다.")
-
-    # 상위 컨테이너 → 새창 버튼 클릭
-    title_el = title_cards.nth(target_index)
-    container = title_el.locator("xpath=ancestor::div[contains(@class,'search_ftr_file_cont')]")
-    newwin_btn = container.locator("span.search_ftr_path_newwindow.hcursor[events='edm-document-property-view-newWindow-click']")
-
-    with page.expect_popup() as popup_info:
-        newwin_btn.click()
-    popup = popup_info.value
-    popup.wait_for_load_state("domcontentloaded")
-    popup.wait_for_load_state("networkidle")
-
-    # (선택) 클립보드 권한 선부여: 동일 컨텍스트에서 origin 지정
-    try:
-        page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE_ORIGIN)
-        # 팝업이 다른 경로일 수 있으므로 한번 더
-        if popup.url:
-            origin = popup.url.split("/", 3)[:3]  # scheme://host
-            origin = "/".join(origin) + "/"
-            page.context.grant_permissions(["clipboard-read", "clipboard-write"], origin=origin)
-    except Exception:
-        pass  # 권한 없는 환경이면 무시 (아래 readText에서 에러 처리)
-
-    # ── 3) 새창에서 내부 URL 복사 ─────────────────────────
-    copy_btn = popup.locator("div#prop-view-document-btn-url-copy.prop-view-file-btn-internal-urlcopy.hcursor")
-    expect(copy_btn).to_be_visible(timeout=15000)
-    copy_btn.click()
-
-    # 클립보드 텍스트 읽기
-    copied_text = popup.evaluate("navigator.clipboard.readText()")
-    print(f"[DEBUG] 복사된 문장: {copied_text!r}")
-
-    # 디버깅 아티팩트 저장
-    (job_dir / "copied.txt").write_text(copied_text or "", encoding="utf-8")
-    popup.screenshot(path=str(job_dir / "popup_done.png"), full_page=True)
-    page.screenshot(path=str(job_dir / "list_done.png"), full_page=True)
-
-    if not copied_text:
-        raise RuntimeError("복사된 문장을 읽지 못했습니다. 권한/정책/요소 변동을 확인하세요.")
-
-    return copied_text
+if __name__ == "__main__":
+    main()
