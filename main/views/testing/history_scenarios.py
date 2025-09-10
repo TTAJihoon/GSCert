@@ -6,6 +6,10 @@ BASE_ORIGIN = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
 LOGIN_URL   = os.getenv("LOGIN_URL", f"{BASE_ORIGIN}/auth/login/loginView.do")
 LOGIN_ID    = os.getenv("LOGIN_ID", "testingAI")
 LOGIN_PW    = os.getenv("LOGIN_PW", "12sqec34!")
+COPY_BTN_FULL_XPATH = os.getenv(
+    "COPY_BTN_XPATH",
+    "/html/body/div[2]/div[3]/div[2]/div[1]/div[4]/div/div/div[2]/div[2]/div[1]/div[2]/table/tbody/tr/td[1]/div[4]"
+)
 
 LEFT_TREE_SEL = (
     "div.edm-left-panel-menu-sub-item.ui-accordion-content.ui-helper-reset."
@@ -164,29 +168,43 @@ def _all_scopes(page: Page):
     for fr in page.frames:
         yield fr
 
-# 복사 버튼 찾기 (여러 셀렉터/스코프에서 가시 요소 1개 반환)
+# 복사 버튼 찾기 (XPATH 최우선, 안 되면 기존 셀렉터 폴백)
 async def _find_copy_button(page: Page, timeout=15000):
+    deadline = page.context._loop.time() + (timeout / 1000.0)
+
+    # 1) 제공된 full XPATH를 1순위로, 모든 스코프에서 시도
+    if COPY_BTN_FULL_XPATH:
+        while page.context._loop.time() < deadline:
+            for scope in _all_scopes(page):
+                try:
+                    loc = scope.locator(f"xpath={COPY_BTN_FULL_XPATH}")
+                    await loc.wait_for(state="attached", timeout=500)
+                    if await loc.is_visible():
+                        return loc
+                except Exception:
+                    pass
+            await page.wait_for_timeout(150)
+
+    # 2) 폴백: 알려진 CSS/속성 셀렉터들
     selectors = [
         "div#prop-view-document-btn-url-copy.prop-view-file-btn-internal-urlcopy.hcursor",
         "#prop-view-document-btn-url-copy",
         "div.prop-view-file-btn-internal-urlcopy[events='document-internal-url-click']",
         "div[events='document-internal-url-click']",
     ]
-    deadline = page.context._loop.time() + (timeout/1000.0)
-    last_err = None
     while page.context._loop.time() < deadline:
         for scope in _all_scopes(page):
             for sel in selectors:
                 loc = scope.locator(sel)
                 try:
-                    # attach→visible 순으로 빠르게 판정
-                    await loc.first.wait_for(state="attached", timeout=500)
+                    await loc.first.wait_for(state="attached", timeout=400)
                     if await loc.first.is_visible():
                         return loc.first
-                except Exception as e:
-                    last_err = e
-        await page.wait_for_timeout(200)
-    raise RuntimeError(f"URL 복사 버튼을 찾지 못했습니다: {last_err}")
+                except Exception:
+                    continue
+        await page.wait_for_timeout(150)
+
+    raise RuntimeError("URL 복사 버튼을 찾지 못했습니다(XPATH 및 폴백 모두 실패).")
 
 # 복사 버튼 '확실히' 클릭(+ 알림/모달 처리)
 async def _click_copy_and_close_alert(page: Page, btn, timeout=4000):
