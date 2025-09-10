@@ -456,23 +456,39 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
     # 10) 클릭하면서 메시지 캡처
     msg = await _click_copy_and_get_message(page, copy_btn, timeout=4000)
 
-    # 11) 최종 텍스트 읽기 (우선순위: dialog/msg → 스니퍼 → 클립보드/폴백)
-    copied_text = (msg or "").strip()
-    if not copied_text:
+    # 11) 최종 텍스트 확보 (msg에 http 없으면 버리고 스니퍼/클립보드/폴백 사용)
+    copied_text = ""
+    if msg and re.search(r"https?://", msg):
+        copied_text = msg.strip()
+    else:
         copied_text = await _read_copied_text(page)
+
     if not copied_text:
         await page.screenshot(path=str(job_dir / "list_after_copy_fail.png"), full_page=True)
-        raise RuntimeError("복사 텍스트를 읽지 못했습니다.")
+        raise RuntimeError("복사는 되었지만 텍스트를 읽지 못했습니다.")
 
-    # 12) 3번째 줄 URL 콘솔 출력(그대로 유지)
-    lines = [ln.strip() for ln in copied_text.splitlines()]
-    url_line = lines[2] if len(lines) >= 3 else ""
-    if not url_line.startswith("http"):
+    # 12) URL만 추출 (3번째 줄 우선 → 본문 내 최초 http → 페이지 전체 텍스트 폴백)
+    url = ""
+    lines = [ln.strip() for ln in copied_text.splitlines() if ln.strip()]
+    if len(lines) >= 3 and lines[2].startswith(("http://", "https://")):
+        url = lines[2]
+    else:
         m = re.search(r"https?://[^\s]+", copied_text)
-        url_line = m.group(0) if m else ""
-    await page.evaluate("(u) => console.log('EXTRACTED_URL:', u)", url_line)
+        url = m.group(0) if m else ""
 
-    # 산출물 저장
-    await page.screenshot(path=str(job_dir / "list_done.png"), full_page=True)
+    if not url:
+        page_text = await page.evaluate("() => document.body ? document.body.innerText : ''")
+        m2 = re.search(r"https?://[^\s]+", page_text or "")
+        url = m2.group(0) if m2 else ""
+
+    if not url:
+        # 디버깅을 위해 원문도 남겨둠
+        (job_dir / "copied_raw.txt").write_text(copied_text, encoding="utf-8")
+        await page.screenshot(path=str(job_dir / "url_extract_fail.png"), full_page=True)
+        raise RuntimeError("복사는 되었지만 URL을 찾지 못했습니다.")
+
+    # 콘솔 출력 및 산출물 저장
+    await page.evaluate("(u) => console.log('EXTRACTED_URL:', u)", url)
     (job_dir / "copied.txt").write_text(copied_text or "", encoding="utf-8")
-    return copied_text
+
+    return url  # ← 최종적으로 URL만 반환 (final_link가 URL이 됨)
