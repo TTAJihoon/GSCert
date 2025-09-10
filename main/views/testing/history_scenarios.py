@@ -67,7 +67,7 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
     search_input = page.locator("input.top-search2-input[name='q']")
     await expect(search_input).to_be_visible(timeout=60000)
 
-    search_value = f"{시험번호} 시험성적서"
+    search_value = f"{시험번호}"
     print(f"[DEBUG] 검색값 = {search_value}")
     await search_input.fill(search_value)
 
