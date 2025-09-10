@@ -219,3 +219,7 @@ html, body {
 .results-table th.col-wd         { width: 80px; }
 .results-table th.col-renewal    { width: 100px; }
 .results-table th.col-download   { width: 70px; }
+
+.hidden {
+  display: none;
+}
