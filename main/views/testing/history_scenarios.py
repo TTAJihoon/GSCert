@@ -119,6 +119,45 @@ async def _find_target_row(scope, 시험번호: str):
 
     return None
 
+# 새 헬퍼: 페이지/프레임 어디에 있든 문서명 span을 찾아 클릭
+async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000) -> bool:
+    """
+    span.document-list-item-name-text-span.left.hcursor.ellipsis 을 클릭한다.
+    - 우선순위: has_text(시험번호) > has_text('시험성적서') > 첫 번째 항목
+    - 페이지에서 못 찾으면 모든 iframe에서 탐색
+    - 찾지 못해도 비치명적(False 리턴) → 이후 단계 진행
+    """
+    css = "span.document-list-item-name-text-span.left.hcursor.ellipsis"
+
+    # 1) 메인 페이지
+    loc = page.locator(css)
+    if await loc.count() == 0:
+        # 2) 프레임 순회
+        for fr in page.frames:
+            frloc = fr.locator(css)
+            if await frloc.count() > 0:
+                loc = frloc
+                break
+
+    if await loc.count() == 0:
+        return False
+
+    # 우선순위 선택
+    cand = loc.filter(has_text=시험번호).first
+    if await cand.count() == 0:
+        cand = loc.filter(has_text="시험성적서").first
+    if await cand.count() == 0:
+        cand = loc.first
+
+    try:
+        await expect(cand).to_be_visible(timeout=timeout)
+        await cand.click()
+        # 클릭으로 상세/리스트가 갱신될 수 있으니 잠깐 대기
+        await page.wait_for_load_state("networkidle")
+        return True
+    except Exception:
+        return False
+
 async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호: str, 연도: str, 날짜: str, **kwargs) -> str:
     assert 시험번호 and 연도 and 날짜, "필수 인자(시험번호/연도/날짜)가 비었습니다."
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -139,6 +178,13 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
     # 6) 시험번호
     await _tree_click_by_name_contains(left_tree, 시험번호, timeout=20000)
 
+    
+    # 6.5) ★ 문서명 span 클릭 (요청하신 추가 스텝)
+    clicked = await _try_click_doc_name_span(page, 시험번호, timeout=12000)
+    if clicked:
+        # 문서명 클릭 후 콘텐츠가 바뀌는 UI라면 안정화를 위해 한 번 더 대기
+        await page.wait_for_load_state("networkidle")
+        
     # 패널 로딩 대기 + 파일리스트 스코프 결정
     await page.wait_for_load_state("networkidle")
     try:
