@@ -66,22 +66,38 @@ def run_scenario_sync(page: Page, job_dir: pathlib.Path, *, 시험번호: str, *
 
     # 3) 결과 필터링 후 새창 열기
     title_cards = page.locator("div.search_ftr_file_list_title.hcursor.ellipsis")
-    expect(title_cards).to_be_visible(timeout=30000)
+    # ✅ 최소 1개가 보일 때까지(첫 번째) 기다린 뒤, 텍스트로 좁힘
+    title_cards.first.wait_for(state="visible", timeout=30000)
 
-    count = title_cards.count()
-    target_index = None
-    sv_lower = search_value.lower()
-    for i in range(count):
-        txt = title_cards.nth(i).inner_text().strip()
-        low = txt.lower()
-        print(f"[DEBUG] [{i}] {txt}")
-        if (sv_lower in low) and ("docx" in low):
-            target_index = i
-            break
-    if target_index is None:
-        raise RuntimeError("검색 결과에서 (검색값 & 'docx') 조건에 맞는 항목을 찾지 못했습니다.")
+    # 3-1) 우선: 시험번호 + 'docx' 포함으로 좁히기
+    cand = title_cards.filter(has_text=re.compile(re.escape(시험번호), re.I)) \
+                      .filter(has_text=re.compile(r"\bdocx\b", re.I))
 
-    container = title_cards.nth(target_index).locator(
+    # 3-2) 없으면 시험번호만
+    if cand.count() == 0:
+        cand = title_cards.filter(has_text=re.compile(re.escape(시험번호), re.I))
+
+    # 3-3) 그래도 없으면 전체에서 루프 탐색(기존 로직)
+    target_el = None
+    if cand.count() > 0:
+        target_el = cand.first
+    else:
+        count = title_cards.count()
+        print(f"[DEBUG] 결과 항목 수: {count}")
+        sv_lower = f"{시험번호}".lower()
+        for i in range(count):
+            txt = title_cards.nth(i).inner_text().strip()
+            low = txt.lower()
+            print(f"[DEBUG] [{i}] {txt}")
+            if (sv_lower in low) and ("docx" in low):
+                target_el = title_cards.nth(i)
+                break
+        if target_el is None and count > 0:
+            # 최후 수단: 첫 항목
+            target_el = title_cards.first
+
+    # 상위 컨테이너 → 새창 버튼 클릭
+    container = target_el.locator(
         "xpath=ancestor::div[contains(@class,'search_ftr_file_cont')]"
     )
     newwin_btn = container.locator(
