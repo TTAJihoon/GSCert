@@ -5,6 +5,15 @@ document.addEventListener('DOMContentLoaded', function () {
     if (parts.length === 2) return decodeURIComponent(parts.pop().split(';').shift());
   }
 
+  const loading = document.getElementById('loadingIndicator');
+  
+  function showLoading() {
+    loading.classList.remove('hidden');
+  }
+  function hideLoading() {
+    loading.classList.add('hidden');
+  }
+
   document.addEventListener('click', async (e) => {
     const btn = e.target.closest('.download-btn');
     if (!btn) return;
@@ -17,6 +26,8 @@ document.addEventListener('DOMContentLoaded', function () {
 
     btn.disabled = true;
 
+    showLoading();
+    
     try {
       const res = await fetch('/api/run-job/', {
         method: 'POST',
@@ -49,6 +60,8 @@ document.addEventListener('DOMContentLoaded', function () {
     } catch (err) {
       btn.disabled = false;
       alert('요청 실패: ' + err.message);
+    } finally {
+      hideLoading();
     }
   });
 });
