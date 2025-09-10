@@ -1,5 +1,5 @@
 # playwright_login_wait_then_exit.py
-from playwright.sync_api import sync_playwright, expect, TimeoutError as PlaywrightTimeoutError
+from playwright.sync_api import Page, sync_playwright, expect, TimeoutError as PlaywrightTimeoutError
 import os
 import time
 
