@@ -393,6 +393,41 @@ async def _read_copied_text(page: Page) -> str:
 
     return ""
 
+# 네트워크 응답에서 http URL 하나 추출
+def _extract_url_from_text(s: str) -> str:
+    if not s:
+        return ""
+    # 같은 호스트 우선
+    host = BASE_ORIGIN.split("://", 1)[-1].split("/", 1)[0]
+    urls = re.findall(r"https?://[^\s\"'<>]+", s)
+    for u in urls:
+        if host in u:
+            return u
+    return urls[0] if urls else ""
+
+# "내부 배포용 URL 저장" 버튼 찾기
+async def _find_save_button(page: Page, timeout=3000):
+    now = asyncio.get_running_loop().time
+    deadline = now() + timeout/1000.0
+    selectors = [
+        "div#prop-view-document-btn-url-save",
+        ".prop-view-file-btn-internal-urlsave",
+        "div[title*='내부 배포용 URL 저장']",
+        "div:has-text('내부 배포용 URL 저장')",
+    ]
+    while now() < deadline:
+        for scope in _all_scopes(page):
+            for sel in selectors:
+                loc = scope.locator(sel)
+                try:
+                    await loc.first.wait_for(state="attached", timeout=400)
+                    if await loc.first.is_visible():
+                        return loc.first
+                except Exception:
+                    continue
+        await page.wait_for_timeout(150)
+    return None
+
 async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호: str, 연도: str, 날짜: str, **kwargs) -> str:
     assert 시험번호 and 연도 and 날짜, "필수 인자(시험번호/연도/날짜)가 비었습니다."
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -450,45 +485,87 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
     # 8) (신규) 복사 스니퍼 주입
     await _prime_copy_sniffer(page)
 
+    # 네트워크 스니핑 시작
+    captured_bodies = []
+    async def _on_resp(resp):
+        try:
+            ct = (resp.headers.get("content-type") or "").lower()
+            if any(x in ct for x in ("json", "text", "html")):
+                body = await resp.text()
+                if "http" in body:
+                    captured_bodies.append(body)
+        except Exception:
+            pass
+    page.on("response", _on_resp)
+
     # 9) 내부 URL 복사 버튼 찾기 (XPATH 우선)
     copy_btn = await _find_copy_button(page, timeout=20000)
 
     # 10) 클릭하면서 메시지 캡처
     msg = await _click_copy_and_get_message(page, copy_btn, timeout=4000)
 
-    # 11) 최종 텍스트 확보 (msg에 http 없으면 버리고 스니퍼/클립보드/폴백 사용)
-    copied_text = ""
-    if msg and re.search(r"https?://", msg):
-        copied_text = msg.strip()
-    else:
+    # 11) 최종 텍스트 확보 (msg에 http 없으면 버리고 스니퍼/클립보드/폴백/네트워크)
+    copied_text = msg.strip() if (msg and re.search(r"https?://", msg)) else ""
+
+    if not copied_text:
+        # 스니퍼/클립보드/입력/DOM 폴백
         copied_text = await _read_copied_text(page)
 
     if not copied_text:
-        await page.screenshot(path=str(job_dir / "list_after_copy_fail.png"), full_page=True)
+        # 방금 받은 네트워크 응답들에서 URL 추출
+        for body in reversed(captured_bodies):
+            url = _extract_url_from_text(body)
+            if url:
+                copied_text = url
+                break
+
+    if not copied_text:
+        # 폴백2: "내부 배포용 URL 저장" 버튼 시도 → 다시 읽기/네트워크 체크
+        save_btn = await _find_save_button(page, timeout=3000)
+        if save_btn:
+            try:
+                await save_btn.scroll_into_view_if_needed()
+                await save_btn.click()
+                await page.wait_for_timeout(600)
+            except Exception:
+                pass
+            # 저장 클릭 이후 한 번 더 수집
+            if captured_bodies:
+                for body in reversed(captured_bodies):
+                    url = _extract_url_from_text(body)
+                    if url:
+                        copied_text = url
+                        break
+            if not copied_text:
+                copied_text = await _read_copied_text(page)
+
+    # 스니핑 중단
+    page.off("response", _on_resp)
+
+    if not copied_text:
+        await page.screenshot(path=str(job_dir / "url_extract_fail.png"), full_page=True)
         raise RuntimeError("복사는 되었지만 텍스트를 읽지 못했습니다.")
 
-    # 12) URL만 추출 (3번째 줄 우선 → 본문 내 최초 http → 페이지 전체 텍스트 폴백)
+    # 12) URL만 추출 (문장 내에서)
     url = ""
     lines = [ln.strip() for ln in copied_text.splitlines() if ln.strip()]
     if len(lines) >= 3 and lines[2].startswith(("http://", "https://")):
         url = lines[2]
     else:
-        m = re.search(r"https?://[^\s]+", copied_text)
-        url = m.group(0) if m else ""
+        url = _extract_url_from_text(copied_text)
 
     if not url:
+        # 마지막 폴백: 페이지 전체에서 한 번 더
         page_text = await page.evaluate("() => document.body ? document.body.innerText : ''")
-        m2 = re.search(r"https?://[^\s]+", page_text or "")
-        url = m2.group(0) if m2 else ""
+        url = _extract_url_from_text(page_text)
 
     if not url:
-        # 디버깅을 위해 원문도 남겨둠
         (job_dir / "copied_raw.txt").write_text(copied_text, encoding="utf-8")
-        await page.screenshot(path=str(job_dir / "url_extract_fail.png"), full_page=True)
+        await page.screenshot(path=str(job_dir / "url_extract_fail2.png"), full_page=True)
         raise RuntimeError("복사는 되었지만 URL을 찾지 못했습니다.")
 
     # 콘솔 출력 및 산출물 저장
     await page.evaluate("(u) => console.log('EXTRACTED_URL:', u)", url)
     (job_dir / "copied.txt").write_text(copied_text or "", encoding="utf-8")
 
-    return url  # ← 최종적으로 URL만 반환 (final_link가 URL이 됨)
+    return url  # 최종 반환은 URL
