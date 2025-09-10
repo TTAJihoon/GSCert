@@ -1,4 +1,10 @@
-import os, pathlib, re
+# -*- coding: utf-8 -*-
+"""
+- 여기서는 전달받은 Page/Context만 사용 (절대 sync_playwright()를 열지 않음)
+- 흐름: 홈 진입 → 필요 시 로그인 처리 → 검색 → 결과 새창 → 내부 URL 복사 → 산출물 저장
+"""
+import os
+import pathlib
 from playwright.sync_api import Page, expect, TimeoutError as PWTimeout
 
 BASE_ORIGIN = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
@@ -6,7 +12,7 @@ LOGIN_URL   = os.getenv("LOGIN_URL", f"{BASE_ORIGIN}/auth/login/loginView.do")
 LOGIN_ID    = os.getenv("LOGIN_ID", "testingAI")
 LOGIN_PW    = os.getenv("LOGIN_PW", "12sqec34!")
 
-def _wait_login_completed(page, timeout=30000):
+def _wait_login_completed(page: Page, timeout=30000):
     page.wait_for_function(
         """
         () => {
@@ -20,43 +26,39 @@ def _wait_login_completed(page, timeout=30000):
         timeout=timeout,
     )
 
-def run_scenario_sync(page: Page, job_dir: pathlib.Path, *, 시험번호: str, hold_seconds: int = 0, **kwargs) -> str:
+def run_scenario_sync(page: Page, job_dir: pathlib.Path, *, 시험번호: str, **kwargs) -> str:
     assert 시험번호, "시험번호가 비어 있습니다."
+    job_dir.mkdir(parents=True, exist_ok=True)
 
     # 0) 홈 진입
     page.goto(f"{BASE_ORIGIN}/", wait_until="domcontentloaded")
     page.wait_for_load_state("networkidle")
 
-    # 1) 로그인 필요 시 처리(명시 클릭 + 내비 대기)
+    # 1) 로그인 필요 시 처리
     if "login" in page.url.lower() or page.locator("#form-login").count() > 0:
         user = page.locator("input[name='user_id']")
         pwd  = page.locator("input[name='password']")
         expect(user).to_be_visible(timeout=15000)
         expect(pwd).to_be_visible(timeout=15000)
-        user.fill(LOGIN_ID)
-        pwd.fill(LOGIN_PW)
+        user.fill(LOGIN_ID); pwd.fill(LOGIN_PW)
 
-        login_btn = page.locator('div[title="로그인"], div.area-right.btn-login.hcursor').first
-        expect(login_btn).to_be_visible(timeout=10000)
+        btn = page.locator('div[title="로그인"], div.area-right.btn-login.hcursor').first
+        expect(btn).to_be_visible(timeout=10000)
         try:
             with page.expect_navigation(wait_until="domcontentloaded", timeout=15000):
-                login_btn.click()
+                btn.click()
         except PWTimeout:
-            login_btn.click()
-            page.wait_for_load_state("networkidle")
+            btn.click(); page.wait_for_load_state("networkidle")
         _wait_login_completed(page, timeout=30000)
-
-    # (옵션) 로그인 완료 직후 잠깐 유지하고 싶을 때
-    if hold_seconds:
-        page.screenshot(path=str(job_dir / "after_login.png"), full_page=True)
-        page.wait_for_timeout(hold_seconds * 1000)
 
     # 2) 검색
     search_input = page.locator("input.top-search2-input[name='q']")
     expect(search_input).to_be_visible(timeout=60000)
 
     search_value = f"{시험번호} 시험성적서"
+    print(f"[DEBUG] 검색값 = {search_value}")
     search_input.fill(search_value)
+
     search_btn = page.locator("div.top-search2-btn.hcursor")
     expect(search_btn).to_be_visible(timeout=10000)
     search_btn.click()
@@ -71,7 +73,9 @@ def run_scenario_sync(page: Page, job_dir: pathlib.Path, *, 시험번호: str, h
     sv_lower = search_value.lower()
     for i in range(count):
         txt = title_cards.nth(i).inner_text().strip()
-        if (sv_lower in txt.lower()) and ("docx" in txt.lower()):
+        low = txt.lower()
+        print(f"[DEBUG] [{i}] {txt}")
+        if (sv_lower in low) and ("docx" in low):
             target_index = i
             break
     if target_index is None:
@@ -90,23 +94,21 @@ def run_scenario_sync(page: Page, job_dir: pathlib.Path, *, 시험번호: str, h
     popup.wait_for_load_state("domcontentloaded")
     popup.wait_for_load_state("networkidle")
 
-    # 4) 내부 URL 복사 시도 (권한 불가 시 폴백)
+    # 4) 내부 URL 복사 (권한 실패 대비 폴백 포함)
     copy_btn = popup.locator("div#prop-view-document-btn-url-copy.prop-view-file-btn-internal-urlcopy.hcursor")
     expect(copy_btn).to_be_visible(timeout=15000)
     copy_btn.click()
 
     copied_text = ""
     try:
-        # 클립보드 권한이 허용된 경우
         copied_text = popup.evaluate("navigator.clipboard.readText()")
     except Exception:
-        # 폴백: 입력 필드가 있으면 그 값 읽기
         try:
             copied_text = popup.locator("input#prop-view-document-internal-url").input_value()
         except Exception:
             copied_text = ""
 
-    # 아티팩트 저장
+    # 5) 산출물 저장
     popup.screenshot(path=str(job_dir / "popup_done.png"), full_page=True)
     page.screenshot(path=str(job_dir / "list_done.png"), full_page=True)
     (job_dir / "copied.txt").write_text(copied_text or "", encoding="utf-8")
