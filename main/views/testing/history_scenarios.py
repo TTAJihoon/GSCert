@@ -281,11 +281,16 @@ async def _find_copy_button(page: Page, timeout=15000):
     raise RuntimeError("URL 복사 버튼을 찾지 못했습니다(XPATH 및 폴백 모두 실패).")
 
 # 복사 버튼 '확실히' 클릭(+ 알림/모달 처리)
-async def _click_copy_and_get_message(page: Page, btn, timeout=4000) -> str:
-    # 클릭 시도
+async def _click_copy_and_get_clipboard_text(page: Page, btn, *, retries: int = 8, wait_ms: int = 150) -> str:
+    """
+    복사 버튼을 클릭한 뒤, 스니퍼/클립보드/입력 폴백을 통해 실제 복사된 텍스트를 읽는다.
+    - alert/모달 메시지는 전혀 사용하지 않는다.
+    - retries 동안 점증(backoff) 대기하며 재시도.
+    """
+    # 1) 클릭
     try:
         await btn.scroll_into_view_if_needed()
-        await expect(btn).to_be_visible(timeout=timeout)
+        await expect(btn).to_be_visible(timeout=4000)
         try:
             await btn.click()
         except Exception:
@@ -293,36 +298,17 @@ async def _click_copy_and_get_message(page: Page, btn, timeout=4000) -> str:
     except Exception:
         await btn.evaluate("(el) => el.click()")
 
-    # 네이티브 alert() 메시지 캡처
-    try:
-        async with page.expect_event("dialog", timeout=1500) as di:
-            pass
-    except Exception:
-        di = None
-
-    if di:
-        dlg = await di.value
-        msg = (dlg.message or "").strip()
+    # 2) 읽기: 스니퍼 → navigator.clipboard → 폴백을 여러 번 재시도
+    for i in range(retries):
         try:
-            await dlg.accept()
+            # _read_copied_text는 스니퍼/클립보드/입력/DOM 순으로 시도함
+            txt = await _read_copied_text(page)
+            if txt and txt.strip():
+                return txt.strip()
         except Exception:
             pass
-        return msg
-
-    # in-page 모달(jQuery UI 등) 텍스트 캡처
-    try:
-        modal = page.locator(".ui-dialog:visible .ui-dialog-content:visible")
-        if await modal.count():
-            txt = (await modal.first.inner_text()).strip()
-            ok_btn = page.locator(".ui-dialog:visible .ui-dialog-buttonset button:has-text('확인')")
-            if await ok_btn.count():
-                try:
-                    await ok_btn.first.click()
-                except Exception:
-                    pass
-            return txt
-    except Exception:
-        pass
+        # 점증 백오프
+        await page.wait_for_timeout(wait_ms * (i + 1))
 
     return ""
     
@@ -447,34 +433,33 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
     await expect(checkbox.first).to_be_visible(timeout=10000)
     await checkbox.first.check(timeout=10000)
 
-    # 8) (신규) 복사 스니퍼 주입
+    # 8) 복사 스니퍼 주입 (writeText/execCommand/copy 이벤트 가로채기)
     await _prime_copy_sniffer(page)
 
     # 9) 내부 URL 복사 버튼 찾기 (XPATH 우선)
     copy_btn = await _find_copy_button(page, timeout=20000)
 
-    # 10) 클릭하면서 메시지 캡처
-    msg = await _click_copy_and_get_message(page, copy_btn, timeout=4000)
-    print("msg: "+msg)
-
-    # 11) 최종 텍스트 읽기 (우선순위: dialog/msg → 스니퍼 → 클립보드/폴백)
-    copied_text = (msg or "").strip()
-    print("copied_text: "+copied_text)
+    # 10) 클릭 후, 클립보드 텍스트 직접 읽기
+    copied_text = await _click_copy_and_get_clipboard_text(page, copy_btn, retries=10, wait_ms=120)
     if not copied_text:
-        copied_text = await _read_copied_text(page)
-    if not copied_text:
-        await page.screenshot(path=str(job_dir / "list_after_copy_fail.png"), full_page=True)
-        raise RuntimeError("복사 텍스트를 읽지 못했습니다.")
+        await page.screenshot(path=str(job_dir / "url_extract_fail.png"), full_page=True)
+        raise RuntimeError("복사는 되었지만 텍스트를 읽지 못했습니다.")
 
-    # 12) 3번째 줄 URL 콘솔 출력(그대로 유지)
-    lines = [ln.strip() for ln in copied_text.splitlines()]
-    url_line = lines[2] if len(lines) >= 3 else ""
-    if not url_line.startswith("http"):
-        m = re.search(r"https?://[^\s]+", copied_text)
-        url_line = m.group(0) if m else ""
-    await page.evaluate("(u) => console.log('EXTRACTED_URL:', u)", url_line)
+    # 11) 3번째 줄에서 URL 추출 (없으면 본문 내 최초 http URL로 폴백)
+    lines = [ln.strip() for ln in copied_text.splitlines() if ln.strip()]
+    url = lines[2] if len(lines) >= 3 and lines[2].startswith(("http://", "https://")) else ""
+    if not url:
+        m = re.search(r"https?://[^\s\"'<>]+", copied_text)
+        url = m.group(0) if m else ""
 
-    # 산출물 저장
+    if not url:
+        (job_dir / "copied_raw.txt").write_text(copied_text, encoding="utf-8")
+        await page.screenshot(path=str(job_dir / "url_extract_fail2.png"), full_page=True)
+        raise RuntimeError("복사는 되었지만 URL을 찾지 못했습니다.")
+
+    # 로그/산출물
+    await page.evaluate("(u) => console.log('EXTRACTED_URL:', u)", url)
     await page.screenshot(path=str(job_dir / "list_done.png"), full_page=True)
     (job_dir / "copied.txt").write_text(copied_text or "", encoding="utf-8")
-    return copied_text
+    
+    return url
