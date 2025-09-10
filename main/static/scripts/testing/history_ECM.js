@@ -31,10 +31,6 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!testNo)       return alert('시험번호를 찾을 수 없습니다.');
     if (!certDateRaw)  return alert('인증일자를 찾을 수 없습니다.');
 
-    // 팝업 차단 회피용: 사용자 제스처 시점에 새 탭을 미리 열어둔다.
-    let previewWin = null;
-    try { previewWin = window.open('about:blank', '_blank'); } catch (_) {}
-
     btn.disabled = true;
     showLoading();
 
@@ -65,6 +61,9 @@ document.addEventListener('DOMContentLoaded', function () {
           const link = s.final_link || '';
           console.log('복사된 문장:', link);
 
+          // 팝업 차단 회피용: 사용자 제스처 시점에 새 탭을 미리 열어둔다.
+          let previewWin = null;
+          try { previewWin = window.open('about:blank', '_blank'); } catch (_) {}
           // URL이면 새 탭으로 열기, 아니면 alert로 본문 표시
           if (/^https?:\/\//i.test(link)) {
             if (previewWin && !previewWin.closed) {
