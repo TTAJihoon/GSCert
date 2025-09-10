@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 import os, re, pathlib
-import asyncio
+import asyncio, subprocess
 from playwright.async_api import Page, expect, TimeoutError as PWTimeout, Error as PWError
 
 BASE_ORIGIN = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
@@ -316,28 +316,84 @@ async def _click_copy_and_get_clipboard_text(page: Page, btn, *, retries: int = 
         await page.wait_for_timeout(wait_ms * (i + 1))
 
     return ""
-    
+
+async def _read_clipboard_via_paste(page: Page) -> str:
+    """
+    OS 클립보드를 페이지의 숨은 textarea에 Ctrl+V로 붙여넣고 값을 읽어온다.
+    Chrome의 clipboard-read 권한 없이도 동작(키보드 제스처).
+    """
+    try:
+        await page.evaluate("""
+          () => {
+            let el = document.getElementById('__pw_clipboard_sink');
+            if (!el) {
+              el = document.createElement('textarea');
+              el.id = '__pw_clipboard_sink';
+              el.autocomplete = 'off';
+              el.style.position = 'fixed';
+              el.style.opacity = '0';
+              el.style.pointerEvents = 'none';
+              el.style.left = '-9999px';
+              el.style.top = '0';
+              document.body.appendChild(el);
+            }
+            el.value = '';
+            el.focus();
+          }
+        """)
+        await page.keyboard.press("Control+V")   # (mac이면 Meta+V로 교체)
+        await page.wait_for_timeout(80)
+        val = await page.locator("#__pw_clipboard_sink").input_value()
+        return (val or "").strip()
+    except Exception:
+        return ""
+
+def _read_os_clipboard_windows() -> str:
+    """
+    Windows PowerShell로 OS 클립보드 텍스트를 직접 읽는다.
+    (웹 권한과 무관하게, 동일 세션이면 안정적으로 동작)
+    """
+    try:
+        cp = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"],
+            capture_output=True, text=True, encoding="utf-8", timeout=3
+        )
+        if cp.returncode == 0:
+            # BOM/개행 정리
+            out = cp.stdout.lstrip("\ufeff").replace("\r\n", "\n")
+            return out.strip()
+    except Exception:
+        pass
+    return ""
+
 # 복사된 텍스트 읽기 (클립보드 → 여러 입력 폴백)
 async def _read_copied_text(page: Page) -> str:
-    # 0) 스니퍼가 저장한 값 최우선
+    # 0) 스니퍼 값 최우선
     for scope in _all_scopes(page):
         try:
-            txt = await scope.evaluate("window.__last_copied || (window.__copied_texts && window.__copied_texts.slice(-1)[0]) || ''")
-            if txt and txt.strip():
-                return txt
+            t = await scope.evaluate(
+                "window.__last_copied || (window.__copied_texts && window.__copied_texts.slice(-1)[0]) || ''"
+            )
+            if t and t.strip():
+                return t
         except Exception:
             pass
 
-    # 1) 클립보드
+    # 1) 붙여넣기 우회 (숨은 textarea에 Ctrl+V)
+    t = await _read_clipboard_via_paste(page)
+    if t:
+        return t
+
+    # 2) 브라우저 클립보드 API (권한 있을 때만 성공)
     for scope in _all_scopes(page):
         try:
-            txt = await scope.evaluate("navigator.clipboard.readText()")
-            if txt and txt.strip():
-                return txt
+            t = await scope.evaluate("navigator.clipboard.readText()")
+            if t and t.strip():
+                return t
         except Exception:
             pass
 
-    # 2) 입력 상자 폴백
+    # 3) 입력 상자 폴백
     input_selectors = [
         "input#prop-view-document-internal-url",
         "input[name*='internal'][name*='url']",
@@ -355,32 +411,23 @@ async def _read_copied_text(page: Page) -> str:
                 except Exception:
                     continue
 
-    # 3) 화면 내 텍스트에서 URL 추출(최후의 수단)
+    # 4) 화면 텍스트에서 URL 추출(최후)
     for scope in _all_scopes(page):
         try:
-            candidates = await scope.evaluate(r"""
-                () => {
-                  const vals = [];
-                  for (const el of document.querySelectorAll('a[href^="http"]')) {
-                    vals.push(el.href);
-                  }
-                  for (const el of document.querySelectorAll('input[type="text"], textarea')) {
-                    if (el.value) vals.push(el.value);
-                  }
-                  const it = document.createNodeIterator(document.body, NodeFilter.SHOW_TEXT);
-                  let n; while (n = it.nextNode()) {
-                    const t = n.nodeValue || '';
-                    if (t && t.includes('http')) vals.push(t);
-                  }
-                  return vals.slice(0, 200);
-                }
-            """)
-            for s in candidates:
-                m = re.search(r"https?://[^\s]+", s)
-                if m:
-                    return m.group(0)
+            txt = await scope.evaluate("() => document.body ? document.body.innerText || '' : '' ")
+            m = re.search(r'https?://[^\s]+', txt or '')
+            if m:
+                return m.group(0)
         except Exception:
             pass
+
+    # 5) Windows OS 클립보드 직접 읽기 (비동기 스레드로)
+    try:
+        os_clip = await asyncio.to_thread(_read_os_clipboard_windows)
+        if os_clip:
+            return os_clip
+    except Exception:
+        pass
 
     return ""
 
