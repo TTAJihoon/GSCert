@@ -11,7 +11,21 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function showLoading() { loading && loading.classList.remove('hidden'); }
   function hideLoading() { loading && loading.classList.add('hidden'); }
-
+  function openInNewTab(url) {
+    if (!url) return;
+    const w = window.open(url, '_blank', 'noopener,noreferrer');
+    if (w) return; // 성공
+    // 팝업 차단 폴백: 보이지 않는 앵커 클릭
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 0);
+  }
+  
   document.addEventListener('click', async (e) => {
     const btn = e.target.closest('.download-btn');
     if (!btn) return;
@@ -64,35 +78,25 @@ document.addEventListener('DOMContentLoaded', function () {
           const s = await r.json();
 
           if (s.status === 'DONE') {
-            clearInterval(timer);
-            btn.disabled = false;
-            hideLoading();
             console.log('복사된 문장:', s.final_link);
-            alert('완료!\n' + s.final_link);
+            openInNewTab(url);
           } else if (s.status === 'ERROR') {
-            clearInterval(timer);
-            btn.disabled = false;
-            hideLoading();
             console.error('실패:', s.error);
             alert('실패: ' + (s.error || '오류가 발생했습니다.'));
           } else if (Date.now() - startedAt > POLL_TIMEOUT_MS) {
-            clearInterval(timer);
-            btn.disabled = false;
-            hideLoading();
             alert('처리가 지연되고 있습니다. 잠시 후 다시 시도해 주세요.');
           }
         } catch (err) {
-          clearInterval(timer);
-          btn.disabled = false;
-          hideLoading();
           alert('상태 조회 실패: ' + err.message);
+        } finally {
+          clearInterval(timer);
         }
       }, POLL_MS);
 
     } catch (err) {
+      alert('요청 실패: ' + err.message);
+    } finally {
       btn.disabled = false;
       hideLoading();
-      alert('요청 실패: ' + err.message);
-    }
   });
 });
