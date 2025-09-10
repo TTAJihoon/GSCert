@@ -22,13 +22,9 @@ def run_scenario_sync(page: Page, job_dir: pathlib.Path, *, 시험번호: str, *
         # ① 로그인 입력칸 가시성 대기
         expect(user).to_be_visible(timeout=15000)
         expect(pwd).to_be_visible(timeout=15000)
-
         user.fill(LOGIN_ID)
         pwd.fill(LOGIN_PW)
-
-        # ② Enter 후 네트워크 안정 상태 대기(간헐적 폼비동기 처리 대비)
-        with page.expect_load_state("networkidle"):
-            pwd.press("Enter")
+        page.locator("div.area-right.btn-login.hcursor").click()
 
     # ── 검색 인풋 등장까지 대기 (로그인 성공 판정 신뢰점)
     search_input = page.locator("input.top-search2-input[name='q']")
