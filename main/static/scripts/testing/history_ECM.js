@@ -88,10 +88,9 @@ document.addEventListener('DOMContentLoaded', function () {
           }
         } catch (err) {
           alert('상태 조회 실패: ' + err.message);
-        } finally {
-          clearInterval(timer);
         }
       }, POLL_MS);
+      clearInterval(timer);
 
     } catch (err) {
       alert('요청 실패: ' + err.message);
