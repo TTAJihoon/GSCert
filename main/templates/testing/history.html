@@ -79,7 +79,7 @@
   <div class="main-content">
     <div class="hidden" id="loadingIndicator" style="text-align:center; margin-top:20px;">
       <i class="fas fa-spinner fa-spin" style="font-size:24px; color:#3498db;"></i>
-      <span style="margin-left:10px; font-size:18px;">ECM에서 시험성적서를 다운로드 중입니다. 잠시만 기다려 주세요...</span>
+      <span style="margin-left:10px; font-size:18px;">시험성적서 다운로드가 가능한 ECM 페이지를 열고 있습니다. 잠시만 기다려 주세요...</span>
     </div>
     {% if response %}
     <div class="result-box">
@@ -91,6 +91,9 @@
     <div class="content-header">
       <h2 style="margin: 0; color: var(--tta-blue); font-size: 24px;">
         <i class="fas fa-list-alt"></i> 시험 이력 조회 결과
+          <span class="tooltip">ⓘ
+            <span class="tooltiptext">ECM에서 시험성적서를 다운로드 받기 위해서는</BR>분당 ECM(210.104.181.10)에 로그인이 필요합니다.</span>
+          </span>
       </h2>
       <div class="results-count" id="resultsCount">🔍 총 {{ response_tables|length }}건의 검색 결과</div>
     </div>
