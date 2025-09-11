@@ -39,6 +39,7 @@ html {
   min-height: 0;         /* 내부 스크롤 가능하도록 */
   display: flex;
   background: white;
+  min-height: 755px;
 }
 
 .tooltiptext.search {
