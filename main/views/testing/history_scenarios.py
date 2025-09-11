@@ -145,18 +145,16 @@ async def _find_target_row(scope, 시험번호: str):
 # 페이지/프레임 어디에 있든 문서명 span을 찾아 클릭
 async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000, debug=False) -> bool:
     # 실제 클릭 가능한 스팬(이벤트 특성 있음) 우선, 없으면 일반 클래스 폴백
-    CSS_WITH_EVT = "span.document-list-item-name-text-span.left.hcursor.ellipsis[events='document-list-viewDocument-click']"
-    CSS_BASE     = "span.document-list-item-name-text-span.left.hcursor.ellipsis"
+    CSS_WITH_EVT = (
+        "span.document-list-item-name-text-span.left.hcursor.ellipsis"
+        "[events='document-list-viewDocument-click']"
+    )
+    CSS_BASE = "span.document-list-item-name-text-span.left.hcursor.ellipsis"
 
-    # 경계일치 정규식: 앞뒤가 비문자/경계면 허용
-    def boundary_pat(text: str) -> re.Pattern:
-        return re.compile(rf"(^|\W){re.escape(text)}(\W|$)")
-
-    pat_num   = boundary_pat(시험번호) if 시험번호 else None
-    pat_score = boundary_pat("시험성적서")
+    pat_num   = _boundary_pat(시험번호) if 시험번호 else None
+    pat_score = _boundary_pat("시험성적서")
 
     async def _click_first(loc, label: str) -> bool:
-        """첫 매칭 요소를 스크롤→가시성 확인→클릭(강제/평가식 폴백)"""
         if await loc.count() == 0:
             return False
         cand = loc.first
@@ -183,20 +181,17 @@ async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000,
         return True
 
     scopes = [page] + list(page.frames)
-
     for scope in scopes:
         base = scope.locator(CSS_WITH_EVT)
         if await base.count() == 0:
             base = scope.locator(CSS_BASE)
         if debug:
-            c = await base.count()
-            print(f"[scope] base spans = {c}")
+            print(f"[scope] base spans = {await base.count()}")
 
-        # 1) {시험번호} 경계일치
+        # ① {시험번호} 경계일치
         if pat_num and await _click_first(base.filter(has_text=pat_num), "num-boundary"):
             return True
-
-        # 2) '시험성적서' 경계일치
+        # ② '시험성적서' 경계일치
         if await _click_first(base.filter(has_text=pat_score), "score-boundary"):
             return True
 
