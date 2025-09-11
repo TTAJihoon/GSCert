@@ -155,8 +155,8 @@ async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000,
     )
     CSS_BASE = "span.document-list-item-name-text-span.left.hcursor.ellipsis"
 
-    pat_num   = _boundary_pat(시험번호) if 시험번호 else None
     pat_score = _boundary_pat("시험성적서")
+    pat_num   = _boundary_pat(시험번호) if 시험번호 else None
 
     async def _click_first(loc, label: str) -> bool:
         if await loc.count() == 0:
@@ -180,7 +180,7 @@ async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000,
                 await cand.click(force=True)
             except Exception:
                 await cand.evaluate("el => el.click()")
-        # pane-2가 실제로 열렸는지 확인
+        # pane-2 오픈 확인
         await expect(page.locator("#edm-contents-pane-2")).to_be_visible(timeout=15000)
         return True
 
@@ -192,15 +192,16 @@ async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000,
         if debug:
             print(f"[scope] base spans = {await base.count()}")
 
-        # ① {시험번호} 경계일치
-        if pat_num and await _click_first(base.filter(has_text=pat_num), "num-boundary"):
-            return True
-        # ② '시험성적서' 경계일치
+        # ① '시험성적서' 경계일치 먼저 시도
         if await _click_first(base.filter(has_text=pat_score), "score-boundary"):
             return True
 
+        # ② {시험번호} 경계일치
+        if pat_num and await _click_first(base.filter(has_text=pat_num), "num-boundary"):
+            return True
+
     if debug:
-        print("[info] no clickable span matched by boundary rules (시험번호 / 시험성적서)")
+        print("[info] no clickable span matched by boundary rules ('시험성적서' → 시험번호)")
     return False
         
 # 모든 페이지/프레임을 순회하는 제너레이터
