@@ -144,6 +144,7 @@ async def _find_target_row(scope, 시험번호: str):
 
 # 페이지/프레임 어디에 있든 문서명 span을 찾아 클릭
 async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000, debug=False) -> bool:
+    CSS = "span.document-list-item-name-text-span.left.hcursor.ellipsis"
     scopes = [page] + list(page.frames)
 
     # 1) 시험번호 완전 일치 (양쪽 공백 허용)
