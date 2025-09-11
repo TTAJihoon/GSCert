@@ -17,6 +17,12 @@ LEFT_TREE_SEL = (
     "ui-widget-content.ui-corner-bottom.ui-accordion-content-active[submenu_type='Folder']"
 )
 
+def attach_debug_listeners(page: Page):
+    page.on("console", lambda msg: print(f"[browser:{msg.type}] {msg.text}"))
+    page.on("pageerror", lambda err: print(f"[pageerror] {err}"))
+    page.on("requestfailed", lambda req: print(f"[requestfailed] {req.url} {req.failure.error_text if req.failure else ''}"))
+    page.on("response", lambda res: print(f"[response] {res.status} {res.url}"))
+    
 async def _dump_locator(locator: Locator, label: str, max_items: int = 5, pattern: re.Pattern | None = None) -> None:
     cnt = await locator.count()
     print(f"\n[{label}] count={cnt}")
@@ -527,6 +533,8 @@ async def _read_copied_text(page: Page) -> str:
     return ""
 
 async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호: str, 연도: str, 날짜: str, **kwargs) -> str:
+    attach_debug_listeners(page) #Debugging
+    
     assert 시험번호 and 연도 and 날짜, "필수 인자(시험번호/연도/날짜)가 비었습니다."
     job_dir.mkdir(parents=True, exist_ok=True)
 
@@ -548,7 +556,7 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
 
     
     # 6.5) ★ 문서명 span 클릭 (요청하신 추가 스텝)
-    clicked = await _try_click_doc_name_span(page, 시험번호, timeout=12000)
+    clicked = await _try_click_doc_name_span(page, 시험번호, timeout=12000, debug=True)
     if clicked:
         # 문서명 클릭 후 콘텐츠가 바뀌는 UI라면 안정화를 위해 한 번 더 대기
         await page.wait_for_load_state("networkidle")
@@ -556,10 +564,10 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
     # 패널 로딩 대기 + 파일리스트 스코프 결정
     await page.wait_for_load_state("networkidle")
     try:
-        scope = await _find_filelist_scope(page, timeout=20000)
+        scope = await _find_filelist_scope(page, timeout=5000)
     except Exception:
         await page.wait_for_load_state("domcontentloaded")
-        scope = await _find_filelist_scope(page, timeout=20000)
+        scope = await _find_filelist_scope(page, timeout=5000)
 
     # 7) 행 찾기(보강)
     row = await _find_target_row(scope, 시험번호)
