@@ -142,6 +142,10 @@ async def _find_target_row(scope, 시험번호: str):
 
     return None
 
+def _boundary_pat(text: str) -> re.Pattern:
+    # 앞/뒤가 '한글·영문·숫자'가 아니면 경계로 간주 (언더스코어·하이픈·점 등은 경계로 인정)
+    return re.compile(rf"(?<![0-9A-Za-z가-힣]){re.escape(text)}(?![0-9A-Za-z가-힣])")
+    
 # 페이지/프레임 어디에 있든 문서명 span을 찾아 클릭
 async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000, debug=False) -> bool:
     # 실제 클릭 가능한 스팬(이벤트 특성 있음) 우선, 없으면 일반 클래스 폴백
