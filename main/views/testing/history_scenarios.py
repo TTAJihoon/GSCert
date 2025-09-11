@@ -45,8 +45,12 @@ COPY_BTN_FULL_XPATH = os.getenv("COPY_BTN_XPATH", "").strip()
 # Small Utilities
 # =========================
 def _boundary_pat(text: str) -> re.Pattern:
-    """양쪽이 한글/영문/숫자가 아니면 경계로 간주(언더스코어/하이픈/점 등은 경계 인정)."""
-    return re.compile(rf"(?<![0-9A-Za-z가-힣]){re.escape(text)}(?![0-9A-Za-z가-힣])")
+    """
+    앞/뒤가 '한글·영문·숫자'가 아니면 경계로 간주.
+    (?<!…)(?!…) 대신 (^|[^…]) … ([^…]|$) 패턴으로 교체 → 브라우저 RegExp 호환↑
+    """
+    cls = r"0-9A-Za-z가-힣"
+    return re.compile(rf"(?:^|[^{cls}]){re.escape(text)}(?:[^{cls}]|$)")
 
 async def _wait_top_ready(page: Page, timeout=T_MED):
     """로그인 완료 후 상단 컨테이너가 보이는지로 초기 안정화."""
@@ -131,23 +135,21 @@ async def _tree_click_by_name_contains(scope: Locator | Page, text: str, timeout
 # =========================
 # Document selection
 # =========================
-async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=T_MED, debug=False) -> bool:
-    """
-    문서명 span 클릭 → pane-2 열림 확인.
-    우선순위: ① '시험성적서' 경계일치 → ② {시험번호} 경계일치
-    """
+async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=15000, debug=False) -> bool:
+    CSS_EVT = "span.document-list-item-name-text-span.left.hcursor.ellipsis[events='document-list-viewDocument-click']"
+    CSS_SP  = "span.document-list-item-name-text-span.left.hcursor.ellipsis"
     pat_score = _boundary_pat("시험성적서")
     pat_num   = _boundary_pat(시험번호) if 시험번호 else None
 
-    async def _click_first(loc, tag: str) -> bool:
+    async def _click(loc: Locator, tag: str) -> bool:
         if await loc.count() == 0:
             return False
         cand = loc.first
-        if debug or DEBUG_PW:
+        if debug:
             try: print(f"[match:{tag}] {await cand.inner_text()!r}")
-            except Exception: pass
+            except: pass
         try: await cand.scroll_into_view_if_needed()
-        except Exception: pass
+        except: pass
         await expect(cand).to_be_visible(timeout=timeout)
         try:
             await cand.click()
@@ -155,23 +157,59 @@ async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=T_MED,
             try:    await cand.click(force=True)
             except Exception:
                 await cand.evaluate("el => el.click()")
-        await _wait_pane2_ready(page, timeout=T_MED)
+        # pane-2 등장까지 대기(네트워크 idle 대신 UI 시그널)
+        await page.wait_for_function(
+            """() => {
+                const p = document.querySelector('#edm-contents-pane-2');
+                if (!p) return false;
+                const cs = getComputedStyle(p);
+                const v = cs.display !== 'none' && cs.visibility !== 'hidden' && p.offsetParent !== null;
+                return v && (p.querySelector('#prop-view-file-list-tbody') || p.querySelector('input.file-list-type'));
+            }""",
+            timeout=15000
+        )
         return True
 
-    for scope in _all_scopes(page):
-        base = scope.locator(SEL["doc_span_evt"])
+    # 1차: 스팬 직접 필터 (페이지 + 모든 프레임)
+    scopes = [page] + list(page.frames)
+    for scope in scopes:
+        base = scope.locator(CSS_EVT)
         if await base.count() == 0:
-            base = scope.locator(SEL["doc_span"])
+            base = scope.locator(CSS_SP)
 
-        # ① '시험성적서' 경계일치
-        if await _click_first(base.filter(has_text=pat_score), "score-boundary"):
+        # ① '시험성적서' 경계일치 먼저
+        if await _click(base.filter(has_text=pat_score), "score-boundary"):
             return True
-        # ② {시험번호} 경계일치
-        if pat_num and await _click_first(base.filter(has_text=pat_num), "num-boundary"):
+        # ② 시험번호 경계일치
+        if pat_num and await _click(base.filter(has_text=pat_num), "num-boundary"):
             return True
 
-    if debug or DEBUG_PW:
-        print("[info] no clickable span matched by boundary rules ('시험성적서' → 시험번호)")
+    # 2차 폴백: **행(tr)** 단위로 필터 → 행 안의 스팬 클릭
+    #   스팬 텍스트가 분할되었거나 prefix/suffix가 많은 경우를 커버
+    for scope in scopes:
+        rows = scope.locator("tr:has(span.document-list-item-name-text-span.left.hcursor.ellipsis)")
+        # ① '시험성적서' 경계일치 행
+        row = rows.filter(has_text=pat_score).first
+        if await row.count() > 0:
+            return await _click(row.locator(CSS_SP).first, "row-score-boundary")
+        # ② 시험번호 경계일치 행
+        if pat_num:
+            row = rows.filter(has_text=pat_num).first
+            if await row.count() > 0:
+                return await _click(row.locator(CSS_SP).first, "row-num-boundary")
+
+    if debug:
+        # 상황 파악용 최소 덤프
+        try:
+            cands = page.locator(CSS_SP)
+            n = await cands.count()
+            texts = []
+            for i in range(min(n, 8)):
+                try: texts.append(await cands.nth(i).inner_text())
+                except: break
+            print(f"[info] span candidates={n}, samples={texts}")
+        except: pass
+
     return False
 
 async def _get_pane2(page: Page, timeout=T_MED) -> Locator:
