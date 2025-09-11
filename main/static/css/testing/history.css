@@ -19,6 +19,10 @@ html {
   overflow: auto;
 }
 
+body {
+  height: 100%;
+}
+
 /* ── 최상위 컨테이너: 세로 플렉스, 상단바 + 콘텐츠 영역 ── */
 .main-container {
   width: 100%;
