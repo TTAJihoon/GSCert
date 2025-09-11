@@ -1,41 +1,95 @@
 # -*- coding: utf-8 -*-
-import os, re, pathlib
-import asyncio, subprocess
-from playwright.async_api import Page, expect, TimeoutError as PWTimeout, Error as PWError, Locator
+import os, re, pathlib, asyncio, subprocess
+from playwright.async_api import Page, expect, TimeoutError as PWTimeout, Locator
 
+# =========================
+# Config & Constants
+# =========================
 BASE_ORIGIN = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
 LOGIN_URL   = os.getenv("LOGIN_URL", f"{BASE_ORIGIN}/auth/login/loginView.do")
 LOGIN_ID    = os.getenv("LOGIN_ID", "testingAI")
 LOGIN_PW    = os.getenv("LOGIN_PW", "12sqec34!")
-COPY_BTN_FULL_XPATH = os.getenv(
-    "COPY_BTN_XPATH",
-    "/html/body/div[2]/div[3]/div[2]/div[1]/div[4]/div/div/div[2]/div[2]/div[1]/div[2]/table/tbody/tr/td[1]/div[4]"
-)
+DEBUG_PW    = os.getenv("PW_DEBUG", "0") == "1"   # 디버그 로그 on/off
 
-LEFT_TREE_SEL = (
-    "div.edm-left-panel-menu-sub-item.ui-accordion-content.ui-helper-reset."
-    "ui-widget-content.ui-corner-bottom.ui-accordion-content-active[submenu_type='Folder']"
-)
+# timeouts
+T_SHORT = 5_000
+T_MED   = 15_000
+T_LONG  = 30_000
 
-async def _dump_locator(locator: Locator, label: str, max_items: int = 5, pattern: re.Pattern | None = None) -> None:
-    cnt = await locator.count()
-    print(f"\n[{label}] count={cnt}")
-    take = min(cnt, max_items)
-    for i in range(take):
-        el = locator.nth(i)
-        inner = await el.inner_text()
-        raw = await el.evaluate("el => el.textContent")
-        html = await el.evaluate("el => el.outerHTML")
-        match_inner = bool(pattern.search(inner)) if pattern else None
-        match_raw = bool(pattern.search(raw)) if pattern else None
-        print(f"--- {label}[{i}] ---")
-        print(f"inner_text: {inner!r}")
-        print(f"textContent: {raw!r}")
-        if pattern:
-            print(f"regex match(inner_text)={match_inner}, regex match(textContent)={match_raw}")
-        print(f"outerHTML(head): {html[:400]}")
-        
-async def _wait_login_completed(page: Page, timeout=30000):
+# selectors
+SEL = {
+    "left_tree": (
+        "div.edm-left-panel-menu-sub-item.ui-accordion-content.ui-helper-reset."
+        "ui-widget-content.ui-corner-bottom.ui-accordion-content-active[submenu_type='Folder']"
+    ),
+    "pane2": "#edm-contents-pane-2",
+    "file_tbody": "#prop-view-file-list-tbody",
+    "doc_span_evt": (
+        "span.document-list-item-name-text-span.left.hcursor.ellipsis"
+        "[events='document-list-viewDocument-click']"
+    ),
+    "doc_span": "span.document-list-item-name-text-span.left.hcursor.ellipsis",
+    "copy_btns": [
+        "div#prop-view-document-btn-url-copy.prop-view-file-btn-internal-urlcopy.hcursor",
+        "#prop-view-document-btn-url-copy",
+        "div.prop-view-file-btn-internal-urlcopy[events='document-internal-url-click']",
+        "div[events='document-internal-url-click']",
+    ],
+}
+
+# (옵션) XPATH 우선 시도: 필요 없으면 env에서 비우세요.
+COPY_BTN_FULL_XPATH = os.getenv("COPY_BTN_XPATH", "").strip()
+
+
+# =========================
+# Small Utilities
+# =========================
+def _boundary_pat(text: str) -> re.Pattern:
+    """양쪽이 한글/영문/숫자가 아니면 경계로 간주(언더스코어/하이픈/점 등은 경계 인정)."""
+    return re.compile(rf"(?<![0-9A-Za-z가-힣]){re.escape(text)}(?![0-9A-Za-z가-힣])")
+
+async def _wait_top_ready(page: Page, timeout=T_MED):
+    """로그인 완료 후 상단 컨테이너가 보이는지로 초기 안정화."""
+    await page.wait_for_load_state("domcontentloaded", timeout=timeout)
+    await page.wait_for_function(
+        """
+        () => {
+          const top = document.querySelector('#top-container');
+          if (!top) return false;
+          const cs = getComputedStyle(top);
+          return cs.display !== 'none' && cs.visibility !== 'hidden';
+        }
+        """,
+        timeout=timeout
+    )
+
+async def _wait_pane2_ready(page: Page, timeout=T_MED):
+    """pane-2가 보이고 내부에 파일리스트 또는 체크박스가 나타날 때까지."""
+    await page.wait_for_function(
+        """
+        () => {
+          const pane = document.querySelector('#edm-contents-pane-2');
+          if (!pane) return false;
+          const cs = getComputedStyle(pane);
+          const visible = cs.display !== 'none' && cs.visibility !== 'hidden' && pane.offsetParent !== null;
+          if (!visible) return false;
+          return !!(pane.querySelector('#prop-view-file-list-tbody') ||
+                    pane.querySelector('input.file-list-type'));
+        }
+        """,
+        timeout=timeout
+    )
+
+def _all_scopes(page: Page):
+    yield page
+    for fr in page.frames:
+        yield fr
+
+
+# =========================
+# Auth & Navigation
+# =========================
+async def _wait_login_completed(page: Page, timeout=T_LONG):
     await page.wait_for_function(
         """
         () => {
@@ -51,188 +105,98 @@ async def _wait_login_completed(page: Page, timeout=30000):
 
 async def _ensure_logged_in(page: Page):
     await page.goto(f"{BASE_ORIGIN}/", wait_until="domcontentloaded")
-    await page.wait_for_load_state("networkidle")
+    # 로그인 폼 존재 시만 로그인
     if "login" in page.url.lower() or await page.locator("#form-login").count() > 0:
         user = page.locator("input[name='user_id']")
         pwd  = page.locator("input[name='password']")
-        await expect(user).to_be_visible(timeout=15000)
-        await expect(pwd).to_be_visible(timeout=15000)
+        await expect(user).to_be_visible(timeout=T_MED)
+        await expect(pwd).to_be_visible(timeout=T_MED)
         await user.fill(LOGIN_ID); await pwd.fill(LOGIN_PW)
         btn = page.locator('div[title="로그인"], div.area-right.btn-login.hcursor').first
-        await expect(btn).to_be_visible(timeout=10000)
+        await expect(btn).to_be_visible(timeout=T_SHORT)
         try:
-            async with page.expect_navigation(wait_until="domcontentloaded", timeout=15000):
+            async with page.expect_navigation(wait_until="domcontentloaded", timeout=T_MED):
                 await btn.click()
         except PWTimeout:
-            await btn.click(); await page.wait_for_load_state("networkidle")
-        await _wait_login_completed(page, timeout=30000)
+            await btn.click()
+    await _wait_login_completed(page, timeout=T_LONG)
+    await _wait_top_ready(page, timeout=T_MED)
 
-async def _tree_click_by_name_contains(scope, text: str, timeout=15000):
+async def _tree_click_by_name_contains(scope: Locator | Page, text: str, timeout=T_MED):
     link = scope.locator(f"a[name*='{text}']").first
     await expect(link).to_be_visible(timeout=timeout)
     await link.click()
 
-async def _find_filelist_scope(page: Page, timeout=30000):
-    """#prop-view-file-list-tbody 가 있는 컨텍스트(Page or Frame)를 찾아 반환"""
-    try:
-        await page.wait_for_selector("#prop-view-file-list-tbody", timeout=timeout, state="attached")
-        return page
-    except Exception:
-        pass
-    for fr in page.frames:
-        try:
-            await fr.wait_for_selector("#prop-view-file-list-tbody", timeout=1000, state="attached")
-            return fr
-        except Exception:
-            continue
-    raise TimeoutError("파일 목록 tbody(#prop-view-file-list-tbody)가 나타나지 않았습니다.")
 
-async def _dump_rows_for_debug(scope, job_dir: pathlib.Path):
-    """행을 못 찾을 때 디버깅용으로 일부 행의 텍스트/속성을 덤프"""
-    try:
-        rows = scope.locator("#prop-view-file-list-tbody tr")
-        count = await rows.count()
-        lines = [f"[rows={count}]"]
-        n = min(count, 20)
-        for i in range(n):
-            row = rows.nth(i)
-            txt = (await row.inner_text()).strip().replace("\n", " / ")
-            # 자주 쓰일 법한 속성만 샘플링
-            attrs = await row.evaluate("""(el) => {
-                const pick = k => el.getAttribute(k) || '';
-                return {
-                  filename: pick('filename'),
-                  title: pick('title'),
-                  'data-filename': pick('data-filename'),
-                  'aria-label': pick('aria-label')
-                };
-            }""")
-            lines.append(f"#{i} | {attrs} | {txt}")
-        (job_dir / "filelist_dump.txt").write_text("\n".join(lines), encoding="utf-8")
-    except Exception:
-        pass
-
-async def _find_target_row(scope, 시험번호: str):
-    """여러 전략으로 대상 행을 찾는다 (filename/title/data-filename/텍스트 폴백)"""
-    tbody = scope.locator("#prop-view-file-list-tbody")
-    await expect(tbody).to_be_visible(timeout=30000)
-
-    # 1) 가장 강한: 동일 tr에 2개 속성 동시 포함
-    strategies = [
-        f'tr[filename*="{시험번호}"][filename*="시험성적서"]',
-        f'tr[title*="{시험번호}"][title*="시험성적서"]',
-        f'tr[data-filename*="{시험번호}"][data-filename*="시험성적서"]',
-        # 2) :has()로 자식 td 속성 매칭
-        f'tr:has(td[filename*="{시험번호}"]):has(td[filename*="시험성적서"])',
-        f'tr:has(td[title*="{시험번호}"]):has(td[title*="시험성적서"])',
-        # 3) 텍스트 동시 포함 (AND)
-        None,  # 자리표시자: 아래에서 filter(has_text=...) 사용
-    ]
-
-    for sel in strategies:
-        if sel:
-            row = tbody.locator(sel).first
-            if await row.count() > 0:
-                return row
-
-    # 텍스트 폴백 (어떤 칸에 있든 둘 다 텍스트로 포함)
-    row = tbody.locator("tr").filter(has_text=시험번호).filter(has_text="시험성적서").first
-    if await row.count() > 0:
-        return row
-
-    return None
-
-def _boundary_pat(text: str) -> re.Pattern:
-    # 앞/뒤가 '한글·영문·숫자'가 아니면 경계로 간주 (언더스코어·하이픈·점 등은 경계로 인정)
-    return re.compile(rf"(?<![0-9A-Za-z가-힣]){re.escape(text)}(?![0-9A-Za-z가-힣])")
-    
-# 페이지/프레임 어디에 있든 문서명 span을 찾아 클릭
-async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000, debug=False) -> bool:
-    # 실제 클릭 가능한 스팬(이벤트 특성 있음) 우선, 없으면 일반 클래스 폴백
-    CSS_WITH_EVT = (
-        "span.document-list-item-name-text-span.left.hcursor.ellipsis"
-        "[events='document-list-viewDocument-click']"
-    )
-    CSS_BASE = "span.document-list-item-name-text-span.left.hcursor.ellipsis"
-
+# =========================
+# Document selection
+# =========================
+async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=T_MED, debug=False) -> bool:
+    """
+    문서명 span 클릭 → pane-2 열림 확인.
+    우선순위: ① '시험성적서' 경계일치 → ② {시험번호} 경계일치
+    """
     pat_score = _boundary_pat("시험성적서")
     pat_num   = _boundary_pat(시험번호) if 시험번호 else None
 
-    async def _click_first(loc, label: str) -> bool:
+    async def _click_first(loc, tag: str) -> bool:
         if await loc.count() == 0:
             return False
         cand = loc.first
-        if debug:
-            try:
-                t = await cand.inner_text()
-            except Exception:
-                t = "<no inner_text>"
-            print(f"[match:{label}] {t!r}")
-        try:
-            await cand.scroll_into_view_if_needed()
-        except Exception:
-            pass
+        if debug or DEBUG_PW:
+            try: print(f"[match:{tag}] {await cand.inner_text()!r}")
+            except Exception: pass
+        try: await cand.scroll_into_view_if_needed()
+        except Exception: pass
         await expect(cand).to_be_visible(timeout=timeout)
         try:
             await cand.click()
         except Exception:
-            try:
-                await cand.click(force=True)
+            try:    await cand.click(force=True)
             except Exception:
                 await cand.evaluate("el => el.click()")
-        # pane-2 오픈 확인
-        await expect(page.locator("#edm-contents-pane-2")).to_be_visible(timeout=15000)
+        await _wait_pane2_ready(page, timeout=T_MED)
         return True
 
-    scopes = [page] + list(page.frames)
-    for scope in scopes:
-        base = scope.locator(CSS_WITH_EVT)
+    for scope in _all_scopes(page):
+        base = scope.locator(SEL["doc_span_evt"])
         if await base.count() == 0:
-            base = scope.locator(CSS_BASE)
-        if debug:
-            print(f"[scope] base spans = {await base.count()}")
+            base = scope.locator(SEL["doc_span"])
 
-        # ① '시험성적서' 경계일치 먼저 시도
+        # ① '시험성적서' 경계일치
         if await _click_first(base.filter(has_text=pat_score), "score-boundary"):
             return True
-
         # ② {시험번호} 경계일치
         if pat_num and await _click_first(base.filter(has_text=pat_num), "num-boundary"):
             return True
 
-    if debug:
+    if debug or DEBUG_PW:
         print("[info] no clickable span matched by boundary rules ('시험성적서' → 시험번호)")
     return False
-        
-# 모든 페이지/프레임을 순회하는 제너레이터
-def _all_scopes(page: Page):
-    yield page
-    for fr in page.frames:
-        yield fr
 
-async def _get_copy_seq(page: Page) -> int:
-    try:
-        return await page.evaluate("() => window.__copy_seq || 0")
-    except Exception:
-        return 0
+async def _get_pane2(page: Page, timeout=T_MED) -> Locator:
+    await _wait_pane2_ready(page, timeout=timeout)
+    pane2 = page.locator(SEL["pane2"])
+    await expect(pane2).to_be_visible(timeout=timeout)
+    # 파일리스트 존재 대기(둘 중 하나만 있어도 OK)
+    await pane2.wait_for_selector(f"{SEL['file_tbody']}, input.file-list-type", timeout=timeout)
+    return pane2
 
-async def _wait_for_new_copy(page: Page, prev_seq: int, timeout_ms: int = 2000) -> bool:
-    try:
-        await page.wait_for_function(
-            "(prev) => (window.__copy_seq || 0) > prev",
-            prev_seq,
-            timeout=timeout_ms
-        )
-        return True
-    except Exception:
-        return False
+async def _find_target_row(scope: Locator, 시험번호: str) -> Locator | None:
+    """pane-2(=scope) 내부에서 대상 행을 찾는다: 텍스트 AND 방식으로 단순화."""
+    tbody = scope.locator(SEL["file_tbody"])
+    await expect(tbody).to_be_visible(timeout=T_MED)
+    row = tbody.locator("tr").filter(has_text=시험번호).filter(has_text="시험성적서").first
+    return row if (await row.count() > 0) else None
 
-# 복사 스니퍼: writeText/execCommand/copy 이벤트를 가로채 마지막 복사 본문을 보관
+
+# =========================
+# Clipboard helpers
+# =========================
 async def _prime_copy_sniffer(page: Page):
-    inject_js = r"""
+    js = r"""
 (() => {
   try {
-    // 보관 버퍼 + 시퀀스
     window.__copied_texts = window.__copied_texts || [];
     window.__copy_seq = window.__copy_seq || 0;
     const push = (t) => {
@@ -240,20 +204,16 @@ async def _prime_copy_sniffer(page: Page):
         if (typeof t === 'string' && t.trim()) {
           window.__last_copied = t;
           window.__copied_texts.push(t);
-          window.__copy_seq = (window.__copy_seq || 0) + 1;   // ★ 시퀀스 증가
+          window.__copy_seq = (window.__copy_seq || 0) + 1;
           window.__last_copied_at = Date.now();
         }
       } catch (e) {}
     };
-
-    // navigator.clipboard.writeText 훅킹
     if (navigator.clipboard && navigator.clipboard.writeText && !navigator.clipboard.__pw_hooked) {
       const _origWrite = navigator.clipboard.writeText.bind(navigator.clipboard);
       navigator.clipboard.writeText = async (t) => { try { push(t); } catch(e) {} return _origWrite(t); };
       navigator.clipboard.__pw_hooked = true;
     }
-
-    // document.execCommand('copy') 훅킹
     if (!document.__exec_copy_hooked) {
       const _origExec = document.execCommand.bind(document);
       document.execCommand = function(cmd, ui, value) {
@@ -270,8 +230,6 @@ async def _prime_copy_sniffer(page: Page):
       };
       document.__exec_copy_hooked = true;
     }
-
-    // copy 이벤트에서 clipboardData 읽기
     if (!document.__copy_evt_hooked) {
       document.addEventListener('copy', (e) => {
         try {
@@ -287,135 +245,24 @@ async def _prime_copy_sniffer(page: Page):
   } catch (e) {}
 })();
 """
-    # 모든 스코프에 주입
     for scope in _all_scopes(page):
-        try:
-            await scope.add_init_script(inject_js)  # 이후 로드에도 적용
-        except Exception:
-            pass
-        try:
-            await scope.evaluate(inject_js)         # 현재 문서에도 즉시 적용
-        except Exception:
-            pass
+        try: await scope.add_init_script(js)
+        except Exception: pass
+        try: await scope.evaluate(js)
+        except Exception: pass
 
-# 복사 버튼 찾기 (XPATH 최우선, 안 되면 기존 셀렉터 폴백)
-async def _find_copy_button(page: Page, timeout=15000):
-    now = asyncio.get_running_loop().time
-    deadline = now() + (timeout / 1000.0)
+async def _get_copy_seq(page: Page) -> int:
+    try: return await page.evaluate("() => window.__copy_seq || 0")
+    except Exception: return 0
 
-    # 1) full XPATH
-    if COPY_BTN_FULL_XPATH:
-        while now() < deadline:
-            for scope in _all_scopes(page):
-                try:
-                    loc = scope.locator(f"xpath={COPY_BTN_FULL_XPATH}")
-                    await loc.wait_for(state="attached", timeout=500)
-                    if await loc.is_visible():
-                        return loc
-                except Exception:
-                    pass
-            await page.wait_for_timeout(150)
-
-    # 2) 폴백 셀렉터들
-    selectors = [
-        "div#prop-view-document-btn-url-copy.prop-view-file-btn-internal-urlcopy.hcursor",
-        "#prop-view-document-btn-url-copy",
-        "div.prop-view-file-btn-internal-urlcopy[events='document-internal-url-click']",
-        "div[events='document-internal-url-click']",
-    ]
-    while now() < deadline:
-        for scope in _all_scopes(page):
-            for sel in selectors:
-                loc = scope.locator(sel)
-                try:
-                    await loc.first.wait_for(state="attached", timeout=400)
-                    if await loc.first.is_visible():
-                        return loc.first
-                except Exception:
-                    continue
-        await page.wait_for_timeout(150)
-
-    raise RuntimeError("URL 복사 버튼을 찾지 못했습니다(XPATH 및 폴백 모두 실패).")
-
-# 복사 버튼 '확실히' 클릭(+ 알림/모달 처리)
-async def _click_copy_and_get_clipboard_text(
-    page: Page,
-    btn,
-    *,
-    retries: int = 10,
-    wait_ms: int = 120
-) -> str:
-    # ★ 클릭 전 baseline 확보
-    prev_seq = await _get_copy_seq(page)
+async def _wait_for_new_copy(page: Page, prev_seq: int, timeout_ms: int = 1500) -> bool:
     try:
-        prev_os = await asyncio.to_thread(_read_os_clipboard_windows)
+        await page.wait_for_function("(prev) => (window.__copy_seq || 0) > prev", prev_seq, timeout=timeout_ms)
+        return True
     except Exception:
-        prev_os = ""
-
-    # 클릭
-    try:
-        await btn.scroll_into_view_if_needed()
-        await expect(btn).to_be_visible(timeout=4000)
-        try:
-            await btn.click()
-        except Exception:
-            await btn.click(force=True)
-    except Exception:
-        await btn.evaluate("(el) => el.click()")
-
-    # ★ copy 이벤트를 우선 대기 (스니퍼 기준)
-    await _wait_for_new_copy(page, prev_seq, timeout_ms=1500)
-
-    # 재시도 루프: "baseline과 다른 값"만 채택
-    for i in range(retries):
-        # 1) 스니퍼 값 (가장 신뢰)
-        try:
-            seq = await _get_copy_seq(page)
-            if seq > prev_seq:
-                t = await page.evaluate("() => window.__last_copied || ''")
-                if t and t.strip():
-                    return t.strip()
-        except Exception:
-            pass
-
-        # 2) 붙여넣기 우회: OS 클립보드를 textarea에 붙여넣기
-        try:
-            t = await _read_clipboard_via_paste(page)
-            if t and t.strip() and t != prev_os:        # ★ baseline과 달라야 인정
-                return t.strip()
-        except Exception:
-            pass
-
-        # 3) OS 클립보드 직접 읽기 (PowerShell)
-        try:
-            cur_os = await asyncio.to_thread(_read_os_clipboard_windows)
-            if cur_os and cur_os.strip() and cur_os != prev_os:  # ★ baseline과 달라야 인정
-                return cur_os.strip()
-        except Exception:
-            pass
-
-        # 4) (가능하면) navigator.clipboard.readText 차등 확인
-        try:
-            for scope in _all_scopes(page):
-                try:
-                    nav_t = await scope.evaluate("navigator.clipboard.readText()")
-                    if nav_t and nav_t.strip() and nav_t != prev_os:  # ★ baseline과 달라야 인정
-                        return nav_t.strip()
-                except Exception:
-                    continue
-        except Exception:
-            pass
-
-        await page.wait_for_timeout(wait_ms * (i + 1))
-
-    return ""
-
+        return False
 
 async def _read_clipboard_via_paste(page: Page) -> str:
-    """
-    OS 클립보드를 페이지의 숨은 textarea에 Ctrl+V로 붙여넣고 값을 읽어온다.
-    Chrome의 clipboard-read 권한 없이도 동작(키보드 제스처).
-    """
     try:
         await page.evaluate("""
           () => {
@@ -423,7 +270,6 @@ async def _read_clipboard_via_paste(page: Page) -> str:
             if (!el) {
               el = document.createElement('textarea');
               el.id = '__pw_clipboard_sink';
-              el.autocomplete = 'off';
               el.style.position = 'fixed';
               el.style.opacity = '0';
               el.style.pointerEvents = 'none';
@@ -431,22 +277,16 @@ async def _read_clipboard_via_paste(page: Page) -> str:
               el.style.top = '0';
               document.body.appendChild(el);
             }
-            el.value = '';
-            el.focus();
+            el.value = ''; el.focus();
           }
         """)
-        await page.keyboard.press("Control+V")   # (mac이면 Meta+V로 교체)
+        await page.keyboard.press("Control+V")  # (mac이면 Meta+V)
         await page.wait_for_timeout(80)
-        val = await page.locator("#__pw_clipboard_sink").input_value()
-        return (val or "").strip()
+        return (await page.locator("#__pw_clipboard_sink").input_value() or "").strip()
     except Exception:
         return ""
 
 def _read_os_clipboard_windows() -> str:
-    """
-    Windows PowerShell로 OS 클립보드 텍스트를 UTF-8로 강제 출력해 읽는다.
-    (서버 로캘/코드페이지와 무관)
-    """
     try:
         ps = r"$OutputEncoding = [Console]::OutputEncoding = [System.Text.Encoding]::UTF8; Get-Clipboard -Raw"
         cp = subprocess.run(
@@ -460,91 +300,118 @@ def _read_os_clipboard_windows() -> str:
         pass
     return ""
 
-def _extract_url_fuzzy(text: str) -> str:
-    # 제로폭/특수 공백 제거
-    cleaned = re.sub(r"[\u200b\u200c\u200d\u2060]", "", text or "")
-    cleaned = cleaned.replace("\xa0", " ")
+async def _click_copy_and_get_clipboard_text(page: Page, btn: Locator, *, retries: int = 10, wait_ms: int = 120) -> str:
+    prev_seq = await _get_copy_seq(page)
+    try:
+        prev_os = await asyncio.to_thread(_read_os_clipboard_windows)
+    except Exception:
+        prev_os = ""
 
-    # 1) 표준 URL
+    try:
+        await btn.scroll_into_view_if_needed()
+        await expect(btn).to_be_visible(timeout=T_SHORT)
+        try:    await btn.click()
+        except Exception:
+            await btn.click(force=True)
+    except Exception:
+        await btn.evaluate("(el) => el.click()")
+
+    await _wait_for_new_copy(page, prev_seq, timeout_ms=1500)
+
+    for i in range(retries):
+        try:
+            seq = await _get_copy_seq(page)
+            if seq > prev_seq:
+                t = await page.evaluate("() => window.__last_copied || ''")
+                if t and t.strip():
+                    return t.strip()
+        except Exception:
+            pass
+
+        try:
+            t = await _read_clipboard_via_paste(page)
+            if t and t.strip() and t != prev_os:
+                return t.strip()
+        except Exception:
+            pass
+
+        try:
+            cur_os = await asyncio.to_thread(_read_os_clipboard_windows)
+            if cur_os and cur_os.strip() and cur_os != prev_os:
+                return cur_os.strip()
+        except Exception:
+            pass
+
+        try:
+            for scope in _all_scopes(page):
+                try:
+                    nav_t = await scope.evaluate("navigator.clipboard.readText()")
+                    if nav_t and nav_t.strip() and nav_t != prev_os:
+                        return nav_t.strip()
+                except Exception:
+                    continue
+        except Exception:
+            pass
+
+        await page.wait_for_timeout(wait_ms * (i + 1))
+    return ""
+
+
+# =========================
+# Copy button find
+# =========================
+async def _find_copy_button(page: Page, timeout=T_MED) -> Locator:
+    deadline = asyncio.get_running_loop().time() + (timeout / 1000.0)
+
+    # 1) XPATH (옵션)
+    if COPY_BTN_FULL_XPATH:
+        while asyncio.get_running_loop().time() < deadline:
+            for scope in _all_scopes(page):
+                try:
+                    loc = scope.locator(f"xpath={COPY_BTN_FULL_XPATH}")
+                    await loc.wait_for(state="attached", timeout=300)
+                    if await loc.is_visible():
+                        return loc
+                except Exception:
+                    pass
+            await page.wait_for_timeout(120)
+
+    # 2) 셀렉터 폴백
+    while asyncio.get_running_loop().time() < deadline:
+        for scope in _all_scopes(page):
+            for sel in SEL["copy_btns"]:
+                loc = scope.locator(sel).first
+                try:
+                    await loc.wait_for(state="attached", timeout=250)
+                    if await loc.is_visible():
+                        return loc
+                except Exception:
+                    continue
+        await page.wait_for_timeout(120)
+
+    raise RuntimeError("URL 복사 버튼을 찾지 못했습니다.")
+
+
+# =========================
+# URL extraction
+# =========================
+def _extract_url_fuzzy(text: str) -> str:
+    cleaned = re.sub(r"[\u200b\u200c\u200d\u2060]", "", text or "").replace("\xa0", " ")
     m = re.search(r"https?://[^\s<>'\"()\[\]]+", cleaned, re.IGNORECASE)
     if m:
         return m.group(0)
-
-    # 2) 토큰 사이에 공백이 섞인 형태(h t t p s : / /)
     spaced = re.sub(r"\s+", " ", cleaned)
     m2 = re.search(r"h\s*t\s*t\s*p\s*(s?)\s*:\s*/\s*/\s*([^\s<>'\"()\[\]]+)", spaced, re.IGNORECASE)
     if m2:
         scheme = "https" if m2.group(1) else "http"
         rest = re.sub(r"\s+", "", m2.group(2))
         return f"{scheme}://{rest}"
-
     return ""
 
-# 복사된 텍스트 읽기 (클립보드 → 여러 입력 폴백)
-async def _read_copied_text(page: Page) -> str:
-    # 0) 스니퍼 값 최우선
-    for scope in _all_scopes(page):
-        try:
-            t = await scope.evaluate(
-                "window.__last_copied || (window.__copied_texts && window.__copied_texts.slice(-1)[0]) || ''"
-            )
-            if t and t.strip():
-                return t
-        except Exception:
-            pass
 
-    # 1) 붙여넣기 우회 (숨은 textarea에 Ctrl+V)
-    t = await _read_clipboard_via_paste(page)
-    if t:
-        return t
-
-    # 2) 브라우저 클립보드 API (권한 있을 때만 성공)
-    for scope in _all_scopes(page):
-        try:
-            t = await scope.evaluate("navigator.clipboard.readText()")
-            if t and t.strip():
-                return t
-        except Exception:
-            pass
-
-    # 3) 입력 상자 폴백
-    input_selectors = [
-        "input#prop-view-document-internal-url",
-        "input[name*='internal'][name*='url']",
-        "input[type='text'][id*='internal'][id*='url']",
-        "input[type='text'][name*='url']",
-    ]
-    for scope in _all_scopes(page):
-        for sel in input_selectors:
-            loc = scope.locator(sel)
-            if await loc.count():
-                try:
-                    v = await loc.first.input_value()
-                    if v and v.strip():
-                        return v
-                except Exception:
-                    continue
-
-    # 4) 화면 텍스트에서 URL 추출(최후)
-    for scope in _all_scopes(page):
-        try:
-            txt = await scope.evaluate("() => document.body ? document.body.innerText || '' : '' ")
-            m = re.search(r'https?://[^\s]+', txt or '')
-            if m:
-                return m.group(0)
-        except Exception:
-            pass
-
-    # 5) Windows OS 클립보드 직접 읽기 (비동기 스레드로)
-    try:
-        os_clip = await asyncio.to_thread(_read_os_clipboard_windows)
-        if os_clip:
-            return os_clip
-    except Exception:
-        pass
-
-    return ""
-
+# =========================
+# Scenario runner (public)
+# =========================
 async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호: str, 연도: str, 날짜: str, **kwargs) -> str:
     assert 시험번호 and 연도 and 날짜, "필수 인자(시험번호/연도/날짜)가 비었습니다."
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -552,76 +419,50 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
     # 1) 접속/로그인
     await _ensure_logged_in(page)
 
-    # 2) 좌측 트리
-    left_tree = page.locator(LEFT_TREE_SEL)
-    await expect(left_tree).to_be_visible(timeout=10000)
+    # 2) 좌측 트리 선택
+    left_tree = page.locator(SEL["left_tree"])
+    await expect(left_tree).to_be_visible(timeout=T_MED)
+    await _tree_click_by_name_contains(left_tree, 연도, timeout=T_SHORT)
+    await _tree_click_by_name_contains(left_tree, "GS인증심의위원회", timeout=T_SHORT)
+    await _tree_click_by_name_contains(left_tree, 날짜, timeout=T_SHORT)
+    await _tree_click_by_name_contains(left_tree, 시험번호, timeout=T_SHORT)
 
-    # 3) 연도
-    await _tree_click_by_name_contains(left_tree, 연도, timeout=5000)
-    # 4) GS인증심의위원회
-    await _tree_click_by_name_contains(left_tree, "GS인증심의위원회", timeout=5000)
-    # 5) 날짜(YYYYMMDD)
-    await _tree_click_by_name_contains(left_tree, 날짜, timeout=5000)
-    # 6) 시험번호
-    await _tree_click_by_name_contains(left_tree, 시험번호, timeout=5000)
+    # 3) 문서명 span 클릭 (우선순위: '시험성적서' → 시험번호)
+    clicked = await _try_click_doc_name_span(page, 시험번호, timeout=T_MED, debug=DEBUG_PW)
+    if not clicked:
+        raise RuntimeError("목록에서 클릭할 문서명을 찾지 못했습니다.")
 
-    
-    # 6.5) ★ 문서명 span 클릭 (요청하신 추가 스텝)
-    clicked = await _try_click_doc_name_span(page, 시험번호, timeout=5000, debug=True)
-    if clicked:
-        # 문서명 클릭 후 콘텐츠가 바뀌는 UI라면 안정화를 위해 한 번 더 대기
-        await page.wait_for_load_state("networkidle")
-        
-    # 패널 로딩 대기 + 파일리스트 스코프 결정
-    await page.wait_for_load_state("networkidle")
-    try:
-        scope = await _find_filelist_scope(page, timeout=5000)
-    except Exception:
-        await page.wait_for_load_state("domcontentloaded")
-        scope = await _find_filelist_scope(page, timeout=5000)
+    # 4) pane-2 기준 스코프
+    pane2 = await _get_pane2(page, timeout=T_MED)
 
-    # 7) 행 찾기(보강)
-    row = await _find_target_row(scope, 시험번호)
+    # 5) 행 찾기 (텍스트 AND)
+    row = await _find_target_row(pane2, 시험번호)
     if not row:
-        # 디버그 덤프 남기고 에러
-        await _dump_rows_for_debug(scope, job_dir)
         raise RuntimeError(f'파일 목록에서 "{시험번호}" & "시험성적서"를 포함하는 행을 못 찾았습니다.')
 
-    # 보이도록 스크롤 후 가시성 보장
+    # 6) 체크박스 체크
     await row.scroll_into_view_if_needed()
-    await expect(row).to_be_visible(timeout=5000)
+    await expect(row).to_be_visible(timeout=T_MED)
+    checkbox = row.locator('input[type="checkbox"], input.file-list-type').first
+    await expect(checkbox).to_be_visible(timeout=T_MED)
+    await checkbox.check(timeout=T_MED)
 
-    # 체크박스: 행 내부에서 가장 범용적인 선택
-    checkbox = row.locator('input[type="checkbox"]')
-    if await checkbox.count() == 0:
-        # 기존 클래스명도 시도
-        checkbox = row.locator('td.prop-view-file-list-item-checkbox input[type="checkbox"], input.file-list-type')
-    await expect(checkbox.first).to_be_visible(timeout=5000)
-    await checkbox.first.check(timeout=5000)
-
-    # 8) 복사 스니퍼 주입 (writeText/execCommand/copy 이벤트 가로채기)
+    # 7) 복사 스니퍼 주입 → 버튼 찾기 → 클릭 & 텍스트 읽기
     await _prime_copy_sniffer(page)
-
-    # 9) 내부 URL 복사 버튼 찾기 (XPATH 우선)
-    copy_btn = await _find_copy_button(page, timeout=5000)
-
-    # 10) 클릭 후, 클립보드 텍스트 직접 읽기
+    copy_btn = await _find_copy_button(page, timeout=T_MED)
     copied_text = await _click_copy_and_get_clipboard_text(page, copy_btn, retries=10, wait_ms=120)
     if not copied_text:
         await page.screenshot(path=str(job_dir / "url_extract_fail.png"), full_page=True)
         raise RuntimeError("복사는 되었지만 텍스트를 읽지 못했습니다.")
 
-    # 11) URL 추출 (퍼지 추출기 우선, 실패 시 전체 본문 반환)
-    url = _extract_url_fuzzy(copied_text)
+    # 8) URL 추출
+    url = _extract_url_fuzzy(copied_text) or copied_text.strip()
 
-    if not url:
-        # 디버깅 아티팩트 남기고, 전체 본문을 반환(알림/로그엔 그대로 찍힘)
-        (job_dir / "copied_raw.txt").write_text(copied_text, encoding="utf-8")
-        await page.screenshot(path=str(job_dir / "url_extract_fail.png"), full_page=True)
-        url = copied_text.strip()
-
-    # 로그/산출물
-    await page.evaluate("(u) => console.log('EXTRACTED_URL:', u)", url)
+    # 9) 산출물
+    try:
+        await page.evaluate("(u) => console.log('EXTRACTED_URL:', u)", url)
+    except Exception:
+        pass
     await page.screenshot(path=str(job_dir / "list_done.png"), full_page=True)
     (job_dir / "copied.txt").write_text(copied_text or "", encoding="utf-8")
     return url
