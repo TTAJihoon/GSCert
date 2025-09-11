@@ -42,6 +42,14 @@ html, body {
   background: white;
 }
 
+.tooltiptext.search {
+  margin-left: -70px;
+}
+
+.tooltiptext.result {
+  margin-left: -135px;
+}
+
 /* 사이드바: 고정 폭 300px, 세로 꽉 채움 */
 .sidebar {
   flex: 0 0 300px;       /* 고정 300px */
