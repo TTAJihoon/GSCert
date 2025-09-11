@@ -213,12 +213,19 @@ async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=15000,
     return False
 
 async def _get_pane2(page: Page, timeout=T_MED) -> Locator:
+    # pane-2가 열리고 내부에 리스트/체크박스가 나타날 때까지 UI 시그널로 대기
     await _wait_pane2_ready(page, timeout=timeout)
+
     pane2 = page.locator(SEL["pane2"])
     await expect(pane2).to_be_visible(timeout=timeout)
-    # 파일리스트 존재 대기(둘 중 하나만 있어도 OK)
-    await pane2.wait_for_selector(f"{SEL['file_tbody']}, input.file-list-type", timeout=timeout)
+
+    # ⛳ Locator에는 wait_for_selector가 없음 → 하위 Locator로 잡고 wait_for(state=...)
+    inner = pane2.locator(f"{SEL['file_tbody']}, input.file-list-type")
+    await inner.first.wait_for(state="attached", timeout=timeout)
+    # 또는: await expect(inner.first).to_be_attached(timeout=timeout)
+
     return pane2
+
 
 async def _find_target_row(scope: Locator, 시험번호: str) -> Locator | None:
     """pane-2(=scope) 내부에서 대상 행을 찾는다: 텍스트 AND 방식으로 단순화."""
