@@ -128,7 +128,7 @@ async def _find_target_row(scope, 시험번호: str):
 async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000) -> bool:
     """
     span.document-list-item-name-text-span.left.hcursor.ellipsis 을 클릭한다.
-    - 우선순위: has_text(시험번호) > has_text('시험성적서') > 첫 번째 항목
+    - 우선순위: 텍스트 '시험번호' 완전일치 > has_text('시험성적서') > 첫 번째 항목
     - 페이지에서 못 찾으면 모든 iframe에서 탐색
     - 찾지 못해도 비치명적(False 리턴) → 이후 단계 진행
     """
@@ -147,10 +147,16 @@ async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000)
     if await loc.count() == 0:
         return False
 
-    # 우선순위 선택
-    cand = loc.filter(has_text=시험번호).first
+    # --- 우선순위 선택 ---
+    # 1) 시험번호 '완전 일치'(양쪽 공백 허용) 매칭
+    exact_pat = re.compile(rf"^\s*{re.escape(시험번호)}\s*$")
+    cand = loc.filter(has_text=exact_pat).first
+
+    # 2) '시험성적서' 포함 텍스트 (기존 방어/폴백 로직 유지)
     if await cand.count() == 0:
         cand = loc.filter(has_text="시험성적서").first
+
+    # 3) 그 외 첫 번째 항목
     if await cand.count() == 0:
         cand = loc.first
 
@@ -162,7 +168,7 @@ async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000)
         return True
     except Exception:
         return False
-
+        
 # 모든 페이지/프레임을 순회하는 제너레이터
 def _all_scopes(page: Page):
     yield page
