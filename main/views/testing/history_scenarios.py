@@ -17,12 +17,6 @@ LEFT_TREE_SEL = (
     "ui-widget-content.ui-corner-bottom.ui-accordion-content-active[submenu_type='Folder']"
 )
 
-def attach_debug_listeners(page: Page):
-    page.on("console", lambda msg: print(f"[browser:{msg.type}] {msg.text}"))
-    page.on("pageerror", lambda err: print(f"[pageerror] {err}"))
-    page.on("requestfailed", lambda req: print(f"[requestfailed] {req.url} {req.failure.error_text if req.failure else ''}"))
-    page.on("response", lambda res: print(f"[response] {res.status} {res.url}"))
-    
 async def _dump_locator(locator: Locator, label: str, max_items: int = 5, pattern: re.Pattern | None = None) -> None:
     cnt = await locator.count()
     print(f"\n[{label}] count={cnt}")
@@ -533,8 +527,6 @@ async def _read_copied_text(page: Page) -> str:
     return ""
 
 async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호: str, 연도: str, 날짜: str, **kwargs) -> str:
-    attach_debug_listeners(page) #Debugging
-    
     assert 시험번호 and 연도 and 날짜, "필수 인자(시험번호/연도/날짜)가 비었습니다."
     job_dir.mkdir(parents=True, exist_ok=True)
 
@@ -543,20 +535,20 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
 
     # 2) 좌측 트리
     left_tree = page.locator(LEFT_TREE_SEL)
-    await expect(left_tree).to_be_visible(timeout=30000)
+    await expect(left_tree).to_be_visible(timeout=10000)
 
     # 3) 연도
-    await _tree_click_by_name_contains(left_tree, 연도, timeout=20000)
+    await _tree_click_by_name_contains(left_tree, 연도, timeout=5000)
     # 4) GS인증심의위원회
-    await _tree_click_by_name_contains(left_tree, "GS인증심의위원회", timeout=20000)
+    await _tree_click_by_name_contains(left_tree, "GS인증심의위원회", timeout=5000)
     # 5) 날짜(YYYYMMDD)
-    await _tree_click_by_name_contains(left_tree, 날짜, timeout=20000)
+    await _tree_click_by_name_contains(left_tree, 날짜, timeout=5000)
     # 6) 시험번호
-    await _tree_click_by_name_contains(left_tree, 시험번호, timeout=20000)
+    await _tree_click_by_name_contains(left_tree, 시험번호, timeout=5000)
 
     
     # 6.5) ★ 문서명 span 클릭 (요청하신 추가 스텝)
-    clicked = await _try_click_doc_name_span(page, 시험번호, timeout=12000, debug=True)
+    clicked = await _try_click_doc_name_span(page, 시험번호, timeout=5000, debug=True)
     if clicked:
         # 문서명 클릭 후 콘텐츠가 바뀌는 UI라면 안정화를 위해 한 번 더 대기
         await page.wait_for_load_state("networkidle")
@@ -578,21 +570,21 @@ async def run_scenario_async(page: Page, job_dir: pathlib.Path, *, 시험번호:
 
     # 보이도록 스크롤 후 가시성 보장
     await row.scroll_into_view_if_needed()
-    await expect(row).to_be_visible(timeout=20000)
+    await expect(row).to_be_visible(timeout=5000)
 
     # 체크박스: 행 내부에서 가장 범용적인 선택
     checkbox = row.locator('input[type="checkbox"]')
     if await checkbox.count() == 0:
         # 기존 클래스명도 시도
         checkbox = row.locator('td.prop-view-file-list-item-checkbox input[type="checkbox"], input.file-list-type')
-    await expect(checkbox.first).to_be_visible(timeout=10000)
-    await checkbox.first.check(timeout=10000)
+    await expect(checkbox.first).to_be_visible(timeout=5000)
+    await checkbox.first.check(timeout=5000)
 
     # 8) 복사 스니퍼 주입 (writeText/execCommand/copy 이벤트 가로채기)
     await _prime_copy_sniffer(page)
 
     # 9) 내부 URL 복사 버튼 찾기 (XPATH 우선)
-    copy_btn = await _find_copy_button(page, timeout=20000)
+    copy_btn = await _find_copy_button(page, timeout=5000)
 
     # 10) 클릭 후, 클립보드 텍스트 직접 읽기
     copied_text = await _click_copy_and_get_clipboard_text(page, copy_btn, retries=10, wait_ms=120)
