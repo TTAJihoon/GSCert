@@ -160,7 +160,7 @@ html, body {
 }
 
 .results-table th {
-  padding: 12px 15px;
+  padding: 10px 10px;
   font-weight: 600;
   text-align: left;
 }
@@ -194,28 +194,28 @@ html, body {
 .status-progress { background: #fff3cd; color: #856404; }
 
 /* ── 열 너비: 고정 폭 유지, 개요 컬럼만 최소 폭 보장 ── */
-.results-table col.col-cert-date { width: 80px; }
+.results-table col.col-cert-date { width: 90px; }
 .results-table col.col-cert-no   { width: 80px; }
-.results-table col.col-test-no   { width: 100px; }
+.results-table col.col-test-no   { width: 110px; }
 .results-table col.col-cmp-name  { width: 200px; }
 .results-table col.col-prd-name  { width: 200px; }
 /* ❗ 기존: col.col-overview { width: 250px; } → 제거
       요구사항에 맞춰 th 최소폭으로 전환 */
 .results-table col.col-date      { width: 100px; }
-.results-table col.col-tester    { width: 100px; }
+.results-table col.col-tester    { width: 110px; }
 .results-table col.col-wd        { width: 50px; }
 .results-table col.col-renewal   { width: 100px; }
 .results-table col.col-download  { width: 70px; }
 
 /* 첫 행(th)에도 동일 폭 부여(개요는 'min-width') */
-.results-table th.col-cert-date  { width: 80px; }
+.results-table th.col-cert-date  { width: 90px; }
 .results-table th.col-cert-no    { width: 80px; }
-.results-table th.col-test-no    { width: 100px; }
+.results-table th.col-test-no    { width: 110px; }
 .results-table th.col-cmp-name   { width: 200px; }
 .results-table th.col-prd-name   { width: 200px; }
 .results-table th.col-overview   { min-width: 250px; } /* 요구사항 */
 .results-table th.col-date       { width: 100px; }
-.results-table th.col-tester     { width: 100px; }
+.results-table th.col-tester     { width: 110px; }
 .results-table th.col-wd         { width: 50px; }
 .results-table th.col-renewal    { width: 100px; }
 .results-table th.col-download   { width: 70px; }
