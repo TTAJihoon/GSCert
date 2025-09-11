@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os, re, pathlib
 import asyncio, subprocess
-from playwright.async_api import Page, expect, TimeoutError as PWTimeout, Error as PWError
+from playwright.async_api import Page, expect, TimeoutError as PWTimeout, Error as PWError, Locator
 
 BASE_ORIGIN = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
 LOGIN_URL   = os.getenv("LOGIN_URL", f"{BASE_ORIGIN}/auth/login/loginView.do")
@@ -17,6 +17,24 @@ LEFT_TREE_SEL = (
     "ui-widget-content.ui-corner-bottom.ui-accordion-content-active[submenu_type='Folder']"
 )
 
+async def _dump_locator(locator: Locator, label: str, max_items: int = 5, pattern: re.Pattern | None = None) -> None:
+    cnt = await locator.count()
+    print(f"\n[{label}] count={cnt}")
+    take = min(cnt, max_items)
+    for i in range(take):
+        el = locator.nth(i)
+        inner = await el.inner_text()
+        raw = await el.evaluate("el => el.textContent")
+        html = await el.evaluate("el => el.outerHTML")
+        match_inner = bool(pattern.search(inner)) if pattern else None
+        match_raw = bool(pattern.search(raw)) if pattern else None
+        print(f"--- {label}[{i}] ---")
+        print(f"inner_text: {inner!r}")
+        print(f"textContent: {raw!r}")
+        if pattern:
+            print(f"regex match(inner_text)={match_inner}, regex match(textContent)={match_raw}")
+        print(f"outerHTML(head): {html[:400]}")
+        
 async def _wait_login_completed(page: Page, timeout=30000):
     await page.wait_for_function(
         """
@@ -125,49 +143,46 @@ async def _find_target_row(scope, 시험번호: str):
     return None
 
 # 페이지/프레임 어디에 있든 문서명 span을 찾아 클릭
-async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000) -> bool:
-    """
-    span.document-list-item-name-text-span.left.hcursor.ellipsis 을 클릭한다.
-    - 우선순위: 텍스트 '시험번호' 완전일치 > has_text('시험성적서') > 첫 번째 항목
-    - 페이지에서 못 찾으면 모든 iframe에서 탐색
-    - 찾지 못해도 비치명적(False 리턴) → 이후 단계 진행
-    """
-    css = "span.document-list-item-name-text-span.left.hcursor.ellipsis"
+async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000, debug=False) -> bool:
+    scopes = [page] + list(page.frames)
 
-    # 1) 메인 페이지
-    loc = page.locator(css)
-    if await loc.count() == 0:
-        # 2) 프레임 순회
-        for fr in page.frames:
-            frloc = fr.locator(css)
-            if await frloc.count() > 0:
-                loc = frloc
-                break
+    # 1) 시험번호 완전 일치 (양쪽 공백 허용)
+    pat = re.compile(rf"^\s*{re.escape(시험번호)}\s*$") if 시험번호 else None
+    if pat:
+        for idx, scope in enumerate(scopes):
+            base = scope.locator(CSS)
+            exact = base.filter(has_text=pat)
 
-    if await loc.count() == 0:
-        return False
+            if debug:
+                await _dump_locator(base,   f"scope {idx} BASE(all spans)", max_items=5, pattern=pat)
+                await _dump_locator(exact,  f"scope {idx} FILTER(exact test-no)", max_items=5, pattern=pat)
 
-    # --- 우선순위 선택 ---
-    # 1) 시험번호 '완전 일치'(양쪽 공백 허용) 매칭
-    exact_pat = re.compile(rf"^\s*{re.escape(시험번호)}\s*$")
-    cand = loc.filter(has_text=exact_pat).first
+            if await exact.count():
+                cand = exact.first
+                await expect(cand).to_be_visible(timeout=timeout)
+                await cand.click()
+                await page.wait_for_load_state("networkidle")
+                return True
 
-    # 2) '시험성적서' 포함 텍스트 (기존 방어/폴백 로직 유지)
-    if await cand.count() == 0:
-        cand = loc.filter(has_text="시험성적서").first
+    # 2) '시험성적서' 포함
+    for idx, scope in enumerate(scopes):
+        base = scope.locator(CSS)
+        fall = base.filter(has_text="시험성적서")
 
-    # 3) 그 외 첫 번째 항목
-    if await cand.count() == 0:
-        cand = loc.first
+        if debug:
+            await _dump_locator(base, f"scope {idx} BASE(all spans)", max_items=5)
+            await _dump_locator(fall, f"scope {idx} FILTER('시험성적서')", max_items=5)
 
-    try:
-        await expect(cand).to_be_visible(timeout=timeout)
-        await cand.click()
-        # 클릭으로 상세/리스트가 갱신될 수 있으니 잠깐 대기
-        await page.wait_for_load_state("networkidle")
-        return True
-    except Exception:
-        return False
+        if await fall.count():
+            cand = fall.first
+            await expect(cand).to_be_visible(timeout=timeout)
+            await cand.click()
+            await page.wait_for_load_state("networkidle")
+            return True
+
+    if debug:
+        print("[info] no match for exact test-no or '시험성적서'")
+    return False
         
 # 모든 페이지/프레임을 순회하는 제너레이터
 def _all_scopes(page: Page):
