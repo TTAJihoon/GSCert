@@ -144,45 +144,64 @@ async def _find_target_row(scope, 시험번호: str):
 
 # 페이지/프레임 어디에 있든 문서명 span을 찾아 클릭
 async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=10000, debug=False) -> bool:
-    CSS = "span.document-list-item-name-text-span.left.hcursor.ellipsis"
+    # 실제 클릭 가능한 스팬(이벤트 특성 있음) 우선, 없으면 일반 클래스 폴백
+    CSS_WITH_EVT = "span.document-list-item-name-text-span.left.hcursor.ellipsis[events='document-list-viewDocument-click']"
+    CSS_BASE     = "span.document-list-item-name-text-span.left.hcursor.ellipsis"
+
+    # 경계일치 정규식: 앞뒤가 비문자/경계면 허용
+    def boundary_pat(text: str) -> re.Pattern:
+        return re.compile(rf"(^|\W){re.escape(text)}(\W|$)")
+
+    pat_num   = boundary_pat(시험번호) if 시험번호 else None
+    pat_score = boundary_pat("시험성적서")
+
+    async def _click_first(loc, label: str) -> bool:
+        """첫 매칭 요소를 스크롤→가시성 확인→클릭(강제/평가식 폴백)"""
+        if await loc.count() == 0:
+            return False
+        cand = loc.first
+        if debug:
+            try:
+                t = await cand.inner_text()
+            except Exception:
+                t = "<no inner_text>"
+            print(f"[match:{label}] {t!r}")
+        try:
+            await cand.scroll_into_view_if_needed()
+        except Exception:
+            pass
+        await expect(cand).to_be_visible(timeout=timeout)
+        try:
+            await cand.click()
+        except Exception:
+            try:
+                await cand.click(force=True)
+            except Exception:
+                await cand.evaluate("el => el.click()")
+        # pane-2가 실제로 열렸는지 확인
+        await expect(page.locator("#edm-contents-pane-2")).to_be_visible(timeout=15000)
+        return True
+
     scopes = [page] + list(page.frames)
 
-    # 1) 시험번호 완전 일치 (양쪽 공백 허용)
-    pat = re.compile(rf"^\s*{re.escape(시험번호)}\s*$") if 시험번호 else None
-    if pat:
-        for idx, scope in enumerate(scopes):
-            base = scope.locator(CSS)
-            exact = base.filter(has_text=pat)
-
-            if debug:
-                await _dump_locator(base,   f"scope {idx} BASE(all spans)", max_items=5, pattern=pat)
-                await _dump_locator(exact,  f"scope {idx} FILTER(exact test-no)", max_items=5, pattern=pat)
-
-            if await exact.count():
-                cand = exact.first
-                await expect(cand).to_be_visible(timeout=timeout)
-                await cand.click()
-                await page.wait_for_load_state("networkidle")
-                return True
-
-    # 2) '시험성적서' 포함
-    for idx, scope in enumerate(scopes):
-        base = scope.locator(CSS)
-        fall = base.filter(has_text="시험성적서")
-
+    for scope in scopes:
+        base = scope.locator(CSS_WITH_EVT)
+        if await base.count() == 0:
+            base = scope.locator(CSS_BASE)
         if debug:
-            await _dump_locator(base, f"scope {idx} BASE(all spans)", max_items=5)
-            await _dump_locator(fall, f"scope {idx} FILTER('시험성적서')", max_items=5)
+            c = await base.count()
+            print(f"[scope] base spans = {c}")
 
-        if await fall.count():
-            cand = fall.first
-            await expect(cand).to_be_visible(timeout=timeout)
-            await cand.click()
-            await page.wait_for_load_state("networkidle")
+        # 1) {시험번호} 경계일치
+        if pat_num and await _click_first(base.filter(has_text=pat_num), "num-boundary"):
+            return True
+
+        # 2) '시험성적서' 경계일치
+        if await _click_first(base.filter(has_text=pat_score), "score-boundary"):
             return True
 
     if debug:
-        print("[info] no match for exact test-no or '시험성적서'")
+        print("[info] no clickable span matched by boundary rules (시험번호 / 시험성적서)")
     return False
         
 # 모든 페이지/프레임을 순회하는 제너레이터
