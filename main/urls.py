@@ -1,5 +1,6 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path, include
+from django.views.generic import RedirectView
 from main.views.init import index, similar, security, prdinfo, genspark, test
 
 from main.views.testing.history import history
@@ -14,7 +15,7 @@ from main.views.certy.prdinfo_download import download_filled_prdinfo
 urlpatterns = [
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('index/', index, name='index'),
-    path('/', index, name='index'),
+    path('', RedirectView.as_view(url='/index/', permanent=False)),
     
     path('history/', history, name='history'),
     path('similar/', similar, name='similar'),
