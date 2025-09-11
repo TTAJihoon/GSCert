@@ -14,7 +14,7 @@ from main.views.certy.prdinfo_download import download_filled_prdinfo
 urlpatterns = [
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
     path('index/', index, name='index'),
-    path('', RedirectView.as_view(url='/index/', permanent=False)),
+    path('', index, name='index'),
     
     path('history/', history, name='history'),
     path('similar/', similar, name='similar'),
