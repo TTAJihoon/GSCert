@@ -1,38 +1,51 @@
 # -*- coding: utf-8 -*-
+"""
+history_tasks.py
+- RQ 워커용 Playwright 작업 실행기
+- 워커 프로세스당 브라우저 1개 재사용(작업마다 새 context/page)
+- 전역 이벤트 루프 유지로 Playwright 채널/객체 안정화
+"""
 import os, re, pathlib, traceback, time, asyncio, atexit
 from typing import Optional
+
 from asgiref.sync import sync_to_async
 from django.utils import timezone
 from playwright.async_api import async_playwright, Browser
+
 from ...models import Job
 from .history_scenarios import run_scenario_async
 
 # ────────────────────────────────────────────────────────────
 # 경로/환경
-RUNS_DIR = (pathlib.Path(__file__).resolve().parent.parent / "runs"); RUNS_DIR.mkdir(parents=True, exist_ok=True)
-AUTH_DIR = (pathlib.Path(__file__).resolve().parent.parent / "auth_states"); AUTH_DIR.mkdir(parents=True, exist_ok=True)
+RUNS_DIR = (pathlib.Path(__file__).resolve().parent.parent / "runs")
+RUNS_DIR.mkdir(parents=True, exist_ok=True)
+
+AUTH_DIR = (pathlib.Path(__file__).resolve().parent.parent / "auth_states")
+AUTH_DIR.mkdir(parents=True, exist_ok=True)
+
 USER_KEY = os.getenv("PW_STATE_USER", "shared")
 AUTH_STATE_PATH = AUTH_DIR / f"{USER_KEY}.json"
 
-# 기본 동작: headful (필요 시 PW_HEADLESS=true로 전환)
-PW_HEADLESS   = (os.getenv("PW_HEADLESS", "false").lower() == "true")
-PW_CHANNEL    = os.getenv("PW_CHANNEL", "chrome")  # 설치된 채널 사용, 필요시 ""로 비우면 내장
+# 기본은 headful(창 띄우기). 필요 시 PW_HEADLESS=true 로 headless 전환
+PW_HEADLESS    = (os.getenv("PW_HEADLESS", "false").lower() == "true")
+PW_CHANNEL     = os.getenv("PW_CHANNEL", "chrome")  # 비우면 내장 브라우저 사용
 PW_LAUNCH_ARGS = os.getenv("PW_LAUNCH_ARGS", "").split()
-PW_TZ         = os.getenv("PW_TZ", "Asia/Seoul")
-UA_CHROME     = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
-                 "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+PW_TZ          = os.getenv("PW_TZ", "Asia/Seoul")
+UA_CHROME      = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")
+BASE_ORIGIN    = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
 
-# 브라우저 재사용 한도(안정성)
+# 브라우저 재사용 한도(안정성): 일정 시간/작업 수 초과 시 재시작
 BROWSER_MAX_AGE_SEC = int(os.getenv("BROWSER_MAX_AGE_SEC", "1800"))  # 30분
 BROWSER_MAX_JOBS    = int(os.getenv("BROWSER_MAX_JOBS", "200"))
 
-# 전역 이벤트 루프(워커 프로세스 생애주기와 동일하게 유지)
+# 전역 이벤트 루프(워커 프로세스 생애주기와 동일)
 _LOOP = asyncio.new_event_loop()
 def _run_in_loop(coro):
     global _LOOP
     try:
         return _LOOP.run_until_complete(coro)
-    except RuntimeError:  # 루프가 닫혔을 경우 복구
+    except RuntimeError:
         _LOOP = asyncio.new_event_loop()
         return _LOOP.run_until_complete(coro)
 
@@ -80,7 +93,7 @@ async def _wait_login_completed(page, timeout=30000):
     )
 
 async def _chromium_launch(pw, *, headless: bool | None = None):
-    """런치 파라미터를 한 곳에서 관리 (headless/채널/args 일관 적용)"""
+    """런치 파라미터 일원화(headless/채널/args)"""
     h = PW_HEADLESS if headless is None else headless
     kwargs = dict(headless=h, args=PW_LAUNCH_ARGS)
     if PW_CHANNEL:
@@ -88,13 +101,12 @@ async def _chromium_launch(pw, *, headless: bool | None = None):
     return await pw.chromium.launch(**kwargs)
 
 async def _bootstrap_state(pw):
-    # 최초/만료 시 세션 부트스트랩
+    """최초/만료 시 세션 부트스트랩 → storage_state 저장"""
     browser = await _chromium_launch(pw)
     context = await browser.new_context(user_agent=UA_CHROME, timezone_id=PW_TZ, locale="ko-KR")
     page = await context.new_page()
 
-    BASE_ORIGIN = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
-    LOGIN_URL   = os.getenv("LOGIN_URL", f"{BASE_ORIGIN}/auth/login/loginView.do")
+    LOGIN_URL = os.getenv("LOGIN_URL", f"{BASE_ORIGIN}/auth/login/loginView.do")
 
     await page.goto(BASE_ORIGIN + "/", wait_until="domcontentloaded")
     await page.wait_for_load_state("networkidle")
@@ -129,7 +141,7 @@ async def _bootstrap_state(pw):
     await context.close(); await browser.close()
 
 async def _check_state_valid(pw) -> bool:
-    BASE_ORIGIN = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
+    """저장된 storage_state로 접근이 정상인지 확인"""
     if not AUTH_STATE_PATH.exists():
         return False
     browser = await _chromium_launch(pw)
@@ -149,7 +161,7 @@ async def _ensure_valid_state(pw):
         await _bootstrap_state(pw)
 
 # ────────────────────────────────────────────────────────────
-# 브라우저 재사용 풀 (워커 프로세스당 1개 유지, TTL/작업수 초과 시 재시작)
+# 브라우저 재사용 풀 (워커 프로세스당 1개)
 _pl = None
 _browser: Optional[Browser] = None
 _launched_at: float = 0.0
@@ -164,7 +176,7 @@ async def _get_pw():
 async def _launch_browser() -> Browser:
     global _browser, _launched_at, _jobs_done
     pw = await _get_pw()
-    _browser = await _chromium_launch(pw)   # ← 일원화
+    _browser = await _chromium_launch(pw)
     _launched_at = time.monotonic()
     _jobs_done = 0
     return _browser
@@ -211,7 +223,9 @@ atexit.register(_cleanup)
 async def _run_playwright_job_task_async(job_id: str, data: dict):
     await _mark(job_id, "RUNNING")
 
-    job_dir = RUNS_DIR / str(job_id); job_dir.mkdir(parents=True, exist_ok=True)
+    job_dir = RUNS_DIR / str(job_id)
+    job_dir.mkdir(parents=True, exist_ok=True)
+
     page = None
     try:
         test_no, year4, date8 = _parse_fields_from_data(data)
@@ -229,6 +243,13 @@ async def _run_playwright_job_task_async(job_id: str, data: dict):
             locale="ko-KR",
             user_agent=UA_CHROME,
         )
+
+        # ★ 클립보드 권한(읽기/쓰기) 부여 → navigator.clipboard.* 성공률 개선
+        try:
+            await context.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE_ORIGIN)
+        except Exception:
+            pass
+
         page = await context.new_page()
 
         # 3) 시나리오 실행
@@ -239,9 +260,11 @@ async def _run_playwright_job_task_async(job_id: str, data: dict):
         global _jobs_done; _jobs_done += 1
 
         await _mark(job_id, "DONE", final_link=final_link)
+
     except Exception as e:
         try:
-            if page: await page.screenshot(path=str(job_dir / "error.png"), full_page=True)
+            if page:
+                await page.screenshot(path=str(job_dir / "error.png"), full_page=True)
         except Exception:
             pass
         await _mark(job_id, "ERROR", error=f"{e}\n{traceback.format_exc()}")
@@ -250,6 +273,6 @@ def run_playwright_job_task_sync(job_id: str, data: dict):
     """RQ enqueue 대상 (동기). 전역 루프로 async 코루틴 실행."""
     return _run_in_loop(_run_playwright_job_task_async(job_id, data))
 
-# 과거 잡 호환용 별칭
+# 과거 잡 호환용 별칭 (기존 func_name 유지용)
 def run_playwright_job_task(job_id: str, data: dict):
     return run_playwright_job_task_sync(job_id, data)
