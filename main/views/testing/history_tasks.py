@@ -198,28 +198,26 @@ async def _run_playwright_job_task_async(job_id: str, data: dict):
 
         # 2) 재사용 브라우저에서 context/page만 새로
         browser = await _get_browser()
-        context = await browser.new_context(
-            storage_state=str(AUTH_STATE_PATH),
+        ctx_kwargs = dict(
             accept_downloads=True,
             timezone_id=PW_TZ,
             locale="ko-KR",
             user_agent=UA_CHROME,
         )
-        # ★ 클립보드 권한(읽기/쓰기) 부여 (선호)
+        if AUTH_STATE_PATH.exists():
+            ctx_kwargs["storage_state"] = str(AUTH_STATE_PATH)
+
+        context = await browser.new_context(**ctx_kwargs)
+
+        # (선호) 클립보드 권한
         try:
             await context.grant_permissions(["clipboard-read", "clipboard-write"], origin=BASE_ORIGIN)
         except Exception:
             pass
-            
+
         page = await context.new_page()
 
-        # (선택) 전체 기본 타임아웃 살짝 낮추기 → 불필요 대기 줄이기
-        try:
-            page.set_default_timeout(6000)
-        except Exception:
-            pass
-
-        # ★ 지연 로그인: 현재 컨텍스트로 바로 진입해서 필요 시 그 자리에서 로그인
+        # ★ 지연 로그인: 로그인 페이지면 그 자리에서 로그인하고 state를 '새로' 저장
         await page.goto(BASE_ORIGIN + "/", wait_until="domcontentloaded")
         await page.wait_for_load_state("networkidle")
 
@@ -227,12 +225,14 @@ async def _run_playwright_job_task_async(job_id: str, data: dict):
             from playwright.async_api import expect, TimeoutError as PWTimeout
             login_url = os.getenv("LOGIN_URL", f"{BASE_ORIGIN}/auth/login/loginView.do")
             await page.goto(login_url, wait_until="domcontentloaded")
+
             user = page.locator("input[name='user_id']")
             pwd  = page.locator("input[name='password']")
             await expect(user).to_be_visible(timeout=10000)
             await expect(pwd).to_be_visible(timeout=10000)
             await user.fill(os.getenv("LOGIN_ID", ""))
             await pwd.fill(os.getenv("LOGIN_PW", ""))
+
             btn = page.locator('div[title="로그인"], div.area-right.btn-login.hcursor').first
             await expect(btn).to_be_visible(timeout=10000)
             try:
@@ -241,7 +241,7 @@ async def _run_playwright_job_task_async(job_id: str, data: dict):
             except PWTimeout:
                 await btn.click(); await page.wait_for_load_state("networkidle")
 
-            # 성공했으면 이 워커의 세션 파일 갱신 (auth_states/shard_X.json)
+            # ★ 워커 전용(shard_X.json)으로 저장 → 다음부터는 storage_state로 바로 로그인 유지
             try:
                 await context.storage_state(path=str(AUTH_STATE_PATH))
             except Exception:
