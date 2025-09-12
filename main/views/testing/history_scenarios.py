@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os, re, pathlib, asyncio, subprocess
 from playwright.async_api import Page, expect, TimeoutError as PWTimeout, Locator
+from typing import Pattern
 
 # =========================
 # Config & Constants
@@ -51,6 +52,28 @@ def _boundary_pat(text: str) -> re.Pattern:
     """
     cls = r"0-9A-Za-z가-힣"
     return re.compile(rf"(?:^|[^{cls}]){re.escape(text)}(?:[^{cls}]|$)")
+
+def _testno_pat(test_no: str) -> Pattern:
+    """
+    시험번호의 구분자(하이픈/언더스코어/공백/일부 유니코드 하이픈)를 서로 치환 가능하게 허용.
+    ex) 'GS-B-25-0088' ↔ 'GS_B_25_0088' ↔ 'GS B 25 0088'
+    """
+    # 입력을 구분자로 토큰화
+    tokens = [t for t in re.split(r"[-_\s\u2010-\u2015\u2212]+", test_no) if t]
+    if not tokens:
+        # 매칭 불가한 빈 입력 방어
+        return re.compile(r"$^")  # never match
+
+    # 허용 구분자 클래스: 공백/언더스코어/일반-및-유니코드 하이픈들
+    sep = r"[\s_\-\u2010-\u2015\u2212]+"
+
+    # 토큰 사이를 'sep'로 연결한 코어 패턴
+    core = sep.join(map(re.escape, tokens))
+
+    # 경계 래핑(시험번호 앞뒤가 글자/숫자/한글이 아닌 경우만)
+    cls = r"0-9A-Za-z가-힣"
+    pat = rf"(?:^|[^{cls}]){core}(?:[^{cls}]|$)"
+    return re.compile(pat, re.IGNORECASE)
 
 async def _wait_top_ready(page: Page, timeout=T_MED):
     """로그인 완료 후 상단 컨테이너가 보이는지로 초기 안정화."""
@@ -139,7 +162,7 @@ async def _try_click_doc_name_span(page: Page, 시험번호: str, timeout=15000,
     CSS_EVT = "span.document-list-item-name-text-span.left.hcursor.ellipsis[events='document-list-viewDocument-click']"
     CSS_SP  = "span.document-list-item-name-text-span.left.hcursor.ellipsis"
     pat_score = _boundary_pat("시험성적서")
-    pat_num   = _boundary_pat(시험번호) if 시험번호 else None
+    pat_num   = _testno_pat(시험번호) if 시험번호 else None
 
     async def _click(loc: Locator, tag: str) -> bool:
         if await loc.count() == 0:
@@ -227,12 +250,53 @@ async def _get_pane2(page: Page, timeout=T_MED) -> Locator:
     return pane2
 
 
-async def _find_target_row(scope: Locator, 시험번호: str) -> Locator | None:
-    """pane-2(=scope) 내부에서 대상 행을 찾는다: 텍스트 AND 방식으로 단순화."""
-    tbody = scope.locator(SEL["file_tbody"])
-    await expect(tbody).to_be_visible(timeout=T_MED)
-    row = tbody.locator("tr").filter(has_text=시험번호).filter(has_text="시험성적서").first
-    return row if (await row.count() > 0) else None
+async def _find_target_row(scope, 시험번호: str):
+    """여러 전략으로 대상 행을 찾는다 (filename/title/data-filename/텍스트 폴백)"""
+    tbody = scope.locator("#prop-view-file-list-tbody")
+    await expect(tbody).to_be_visible(timeout=15000)
+
+    # ★ 언더스코어 변형 추가
+    alt_no = (시험번호 or "").replace("-", "_")
+
+    # 1) 속성 기반(AND) — 원본 시험번호 + 언더스코어 변형 둘 다 시도
+    strategies = [
+        # filename/title/data-filename 속성에 '시험번호'와 '시험성적서'가 동시에 들어있는 tr
+        f'tr[filename*="{시험번호}"][filename*="시험성적서"]',
+        f'tr[title*="{시험번호}"][title*="시험성적서"]',
+        f'tr[data-filename*="{시험번호}"][data-filename*="시험성적서"]',
+
+        # ★ 언더스코어 변형
+        f'tr[filename*="{alt_no}"][filename*="시험성적서"]',
+        f'tr[title*="{alt_no}"][title*="시험성적서"]',
+        f'tr[data-filename*="{alt_no}"][data-filename*="시험성적서"]',
+
+        # 2) :has()로 자식 td 속성 매칭 (원본 + 언더스코어 변형)
+        f'tr:has(td[filename*="{시험번호}"]):has(td[filename*="시험성적서"])',
+        f'tr:has(td[title*="{시험번호}"]):has(td[title*="시험성적서"])',
+        f'tr:has(td[filename*="{alt_no}"]):has(td[filename*="시험성적서"])',
+        f'tr:has(td[title*="{alt_no}"]):has(td[title*="시험성적서"])',
+
+        # 3) 텍스트 폴백은 아래에서 처리 (여기선 자리표시자)
+        None,
+    ]
+
+    for sel in strategies:
+        if sel:
+            row = tbody.locator(sel).first
+            if await row.count() > 0:
+                return row
+
+    # 3) 텍스트 기반 폴백 — 시험번호는 유연 매칭(_testno_pat), 성적서는 경계 매칭
+    row = (
+        tbody.locator("tr")
+        .filter(has_text=_testno_pat(시험번호))
+        .filter(has_text=_boundary_pat("시험성적서"))
+        .first
+    )
+    if await row.count() > 0:
+        return row
+
+    return None
 
 
 # =========================
