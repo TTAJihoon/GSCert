@@ -14,6 +14,7 @@ from ...models import Job
 from .history_scenarios import run_scenario_async  # 그대로 사용 (async 시나리오)  # ← 그대로 유지
 
 # ────────────────────────────────────────────────────────────
+BASE_ORIGIN = os.getenv("BASE_ORIGIN", "http://210.104.181.10")
 # 경로/환경
 RUNS_DIR = pathlib.Path(__file__).resolve().parent.parent / "runs"
 RUNS_DIR.mkdir(parents=True, exist_ok=True)
