@@ -5,7 +5,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404
 import django_rq
 from ...models import Job
-from .history_tasks import run_playwright_job_task  # ← RQ에 넣을 타겟
+from .history_tasks import run_playwright_job_task_sync  # 동기 래퍼
 
 def _extract_fields(payload: dict):
     """
@@ -58,11 +58,7 @@ def start_job(request):
     # 잡 생성 & 큐 등록
     job = Job.objects.create(status="PENDING")
     queue = django_rq.get_queue("default")
-
-    # ⚠️ 주의: run_playwright_job_task가 async라면, RQ에서는 sync 래퍼를 enqueue 해야 합니다.
-    # (이 파일 그대로 쓰되, 당신의 history_tasks에 sync 엔트리 함수를 두셨다면
-    #   run_playwright_job_task_sync 같은 것으로 바꿔주세요.)
-    queue.enqueue(run_playwright_job_task, str(job.id), data)
+    queue.enqueue(run_playwright_job_task_sync, str(job.id), data)
 
     return JsonResponse({"jobId": str(job.id), "status": job.status})
 
