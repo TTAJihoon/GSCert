@@ -34,6 +34,10 @@ document.addEventListener('DOMContentLoaded', function () {
     btn.disabled = true;
     showLoading();
 
+    // 팝업 차단 회피용: 사용자 제스처 시점에 새 탭을 미리 열어둔다.
+    let previewWin = null;
+    try { previewWin = window.open('about:blank', '_blank'); } catch (_) {}
+
     try {
       // 서버에 시작 요청 (시험번호 + 인증일자 전달)
       const payload = { '시험번호': testNo, '인증일자': certDateRaw };
@@ -61,9 +65,6 @@ document.addEventListener('DOMContentLoaded', function () {
           const link = s.final_link || '';
           console.log('복사된 문장:', link);
 
-          // 팝업 차단 회피용: 사용자 제스처 시점에 새 탭을 미리 열어둔다.
-          let previewWin = null;
-          try { previewWin = window.open('about:blank', '_blank'); } catch (_) {}
           // URL이면 새 탭으로 열기, 아니면 alert로 본문 표시
           if (/^https?:\/\//i.test(link)) {
             if (previewWin && !previewWin.closed) {
@@ -92,7 +93,6 @@ document.addEventListener('DOMContentLoaded', function () {
     } catch (err) {
       console.error('실패:', err);
       alert('실패: ' + err.message);
-      // 실패 시 미리 연 새 탭이 열려 있다면 닫기
       if (previewWin && !previewWin.closed) previewWin.close();
     } finally {
       btn.disabled = false;
