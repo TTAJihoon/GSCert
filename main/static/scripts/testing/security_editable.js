@@ -60,7 +60,7 @@
     App.dom.tableHeader.innerHTML = "";
     fields.forEach((field) => {
       const th = document.createElement("th");
-      th.className = "px-4 py-3 text-center text-xs font14 text-gray-500 uppercase tracking-wider bg-sky-50";
+      th.className = "px-4 py-3 text-center font14 text-gray-500 uppercase tracking-wider bg-sky-50";
       th.innerHTML = (field.type === "checkbox")
         ? `<input type="checkbox" id="selectAll" class="row-checkbox" onchange="SecurityApp.editable.toggleAllRows(this.checked)">`
         : field.label;
