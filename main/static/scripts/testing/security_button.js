@@ -4,14 +4,14 @@
 
   let exportBtn, deleteSelectedBtn, addRowBtn, selectedCountEl;
 
+  // 선택 UI
   function updateSelectionUI() {
     const count = App.state.selectedRows.size;
-    selectedCountEl.textContent = count;
-    deleteSelectedBtn.disabled = count === 0;
+    selectedCountEl && (selectedCountEl.textContent = count);
+    if (deleteSelectedBtn) deleteSelectedBtn.disabled = count === 0;
 
     const selectAll = document.getElementById("selectAll");
     const totalCheckboxes = document.querySelectorAll('.row-checkbox[data-record-id]').length;
-
     if (selectAll) {
       if (count === 0) {
         selectAll.checked = false;
@@ -46,30 +46,20 @@
 
   function deleteSelectedRows() {
     const sel = App.state.selectedRows;
-    if (sel.size === 0) {
-      App.showError("삭제할 행을 선택해주세요.");
-      return;
-    }
+    if (sel.size === 0) return App.showError("삭제할 행을 선택해주세요.");
     if (!confirm(`선택된 ${sel.size}개의 행을 삭제하시겠습니까?`)) return;
 
-    try {
-      App.state.currentData = App.state.currentData.filter((row) => !sel.has(row.id));
-      sel.clear();
-      App.showSuccess("선택된 행이 삭제되었습니다.");
-      App.renderTable();
-      App.updateTotalCount();
-      updateSelectionUI();
-    } catch (err) {
-      console.error("삭제 오류:", err);
-      App.showError("삭제 중 오류가 발생했습니다.");
-    }
+    App.state.currentData = App.state.currentData.filter((row) => !sel.has(row.id));
+    sel.clear();
+
+    App.renderTable();
+    App.updateTotalCount();
+    updateSelectionUI();
+    App.showSuccess("선택된 행이 삭제되었습니다.");
   }
 
   function exportToExcel() {
-    if (App.state.currentData.length === 0) {
-      App.showError("다운로드할 데이터가 없습니다.");
-      return;
-    }
+    if (!App.state.currentData.length) return App.showError("다운로드할 데이터가 없습니다.");
     try {
       const excelData = App.state.currentData.map((row) => ({
         "시험환경 OS": row.test_env_os || "",
@@ -79,30 +69,10 @@
         "품질특성": row.quality_attribute || "",
         "결함 설명": row.defect_description || "",
       }));
-
       const wb = XLSX.utils.book_new();
       const ws = XLSX.utils.json_to_sheet(excelData);
-
       ws["!cols"] = [{ wch: 20 }, { wch: 30 }, { wch: 10 }, { wch: 10 }, { wch: 12 }, { wch: 50 }];
-
-      const range = XLSX.utils.decode_range(ws["!ref"]);
-      for (let R = 0; R <= range.e.r; ++R) {
-        for (let C = 0; C <= range.e.c; ++C) {
-          const addr = XLSX.utils.encode_cell({ r: R, c: C });
-          if (!ws[addr]) continue;
-          const alignment = C === 5 ? { horizontal: "left", vertical: "top", wrapText: true }
-                                   : { horizontal: "center", vertical: "center", wrapText: true };
-          ws[addr].s = { alignment, font: { name: "맑은 고딕", size: 10 } };
-          if (R === 0) {
-            ws[addr].s.font = { name: "맑은 고딕", size: 11, bold: true };
-            ws[addr].s.fill = { fgColor: { rgb: "E0F2FE" } };
-            ws[addr].s.alignment.horizontal = "center";
-          }
-        }
-      }
-      ws["!rows"] = Array.from({ length: range.e.r + 1 }, (_, i) => ({ hpt: i === 0 ? 25 : 35 }));
       XLSX.utils.book_append_sheet(wb, ws, "결함목록");
-
       const fileName = `결함목록_${new Date().toISOString().split("T")[0]}.xlsx`;
       XLSX.writeFile(wb, fileName);
       App.showSuccess("엑셀 파일이 다운로드되었습니다.");
@@ -128,6 +98,6 @@
     deleteSelectedBtn && deleteSelectedBtn.addEventListener("click", deleteSelectedRows);
     addRowBtn && addRowBtn.addEventListener("click", addNewRow);
 
-    updateSelectionUI(); // 초기 상태 반영
+    updateSelectionUI();
   });
 })(window);
