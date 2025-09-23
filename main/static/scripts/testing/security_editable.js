@@ -1,7 +1,7 @@
 (function (window) {
   const App = (window.SecurityApp = window.SecurityApp || {});
 
-  // 전역 상태
+  // 전역 상태 (초기 데이터 없음)
   App.state = App.state || {
     currentData: [],
     selectedRows: new Set(),
@@ -9,36 +9,17 @@
     editingCell: null,
   };
 
-  // DOM 캐시 (DOMContentLoaded 후 채움)
   App.dom = App.dom || {};
 
-  // 테이블 스키마
+  // 테이블 스키마 (필요 컬럼만)
   App.schema = App.schema || {
     name: "defects",
     fields: [
       { name: "select", type: "checkbox", label: "선택", editable: false },
-      {
-        name: "test_env_os",
-        type: "select",
-        label: "시험환경 OS",
-        editable: true,
-        options: ["시험환경<BR/>모든 OS", "-"],
-      },
+      { name: "test_env_os", type: "select", label: "시험환경 OS", editable: true, options: ["시험환경<BR/>모든 OS", "-", "/"] },
       { name: "defect_summary", type: "textarea", label: "결함요약", editable: true },
-      {
-        name: "defect_level",
-        type: "select",
-        label: "결함정도",
-        editable: true,
-        options: ["H", "M", "L"],
-      },
-      {
-        name: "frequency",
-        type: "select",
-        label: "발생빈도",
-        editable: true,
-        options: ["A", "I"],
-      },
+      { name: "defect_level", type: "select", label: "결함정도", editable: true, options: ["H", "M", "L"] },
+      { name: "frequency", type: "select", label: "발생빈도", editable: true, options: ["A", "I"] },
       { name: "quality_attribute", type: "text", label: "품질특성", editable: true, defaultValue: "보안성" },
       { name: "defect_description", type: "textarea", label: "결함 설명", editable: true },
       { name: "invicti_popup", type: "popup", label: "Invicti 분석", editable: false },
@@ -50,38 +31,28 @@
   function formatCellValue(value, type) {
     if (!value && value !== 0) return '<span class="text-gray-400">-</span>';
     switch (type) {
-      case "date":
-        return new Date(value).toLocaleDateString("ko-KR");
-      case "number":
-        return Number(value).toLocaleString();
-      case "textarea":
-      case "text":
-      default:
-        return String(value).replace(/\n/g, "<br>");
+      case "date": return new Date(value).toLocaleDateString("ko-KR");
+      case "number": return Number(value).toLocaleString();
+      default: return String(value).replace(/\n/g, "<br>");
     }
   }
-  function showLoading(show) {
-    App.dom.loadingState.style.display = show ? "block" : "none";
-    App.dom.tableBody.style.display = show ? "none" : "table-row-group";
-  }
   function showEmptyState(show) {
-    App.dom.emptyState.style.display = show ? "block" : "none";
+    if (!App.dom.emptyState || !App.dom.tableBody) return;
+    App.dom.emptyState.classList.toggle("hidden", !show);
     App.dom.tableBody.style.display = show ? "none" : "table-row-group";
   }
   function showToast(message, type) {
-    const toast = document.createElement("div");
-    toast.className = `fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-white transition-all transform translate-x-0 ${
-      type === "success" ? "bg-green-500" : "bg-red-500"
-    }`;
-    toast.textContent = message;
-    document.body.appendChild(toast);
-    setTimeout(() => toast.classList.add("opacity-0", "translate-x-full"), 3000);
-    setTimeout(() => document.body.removeChild(toast), 3500);
+    const el = document.createElement("div");
+    el.className = `fixed top-4 right-4 z-50 px-4 py-2 rounded-lg shadow-lg text-white transition-all ${type === "success" ? "bg-green-500" : "bg-red-500"}`;
+    el.textContent = message;
+    document.body.appendChild(el);
+    setTimeout(() => el.classList.add("opacity-0", "translate-x-full"), 3000);
+    setTimeout(() => el.remove(), 3500);
   }
-  function showSuccess(msg) { showToast(msg, "success"); }
-  function showError(msg) { showToast(msg, "error"); }
-  function updateTotalCount() { App.dom.totalCount.textContent = App.state.currentData.length; }
-  function generateId() { return "row_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9); }
+  function showSuccess(msg){ showToast(msg, "success"); }
+  function showError(msg){ showToast(msg, "error"); }
+  function updateTotalCount(){ App.dom.totalCount && (App.dom.totalCount.textContent = App.state.currentData.length); }
+  function generateId(){ return "row_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9); }
 
   // ===== 렌더링 =====
   function renderTableHeader() {
@@ -90,15 +61,9 @@
     fields.forEach((field) => {
       const th = document.createElement("th");
       th.className = "px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider bg-sky-50";
-      if (field.type === "checkbox") {
-        th.innerHTML = `
-          <input type="checkbox" id="selectAll"
-                 class="row-checkbox"
-                 onchange="SecurityApp.editable.toggleAllRows(this.checked)">
-        `;
-      } else {
-        th.textContent = field.label;
-      }
+      th.innerHTML = (field.type === "checkbox")
+        ? `<input type="checkbox" id="selectAll" class="row-checkbox" onchange="SecurityApp.editable.toggleAllRows(this.checked)">`
+        : field.label;
       App.dom.tableHeader.appendChild(th);
     });
   }
@@ -106,7 +71,7 @@
   function renderTable() {
     renderTableHeader();
     const data = App.state.currentData;
-    if (data.length === 0) { showEmptyState(true); return; }
+    if (!data || data.length === 0) { showEmptyState(true); App.dom.tableBody.innerHTML = ""; return; }
     showEmptyState(false);
     App.dom.tableBody.innerHTML = "";
 
@@ -121,44 +86,25 @@
 
         if (field.type === "checkbox") {
           td.innerHTML = `
-            <input type="checkbox"
-                   class="row-checkbox"
-                   data-record-id="${row.id}"
+            <input type="checkbox" class="row-checkbox" data-record-id="${row.id}"
                    onchange="SecurityApp.editable.toggleRowSelection(this.dataset.recordId, this.checked)"
-                   ${App.state.selectedRows.has(row.id) ? "checked" : ""}>
-          `;
+                   ${App.state.selectedRows.has(row.id) ? "checked" : ""}>`;
         } else if (field.type === "popup") {
-          if (field.name === "invicti_popup") {
-            td.innerHTML = `
-              <button onclick="SecurityApp.popup.showInvictiAnalysis('${row.id}')"
-                      class="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-700 rounded-full hover:bg-purple-200 transition-colors text-xs font-medium">
-                <i class="fas fa-search mr-1"></i>분석
-              </button>
-            `;
-          } else {
-            td.innerHTML = `
-              <button onclick="SecurityApp.popup.showGptRecommendation('${row.id}')"
-                      class="inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-full hover:bg-green-200 transition-colors text-xs font-medium">
-                <i class="fas fa-lightbulb mr-1"></i>추천
-              </button>
-            `;
-          }
+          td.innerHTML = (field.name === "invicti_popup")
+            ? `<button onclick="SecurityApp.popup.showInvictiAnalysis('${row.id}')" class="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-700 rounded-full hover:bg-purple-200 text-xs font-medium"><i class="fas fa-search mr-1"></i>분석</button>`
+            : `<button onclick="SecurityApp.popup.showGptRecommendation('${row.id}')" class="inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-full hover:bg-green-200 text-xs font-medium"><i class="fas fa-lightbulb mr-1"></i>추천</button>`;
         } else {
           const value = formatCellValue(row[field.name], field.type);
           if (field.editable) {
             td.innerHTML = `
-              <div class="editable-cell p-2 rounded"
-                   onclick="SecurityApp.editable.startEdit(this, '${row.id}', '${field.name}', '${field.type}')"
-                   data-original-value="${row[field.name] || ""}"
-                   data-field-type="${field.type}">
+              <div class="editable-cell p-2 rounded" data-original-value="${row[field.name] || ""}" data-field-type="${field.type}"
+                   onclick="SecurityApp.editable.startEdit(this, '${row.id}', '${field.name}', '${field.type}')">
                 <div class="table-cell-content">${value}</div>
-              </div>
-            `;
+              </div>`;
           } else {
             td.innerHTML = `<div class="p-2"><div class="table-cell-content">${value}</div></div>`;
           }
         }
-
         tr.appendChild(td);
       });
 
@@ -166,198 +112,112 @@
       App.dom.tableBody.appendChild(tr);
     });
 
-    // 선택 UI 동기화 (버튼 모듈에 위임)
-    if (App.buttons && App.buttons.updateSelectionUI) App.buttons.updateSelectionUI();
+    // 선택 UI 동기화
+    App.buttons && App.buttons.updateSelectionUI && App.buttons.updateSelectionUI();
   }
 
-  // ===== 데이터 로드 (샘플) =====
-  function loadTableData() {
-    showLoading(true);
-    if (App.state.currentData.length === 0) {
-      App.state.currentData = [
-        {
-          id: generateId(),
-          test_env_os: "시험환경 모든 OS",
-          defect_summary: "로그인 페이지에서 SQL 인젝션 취약점 발견",
-          defect_level: "H",
-          frequency: "A",
-          quality_attribute: "보안성",
-          defect_description: "사용자 입력값에 대한 검증이 부족하여\nSQL 인젝션 공격이 가능함",
-          invicti_analysis: "",
-          gpt_recommendation: "",
-        },
-        {
-          id: generateId(),
-          test_env_os: "/",
-          defect_summary: "XSS 취약점으로 인한 스크립트 실행 가능",
-          defect_level: "M",
-          frequency: "I",
-          quality_attribute: "보안성",
-          defect_description: "게시판 입력폼에서 스크립트 태그가\n필터링되지 않아 XSS 공격 가능",
-          invicti_analysis: "",
-          gpt_recommendation: "",
-        },
-      ];
-    }
-    renderTable();
-    updateTotalCount();
-    setTimeout(() => showLoading(false), 300);
-  }
-
-  // ===== 편집 로직 =====
-  function autoResizeTextarea() {
-    this.style.height = "auto";
-    this.style.height = Math.min(this.scrollHeight, 150) + "px";
-  }
-
+  // ===== 편집 =====
+  function autoResizeTextarea(){ this.style.height = "auto"; this.style.height = Math.min(this.scrollHeight, 150) + "px"; }
   function startEdit(element, recordId, fieldName, fieldType) {
     if (App.state.isEditing) return;
-
     App.state.isEditing = true;
     App.state.editingCell = { element, recordId, fieldName, fieldType };
 
     element.classList.add("editing");
     const originalValue = element.dataset.originalValue;
     const field = App.schema.fields.find((f) => f.name === fieldName);
-
     let inputHtml = "";
+
     switch (fieldType) {
       case "select":
-        inputHtml = `
-          <select class="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-sky-500 focus:border-transparent">
-            ${field.options
-              .map((opt) => `<option value="${opt}" ${originalValue === opt ? "selected" : ""}>${opt}</option>`)
-              .join("")}
-          </select>`;
+        inputHtml = `<select class="w-full px-2 py-1 border rounded focus:ring-2 focus:ring-sky-500">
+          ${field.options.map(opt => `<option value="${opt}" ${originalValue === opt ? "selected" : ""}>${opt}</option>`).join("")}
+        </select>`;
         break;
       case "textarea":
-        inputHtml = `
-          <textarea rows="3" class="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-sky-500 focus:border-transparent resize-none auto-resize">${originalValue || ""}</textarea>`;
+        inputHtml = `<textarea rows="3" class="w-full px-2 py-1 border rounded focus:ring-2 focus:ring-sky-500 resize-none auto-resize">${originalValue || ""}</textarea>`;
         break;
-      case "date":
-        const dateValue = originalValue ? new Date(originalValue).toISOString().split("T")[0] : "";
-        inputHtml = `
-          <input type="date" value="${dateValue}"
-                 class="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-sky-500 focus:border-transparent">`;
-        break;
-      case "number":
-        inputHtml = `
-          <input type="number" value="${originalValue || ""}"
-                 class="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-sky-500 focus:border-transparent">`;
-        break;
-      case "text":
       default:
-        inputHtml = `
-          <textarea rows="2" class="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-sky-500 focus:border-transparent resize-none auto-resize" placeholder="Shift+Enter로 줄바꿈 가능">${originalValue || ""}</textarea>`;
+        inputHtml = `<textarea rows="2" class="w-full px-2 py-1 border rounded focus:ring-2 focus:ring-sky-500 resize-none auto-resize">${originalValue || ""}</textarea>`;
     }
 
     element.innerHTML = inputHtml;
     const input = element.querySelector("input, select, textarea");
     input.focus();
-
     input.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        if (e.shiftKey && input.tagName.toLowerCase() === "textarea") return; // 줄바꿈
-        e.preventDefault();
-        saveEdit();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        cancelEdit();
-      }
+      if (e.key === "Enter") { if (e.shiftKey && input.tagName.toLowerCase() === "textarea") return; e.preventDefault(); saveEdit(); }
+      else if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
     });
-
-    if (input.tagName.toLowerCase() === "textarea") {
-      input.addEventListener("input", autoResizeTextarea);
-      autoResizeTextarea.call(input);
-    }
-
+    if (input.tagName.toLowerCase() === "textarea") { input.addEventListener("input", autoResizeTextarea); autoResizeTextarea.call(input); }
     input.addEventListener("blur", saveEdit);
   }
 
   function saveEdit() {
     const st = App.state;
     if (!st.isEditing || !st.editingCell) return;
-
     const { element, recordId, fieldName, fieldType } = st.editingCell;
     const input = element.querySelector("input, select, textarea");
     const newValue = input.value;
     const originalValue = element.dataset.originalValue;
 
     if (newValue === originalValue) return cancelEdit();
+    const rec = st.currentData.find((r) => r.id === recordId);
+    if (rec) rec[fieldName] = newValue;
 
-    try {
-      const rec = st.currentData.find((r) => r.id === recordId);
-      if (rec) rec[fieldName] = newValue;
-
-      element.dataset.originalValue = newValue;
-      element.innerHTML = `<div class="table-cell-content">${formatCellValue(newValue, fieldType)}</div>`;
-      element.classList.remove("editing");
-      showSuccess("저장되었습니다.");
-    } catch (err) {
-      console.error("저장 오류:", err);
-      showError("저장 중 오류가 발생했습니다.");
-      cancelEdit();
-    } finally {
-      st.isEditing = false;
-      st.editingCell = null;
-    }
+    element.dataset.originalValue = newValue;
+    element.innerHTML = `<div class="table-cell-content">${formatCellValue(newValue, fieldType)}</div>`;
+    element.classList.remove("editing");
+    st.isEditing = false; st.editingCell = null;
+    showSuccess("저장되었습니다.");
   }
 
   function cancelEdit() {
     const st = App.state;
     if (!st.isEditing || !st.editingCell) return;
-
     const { element, fieldType } = st.editingCell;
     const originalValue = element.dataset.originalValue;
     element.innerHTML = `<div class="table-cell-content">${formatCellValue(originalValue, fieldType)}</div>`;
     element.classList.remove("editing");
-    st.isEditing = false;
-    st.editingCell = null;
+    st.isEditing = false; st.editingCell = null;
   }
 
   // ===== 선택(체크박스) =====
   function toggleRowSelection(recordId, isSelected) {
-    const st = App.state;
     const rowEl = document.querySelector(`tr[data-row-id="${recordId}"]`);
-
-    if (isSelected) {
-      st.selectedRows.add(recordId);
-      rowEl && rowEl.classList.add("selected-row");
-    } else {
-      st.selectedRows.delete(recordId);
-      rowEl && rowEl.classList.remove("selected-row");
-    }
-    if (App.buttons && App.buttons.updateSelectionUI) App.buttons.updateSelectionUI();
+    if (isSelected) { App.state.selectedRows.add(recordId); rowEl && rowEl.classList.add("selected-row"); }
+    else { App.state.selectedRows.delete(recordId); rowEl && rowEl.classList.remove("selected-row"); }
+    App.buttons && App.buttons.updateSelectionUI && App.buttons.updateSelectionUI();
   }
-
   function toggleAllRows(selectAll) {
     document.querySelectorAll('.row-checkbox[data-record-id]').forEach((cb) => {
-      cb.checked = selectAll;
-      toggleRowSelection(cb.dataset.recordId, selectAll);
+      cb.checked = selectAll; toggleRowSelection(cb.dataset.recordId, selectAll);
     });
   }
 
-  // ===== 공개 API =====
+  // ===== 데이터 주입 API (업로드 파싱 결과를 여기로 넣음) =====
+  function setData(rows) {
+    App.state.currentData = Array.isArray(rows) ? rows : [];
+    App.state.selectedRows.clear();
+    renderTable(); updateTotalCount();
+  }
+  function clearData() {
+    setData([]);
+  }
+
+  // 공개 API
   App.formatCellValue = formatCellValue;
-  App.showLoading = showLoading;
   App.showEmptyState = showEmptyState;
   App.showSuccess = showSuccess;
   App.showError = showError;
   App.updateTotalCount = updateTotalCount;
   App.generateId = generateId;
   App.renderTable = renderTable;
-  App.loadTableData = loadTableData;
+  App.setData = setData;
+  App.clearData = clearData;
 
-  App.editable = {
-    startEdit,
-    saveEdit,
-    cancelEdit,
-    autoResizeTextarea,
-    toggleRowSelection,
-    toggleAllRows,
-  };
+  App.editable = { startEdit, saveEdit, cancelEdit, autoResizeTextarea, toggleRowSelection, toggleAllRows };
 
-  // 초기화
+  // 초기화 (DB 로드/샘플 데이터 없음)
   document.addEventListener("DOMContentLoaded", () => {
     App.dom = {
       tableBody: document.getElementById("tableBody"),
@@ -366,6 +226,7 @@
       emptyState: document.getElementById("emptyState"),
       totalCount: document.getElementById("totalCount"),
     };
-    App.loadTableData();
+    App.dom.loadingState && App.dom.loadingState.classList.add("hidden"); // 기본 숨김 보장
+    renderTable(); updateTotalCount();
   });
 })(window);
