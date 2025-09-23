@@ -79,23 +79,23 @@ function loadTableData() {
         currentData = [
             {
                 id: generateId(),
-                test_env_os: '시험환경 모든 OS',
+                test_env_os: '시험환경<BR/>모든 OS',
                 defect_summary: '로그인 페이지에서 SQL 인젝션 취약점 발견',
                 defect_level: 'H',
                 frequency: 'A',
                 quality_attribute: '보안성',
-                defect_description: '사용자 입력값에 대한 검증이 부족하여\\nSQL 인젝션 공격이 가능함',
+                defect_description: '사용자 입력값에 대한 검증이 부족하여 SQL 인젝션 공격이 가능함',
                 invicti_analysis: '', // 추후 Invicti 분석 결과
                 gpt_recommendation: '' // 추후 GPT 추천 방안
             },
             {
                 id: generateId(),
-                test_env_os: '/',
+                test_env_os: '-',
                 defect_summary: 'XSS 취약점으로 인한 스크립트 실행 가능',
                 defect_level: 'M',
-                frequency: 'I',
+                frequency: 'A',
                 quality_attribute: '보안성',
-                defect_description: '게시판 입력폼에서 스크립트 태그가\\n필터링되지 않아 XSS 공격 가능',
+                defect_description: '게시판 입력폼에서 스크립트 태그가 필터링되지 않아 XSS 공격 가능',
                 invicti_analysis: '',
                 gpt_recommendation: ''
             }
