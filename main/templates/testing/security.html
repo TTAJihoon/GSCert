@@ -14,7 +14,9 @@
 <link rel="stylesheet" href="{% static 'css/testing/security_table.css' %}"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 
-<script src="{% static 'scripts/testing/security_Listener.js' %}" defer></script>
+<script src="{% static 'scripts/testing/security_editable.js' %}" defer></script>
+<script src="{% static 'scripts/testing/security_popup.js' %}" defer></script>
+<script src="{% static 'scripts/testing/security_button.js' %}" defer></script>
 <script src="{% static 'scripts/testing/security_submit.js' %}" defer></script>
 {% endblock %}
 
@@ -46,7 +48,7 @@
 
               <div class="content-spacer"></div>
               <!-- 페이지 이동 방지: type="button" -->
-              <button type="button" class="action-button" id="btn-generate">보안성 시험 결과 자동 작성성</button>
+              <button type="button" class="action-button" id="btn-generate">보안성 시험 결과 자동 작성</button>
             </div>
           </div>
         </form>
