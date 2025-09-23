@@ -99,7 +99,7 @@
     dropArea    = document.getElementById("dropArea");
     fileListEl  = document.getElementById("fileList");
     generateBtn = document.getElementById("btn-generate");
-    pageLoading = document.getElementById("loadingContainer");
+    pageLoading = document.getElementById("loadingState");
 
     // 파일 선택
     fileInput && fileInput.addEventListener("change", (e) => {
