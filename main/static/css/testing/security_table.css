@@ -1,3 +1,10 @@
 .font14 {
   font-size: 14px;
 }
+
+.table-container table th,
+.table-container table td {
+  min-width: 84.5px;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
