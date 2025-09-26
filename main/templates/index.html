@@ -1,18 +1,114 @@
-{% extends 'header.html' %}
 {% load static %}
-{% block title %}시험 이력 조회{% endblock %}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTA AI ON - GS인증 업무 자동화 시스템</title>
+    <link href="https://cdn.tailwindcss.com" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="{% static 'css/index.css' %}"/>
+</head>
+<body>
+    <!-- 첫 번째 섹션: TTA AI ON 배경 이미지 -->
+    <section class="hero-section">
+        <div class="hero-overlay"></div>
+        <div class="hero-content">
+            <h1 class="hero-title">GS AI ON</h1>
+            <p class="hero-subtitle">차세대 AI 기술과 함께하는 스마트 업무 혁신</p>
+        </div>
+        <div class="scroll-indicator">
+            <i class="fas fa-chevron-down"></i>
+            <p>스크롤하여 더 보기</p>
+        </div>
+    </section>
 
-{% block head %}
-{% endblock %}
+    <!-- 두 번째 섹션: GS인증 업무 자동화 시스템 -->
+    <section class="content-section">
+        <div class="container">
 
-{% block content %}
-<div class="content">
-  <div class="flex justify-center items-center h-full">
-    <div class="text-center">
-      <h1 class="text-3xl font-bold text-gray-800 mb-6"></BR>환영합니다</h1>
-      <p class="text-lg text-gray-600">상단의 메뉴에 마우스를 올려 하위 메뉴를 확인해보세요.</p>
-      <img src="{% static 'images/homepage.png' %}">
-    </div>
-  </div>
-</div>
-{% endblock %}
+            
+            <div class="section-container testing-section">
+                <h2 class="text-xl font-medium category-title testing">Testing</h2>
+                <div class="grid-container">
+                    <div class="card testing-card">
+                        <div class="card-icon testing-icon">
+                            <img alt="신청기업 GS인증 이력 조회" class="icon-img" src="https://page.gensparksite.com/slides_images/158104fedaa0a300b86d240d38ea6e32.png"/>
+                        </div>
+                        <h3 class="card-title">신청기업 GS인증<br/>이력 조회</h3>
+                    </div>
+                    <div class="card testing-card">
+                        <div class="card-icon testing-icon">
+                            <img alt="신청제품 유사 제품 조회" class="icon-img" src="https://page.gensparksite.com/slides_images/850f1d218df852ff9f0b6b01ac7e0c21.png"/>
+                        </div>
+                        <h3 class="card-title">신청제품 유사<br/>제품 조회</h3>
+                    </div>
+                    <div class="card testing-card">
+                        <div class="card-icon testing-icon">
+                            <img alt="보안성 결함 리포트 자동 작성" class="icon-img" src="https://page.gensparksite.com/slides_images/a65e08f03619ee734b830e2688f1aa72.png"/>
+                        </div>
+                        <h3 class="card-title">보안성 결함<br/>리포트 자동 작성</h3>
+                    </div>
+                    <div class="card testing-card">
+                        <div class="card-icon testing-icon">
+                            <img alt="시험결과서 자동 작성" class="icon-img" src="https://page.gensparksite.com/slides_images/f450bc1858732b42a6361dc9b386ad6c.png"/>
+                        </div>
+                        <h3 class="card-title">시험결과서<br/>자동 작성</h3>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="section-container certy-section">
+                <h2 class="text-xl font-medium category-title certy">Certy</h2>
+                <div class="grid-container-3">
+                    <div class="card certy-card">
+                        <div class="card-icon certy-icon">
+                            <img alt="인증위 제품정보 자동 작성" class="icon-img" src="https://page.gensparksite.com/slides_images/16181a71bfdf18b7314c6e167a3a1e93.png"/>
+                        </div>
+                        <h3 class="card-title">인증위 제품정보<br/>자동 작성</h3>
+                    </div>
+                    <div class="card certy-card">
+                        <div class="card-icon certy-icon">
+                            <img alt="인증서 제작 자동화" class="icon-img" src="https://page.gensparksite.com/slides_images/40ede5322cb5d04b01e85898e5fa26e5.png"/>
+                        </div>
+                        <h3 class="card-title">인증서 제작<br/>자동화</h3>
+                    </div>
+                    <div class="card certy-card">
+                        <div class="card-icon certy-icon">
+                            <img alt="GS인증 이력 및 통계 정보 관리" class="icon-img" src="https://page.gensparksite.com/slides_images/a1cd543e5ae2d8924b9f4009069b2396.png"/>
+                        </div>
+                        <h3 class="card-title">GS인증 이력 및<br/>통계 정보 관리</h3>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="section-container review-section">
+                <h2 class="text-xl font-medium category-title review">Review</h2>
+                <div class="grid-container-3">
+                    <div class="card review-card">
+                        <div class="card-icon review-icon">
+                            <img alt="시험결과서 자동 점검" class="icon-img" src="https://page.gensparksite.com/slides_images/b2247390135581e4cd33cb22d5e15b5a.png"/>
+                        </div>
+                        <h3 class="card-title">시험결과서<br/>자동 점검</h3>
+                    </div>
+                    <div class="card review-card">
+                        <div class="card-icon review-icon">
+                            <img alt="ECM 산출물 자동 점검" class="icon-img" src="https://page.gensparksite.com/slides_images/27b4130a3dd23c97fdbce42ad42ee6bf.png"/>
+                        </div>
+                        <h3 class="card-title">ECM 산출물<br/>자동 점검</h3>
+                    </div>
+                    <div class="card review-card">
+                        <div class="card-icon review-icon">
+                            <img alt="사용자 매뉴얼 품질 점검" class="icon-img" src="https://page.gensparksite.com/slides_images/d505b4cbd1e54350d7bfe62114925701.png"/>
+                        </div>
+                        <h3 class="card-title">사용자 매뉴얼<br/>품질 점검</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <script src="js/main.js"></script>
+</body>
+</html>
