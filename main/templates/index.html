@@ -32,27 +32,27 @@
             <div class="section-container testing-section">
                 <h2 class="text-xl font-medium category-title testing">Testing</h2>
                 <div class="grid-container">
-                    <div class="card testing-card">
+                    <div class="card testing-card" onclick="location.href='{% url 'history' %}';">
                         <div class="card-icon testing-icon">
-                            <img alt="신청기업 GS인증 이력 조회" class="icon-img" src="https://page.gensparksite.com/slides_images/158104fedaa0a300b86d240d38ea6e32.png"/>
+                            <img alt="신청기업 GS인증 이력 조회" class="icon-img" src="{% static 'images/00.png' %}"/>
                         </div>
                         <h3 class="card-title">신청기업 GS인증<br/>이력 조회</h3>
                     </div>
-                    <div class="card testing-card">
+                    <div class="card testing-card" onclick="location.href='{% url 'similar' %}';">
                         <div class="card-icon testing-icon">
-                            <img alt="신청제품 유사 제품 조회" class="icon-img" src="https://page.gensparksite.com/slides_images/850f1d218df852ff9f0b6b01ac7e0c21.png"/>
+                            <img alt="신청제품 유사 제품 조회" class="icon-img" src="{% static 'images/11.png' %}"/>
                         </div>
                         <h3 class="card-title">신청제품 유사<br/>제품 조회</h3>
                     </div>
-                    <div class="card testing-card">
+                    <div class="card testing-card" onclick="location.href='{% url 'security' %}';">
                         <div class="card-icon testing-icon">
-                            <img alt="보안성 결함 리포트 자동 작성" class="icon-img" src="https://page.gensparksite.com/slides_images/a65e08f03619ee734b830e2688f1aa72.png"/>
+                            <img alt="보안성 결함 리포트 자동 작성" class="icon-img" src="{% static 'images/22.png' %}"/>
                         </div>
                         <h3 class="card-title">보안성 결함<br/>리포트 자동 작성</h3>
                     </div>
                     <div class="card testing-card">
                         <div class="card-icon testing-icon">
-                            <img alt="시험결과서 자동 작성" class="icon-img" src="https://page.gensparksite.com/slides_images/f450bc1858732b42a6361dc9b386ad6c.png"/>
+                            <img alt="시험결과서 자동 작성" class="icon-img" src="{% static 'images/33.png' %}"/>
                         </div>
                         <h3 class="card-title">시험결과서<br/>자동 작성</h3>
                     </div>
@@ -62,21 +62,21 @@
             <div class="section-container certy-section">
                 <h2 class="text-xl font-medium category-title certy">Certy</h2>
                 <div class="grid-container-3">
-                    <div class="card certy-card">
+                    <div class="card certy-card" onclick="location.href='{% url 'prdinfo' %}';">
                         <div class="card-icon certy-icon">
-                            <img alt="인증위 제품정보 자동 작성" class="icon-img" src="https://page.gensparksite.com/slides_images/16181a71bfdf18b7314c6e167a3a1e93.png"/>
+                            <img alt="인증위 제품정보 자동 작성" class="icon-img" src="{% static 'images/44.png' %}"/>
                         </div>
                         <h3 class="card-title">인증위 제품정보<br/>자동 작성</h3>
                     </div>
                     <div class="card certy-card">
                         <div class="card-icon certy-icon">
-                            <img alt="인증서 제작 자동화" class="icon-img" src="https://page.gensparksite.com/slides_images/40ede5322cb5d04b01e85898e5fa26e5.png"/>
+                            <img alt="인증서 제작 자동화" class="icon-img" src="{% static 'images/55.png' %}"/>
                         </div>
                         <h3 class="card-title">인증서 제작<br/>자동화</h3>
                     </div>
                     <div class="card certy-card">
                         <div class="card-icon certy-icon">
-                            <img alt="GS인증 이력 및 통계 정보 관리" class="icon-img" src="https://page.gensparksite.com/slides_images/a1cd543e5ae2d8924b9f4009069b2396.png"/>
+                            <img alt="GS인증 이력 및 통계 정보 관리" class="icon-img" src="{% static 'images/66.png' %}"/>
                         </div>
                         <h3 class="card-title">GS인증 이력 및<br/>통계 정보 관리</h3>
                     </div>
@@ -88,19 +88,19 @@
                 <div class="grid-container-3">
                     <div class="card review-card">
                         <div class="card-icon review-icon">
-                            <img alt="시험결과서 자동 점검" class="icon-img" src="https://page.gensparksite.com/slides_images/b2247390135581e4cd33cb22d5e15b5a.png"/>
+                            <img alt="시험결과서 자동 점검" class="icon-img" src="{% static 'images/77.png' %}"/>
                         </div>
                         <h3 class="card-title">시험결과서<br/>자동 점검</h3>
                     </div>
                     <div class="card review-card">
                         <div class="card-icon review-icon">
-                            <img alt="ECM 산출물 자동 점검" class="icon-img" src="https://page.gensparksite.com/slides_images/27b4130a3dd23c97fdbce42ad42ee6bf.png"/>
+                            <img alt="ECM 산출물 자동 점검" class="icon-img" src="{% static 'images/88.png' %}"/>
                         </div>
                         <h3 class="card-title">ECM 산출물<br/>자동 점검</h3>
                     </div>
                     <div class="card review-card">
                         <div class="card-icon review-icon">
-                            <img alt="사용자 매뉴얼 품질 점검" class="icon-img" src="https://page.gensparksite.com/slides_images/d505b4cbd1e54350d7bfe62114925701.png"/>
+                            <img alt="사용자 매뉴얼 품질 점검" class="icon-img" src="{% static 'images/99.png' %}"/>
                         </div>
                         <h3 class="card-title">사용자 매뉴얼<br/>품질 점검</h3>
                     </div>
