@@ -64,44 +64,49 @@
     fileInput?.click();
   }
 
+  function injectStyles(css) {
+    const styleId = 'invicti-dynamic-styles';
+    let styleTag = document.getElementById(styleId);
+    if (!styleTag) {
+      styleTag = document.createElement('style');
+      styleTag.id = styleId;
+      document.head.appendChild(styleTag);
+    }
+    styleTag.textContent = css;
+  }
+  
   // ===== 서버 호출 (run_invicti_parse) =====
   async function requestInvictiParse(files) {
-    if (!files || !files.length) {
-      return App.showError("HTML 파일을 업로드해주세요.");
-    }
-    const fd = new FormData();
-    files.forEach((f) => fd.append("file", f, f.name));
-
-    // CSRF
-    const csrf = (document.querySelector('#queryForm input[name="csrfmiddlewaretoken"]') || {}).value
-              || (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/) || [])[1] || "";
-
+    // ... (FormData 및 csrf 설정 부분) ...
     showPageLoading(true);
     generateBtn?.setAttribute("disabled", "disabled");
 
     try {
-      const res = await fetch(API_ENDPOINT, {
-        method: "POST",
-        headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" },
-        body: fd,
-        credentials: "same-origin",
-      });
+      const res = await fetch(API_ENDPOINT, { /* ... */ });
       if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
-      const json = await res.json();
-      const rows = Array.isArray(json) ? json : Array.isArray(json?.rows) ? json.rows : [];
-      if (!rows.length) {
-        App.clearData();
-        return App.showError("추출 가능한 항목이 없습니다. 리포트/분석 결과를 확인해주세요.");
+    
+      const json = await res.json(); // { css: "...", rows: [...] } 형태
+    
+      // ... (에러 처리) ...
+      const rows = Array.isArray(json?.rows) ? json.rows : [];
+      if (!rows.length) { /* ... */ }
+    
+      // [추가] CSS를 head에 동적으로 주입
+      if (json.css) {
+        injectStyles(json.css);
       }
+
+      // [핵심] 각 row에 고유 ID 부여
       rows.forEach((r) => { if (!r.id) r.id = App.generateId(); });
+
+      // [핵심] security_editable.js의 setData 함수를 호출하여 테이블 생성
       App.setData(rows);
+    
       App.showSuccess(`총 ${rows.length}개 항목을 반영했습니다.`);
     } catch (err) {
-      console.error(err);
-      App.showError("자동 작성 중 오류가 발생했습니다.");
+      // ... (에러 처리) ...
     } finally {
-      showPageLoading(false);
-      generateBtn?.removeAttribute("disabled");
+      // ... (로딩 상태 해제) ...
     }
   }
 
