@@ -77,40 +77,64 @@
   
   // ===== 서버 호출 (run_invicti_parse) =====
   async function requestInvictiParse(files) {
-    // ... (FormData 및 csrf 설정 부분) ...
+    // [추가] FormData 객체 생성
+    const fd = new FormData();
+    files.forEach((f) => fd.append("file", f, f.name));
+
+    // [추가] Django CSRF 토큰 가져오기
+    const csrf = (document.querySelector('#queryForm input[name="csrfmiddlewaretoken"]') || {}).value
+              || (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/) || [])[1] || "";
+
     showPageLoading(true);
     generateBtn?.setAttribute("disabled", "disabled");
 
     try {
       const res = await fetch(API_ENDPOINT, {
-        method: "POST", // POST 방식으로 지정
-        headers: { "X-CSRFToken": csrf, ... },
-        body: fd, // 파일 데이터 
+        method: "POST",
+        // [수정] 헤더에서 불필요한 '...' 제거 및 표준 AJAX 헤더 추가
+        headers: {
+          "X-CSRFToken": csrf,
+          "X-Requested-With": "XMLHttpRequest" 
+        },
+        body: fd, // 파일 데이터
       });
-      if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
+
+      if (!res.ok) {
+        // 서버에서 온 에러 메시지를 포함하여 throw
+        const errorText = await res.text();
+        throw new Error(`서버 오류 (${res.status}): ${errorText}`);
+      }
     
-      const json = await res.json(); // { css: "...", rows: [...] } 형태
+      const json = await res.json();
     
-      // ... (에러 처리) ...
+      if (json.error) {
+        App.clearData();
+        return App.showError(json.error);
+      }
+      
       const rows = Array.isArray(json?.rows) ? json.rows : [];
-      if (!rows.length) { /* ... */ }
+      
+      if (!rows.length) {
+        App.clearData(); // 데이터가 없을 경우 기존 테이블 초기화
+        return App.showError("추출 가능한 결함 항목이 없습니다. 다른 리포트 파일을 사용해 보세요.");
+      }
     
-      // [추가] CSS를 head에 동적으로 주입
       if (json.css) {
         injectStyles(json.css);
       }
 
-      // [핵심] 각 row에 고유 ID 부여
       rows.forEach((r) => { if (!r.id) r.id = App.generateId(); });
-
-      // [핵심] security_editable.js의 setData 함수를 호출하여 테이블 생성
       App.setData(rows);
     
       App.showSuccess(`총 ${rows.length}개 항목을 반영했습니다.`);
+
     } catch (err) {
-      // ... (에러 처리) ...
+      console.error(err);
+      App.showError(err.message || "자동 작성 중 오류가 발생했습니다.");
+      App.clearData(); // 에러 발생 시 테이블 초기화
     } finally {
-      // ... (로딩 상태 해제) ...
+      showPageLoading(false);
+      generateBtn?.removeAttribute("disabled");
     }
   }
 
