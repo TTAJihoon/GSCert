@@ -76,26 +76,39 @@
   function showInvictiAnalysis(recordId) {
     const rec = App.state.currentData.find((r) => r.id === recordId);
     if (!rec) return;
-    modalTitle.textContent = "Invicti 보안 분석 결과";
-    const content = rec.invicti_analysis || "Invicti 보고서 분석에 실패하였습니다.";
+
+    // [수정] 팝업 타이틀을 더 명확하게 변경
+    modalTitle.textContent = "Invicti 원본 보고서 상세 내용";
+
+    const content = rec.invicti_analysis || "<p>상세 보고서 내용을 불러오지 못했습니다.</p>";
+
+    // [수정] 팝업 컨텐츠 래퍼를 추가하여 스크롤 및 스타일링 용이하게 함
     modalContent.innerHTML = `
-      <div class="space-y-4">
-        <div class="bg-purple-50 border border-purple-200 rounded-lg p-4">
-          <div class="flex items-center mb-2">
-            <i class="fas fa-shield-alt text-purple-600 mr-2"></i>
-            <span class="font-medium text-purple-800">보안 분석 리포트</span>
-          </div>
-          <div class="text-sm text-gray-700 whitespace-pre-line leading-relaxed">${content}</div>
-        </div>
-        <div class="bg-gray-50 rounded-lg p-3">
-          <div class="text-xs text-gray-500">
-            <strong>결함 정도:</strong> ${rec.defect_level || "-"}<br>
-            <strong>품질 특성:</strong> ${rec.quality_attribute || "-"}<br>
-            <strong>시험 환경:</strong> ${rec.test_env_os || "-"}
-          </div>
-        </div>
-      </div>`;
+      <div class="invicti-report-popup" 
+           style="max-height: 75vh; overflow-y: auto; padding: 5px; background-color: #f1f1f1;">
+        ${content}
+      </div>
+    `;
+
+    // [수정] 모달의 최대 너비를 늘려서 넓게 볼 수 있도록 함
+    const modalDialog = modal.querySelector('.modal-content');
+    if(modalDialog) {
+        modalDialog.style.maxWidth = '80vw'; // 화면 너비의 80%
+    }
+
     showModal();
+  }
+
+  function hideModal() {
+    if (!modal) return;
+    modal.classList.add("hidden");
+    document.body.style.overflow = "auto";
+
+    // [추가] 모달 너비 원상 복구
+    const modalDialog = modal.querySelector('.modal-content');
+    if(modalDialog) {
+        modalDialog.style.maxWidth = ''; // 기본값으로 복원
+    }
   }
 
   function showGptRecommendation(recordId) {
