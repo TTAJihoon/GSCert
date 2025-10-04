@@ -5,6 +5,7 @@ from main.views.init import index, similar, security, prdinfo, genspark, test
 
 from main.views.testing.history import history
 from main.views.testing.similar_summary import summarize_document
+from main.views.testing.security import invicti_parse_view
 
 from main.views.testing.history_ECMbtn import start_job, job_status
 
@@ -21,6 +22,7 @@ urlpatterns = [
     path('similar/', similar, name='similar'),
     path('summarize_document/', summarize_document, name='summarize_document'),
     path('security/', security, name='security'),
+    path('security/invicti/parse/', invicti_parse_view, name='invicti_parse'),
     
     # RQ 대시보드 (작업 큐 모니터링)
     path("django-rq/", include("django_rq.urls")),
