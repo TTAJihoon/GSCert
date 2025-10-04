@@ -82,7 +82,11 @@
     generateBtn?.setAttribute("disabled", "disabled");
 
     try {
-      const res = await fetch(API_ENDPOINT, { /* ... */ });
+      const res = await fetch(API_ENDPOINT, {
+        method: "POST", // POST 방식으로 지정
+        headers: { "X-CSRFToken": csrf, ... },
+        body: fd, // 파일 데이터 
+      });
       if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
     
       const json = await res.json(); // { css: "...", rows: [...] } 형태
