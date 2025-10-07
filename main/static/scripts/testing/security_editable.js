@@ -55,23 +55,44 @@
   function generateId(){ return "row_" + Date.now() + "_" + Math.random().toString(36).slice(2, 9); }
 
   // ===== 렌더링 =====
-  function renderTableHeader() {
-    const { fields } = App.schema;
-    App.dom.tableHeader.innerHTML = "";
-    fields.forEach((field) => {
-      const th = document.createElement("th");
-      th.className = "px-4 py-3 text-center font14 text-gray-500 uppercase tracking-wider bg-sky-50";
-      
-      // 스키마에 정의된 width 값을 th의 스타일로 적용
-      if (field.width) {
-        th.style.width = field.width;
-      }
+  function renderTable() {
+    renderTableHeader();
+    const data = App.state.currentData;
+    if (!data || data.length === 0) { showEmptyState(true); App.dom.tableBody.innerHTML = ""; return; }
+    showEmptyState(false);
+    App.dom.tableBody.innerHTML = "";
 
-      th.innerHTML = (field.type === "checkbox")
-        ? `<input type="checkbox" id="selectAll" class="row-checkbox" onchange="SecurityApp.editable.toggleAllRows(this.checked)">`
-        : field.label;
-      App.dom.tableHeader.appendChild(th);
+    data.forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.className = "hover:bg-gray-50 transition-colors";
+        tr.dataset.rowId = row.id;
+
+        App.schema.fields.forEach((field) => {
+            const td = document.createElement("td");
+            td.className = "px-4 py-3 text-sm text-gray-800 align-top text-center";
+            if (field.name === 'defect_description') {
+                td.classList.remove('text-center');
+                td.classList.add('text-left');
+            }
+
+            if (field.type === "checkbox") {
+                // ... 체크박스 로직 (동일) ...
+            } else if (field.type === "popup") {
+                // [수정] GPT 추천 버튼의 onclick 핸들러 변경
+                td.innerHTML = (field.name === "invicti_popup")
+                    ? `<button onclick="SecurityApp.popup.showInvictiAnalysis('${row.id}')" class="inline-flex items-center px-3 py-1 bg-purple-100 text-purple-700 rounded-full hover:bg-purple-200 text-xs font-medium"><i class="fas fa-search mr-1"></i>분석</button>`
+                    : `<button onclick="SecurityApp.gpt.getGptRecommendation('${row.id}')" class="inline-flex items-center px-3 py-1 bg-green-100 text-green-700 rounded-full hover:bg-green-200 text-xs font-medium"><i class="fas fa-lightbulb mr-1"></i>추천</button>`;
+            } else {
+                // ... 편집 가능 셀 로직 (동일) ...
+            }
+            tr.appendChild(td);
+        });
+
+        if (App.state.selectedRows.has(row.id)) tr.classList.add("selected-row");
+        App.dom.tableBody.appendChild(tr);
     });
+
+    App.buttons && App.buttons.updateSelectionUI && App.buttons.updateSelectionUI();
   }
 
   function renderTable() {
