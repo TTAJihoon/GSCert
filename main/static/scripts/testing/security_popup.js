@@ -77,20 +77,17 @@
     const rec = App.state.currentData.find((r) => r.id === recordId);
     if (!rec) return;
 
-    // [수정] 팝업 타이틀을 더 명확하게 변경
     modalTitle.textContent = "Invicti 원본 보고서 상세 내용";
 
     const content = rec.invicti_analysis || "<p>상세 보고서 내용을 불러오지 못했습니다.</p>";
 
-    // [수정] 팝업 컨텐츠 래퍼를 추가하여 스크롤 및 스타일링 용이하게 함
     modalContent.innerHTML = `
       <div class="invicti-report-popup" 
-           style="max-height: 75vh; overflow-y: auto; padding: 5px; background-color: #f1f1f1;">
+           style="max-height: 75vh; overflow-y: auto; padding: 5px; background-color: #f1f1f1; text-align: left;">
         ${content}
       </div>
     `;
 
-    // [수정] 모달의 최대 너비를 늘려서 넓게 볼 수 있도록 함
     const modalDialog = modal.querySelector('.modal-content');
     if(modalDialog) {
         modalDialog.style.maxWidth = '80vw'; // 화면 너비의 80%
