@@ -2,32 +2,37 @@
   const App = (window.SecurityApp = window.SecurityApp || {});
   const API_ENDPOINT = "/security/invicti/parse/";
 
+  // DOM 요소를 저장할 객체
   App.dom = App.dom || {};
 
+  // [핵심] 업로드된 파일의 상태를 관리하는 배열
   let currentFiles = [];
-  const ALLOWED_EXTS = [".html", ".htm"];
-  const isHtmlFile = (name) => /\.html?$/i.test(name || "");
-  
-  const validateFiles = (files) => {
-    const valid = [], invalid = [];
-    (files || []).forEach((f) => (isHtmlFile(f.name) ? valid : invalid).push(f));
-    return { valid, invalid };
+
+  // ===== 유틸리티 함수 =====
+  const ALLOWED_EXTS = ["html", "htm"];
+  const isHtmlFile = (fileName) => {
+    const ext = (fileName.split('.').pop() || '').toLowerCase();
+    return ALLOWED_EXTS.includes(ext);
   };
 
-  const setFilesToInput = (files) => {
+  // 파일 중복 체크 함수
+  const isDuplicate = (file) => {
+    return currentFiles.some(existingFile => 
+      existingFile.name === file.name &&
+      existingFile.size === file.size &&
+      existingFile.lastModified === file.lastModified
+    );
+  };
+
+  // `currentFiles` 배열의 내용을 실제 <input type="file">에 동기화하는 함수
+  function syncFileInput() {
     if (!App.dom.fileInput) return;
-    const dt = new DataTransfer();
-    files.forEach((f) => dt.items.add(f));
-    App.dom.fileInput.files = dt.files;
-  };
+    const dataTransfer = new DataTransfer();
+    currentFiles.forEach(file => dataTransfer.items.add(file));
+    App.dom.fileInput.files = dataTransfer.files;
+  }
 
-  const showPageLoading = (show) => {
-    const pageLoading = document.getElementById("loadingContainer");
-    if (!pageLoading) return;
-    pageLoading.classList.toggle("hidden", !show);
-    document.body.style.overflow = show ? "hidden" : "auto";
-  };
-
+  // `currentFiles` 배열을 기반으로 화면에 파일 목록을 그리는 함수
   function renderFileList() {
     const { fileListEl } = App.dom;
     if (!fileListEl) return;
@@ -36,98 +41,48 @@
       fileListEl.innerHTML = "";
       fileListEl.classList.add("hidden");
     } else {
-      fileListEl.innerHTML = currentFiles
-        .map((f) => `
-          <div class="file-item flex justify-between items-center text-sm text-gray-700 py-1 px-2 mb-1 rounded bg-gray-100">
-            <span>
-              <i class="fas fa-file-code mr-2 text-gray-500"></i>${f.name}
-              <span class="text-gray-400">(${(f.size / 1024).toFixed(1)} KB)</span>
-            </span>
-            <button type="button" class="file-remove-btn text-red-500 hover:text-red-700" data-filename="${f.name}" title="파일 제거">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>`
-        ).join("");
+      fileListEl.innerHTML = currentFiles.map(file => `
+        <div class="file-item flex justify-between items-center text-sm text-gray-700 py-1 px-2 mb-1 rounded bg-gray-100">
+          <span>
+            <i class="fas fa-file-code mr-2 text-gray-500"></i>${file.name}
+            <span class="text-gray-400">(${(file.size / 1024).toFixed(1)} KB)</span>
+          </span>
+          <button type="button" class="file-remove-btn text-red-500 hover:text-red-700" data-filename="${file.name}" title="파일 제거">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>`
+      ).join("");
       fileListEl.classList.remove("hidden");
     }
   }
 
-  function removeFile(fileName) {
-    currentFiles = currentFiles.filter(f => f.name !== fileName);
-    updateFileInput();
-    renderFileList();
-  }
+  // 새로운 파일을 `currentFiles` 배열에 추가하는 함수
+  function addFiles(filesToAdd) {
+    const newFiles = Array.from(filesToAdd || []);
 
-  function addFiles(newFiles) {
-    const validFiles = validateFiles(newFiles).valid;
-    if (newFiles.length !== validFiles.length) {
-      alert("HTML 파일(.html, .htm)만 업로드할 수 있습니다.");
-    }
-    
-    validFiles.forEach(file => {
-      // 중복 파일 체크 (파일 이름 기준)
-      if (!currentFiles.some(f => f.name === file.name)) {
-        currentFiles.push(file);
+    newFiles.forEach(file => {
+      if (!isHtmlFile(file.name)) {
+        alert(`'${file.name}' 파일은 허용되지 않는 확장자입니다.\n(.html, .htm 파일만 가능)`);
+        return; // 다음 파일로 넘어감
       }
+      if (isDuplicate(file)) {
+        return; // 중복 파일은 추가하지 않음
+      }
+      currentFiles.push(file);
     });
-    
-    updateFileInput();
+
+    syncFileInput();
+    renderFileList();
+  }
+
+  // 파일을 `currentFiles` 배열에서 제거하는 함수
+  function removeFile(fileName) {
+    currentFiles = currentFiles.filter(file => file.name !== fileName);
+    syncFileInput();
     renderFileList();
   }
   
-  function updateFileUI(files) {
-    const { fileListEl, dropArea } = App.dom;
-    if (!fileListEl || !dropArea) return;
-
-    dropArea.classList.remove("hidden");
-
-    if (files.length === 0) {
-      fileListEl.innerHTML = "";
-      fileListEl.classList.add("hidden");
-    } else {
-      fileListEl.innerHTML = files
-        .map((f) => `
-          <div class="file-item flex justify-between items-center text-sm text-gray-700 py-1 px-2 rounded bg-gray-100">
-            <span>
-              <i class="fas fa-file-code mr-2 text-gray-500"></i>${f.name}
-              <span class="text-gray-400">(${(f.size / 1024).toFixed(1)} KB)</span>
-            </span>
-            <button type="button" class="file-remove-btn text-red-500 hover:text-red-700" data-filename="${f.name}" title="파일 제거">
-              <i class="fas fa-times"></i>
-            </button>
-          </div>`
-        ).join("");
-      fileListEl.classList.remove("hidden");
-    }
-  }
-  
-  function removeFile(fileName) {
-    const currentFiles = Array.from(App.dom.fileInput.files);
-    const newFiles = currentFiles.filter(f => f.name !== fileName);
-    setFilesToInput(newFiles);
-    updateFileUI(newFiles);
-  }
-
-  async function pickFiles() {
-    if (window.showOpenFilePicker) {
-      try {
-        const handles = await window.showOpenFilePicker({
-          multiple: true,
-          excludeAcceptAllOption: true,
-          types: [{
-            description: "HTML Files",
-            accept: { "text/html": ALLOWED_EXTS }
-          }],
-        });
-        const files = await Promise.all(handles.map((h) => h.getFile()));
-        setFilesToInput(files);
-        updateFileUI(files);
-        return;
-      } catch (e) { return; }
-    }
-    App.dom.fileInput?.click();
-  }
-
+  // 스타일 주입 및 서버 요청 함수 (기존과 동일)
   function injectStyles(css) {
     const styleId = 'invicti-dynamic-styles';
     let styleTag = document.getElementById(styleId);
@@ -145,7 +100,6 @@
     const csrf = (document.querySelector('#queryForm input[name="csrfmiddlewaretoken"]') || {}).value
               || (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/) || [])[1] || "";
 
-    showPageLoading(true);
     App.dom.generateBtn?.setAttribute("disabled", "disabled");
     App.dom.loadingState?.classList.remove("hidden");
     App.dom.emptyState?.classList.add("hidden");
@@ -158,39 +112,30 @@
         body: fd,
       });
       if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
-    
-      const json = await res.json();
-    
-      if (json.error) {
-        App.clearData();
-        return App.showError(json.error);
-      }
       
+      const json = await res.json();
+      
+      if (json.error) { App.clearData(); return App.showError(json.error); }
       const rows = Array.isArray(json?.rows) ? json.rows : [];
-      if (!rows.length) {
-        App.clearData();
-        return App.showError("추출 가능한 결함 항목이 없습니다.");
-      }
-    
-      if (json.css) {
-        injectStyles(json.css);
-      }
+      if (!rows.length) { App.clearData(); return App.showError("추출 가능한 결함 항목이 없습니다."); }
+      
+      if (json.css) injectStyles(json.css);
 
       rows.forEach((r) => { if (!r.id) r.id = App.generateId(); });
       App.setData(rows);
-    
+      
       App.showSuccess(`총 ${rows.length}개 항목을 반영했습니다.`);
     } catch (err) {
       console.error(err);
       App.showError(err.message || "자동 작성 중 오류가 발생했습니다.");
       App.clearData();
     } finally {
-      showPageLoading(false);
       App.dom.generateBtn?.removeAttribute("disabled");
       App.dom.loadingState?.classList.add("hidden");
     }
   }
 
+  // ===== 페이지 로드 후 이벤트 바인딩 =====
   document.addEventListener("DOMContentLoaded", () => {
     Object.assign(App.dom, {
       fileInput:    document.getElementById("fileInput"),
@@ -202,6 +147,7 @@
       tableBody:    document.getElementById("tableBody")
     });
     
+    // 파일 삭제 버튼 이벤트 (이벤트 위임)
     App.dom.fileListEl?.addEventListener('click', (e) => {
         const removeBtn = e.target.closest('.file-remove-btn');
         if (removeBtn) {
@@ -209,54 +155,41 @@
         }
     });
 
-    App.dom.dropArea?.addEventListener("click", pickFiles);
+    // 클릭해서 파일 선택
+    App.dom.dropArea?.addEventListener("click", () => App.dom.fileInput?.click());
 
+    // 파일 선택창에서 파일 선택 시
     App.dom.fileInput?.addEventListener("change", (e) => {
-      const files = Array.from(e.target.files || []);
-      const { valid, invalid } = validateFiles(files);
-      if (invalid.length) {
-        alert("업로드 가능한 확장자가 아닙니다");
-        e.target.value = "";
-        updateFileUI([]);
-        return;
-      }
-      updateFileUI(valid);
+      addFiles(e.target.files);
+      e.target.value = ""; // 동일한 파일을 다시 선택할 수 있도록 초기화
     });
 
+    // 드래그 앤 드롭 이벤트
     if (App.dom.dropArea) {
-      ["dragenter","dragover"].forEach((evt) =>
-        App.dom.dropArea.addEventListener(evt, (e) => {
-          e.preventDefault(); e.stopPropagation();
-          App.dom.dropArea.classList.add("ring","ring-sky-300");
-        })
-      );
-      ["dragleave","drop"].forEach((evt) =>
-        App.dom.dropArea.addEventListener(evt, (e) => {
-          e.preventDefault(); e.stopPropagation();
-          App.dom.dropArea.classList.remove("ring","ring-sky-300");
-        })
-      );
-      
+      ["dragenter", "dragover"].forEach(eventName => {
+        App.dom.dropArea.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          App.dom.dropArea.classList.add("ring", "ring-sky-300");
+        });
+      });
+      ["dragleave", "drop"].forEach(eventName => {
+        App.dom.dropArea.addEventListener(eventName, (e) => {
+          e.preventDefault();
+          App.dom.dropArea.classList.remove("ring", "ring-sky-300");
+        });
+      });
       App.dom.dropArea.addEventListener("drop", (e) => {
-        const files = Array.from(e.dataTransfer.files || []);
-        const { valid, invalid } = validateFiles(files);
-        if (invalid.length) {
-          alert("업로드 가능한 확장자가 아닙니다");
-        }
-        if (valid.length) {
-          setFilesToInput(valid);
-          updateFileUI(valid);
-        }
+        addFiles(e.dataTransfer.files);
       });
     }
 
+    // '자동 작성' 버튼 클릭 이벤트
     App.dom.generateBtn?.addEventListener("click", async () => {
-      const files = Array.from(App.dom.fileInput?.files || []);
-      if (!files.length) {
+      if (currentFiles.length === 0) {
         alert("분석할 HTML 파일을 업로드해주세요.");
         return;
       }
-      await requestInvictiParse(files);
+      await requestInvictiParse(currentFiles);
     });
   });
 })(window);
