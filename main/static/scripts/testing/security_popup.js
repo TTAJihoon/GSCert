@@ -23,6 +23,11 @@
     if (!modal) return;
     modal.classList.add("hidden");
     document.body.style.overflow = "auto";
+    
+    const modalDialog = modal.querySelector('.modal-content');
+    if(modalDialog) {
+        modalDialog.style.maxWidth = ''; // 모달 너비 기본값으로 복원
+    }
   }
 
   function showRowDetails(recordId) {
@@ -96,40 +101,47 @@
     showModal();
   }
 
-  function hideModal() {
-    if (!modal) return;
-    modal.classList.add("hidden");
-    document.body.style.overflow = "auto";
-
-    // [추가] 모달 너비 원상 복구
-    const modalDialog = modal.querySelector('.modal-content');
-    if(modalDialog) {
-        modalDialog.style.maxWidth = ''; // 기본값으로 복원
-    }
-  }
-
-  function showGptRecommendation(recordId) {
+  function showGptRecommendation(recordId, isLoading = false) {
     const rec = App.state.currentData.find((r) => r.id === recordId);
     if (!rec) return;
+
     modalTitle.textContent = "GPT 추천 수정 방안";
-    const content = rec.gpt_recommendation || "GPT의 추천 수정 방안을 받지 못했습니다.";
-    modalContent.innerHTML = `
-      <div class="space-y-4">
-        <div class="bg-green-50 border border-green-200 rounded-lg p-4">
-          <div class="flex items-center mb-2">
-            <i class="fas fa-robot text-green-600 mr-2"></i>
-            <span class="font-medium text-green-800">AI 추천 수정 방안</span>
+
+    let contentHtml;
+
+    // [핵심 수정] isLoading이 true일 때 표시할 UI 변경
+    if (isLoading) {
+      // 로딩 중일 때 표시할 UI
+      contentHtml = `
+          <div class="text-center py-8">
+              <i class="fas fa-spinner fa-spin text-4xl text-blue-500"></i>
+              <p class="mt-4 text-gray-600">GPT가 답변을 생성 중입니다...</p>
           </div>
-          <div class="text-sm text-gray-700 whitespace-pre-line leading-relaxed">${content}</div>
-        </div>
-        <div class="bg-gray-50 rounded-lg p-3">
-          <div class="text-xs text-gray-500">
-            <strong>결함 요약:</strong> ${rec.defect_summary || "-"}<br>
-            <strong>발생 빈도:</strong> ${rec.frequency || "-"}<br>
-            <strong>시험 환경:</strong> ${rec.test_env_os || "-"}
+      `;
+    } else {
+      // 결과를 받았을 때 표시할 UI
+      const content = rec.gpt_recommendation || "GPT의 추천 수정 방안을 받지 못했습니다.";
+      contentHtml = `
+          <div class="space-y-4 text-left">
+              <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                  <div class="flex items-center mb-2">
+                      <i class="fas fa-robot text-green-600 mr-2"></i>
+                      <span class="font-medium text-green-800">AI 추천 수정 방안</span>
+                  </div>
+                  <div class="text-sm text-gray-700 whitespace-pre-line leading-relaxed">${content}</div>
+              </div>
+              <div class="bg-gray-50 rounded-lg p-3">
+                  <div class="text-xs text-gray-500">
+                      <strong>결함 요약:</strong> ${rec.defect_summary || "-"}<br>
+                      <strong>발생 빈도:</strong> ${rec.frequency || "-"}<br>
+                      <strong>시험 환경:</strong> ${rec.test_env_os || "-"}
+                  </div>
+              </div>
           </div>
-        </div>
-      </div>`;
+      `;
+    }
+    
+    modalContent.innerHTML = contentHtml;
     showModal();
   }
 
