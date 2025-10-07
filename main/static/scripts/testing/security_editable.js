@@ -16,7 +16,7 @@
     name: "defects",
     fields: [
       { name: "select", type: "checkbox", label: "선택", editable: false, width: "35px" },
-      { name: "test_env_os", type: "select", label: "시험환경 OS", editable: true, options: ["시험환경<BR/>모든 OS", "-", "/"], width: "95px" },
+      { name: "test_env_os", type: "select", label: "시험환경 OS", editable: true, options: ["시험환경<BR/>모든 OS", "-"], width: "95px" },
       { name: "defect_summary", type: "textarea", label: "결함요약", editable: true, width: "135px" },
       { name: "defect_level", type: "select", label: "결함정도", editable: true, options: ["H", "M", "L"], width: "75px" },
       { name: "frequency", type: "select", label: "발생빈도", editable: true, options: ["A", "I"], width: "75px" },
