@@ -88,7 +88,12 @@
 
       App.schema.fields.forEach((field) => {
         const td = document.createElement("td");
-        td.className = "px-4 py-3 whitespace-nowrap text-sm";
+        td.className = "px-4 py-3 text-sm text-gray-800 align-top text-center";
+        
+        if (field.name === 'defect_description') {
+          td.classList.remove('text-center');
+          td.classList.add('text-left');
+        }
 
         if (field.type === "checkbox") {
           td.innerHTML = `
