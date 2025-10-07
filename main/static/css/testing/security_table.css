@@ -8,3 +8,13 @@
   padding-left: 8px !important;
   padding-right: 8px !important;
 }
+
+.table-container table {
+  table-layout: fixed; /* [추가] 테이블 레이아웃을 고정으로 설정 */
+  width: 100%;
+}
+
+.table-container td .table-cell-content {
+  word-wrap: break-word; /* [추가] 긴 텍스트가 셀 너비를 넘어갈 경우 줄바꿈 처리 */
+  white-space: normal; /* [추가] 자동 줄바꿈 활성화 */
+}
