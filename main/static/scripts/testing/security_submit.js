@@ -2,45 +2,65 @@
   const App = (window.SecurityApp = window.SecurityApp || {});
   const API_ENDPOINT = "/security/invicti/parse/";
 
-  let fileInput, dropArea, fileListEl, generateBtn, pageLoading;
-
-  // ===== 허용 확장자 / 유틸 =====
+  App.dom = App.dom || {};
+  
   const ALLOWED_EXTS = [".html", ".htm"];
   const isHtmlFile = (name) => /\.html?$/i.test(name || "");
+  
   const validateFiles = (files) => {
     const valid = [], invalid = [];
     (files || []).forEach((f) => (isHtmlFile(f.name) ? valid : invalid).push(f));
     return { valid, invalid };
   };
+
   const setFilesToInput = (files) => {
-    if (!fileInput) return;
+    if (!App.dom.fileInput) return;
     const dt = new DataTransfer();
     files.forEach((f) => dt.items.add(f));
-    fileInput.files = dt.files;
+    App.dom.fileInput.files = dt.files;
   };
+
   const showPageLoading = (show) => {
+    const pageLoading = document.getElementById("loadingContainer");
     if (!pageLoading) return;
     pageLoading.classList.toggle("hidden", !show);
     document.body.style.overflow = show ? "hidden" : "auto";
   };
-  const renderFileList = (files) => {
-    if (!fileListEl) return;
-    if (!files.length) {
-      fileListEl.classList.add("hidden");
-      fileListEl.innerHTML = "";
-      return;
-    }
-    fileListEl.innerHTML = files
-      .map((f) => `<div class="text-sm text-gray-700 py-1">
-        <i class="fas fa-file-code mr-2"></i>${f.name}
-        <span class="text-gray-400">(${(f.size / 1024).toFixed(1)} KB)</span>
-      </div>`).join("");
-    fileListEl.classList.remove("hidden");
-  };
+  
+  function updateFileUI(files) {
+    const { fileListEl, dropArea } = App.dom;
+    if (!fileListEl || !dropArea) return;
 
-  // ===== 파일 선택창(클릭) — 가능하면 네이티브 제한 강제 =====
+    dropArea.classList.remove("hidden");
+
+    if (files.length === 0) {
+      fileListEl.innerHTML = "";
+      fileListEl.classList.add("hidden");
+    } else {
+      fileListEl.innerHTML = files
+        .map((f) => `
+          <div class="file-item flex justify-between items-center text-sm text-gray-700 py-1 px-2 rounded bg-gray-100">
+            <span>
+              <i class="fas fa-file-code mr-2 text-gray-500"></i>${f.name}
+              <span class="text-gray-400">(${(f.size / 1024).toFixed(1)} KB)</span>
+            </span>
+            <button type="button" class="file-remove-btn text-red-500 hover:text-red-700" data-filename="${f.name}" title="파일 제거">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>`
+        ).join("");
+      fileListEl.classList.remove("hidden");
+    }
+  }
+  
+  function removeFile(fileName) {
+    const currentFiles = Array.from(App.dom.fileInput.files);
+    const newFiles = currentFiles.filter(f => f.name !== fileName);
+    setFilesToInput(newFiles);
+    updateFileUI(newFiles);
+  }
+
   async function pickFiles() {
-    // 최신 크롬/엣지: 다른 확장자 아예 선택 불가 + 창 유지
     if (window.showOpenFilePicker) {
       try {
         const handles = await window.showOpenFilePicker({
@@ -53,15 +73,11 @@
         });
         const files = await Promise.all(handles.map((h) => h.getFile()));
         setFilesToInput(files);
-        renderFileList(files);
+        updateFileUI(files);
         return;
-      } catch (e) {
-        // 사용자가 취소한 경우 등 — 조용히 무시
-        return;
-      }
+      } catch (e) { return; }
     }
-    // fallback
-    fileInput?.click();
+    App.dom.fileInput?.click();
   }
 
   function injectStyles(css) {
@@ -75,35 +91,25 @@
     styleTag.textContent = css;
   }
   
-  // ===== 서버 호출 (run_invicti_parse) =====
   async function requestInvictiParse(files) {
-    // [추가] FormData 객체 생성
     const fd = new FormData();
     files.forEach((f) => fd.append("file", f, f.name));
-
-    // [추가] Django CSRF 토큰 가져오기
     const csrf = (document.querySelector('#queryForm input[name="csrfmiddlewaretoken"]') || {}).value
               || (document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/) || [])[1] || "";
 
     showPageLoading(true);
-    generateBtn?.setAttribute("disabled", "disabled");
+    App.dom.generateBtn?.setAttribute("disabled", "disabled");
+    App.dom.loadingState?.classList.remove("hidden");
+    App.dom.emptyState?.classList.add("hidden");
+    if (App.dom.tableBody) App.dom.tableBody.style.display = 'none';
 
     try {
       const res = await fetch(API_ENDPOINT, {
         method: "POST",
-        // [수정] 헤더에서 불필요한 '...' 제거 및 표준 AJAX 헤더 추가
-        headers: {
-          "X-CSRFToken": csrf,
-          "X-Requested-With": "XMLHttpRequest" 
-        },
-        body: fd, // 파일 데이터
+        headers: { "X-CSRFToken": csrf, "X-Requested-With": "XMLHttpRequest" },
+        body: fd,
       });
-
-      if (!res.ok) {
-        // 서버에서 온 에러 메시지를 포함하여 throw
-        const errorText = await res.text();
-        throw new Error(`서버 오류 (${res.status}): ${errorText}`);
-      }
+      if (!res.ok) throw new Error(`서버 오류 (${res.status})`);
     
       const json = await res.json();
     
@@ -113,10 +119,9 @@
       }
       
       const rows = Array.isArray(json?.rows) ? json.rows : [];
-      
       if (!rows.length) {
-        App.clearData(); // 데이터가 없을 경우 기존 테이블 초기화
-        return App.showError("추출 가능한 결함 항목이 없습니다. 다른 리포트 파일을 사용해 보세요.");
+        App.clearData();
+        return App.showError("추출 가능한 결함 항목이 없습니다.");
       }
     
       if (json.css) {
@@ -127,59 +132,64 @@
       App.setData(rows);
     
       App.showSuccess(`총 ${rows.length}개 항목을 반영했습니다.`);
-
     } catch (err) {
       console.error(err);
       App.showError(err.message || "자동 작성 중 오류가 발생했습니다.");
-      App.clearData(); // 에러 발생 시 테이블 초기화
+      App.clearData();
     } finally {
       showPageLoading(false);
-      generateBtn?.removeAttribute("disabled");
+      App.dom.generateBtn?.removeAttribute("disabled");
+      App.dom.loadingState?.classList.add("hidden");
     }
   }
 
-  // ===== 초기 바인딩 =====
   document.addEventListener("DOMContentLoaded", () => {
-    fileInput   = document.getElementById("fileInput");
-    dropArea    = document.getElementById("dropArea");
-    fileListEl  = document.getElementById("fileList");
-    generateBtn = document.getElementById("btn-generate");
-    pageLoading = document.getElementById("loadingContainer");
+    Object.assign(App.dom, {
+      fileInput:    document.getElementById("fileInput"),
+      dropArea:     document.getElementById("dropArea"),
+      fileListEl:   document.getElementById("fileList"),
+      generateBtn:  document.getElementById("btn-generate"),
+      loadingState: document.getElementById("loadingState"),
+      emptyState:   document.getElementById("emptyState"),
+      tableBody:    document.getElementById("tableBody")
+    });
+    
+    App.dom.fileListEl?.addEventListener('click', (e) => {
+        const removeBtn = e.target.closest('.file-remove-btn');
+        if (removeBtn) {
+            removeFile(removeBtn.dataset.filename);
+        }
+    });
 
-    // 클릭으로 파일 선택: 가능하면 showOpenFilePicker 사용
-    dropArea?.addEventListener("click", pickFiles);
+    App.dom.dropArea?.addEventListener("click", pickFiles);
 
-    // input으로 선택(모든 브라우저 공통 처리): 유효성 검사
-    fileInput?.addEventListener("change", (e) => {
+    App.dom.fileInput?.addEventListener("change", (e) => {
       const files = Array.from(e.target.files || []);
       const { valid, invalid } = validateFiles(files);
       if (invalid.length) {
         alert("업로드 가능한 확장자가 아닙니다");
-        // 잘못 선택된 경우: 초기화 + (가능하면) 즉시 다시 열어주기
-        fileInput.value = "";
-        // 같은 사용자 제스처 컨텍스트 내에서 재오픈하면 대개 허용됨
-        setTimeout(() => pickFiles(), 0);
+        e.target.value = "";
+        updateFileUI([]);
         return;
       }
-      // 정상
-      renderFileList(valid);
+      updateFileUI(valid);
     });
 
-    // 드래그&드롭: 유효성 검사 + 안내
-    if (dropArea) {
+    if (App.dom.dropArea) {
       ["dragenter","dragover"].forEach((evt) =>
-        dropArea.addEventListener(evt, (e) => {
+        App.dom.dropArea.addEventListener(evt, (e) => {
           e.preventDefault(); e.stopPropagation();
-          dropArea.classList.add("ring","ring-sky-300");
+          App.dom.dropArea.classList.add("ring","ring-sky-300");
         })
       );
       ["dragleave","drop"].forEach((evt) =>
-        dropArea.addEventListener(evt, (e) => {
+        App.dom.dropArea.addEventListener(evt, (e) => {
           e.preventDefault(); e.stopPropagation();
-          dropArea.classList.remove("ring","ring-sky-300");
+          App.dom.dropArea.classList.remove("ring","ring-sky-300");
         })
       );
-      dropArea.addEventListener("drop", (e) => {
+      
+      App.dom.dropArea.addEventListener("drop", (e) => {
         const files = Array.from(e.dataTransfer.files || []);
         const { valid, invalid } = validateFiles(files);
         if (invalid.length) {
@@ -187,20 +197,18 @@
         }
         if (valid.length) {
           setFilesToInput(valid);
-          renderFileList(valid);
+          updateFileUI(valid);
         }
       });
     }
 
-    // 자동 작성 실행
-    generateBtn?.addEventListener("click", async () => {
-      const files = Array.from(fileInput?.files || []);
-      const { valid, invalid } = validateFiles(files);
-      if (invalid.length || !valid.length) {
-        alert("업로드 가능한 확장자가 아닙니다");
+    App.dom.generateBtn?.addEventListener("click", async () => {
+      const files = Array.from(App.dom.fileInput?.files || []);
+      if (!files.length) {
+        alert("분석할 HTML 파일을 업로드해주세요.");
         return;
       }
-      await requestInvictiParse(valid);
+      await requestInvictiParse(files);
     });
   });
 })(window);
