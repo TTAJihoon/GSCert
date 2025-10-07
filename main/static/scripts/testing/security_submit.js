@@ -3,7 +3,8 @@
   const API_ENDPOINT = "/security/invicti/parse/";
 
   App.dom = App.dom || {};
-  
+
+  let currentFiles = [];
   const ALLOWED_EXTS = [".html", ".htm"];
   const isHtmlFile = (name) => /\.html?$/i.test(name || "");
   
@@ -26,6 +27,53 @@
     pageLoading.classList.toggle("hidden", !show);
     document.body.style.overflow = show ? "hidden" : "auto";
   };
+
+  function renderFileList() {
+    const { fileListEl } = App.dom;
+    if (!fileListEl) return;
+
+    if (currentFiles.length === 0) {
+      fileListEl.innerHTML = "";
+      fileListEl.classList.add("hidden");
+    } else {
+      fileListEl.innerHTML = currentFiles
+        .map((f) => `
+          <div class="file-item flex justify-between items-center text-sm text-gray-700 py-1 px-2 mb-1 rounded bg-gray-100">
+            <span>
+              <i class="fas fa-file-code mr-2 text-gray-500"></i>${f.name}
+              <span class="text-gray-400">(${(f.size / 1024).toFixed(1)} KB)</span>
+            </span>
+            <button type="button" class="file-remove-btn text-red-500 hover:text-red-700" data-filename="${f.name}" title="파일 제거">
+              <i class="fas fa-times"></i>
+            </button>
+          </div>`
+        ).join("");
+      fileListEl.classList.remove("hidden");
+    }
+  }
+
+  function removeFile(fileName) {
+    currentFiles = currentFiles.filter(f => f.name !== fileName);
+    updateFileInput();
+    renderFileList();
+  }
+
+  function addFiles(newFiles) {
+    const validFiles = validateFiles(newFiles).valid;
+    if (newFiles.length !== validFiles.length) {
+      alert("HTML 파일(.html, .htm)만 업로드할 수 있습니다.");
+    }
+    
+    validFiles.forEach(file => {
+      // 중복 파일 체크 (파일 이름 기준)
+      if (!currentFiles.some(f => f.name === file.name)) {
+        currentFiles.push(file);
+      }
+    });
+    
+    updateFileInput();
+    renderFileList();
+  }
   
   function updateFileUI(files) {
     const { fileListEl, dropArea } = App.dom;
