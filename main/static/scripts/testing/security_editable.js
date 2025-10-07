@@ -15,15 +15,15 @@
   App.schema = App.schema || {
     name: "defects",
     fields: [
-      { name: "select", type: "checkbox", label: "선택", editable: false },
-      { name: "test_env_os", type: "select", label: "시험환경 OS", editable: true, options: ["시험환경<BR/>모든 OS", "-", "/"] },
-      { name: "defect_summary", type: "textarea", label: "결함요약", editable: true },
-      { name: "defect_level", type: "select", label: "결함정도", editable: true, options: ["H", "M", "L"] },
-      { name: "frequency", type: "select", label: "발생빈도", editable: true, options: ["A", "I"] },
-      { name: "quality_attribute", type: "text", label: "품질특성", editable: true, defaultValue: "보안성" },
-      { name: "defect_description", type: "textarea", label: "결함 설명", editable: true },
-      { name: "invicti_popup", type: "popup", label: "Invicti 분석", editable: false },
-      { name: "gpt_recommendation", type: "popup", label: "GPT 추천 수정 방안", editable: false },
+      { name: "select", type: "checkbox", label: "선택", editable: false, width: "35px" },
+      { name: "test_env_os", type: "select", label: "시험환경 OS", editable: true, options: ["시험환경<BR/>모든 OS", "-", "/"], width: "95px" },
+      { name: "defect_summary", type: "textarea", label: "결함요약", editable: true, width: "135px" },
+      { name: "defect_level", type: "select", label: "결함정도", editable: true, options: ["H", "M", "L"], width: "70px" },
+      { name: "frequency", type: "select", label: "발생빈도", editable: true, options: ["A", "I"], width: "70px" },
+      { name: "quality_attribute", type: "text", label: "품질특성", editable: true, defaultValue: "보안성", width: "70px" },
+      { name: "defect_description", type: "textarea", label: "결함 설명", editable: true, width: "400px" },
+      { name: "invicti_popup", type: "popup", label: "Invicti 분석", editable: false, width: "150px" },
+      { name: "gpt_recommendation", type: "popup", label: "GPT 추천 수정 방안", editable: false, width: "150px" },
     ],
   };
 
@@ -61,6 +61,12 @@
     fields.forEach((field) => {
       const th = document.createElement("th");
       th.className = "px-4 py-3 text-center font14 text-gray-500 uppercase tracking-wider bg-sky-50";
+      
+      // 스키마에 정의된 width 값을 th의 스타일로 적용
+      if (field.width) {
+        th.style.width = field.width;
+      }
+
       th.innerHTML = (field.type === "checkbox")
         ? `<input type="checkbox" id="selectAll" class="row-checkbox" onchange="SecurityApp.editable.toggleAllRows(this.checked)">`
         : field.label;
