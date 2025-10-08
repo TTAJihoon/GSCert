@@ -7,38 +7,27 @@
   function rebindPopupEvents() {
     if (!modalContent) return;
 
-    // '대책 보기/숨기기' 토글 기능 (정상 동작)
-    const toggleLabels = modalContent.querySelectorAll('.more-detail-input + label');
-    toggleLabels.forEach(label => {
-      label.addEventListener('click', (e) => {
-        e.preventDefault();
-        const input = label.previousElementSibling;
-        if (input && input.type === 'checkbox') {
-          input.checked = !input.checked;
-          input.setAttribute('aria-expanded', input.checked);
-        }
-      });
-    });
-    
-    // 취약점 상세 내용(URL 목록) 토글 기능 (수정)
-    const vulnUrlToggles = modalContent.querySelectorAll('.vuln-url[style*="cursor: pointer"]');
-    vulnUrlToggles.forEach(toggle => {
-      toggle.addEventListener('click', (e) => {
-        // 링크 클릭 시 기본 동작 허용
-        if (e.target.closest('a')) {
-          return;
-        }
-
-        e.preventDefault();
-        
-        // [핵심 수정] 올바른 input 체크박스를 찾는 경로 수정
-        // .vuln-url -> .vuln (부모) -> .vuln-input (이전 형제)
-        const vulnDiv = e.target.closest('.vuln');
-        if (vulnDiv && vulnDiv.previousElementSibling && vulnDiv.previousElementSibling.classList.contains('vuln-input')) {
-            const input = vulnDiv.previousElementSibling;
+    // 팝업 내의 모든 label 태그에 대해 클릭 이벤트를 설정합니다.
+    // '대책 보기/숨기기'와 'URL 상세 보기' 모두 label과 input 체크박스로 제어됩니다.
+    const allLabels = modalContent.querySelectorAll('label');
+    allLabels.forEach(label => {
+      // for 속성이 있는 label만 대상으로 합니다.
+      const targetId = label.getAttribute('for');
+      if (targetId) {
+        label.addEventListener('click', (e) => {
+          // 링크(a) 클릭 시에는 아무것도 하지 않도록 하여 링크가 정상 동작하게 합니다.
+          if (e.target.closest('a')) {
+            return;
+          }
+          
+          e.preventDefault(); // label의 기본 동작(두 번 클릭되는 현상 등) 방지
+          
+          const input = modalContent.querySelector('#' + targetId);
+          if (input && input.type === 'checkbox') {
             input.checked = !input.checked;
-        }
-      });
+          }
+        });
+      }
     });
   }
   
