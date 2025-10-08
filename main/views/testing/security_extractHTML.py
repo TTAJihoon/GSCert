@@ -41,9 +41,15 @@ def get_variables_default(vuln_desc_div):
 def get_variables_for_urls(vuln_desc_div):
     block = _get_vuln_block_from_desc(vuln_desc_div)
     urls = block.select('.vuln-url div')
-    url_texts = [re.sub(r'^\d+\.\d+\.\s*', '', url.text.strip()) for url in urls]
+    url_texts = []
+    for url in urls:
+        text = url.text.strip()
+        text = re.sub(r'^\d+\.\d+\.\s*', '', text)
+        if text.endswith('확정됨'):
+            text = text[:-len('확정됨')].strip()
+        url_texts.append(text)
     return {'url': '\n'.join(url_texts)}
-
+    
 def get_variables_for_weak_ciphers(vuln_desc_div):
     block = _get_vuln_block_from_desc(vuln_desc_div)
     selector = "li[data-description*='지원되는 약한 암호 목록']"
@@ -52,40 +58,9 @@ def get_variables_for_weak_ciphers(vuln_desc_div):
 
 def get_variables_for_out_of_date(vuln_desc_div):
     block = _get_vuln_block_from_desc(vuln_desc_div)
-    
-    print("\n--- [디버깅 시작] get_variables_for_out_of_date 함수 ---")
-
     v1 = _find_h4_sibling_text(block, 'Overall Latest Version')
     v2 = _find_h4_sibling_text(block, '확인된 버전')
-    print(f"[디버깅] 추출된 v1 (최신 버전): '{v1}'")
-    print(f"[디버깅] 추출된 v2 (확인된 버전): '{v2}'")
-    
-    o_text = ''
-    url_div = block.select_one('.vuln-url div')
-    
-    if url_div:
-        print("[디버깅] '.vuln-url div' 요소를 찾았습니다.")
-        full_text = url_div.get_text()
-        print(f"[디버깅] 추출된 전체 텍스트: '{full_text.strip()}'")
-        
-        if 'Out-of-date Version' in full_text:
-            print("[디버깅] 'Out-of-date Version' 키워드를 텍스트에서 찾았습니다.")
-            match = re.search(r'\((.*?)\)', full_text)
-            
-            if match:
-                print(f"[디버깅] 정규식 매치 성공! 찾은 그룹: {match.groups()}")
-                o_text = match.group(1).strip()
-            else:
-                print("[디버깅] 정규식 매치 실패: 괄호 안의 내용을 찾지 못했습니다.")
-        else:
-            print("[디버깅] 'Out-of-date Version' 키워드를 텍스트에서 찾지 못했습니다.")
-    else:
-        print("[디버깅] '.vuln-url div' 요소를 찾지 못했습니다.")
-        
-    print(f"[디버깅] 최종 o_text 값: '{o_text}'")
-    print("--- [디버깅 종료] ---\n")
-            
-    return {'v1': v1, 'v2': v2, 'o': o_text}
+    return {'v1': v1, 'v2': v2}
 
 # --- 3. 핸들러 매핑 ---
 VARIABLE_HANDLERS = {
@@ -143,13 +118,24 @@ def extract_vulnerability_sections(html_content):
         if matched_row is not None:
             template_summary = str(matched_row['TTA 결함 리포트 결함 요약'])
             template_description = str(matched_row['결함 내용'])
+            
+            o_text = ''
+            match = re.search(r'\((.*?)\)', h2_text)
+            if match:
+                o_text = match.group(1).strip()
+            
+            # 다른 변수들은 핸들러를 통해 추출
             handler_id = matched_row['번호']
             handler = VARIABLE_HANDLERS.get(handler_id, get_variables_default)
-            variables = handler(vuln_desc_div)
-            for key, value in variables.items():
+            other_variables = handler(vuln_desc_div)
+            
+            # 모든 변수를 합치고 템플릿에 적용
+            all_variables = {'o': o_text, **other_variables}
+            for key, value in all_variables.items():
                 if value:
                     template_summary = template_summary.replace(f'{{{key}}}', value)
                     template_description = template_description.replace(f'{{{key}}}', value)
+            
             defect_summary = template_summary
             defect_description = template_description
         
