@@ -7,22 +7,34 @@
   function rebindPopupEvents() {
     if (!modalContent) return;
 
-    // '대책 보기/숨기기', 'URL 상세 보기' 등 모든 토글 기능은 label의 for 속성으로 제어됩니다.
-    // 이 label들에 클릭 이벤트를 걸어, 연결된 체크박스의 상태를 직접 변경합니다.
-    const allLabels = modalContent.querySelectorAll('label[for]');
-    allLabels.forEach(label => {
+    // '대책 보기/숨기기' 토글 기능
+    const remediationLabels = modalContent.querySelectorAll('label.vuln-remediation');
+    remediationLabels.forEach(label => {
       label.addEventListener('click', (e) => {
-        // 만약 클릭된 것이 URL 링크(a 태그)라면, 아무것도 하지 않고 링크가 정상 동작하도록 둡니다.
+        e.preventDefault();
+        const input = document.getElementById(label.getAttribute('for'));
+        if (input) input.checked = !input.checked;
+      });
+    });
+
+    // 'URL 상세 보기' 토글 기능
+    const vulnUrlDivs = modalContent.querySelectorAll('.vuln-url');
+    vulnUrlDivs.forEach(div => {
+      div.addEventListener('click', (e) => {
+        // 링크(<a> 태그)를 클릭한 경우, 기본 동작(링크 이동)을 허용하고 함수 종료
         if (e.target.closest('a')) {
           return;
         }
-        
-        // 링크가 아닐 경우, label의 기본 동작을 막고 연결된 체크박스를 직접 제어합니다.
+
+        // 링크가 아닌 다른 영역을 클릭했을 때만 토글 기능 수행
         e.preventDefault();
-        const targetId = label.getAttribute('for');
-        const input = modalContent.querySelector('#' + targetId);
-        if (input && input.type === 'checkbox') {
-          input.checked = !input.checked;
+        const vulnContainer = div.closest('.vuln');
+        if (vulnContainer) {
+          // .vuln의 바로 이전 형제 요소가 토글용 체크박스임
+          const checkbox = vulnContainer.previousElementSibling;
+          if (checkbox && checkbox.classList.contains('vuln-input')) {
+            checkbox.checked = !checkbox.checked;
+          }
         }
       });
     });
