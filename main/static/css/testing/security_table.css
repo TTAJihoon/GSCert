@@ -34,6 +34,5 @@
 #modal #modalContent .invicti-report-popup .vuln-url div {
   white-space: normal !important;   /* nowrap 속성을 강제로 무력화 */
   word-break: break-all !important;   /* 단어 중간이라도 강제로 줄바꿈 */
-  overflow: visible !important;       /* 숨겨진 내용 보이게 */
-  text-overflow: clip !important;     /* ... 처리 비활성화 */
+  line-height: 1.5 !important;
 }
