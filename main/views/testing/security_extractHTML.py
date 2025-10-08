@@ -3,11 +3,11 @@ import re
 from bs4 import BeautifulSoup
 import pandas as pd
 import bleach
-from css_sanitizer import CSSSanitizer
+from bleach.css_sanitizer import CSSSanitizer
 
 # --- 1. 엑셀 파일 로드 ---
 try:
-    df_security_map = pd.read_excel("security.xlsx", sheet_name="Sheet1")
+    df_security_map = pd.read_excel("main/data/security.xlsx", sheet_name="Sheet1")
 except FileNotFoundError:
     print("오류: security.xlsx 파일을 찾을 수 없습니다. py 파일과 동일한 경로에 위치시켜주세요.")
     df_security_map = pd.DataFrame()
@@ -79,9 +79,15 @@ VARIABLE_HANDLERS = {
 # --- 4. 메인 추출 함수 ---
 def extract_vulnerability_sections(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
-    css_sanitizer = CSSSanitizer()
+    allowed_css_properties = [
+        'color', 'background-color', 'width', 'height', 'font-size', 
+        'font-weight', 'text-align', 'padding', 'margin', 'border',
+        'border-left-width', 'display', 'float', 'word-break'
+    ]
+    # bleach 내장 CSSSanitizer를 사용합니다.
+    css_sanitizer = CSSSanitizer(allowed_css_properties=allowed_css_properties)
+    
     results_rows = []
-
     target_divs = soup.select('div.vuln-desc.criticals, div.vuln-desc.highs, div.vuln-desc.mediums')
     
     for vuln_desc_div in target_divs:
