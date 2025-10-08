@@ -7,6 +7,7 @@
   function rebindPopupEvents() {
     if (!modalContent) return;
 
+    // '대책 보기/숨기기' 토글 기능 (정상 동작)
     const toggleLabels = modalContent.querySelectorAll('.more-detail-input + label');
     toggleLabels.forEach(label => {
       label.addEventListener('click', (e) => {
@@ -19,19 +20,23 @@
       });
     });
     
+    // 취약점 상세 내용(URL 목록) 토글 기능 (수정)
     const vulnUrlToggles = modalContent.querySelectorAll('.vuln-url[style*="cursor: pointer"]');
     vulnUrlToggles.forEach(toggle => {
       toggle.addEventListener('click', (e) => {
+        // 링크 클릭 시 기본 동작 허용
         if (e.target.closest('a')) {
           return;
         }
+
         e.preventDefault();
+        
+        // [핵심 수정] 올바른 input 체크박스를 찾는 경로 수정
+        // .vuln-url -> .vuln (부모) -> .vuln-input (이전 형제)
         const vulnDiv = e.target.closest('.vuln');
-        if (vulnDiv) {
-            const input = vulnDiv.querySelector('.vuln-input');
-            if (input && input.type === 'checkbox') {
-              input.checked = !input.checked;
-            }
+        if (vulnDiv && vulnDiv.previousElementSibling && vulnDiv.previousElementSibling.classList.contains('vuln-input')) {
+            const input = vulnDiv.previousElementSibling;
+            input.checked = !input.checked;
         }
       });
     });
