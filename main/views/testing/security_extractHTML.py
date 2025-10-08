@@ -15,15 +15,11 @@ except FileNotFoundError:
 
 # --- 2. 변수 추출 함수 정의 ---
 def _get_vuln_block_from_desc(vuln_desc_div):
-    # 이 헬퍼 함수는 이제 가변적인 형제 노드들을 모두 포함하도록 수정합니다.
     vuln_elements = [vuln_desc_div]
     for sibling in vuln_desc_div.find_next_siblings():
-        if sibling.name == 'div' and sibling.has_attr('class'):
-            sibling_classes = sibling.get('class', [])
-            if 'vuln-desc' in sibling_classes and any(s in sibling_classes for s in ['criticals', 'highs', 'mediums']):
-                break
+        if sibling.name == 'div' and 'vuln-desc' in sibling.get('class', []):
+            break
         vuln_elements.append(sibling)
-    
     block_html = "".join(str(el) for el in vuln_elements)
     return BeautifulSoup(block_html, 'html.parser')
 
@@ -144,10 +140,8 @@ def extract_vulnerability_sections(html_content):
         
         vuln_elements_for_snippet = [vuln_desc_div]
         for sibling in vuln_desc_div.find_next_siblings():
-            if sibling.name == 'div' and sibling.has_attr('class'):
-                sibling_classes = sibling.get('class', [])
-                if 'vuln-desc' in sibling_classes and any(s in sibling_classes for s in ['criticals', 'highs', 'mediums']):
-                    break
+            if sibling.name == 'div' and 'vuln-desc' in sibling.get('class', []):
+                break
             vuln_elements_for_snippet.append(sibling)
 
         parent_container = vuln_desc_div.find_parent(class_='container-fluid')
