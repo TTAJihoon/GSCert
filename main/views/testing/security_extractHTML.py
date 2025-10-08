@@ -13,7 +13,6 @@ except FileNotFoundError:
 # --- 2. 변수 추출을 위한 개별 함수 정의 ---
 
 def _find_h4_sibling_text(vuln_block, text):
-    """h4 태그를 찾고, 그 바로 다음 형제 요소의 텍스트를 반환하는 헬퍼 함수"""
     h4_tag = vuln_block.find('h4', string=re.compile(text, re.I))
     if h4_tag:
         next_sibling = h4_tag.find_next_sibling()
@@ -22,23 +21,19 @@ def _find_h4_sibling_text(vuln_block, text):
     return ''
 
 def get_variables_default(vuln_block):
-    """변수가 필요 없는 경우, 빈 딕셔너리를 반환합니다."""
     return {}
 
 def get_variables_for_urls(vuln_block):
-    """{url} 변수를 추출합니다."""
     urls = vuln_block.select('.vuln-url div')
     url_texts = [re.sub(r'^\d+\.\d+\.\s*', '', url.text.strip()) for url in urls]
     return {'url': '\n'.join(url_texts)}
 
 def get_variables_for_weak_ciphers(vuln_block):
-    """{weak} 변수를 추출합니다."""
     selector = "li[data-description*='지원되는 약한 암호 목록']"
     weak_ciphers = [li.text.strip() for li in vuln_block.select(selector)]
     return {'weak': '\n'.join(weak_ciphers)}
 
 def get_variables_for_out_of_date(vuln_block):
-    """{v1}, {v2}, {o} 변수를 추출합니다."""
     v1 = _find_h4_sibling_text(vuln_block, 'Overall Latest Version')
     v2 = _find_h4_sibling_text(vuln_block, '확인된 버전')
     
@@ -51,7 +46,7 @@ def get_variables_for_out_of_date(vuln_block):
             
     return {'v1': v1, 'v2': v2, 'o': o_text}
 
-# --- 3. A열 번호와 추출 함수를 매핑하는 딕셔너리 ---
+# --- 3. A열 번호와 추출 함수 매핑 ---
 VARIABLE_HANDLERS = {
     1: get_variables_for_out_of_date, 2: get_variables_for_out_of_date,
     9: get_variables_for_urls, 10: get_variables_for_urls, 12: get_variables_for_urls,
@@ -71,15 +66,19 @@ def extract_vulnerability_sections(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
     results_rows = []
 
-    # [수정] criticals, highs, mediums 등급만 선택하도록 명시
-    vuln_names = soup.select('.vuln-name')
+    # [수정] 각 취약점 설명 블록('.vuln-desc')을 직접 순회하도록 변경
+    target_divs = soup.select('div.vuln-desc.criticals, div.vuln-desc.highs, div.vuln-desc.mediums')
     
-    for block in vuln_names:
-        vuln_desc = block.select_one('div.vuln-desc.criticals, div.vuln-desc.highs, div.vuln-desc.mediums')
-        if not vuln_desc:
-            continue
+    for vuln_desc_div in target_divs:
+        # [수정] 팝업용 HTML 조각을 만들기 위해 현재 블록과 다음 두 형제 요소를 찾음
+        vuln_details_div = vuln_desc_div.find_next_sibling('div')
+        remediation_div = vuln_details_div.find_next_sibling('div') if vuln_details_div else None
+        
+        # `vuln_block`을 현재 취약점의 유효 범위로 사용
+        # `vuln_block`은 변수 추출과 팝업 내용 생성에 모두 사용됨
+        vuln_block = BeautifulSoup(str(vuln_desc_div) + str(vuln_details_div) + str(remediation_div), 'html.parser')
 
-        h2_tag = vuln_desc.find('h2')
+        h2_tag = vuln_desc_div.find('h2')
         if not h2_tag:
             continue
         
@@ -95,7 +94,7 @@ def extract_vulnerability_sections(html_content):
                     break
         
         defect_summary = h2_text
-        defect_description = "\n".join([p.text.strip() for p in vuln_desc.find_all('p')])
+        defect_description = "\n".join([p.text.strip() for p in vuln_desc_div.find_all('p')])
 
         if matched_row is not None:
             template_summary = str(matched_row['TTA 결함 리포트 결함 요약'])
@@ -103,7 +102,8 @@ def extract_vulnerability_sections(html_content):
             
             handler_id = matched_row['번호']
             handler = VARIABLE_HANDLERS.get(handler_id, get_variables_default)
-            variables = handler(block)
+            # [수정] 변수 추출 함수에 현재 취약점 범위(vuln_block)를 전달
+            variables = handler(vuln_block)
 
             for key, value in variables.items():
                 template_summary = template_summary.replace(f'{{{key}}}', value)
@@ -112,16 +112,9 @@ def extract_vulnerability_sections(html_content):
             defect_summary = template_summary
             defect_description = template_description
         
-        # [수정] '결함정도' 최종 판별 로직
-        level_class = vuln_desc.get('class', [])
-        if any(c in level_class for c in ['criticals', 'highs']):
-            defect_level = 'H'
-        elif 'mediums' in level_class:
-            defect_level = 'M'
-        else:
-            defect_level = '' # 해당되지 않는 경우는 없지만 안전을 위해 기본값 설정
+        level_class = vuln_desc_div.get('class', [])
+        defect_level = 'H' if any(c in level_class for c in ['criticals', 'highs']) else 'M' if 'mediums' in level_class else ''
 
-        # [수정] 요청사항에 맞게 최종 row 데이터 구성
         row_data = {
             "id": None,
             "test_env_os": "시험환경\n모든 OS",
@@ -131,7 +124,8 @@ def extract_vulnerability_sections(html_content):
             "quality_attribute": "보안성",
             "defect_description": defect_description,
             "invicti_report": h2_text,
-            "invicti_analysis": block.prettify(),
+            # [수정] `invicti_analysis`에 현재 취약점의 HTML 조각만 저장
+            "invicti_analysis": vuln_block.prettify(),
             "gpt_recommendation": "GPT 분석 버튼을 눌러주세요.",
         }
         results_rows.append(row_data)
