@@ -52,15 +52,39 @@ def get_variables_for_weak_ciphers(vuln_desc_div):
 
 def get_variables_for_out_of_date(vuln_desc_div):
     block = _get_vuln_block_from_desc(vuln_desc_div)
+    
+    print("\n--- [디버깅 시작] get_variables_for_out_of_date 함수 ---")
+
     v1 = _find_h4_sibling_text(block, 'Overall Latest Version')
     v2 = _find_h4_sibling_text(block, '확인된 버전')
+    print(f"[디버깅] 추출된 v1 (최신 버전): '{v1}'")
+    print(f"[디버깅] 추출된 v2 (확인된 버전): '{v2}'")
+    
     o_text = ''
     url_div = block.select_one('.vuln-url div')
+    
     if url_div:
+        print("[디버깅] '.vuln-url div' 요소를 찾았습니다.")
         full_text = url_div.get_text()
+        print(f"[디버깅] 추출된 전체 텍스트: '{full_text.strip()}'")
+        
         if 'Out-of-date Version' in full_text:
+            print("[디버깅] 'Out-of-date Version' 키워드를 텍스트에서 찾았습니다.")
             match = re.search(r'\((.*?)\)', full_text)
-            if match: o_text = match.group(1).strip()
+            
+            if match:
+                print(f"[디버깅] 정규식 매치 성공! 찾은 그룹: {match.groups()}")
+                o_text = match.group(1).strip()
+            else:
+                print("[디버깅] 정규식 매치 실패: 괄호 안의 내용을 찾지 못했습니다.")
+        else:
+            print("[디버깅] 'Out-of-date Version' 키워드를 텍스트에서 찾지 못했습니다.")
+    else:
+        print("[디버깅] '.vuln-url div' 요소를 찾지 못했습니다.")
+        
+    print(f"[디버깅] 최종 o_text 값: '{o_text}'")
+    print("--- [디버깅 종료] ---\n")
+            
     return {'v1': v1, 'v2': v2, 'o': o_text}
 
 # --- 3. 핸들러 매핑 ---
