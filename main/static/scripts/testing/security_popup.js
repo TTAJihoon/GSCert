@@ -7,27 +7,28 @@
   function rebindPopupEvents() {
     if (!modalContent) return;
 
-    // 팝업 내의 모든 label 태그에 대해 클릭 이벤트를 설정합니다.
-    // '대책 보기/숨기기'와 'URL 상세 보기' 모두 label과 input 체크박스로 제어됩니다.
-    const allLabels = modalContent.querySelectorAll('label');
+    // 모든 label 태그(for 속성이 있는)를 찾아 클릭 이벤트 설정
+    // '대책 보기', 'URL 상세 보기' 등 모든 토글 기능이 여기에 해당됨
+    const allLabels = modalContent.querySelectorAll('label[for]');
     allLabels.forEach(label => {
-      // for 속성이 있는 label만 대상으로 합니다.
-      const targetId = label.getAttribute('for');
-      if (targetId) {
-        label.addEventListener('click', (e) => {
-          // 링크(a) 클릭 시에는 아무것도 하지 않도록 하여 링크가 정상 동작하게 합니다.
-          if (e.target.closest('a')) {
-            return;
+      label.addEventListener('click', (e) => {
+        // 만약 클릭된 것이 링크(a 태그)라면, 아무것도 하지 않고 링크 이동을 허용
+        if (e.target.closest('a')) {
+          return;
+        }
+        
+        // 링크가 아닐 경우, label의 기본 동작을 막고 연결된 체크박스의 상태를 직접 변경
+        e.preventDefault();
+        const targetId = label.getAttribute('for');
+        const input = modalContent.querySelector('#' + targetId);
+        if (input && input.type === 'checkbox') {
+          input.checked = !input.checked;
+          // ARIA 속성 등 상태 업데이트가 필요하면 여기에 추가
+          if(input.hasAttribute('aria-expanded')) {
+            input.setAttribute('aria-expanded', input.checked);
           }
-          
-          e.preventDefault(); // label의 기본 동작(두 번 클릭되는 현상 등) 방지
-          
-          const input = modalContent.querySelector('#' + targetId);
-          if (input && input.type === 'checkbox') {
-            input.checked = !input.checked;
-          }
-        });
-      }
+        }
+      });
     });
   }
   
