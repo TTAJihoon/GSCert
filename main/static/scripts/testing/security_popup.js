@@ -4,6 +4,35 @@
 
   let modal, modalTitle, modalContent, closeModalBtn;
 
+  function downloadInvictiHtml(recordId) {
+    const rec = App.state.currentData.find((r) => r.id === recordId);
+    if (!rec || !rec.invicti_analysis) {
+      alert("다운로드할 HTML 콘텐츠가 없습니다.");
+      return;
+    }
+
+    // 1. 다운로드할 HTML 콘텐츠 가져오기
+    const htmlContent = rec.invicti_analysis;
+
+    // 2. 파일명 만들기 (취약점 제목에서 특수문자 제거)
+    const sanitizedTitle = (rec.invicti_report || "vulnerability_report").replace(/[\\/:*?"<>|]/g, '').trim();
+    const fileName = `${sanitizedTitle}.html`;
+
+    // 3. Blob 객체를 사용하여 다운로드 링크 생성 및 실행
+    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = fileName;
+    
+    // 링크를 클릭하여 다운로드 실행
+    document.body.appendChild(link);
+    link.click();
+    
+    // 임시 링크 제거
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  }
+  
   function getDefectLevelBadgeClass(level) {
     switch (level) {
       case "H": return "bg-red-100 text-red-800";
@@ -83,19 +112,25 @@
     if (!rec) return;
 
     modalTitle.textContent = "Invicti 원본 보고서 상세 내용";
-
     const content = rec.invicti_analysis || "<p>상세 보고서 내용을 불러오지 못했습니다.</p>";
-
+    
     modalContent.innerHTML = `
+      <div class="text-right mb-2 border-b pb-2">
+        <button 
+          onclick="SecurityApp.popup.downloadInvictiHtml('${rec.id}')" 
+          class="inline-flex items-center px-3 py-1 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 transition-colors">
+          <i class="fas fa-download mr-1"></i> HTML 다운로드
+        </button>
+      </div>
       <div class="invicti-report-popup" 
-           style="max-height: 75vh; overflow-y: auto; padding: 5px; background-color: #f1f1f1; text-align: left;">
+           style="max-height: 70vh; overflow-y: auto; text-align: left;">
         ${content}
       </div>
     `;
-
+    
     const modalDialog = modal.querySelector('.modal-content');
     if(modalDialog) {
-        modalDialog.style.maxWidth = '80vw'; // 화면 너비의 80%
+        modalDialog.style.maxWidth = '80vw';
     }
 
     showModal();
@@ -151,6 +186,7 @@
   App.popup.showRowDetails = showRowDetails;
   App.popup.showInvictiAnalysis = showInvictiAnalysis;
   App.popup.showGptRecommendation = showGptRecommendation;
+  App.popup.downloadInvictiHtml = downloadInvictiHtml;
 
   document.addEventListener("DOMContentLoaded", () => {
     modal = document.getElementById("modal");
