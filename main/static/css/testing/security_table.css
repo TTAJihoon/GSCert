@@ -21,11 +21,14 @@
 
 /* Invicti 팝업 내부의 row 클래스가 flex로 동작하는 것을 막고, 항상 블록(상하 정렬)으로 표시하도록 강제 */
 .invicti-report-popup .row {
-  display: block !important;
+  display: flex !important;
+  flex-direction: column !important;
 }
 /* Invicti 팝업 내부의 col- 클래스들이 너비를 차지하지 않도록 100%로 강제 */
 .invicti-report-popup [class*="col-"] {
   width: 100% !important;
+  max-width: 100% !important;
+  flex-basis: auto !important;
   padding-left: 0 !important;
   padding-right: 0 !important;
 }
