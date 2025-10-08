@@ -2,10 +2,7 @@
   const App = (window.SecurityApp = window.SecurityApp || {});
   const API_ENDPOINT = "/security/invicti/parse/";
 
-  // DOM 요소를 저장할 객체
   App.dom = App.dom || {};
-
-  // [핵심] 업로드된 파일의 상태를 관리하는 배열
   let currentFiles = [];
 
   // ===== 유틸리티 함수 =====
@@ -15,7 +12,6 @@
     return ALLOWED_EXTS.includes(ext);
   };
 
-  // 파일 중복 체크 함수
   const isDuplicate = (file) => {
     return currentFiles.some(existingFile => 
       existingFile.name === file.name &&
@@ -119,7 +115,11 @@
       const rows = Array.isArray(json?.rows) ? json.rows : [];
       if (!rows.length) { App.clearData(); return App.showError("추출 가능한 결함 항목이 없습니다."); }
       
-      if (json.css) injectStyles(json.css);
+      if (json.css) {
+        App.state = App.state || {};
+        App.state.reportCss = json.css;
+        injectStyles(json.css);
+      }
 
       rows.forEach((r) => { if (!r.id) r.id = App.generateId(); });
       App.setData(rows);
