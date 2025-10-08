@@ -6,8 +6,6 @@
 
   function rebindPopupEvents() {
     if (!modalContent) return;
-
-    // '대책 보기/숨기기' 토글 기능
     const remediationLabels = modalContent.querySelectorAll('label.vuln-remediation');
     remediationLabels.forEach(label => {
       label.addEventListener('click', (e) => {
@@ -16,24 +14,20 @@
         if (input) input.checked = !input.checked;
       });
     });
-
-    // 'URL 상세 보기' 토글 기능
     const vulnUrlDivs = modalContent.querySelectorAll('.vuln-url');
     vulnUrlDivs.forEach(div => {
       div.addEventListener('click', (e) => {
-        // 링크(<a> 태그)를 클릭한 경우, 기본 동작(링크 이동)을 허용하고 함수 종료
         if (e.target.closest('a')) {
           return;
         }
-
-        // 링크가 아닌 다른 영역을 클릭했을 때만 토글 기능 수행
         e.preventDefault();
+        div.classList.toggle('expanded');
+
         const vulnContainer = div.closest('.vuln');
         if (vulnContainer) {
-          // .vuln의 바로 이전 형제 요소가 토글용 체크박스임
           const checkbox = vulnContainer.previousElementSibling;
           if (checkbox && checkbox.classList.contains('vuln-input')) {
-            checkbox.checked = !checkbox.checked;
+            checkbox.checked = true;
           }
         }
       });
