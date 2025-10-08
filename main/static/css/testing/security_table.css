@@ -36,3 +36,9 @@
   word-break: break-all !important;   /* 단어 중간이라도 강제로 줄바꿈 */
   line-height: 1.5 !important;
 }
+
+#modal #modalContent .invicti-report-popup .vuln-url {
+  height: auto !important; /* 높이를 내용에 맞게 자동으로 조절 */
+  align-items: start !important; /* 내용을 위쪽으로 정렬 (기존 center 정렬 무효화) */
+  padding: 5px 10px 5px 5px !important; /* 상하 padding도 약간 추가하여 보기 좋게 조정 */
+}
