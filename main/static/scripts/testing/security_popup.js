@@ -7,7 +7,6 @@
   function rebindPopupEvents() {
     if (!modalContent) return;
 
-    // 1. '대책 보기/숨기기' 토글 기능
     const toggleLabels = modalContent.querySelectorAll('.more-detail-input + label');
     toggleLabels.forEach(label => {
       label.addEventListener('click', (e) => {
@@ -20,26 +19,12 @@
       });
     });
     
-    // 2. 취약점 상세 내용(URL 목록) 토글 기능
     const vulnUrlToggles = modalContent.querySelectorAll('.vuln-url[style*="cursor: pointer"]');
     vulnUrlToggles.forEach(toggle => {
       toggle.addEventListener('click', (e) => {
-        // --- 디버깅 로그 시작 ---
-        console.log("'.vuln-url' Div 클릭 이벤트가 발생했습니다!");
-        console.log("클릭된 실제 요소 (e.target):", e.target);
-
-        const linkElement = e.target.closest('a');
-        console.log("가장 가까운 <a> 태그 찾기 결과 (e.target.closest('a')):", linkElement);
-        // --- 디버깅 로그 종료 ---
-
-        // 클릭한 대상이 <a> 태그(링크)인 경우, 아무것도 하지 않고 기본 동작을 허용
-        if (linkElement) {
-          console.log("링크 클릭으로 판단하여 기본 동작을 허용합니다.");
+        if (e.target.closest('a')) {
           return;
         }
-
-        // 링크가 아닌 다른 곳을 클릭했을 때만 토글 기능 수행
-        console.log("링크 클릭이 아니므로, 상세 내용 토글을 실행하고 기본 동작을 막습니다.");
         e.preventDefault();
         const vulnDiv = e.target.closest('.vuln');
         if (vulnDiv) {
@@ -58,38 +43,20 @@
       alert("다운로드할 HTML 콘텐츠가 없습니다.");
       return;
     }
-
     const cssStyles = App.state.reportCss || '';
     const htmlBody = rec.invicti_analysis;
     const reportTitle = rec.invicti_report || 'Invicti Report';
-
     const fullHtmlContent = `
-      <!DOCTYPE html>
-      <html lang="ko">
-      <head>
-        <meta charset="UTF-8">
-        <title>${reportTitle}</title>
-        <style>
-          ${cssStyles}
-        </style>
-      </head>
-      <body>
-        ${htmlBody}
-      </body>
-      </html>
-    `;
-
+      <!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>${reportTitle}</title><style>${cssStyles}</style></head>
+      <body>${htmlBody}</body></html>`;
     const sanitizedTitle = reportTitle.replace(/[\\/:*?"<>|]/g, '').trim();
     const fileName = `${sanitizedTitle}.html`;
-
     const blob = new Blob([fullHtmlContent], { type: 'text/html;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = fileName;
-    
     document.body.appendChild(link);
     link.click();
-    
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
   }
@@ -171,10 +138,8 @@
   function showInvictiAnalysis(recordId) {
     const rec = App.state.currentData.find((r) => r.id === recordId);
     if (!rec) return;
-
     modalTitle.textContent = "Invicti 원본 보고서 상세 내용";
     const content = rec.invicti_analysis || "<p>상세 보고서 내용을 불러오지 못했습니다.</p>";
-    
     modalContent.innerHTML = `
       <div class="text-right mb-2 border-b pb-2">
         <button onclick="SecurityApp.popup.downloadInvictiHtml('${rec.id}')" class="inline-flex items-center px-3 py-1 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 transition-colors">
@@ -185,12 +150,10 @@
         ${content}
       </div>
     `;
-    
     const modalDialog = modal.querySelector('.modal-content');
     if(modalDialog) {
         modalDialog.style.maxWidth = '80vw';
     }
-
     showModal();
     rebindPopupEvents();
   }
@@ -252,16 +215,16 @@
     modalTitle = document.getElementById("modalTitle");
     modalContent = document.getElementById("modalContent");
     closeModalBtn = document.getElementById("closeModal");
-
-    closeModalBtn && closeModalBtn.addEventListener("click", hideModal);
-    // 배경 클릭 닫기 (backdrop 요소에 클래스가 있을 경우)
-    modal && modal.addEventListener("click", (e) => {
-      if (e.target.classList.contains("modal-backdrop")) hideModal();
-      if (e.target === modal) hideModal(); // 안전망
+    closeModalBtn?.addEventListener("click", hideModal);
+    modal?.addEventListener("click", (e) => {
+      if (e.target.classList.contains("modal-backdrop") || e.target === modal) {
+        hideModal();
+      }
     });
-
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && modal && !modal.classList.contains("hidden")) hideModal();
+      if (e.key === "Escape" && modal && !modal.classList.contains("hidden")) {
+        hideModal();
+      }
     });
   });
 })(window);
