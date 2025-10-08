@@ -32,18 +32,24 @@
 }
 
 #modal #modalContent .invicti-report-popup .vuln-url div {
-  white-space: normal !important;   /* nowrap 속성을 강제로 무력화 */
-  word-break: break-all !important;   /* 단어 중간이라도 강제로 줄바꿈 */
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: block !important;
+}
+
+#modal #modalContent .invicti-report-popup .vuln-url.expanded div {
+  white-space: normal !important;
+  word-break: break-all !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
   line-height: 1.5 !important;
 }
 
+#modal #modalContent .invicti-report-popup .vuln,
 #modal #modalContent .invicti-report-popup .vuln-url {
-  height: auto !important; /* 높이를 내용에 맞게 자동으로 조절 */
-  align-items: start !important; /* 내용을 위쪽으로 정렬 (기존 center 정렬 무효화) */
-  padding: 5px 10px 5px 5px !important; /* 상하 padding도 약간 추가하여 보기 좋게 조정 */
-}
-
-#modal #modalContent .invicti-report-popup .vuln {
-  height: auto !important;      /* 고정 높이 제거 */
-  min-height: 0 !important;    /* 최소 높이 제한 제거 */
+  height: auto !important;
+  min-height: 0 !important;
+  align-items: start !important;
+  padding: 5px 10px 5px 5px !important;
 }
