@@ -42,12 +42,39 @@ def get_variables_for_urls(vuln_desc_div):
     block = _get_vuln_block_from_desc(vuln_desc_div)
     urls = block.select('.vuln-url div')
     url_texts = []
-    for url in urls:
-        text = url.text.strip()
-        text = re.sub(r'^\d+\.\d+\.\s*', '', text)
-        if text.endswith('확정됨'):
-            text = text[:-len('확정됨')].strip()
-        url_texts.append(text)
+    
+    # 디버깅을 위해 함수가 호출될 때 취약점 제목을 함께 출력
+    h2_title = vuln_desc_div.find('h2').text.strip()
+    print(f"\n--- https://namu.wiki/w/%EB%94%94%EB%B2%84%EA%B7%B8 ---")
+    print(f"'{h2_title}' 항목에 대해 {len(urls)}개의 URL 요소를 찾았습니다.")
+
+    for i, url in enumerate(urls):
+        print(f"\nhttps://en.wikipedia.org/wiki/Imaginary_unit")
+        raw_text = url.text
+        # repr()을 사용하여 눈에 보이지 않는 문자(공백, 줄바꿈 등)까지 확인
+        print(f"  - 1. 원본 텍스트 (repr): {repr(raw_text)}")
+        
+        text_stripped = raw_text.strip()
+        print(f"  - 2. strip() 후: '{text_stripped}'")
+
+        text_no_prefix = re.sub(r'^\d+\.\d+\.\s*', '', text_stripped)
+        print(f"  - 3. 접두사 제거 후: '{text_no_prefix}'")
+
+        final_text = text_no_prefix
+        if final_text.endswith('확정됨'):
+            print("  - 4. '확정됨' 키워드 발견됨. 제거를 시도합니다.")
+            final_text = final_text[:-len('확정됨')].strip()
+            print(f"  - 5. '확정됨' 제거 후: '{final_text}'")
+        else:
+            print("  - 4. '확정됨' 키워드 없음.")
+
+        if final_text:
+            print(f"  - 6. 최종 텍스트('{final_text}')가 비어있지 않으므로 목록에 추가합니다.")
+            url_texts.append(final_text)
+        else:
+            print("  - 6. 최종 텍스트가 비어있으므로 목록에서 제외합니다.")
+    
+    print("\n--- https://learn.microsoft.com/ko-kr/windows-hardware/drivers/debugger/ending-a-debugging-session-in-windbg ---\n")
     return {'url': '\n'.join(url_texts)}
     
 def get_variables_for_weak_ciphers(vuln_desc_div):
