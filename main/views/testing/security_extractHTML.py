@@ -4,19 +4,27 @@ from bs4 import BeautifulSoup
 import pandas as pd
 import bleach
 from bleach.css_sanitizer import CSSSanitizer
+from fuzzywuzzy import fuzz
 
 # --- 1. 엑셀 파일 로드 ---
 try:
-    df_security_map = pd.read_excel("security.xlsx", sheet_name="Sheet1")
+    df_security_map = pd.read_excel("main/data/security.xlsx", sheet_name="Sheet1")
 except FileNotFoundError:
     print("오류: security.xlsx 파일을 찾을 수 없습니다. py 파일과 동일한 경로에 위치시켜주세요.")
     df_security_map = pd.DataFrame()
 
 # --- 2. 변수 추출 함수 정의 ---
 def _get_vuln_block_from_desc(vuln_desc_div):
-    details_div = vuln_desc_div.find_next_sibling('div')
-    remediation_div = details_div.find_next_sibling('div') if details_div else None
-    block_html = str(vuln_desc_div) + str(details_div) + str(remediation_div)
+    # 이 헬퍼 함수는 이제 가변적인 형제 노드들을 모두 포함하도록 수정합니다.
+    vuln_elements = [vuln_desc_div]
+    for sibling in vuln_desc_div.find_next_siblings():
+        if sibling.name == 'div' and sibling.has_attr('class'):
+            sibling_classes = sibling.get('class', [])
+            if 'vuln-desc' in sibling_classes and any(s in sibling_classes for s in ['criticals', 'highs', 'mediums']):
+                break
+        vuln_elements.append(sibling)
+    
+    block_html = "".join(str(el) for el in vuln_elements)
     return BeautifulSoup(block_html, 'html.parser')
 
 def _find_h4_sibling_text(vuln_block, text):
@@ -66,13 +74,14 @@ VARIABLE_HANDLERS = {
 # --- 4. 메인 추출 함수 ---
 def extract_vulnerability_sections(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
-    
-    # [수정] 원본 HTML의 CSS 스타일을 다시 추출합니다.
     css_styles = "\n".join(style.prettify() for style in soup.head.find_all('style'))
-    
     allowed_css_properties = ['color', 'background-color', 'width', 'height', 'font-size', 'font-weight', 'text-align', 'padding', 'margin', 'border', 'border-left-width', 'display', 'float', 'word-break']
     css_sanitizer = CSSSanitizer(allowed_css_properties=allowed_css_properties)
     results_rows = []
+    
+    # 유사도 점수 임계값 (이 값을 조절하여 매칭 민감도를 변경할 수 있습니다)
+    SIMILARITY_THRESHOLD = 90
+    
     target_divs = soup.select('div.vuln-desc.criticals, div.vuln-desc.highs, div.vuln-desc.mediums')
     
     for vuln_desc_div in target_divs:
@@ -84,12 +93,25 @@ def extract_vulnerability_sections(html_content):
 
         matched_row = None
         if not df_security_map.empty:
-            cleaned_title_lower = cleaned_title.lower()
+            best_match_score = 0
+            best_match_row = None
+            
+            # FuzzyWuzzy를 사용하여 가장 유사한 행을 찾는 로직
             for index, row in df_security_map.iterrows():
                 invicti_item = str(row['invicti 결함 리포트 항목']).strip()
-                if invicti_item and invicti_item.lower() in cleaned_title_lower:
-                    matched_row = row
-                    break
+                if not invicti_item:
+                    continue
+                
+                # 단어 순서, 개수에 상관없이 유사도 점수 계산
+                score = fuzz.token_set_ratio(cleaned_title, invicti_item)
+                
+                if score > best_match_score:
+                    best_match_score = score
+                    best_match_row = row
+            
+            # 가장 높은 점수가 임계값을 넘을 경우에만 매칭된 것으로 인정
+            if best_match_score >= SIMILARITY_THRESHOLD:
+                matched_row = best_match_row
         
         defect_summary = h2_text
         defect_description = "\n".join([p.text.strip() for p in vuln_desc_div.find_all('p')])
@@ -107,14 +129,20 @@ def extract_vulnerability_sections(html_content):
             defect_summary = template_summary
             defect_description = template_description
         
-        div2 = vuln_desc_div.find_next_sibling('div')
-        div3 = div2.find_next_sibling('div') if div2 else None
+        vuln_elements_for_snippet = [vuln_desc_div]
+        for sibling in vuln_desc_div.find_next_siblings():
+            if sibling.name == 'div' and sibling.has_attr('class'):
+                sibling_classes = sibling.get('class', [])
+                if 'vuln-desc' in sibling_classes and any(s in sibling_classes for s in ['criticals', 'highs', 'mediums']):
+                    break
+            vuln_elements_for_snippet.append(sibling)
+
         parent_container = vuln_desc_div.find_parent(class_='container-fluid')
-        
         html_snippet = ""
-        if all([vuln_desc_div, div2, div3, parent_container]):
+        if parent_container:
             parent_class = ' '.join(parent_container.get('class', []))
-            raw_html = f'<div class="{parent_class}">{vuln_desc_div.prettify()}{div2.prettify()}{div3.prettify()}</div>'
+            inner_html = "".join(el.prettify() for el in vuln_elements_for_snippet)
+            raw_html = f'<div class="{parent_class}">{inner_html}</div>'
             allowed_tags = set(bleach.sanitizer.ALLOWED_TAGS) | {'div', 'h2', 'h3', 'h4', 'p', 'pre', 'code', 'span', 'ul', 'li', 'ol', 'a', 'svg', 'use', 'path', 'g', 'circle', 'rect', 'polygon', 'defs', 'style', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'input', 'label', 'button'}
             allowed_attrs = {'*': ['class', 'id', 'style', 'aria-label', 'tabindex', 'role', 'aria-labelledby', 'scope', 'type', 'checked', 'for', 'onclick', 'data-responseid', 'data-button', 'data-panel', 'aria-controls', 'aria-selected', 'aria-expanded', 'aria-hidden', 'viewbox', 'xmlns', 'points', 'cx', 'cy', 'r', 'd', 'fill', 'transform', 'x', 'y', 'width', 'height', 'rx', 'ry', 'xlink:href', 'x1', 'y1', 'x2', 'y2', 'stroke', 'stroke-width']}
             html_snippet = bleach.clean(raw_html, tags=allowed_tags, attributes=allowed_attrs, css_sanitizer=css_sanitizer, strip=True)
@@ -131,5 +159,4 @@ def extract_vulnerability_sections(html_content):
         }
         results_rows.append(row_data)
 
-    # [수정] 반환값에 추출한 css_styles를 다시 포함시킵니다.
     return {"css": css_styles, "rows": results_rows}
