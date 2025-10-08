@@ -28,7 +28,9 @@
 .invicti-report-popup [class*="col-"] {
   width: 100% !important;
   max-width: 100% !important;
-  flex-basis: auto !important;
-  padding-left: 0 !important;
-  padding-right: 0 !important;
+  padding: 0 !important;
+}
+
+.invicti-report-popup .vuln-url div {
+  word-break: break-all;
 }
