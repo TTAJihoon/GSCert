@@ -4,6 +4,36 @@
 
   let modal, modalTitle, modalContent, closeModalBtn;
 
+  function rebindPopupEvents() {
+    if (!modalContent) return;
+
+    // 1. '대책 보기/숨기기' 같은 토글 버튼 기능 재설정
+    const toggleLabels = modalContent.querySelectorAll('.more-detail-input + label');
+    toggleLabels.forEach(label => {
+      label.addEventListener('click', (e) => {
+        e.preventDefault(); // 기본 동작 방지
+        const input = label.previousElementSibling;
+        if (input && input.type === 'checkbox') {
+          input.checked = !input.checked;
+          // ARIA 속성 업데이트
+          input.setAttribute('aria-expanded', input.checked);
+        }
+      });
+    });
+    
+    // 2. 취약점 상세 내용(URL 목록) 토글 기능 재설정
+    const vulnUrlToggles = modalContent.querySelectorAll('.vuln-url[style*="cursor: pointer"]');
+    vulnUrlToggles.forEach(toggle => {
+      toggle.addEventListener('click', (e) => {
+        e.preventDefault();
+        const input = toggle.parentElement.querySelector('.vuln-input');
+        if (input && input.type === 'checkbox') {
+          input.checked = !input.checked;
+        }
+      });
+    });
+  }
+  
   function downloadInvictiHtml(recordId) {
     const rec = App.state.currentData.find((r) => r.id === recordId);
     if (!rec || !rec.invicti_analysis) {
@@ -129,14 +159,11 @@
     
     modalContent.innerHTML = `
       <div class="text-right mb-2 border-b pb-2">
-        <button 
-          onclick="SecurityApp.popup.downloadInvictiHtml('${rec.id}')" 
-          class="inline-flex items-center px-3 py-1 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 transition-colors">
+        <button onclick="SecurityApp.popup.downloadInvictiHtml('${rec.id}')" class="inline-flex items-center px-3 py-1 bg-blue-500 text-white rounded text-xs font-medium hover:bg-blue-600 transition-colors">
           <i class="fas fa-download mr-1"></i> HTML 다운로드
         </button>
       </div>
-      <div class="invicti-report-popup" 
-           style="max-height: 70vh; overflow-y: auto; text-align: left;">
+      <div class="invicti-report-popup" style="max-height: 70vh; overflow-y: auto; text-align: left;">
         ${content}
       </div>
     `;
@@ -147,6 +174,7 @@
     }
 
     showModal();
+    rebindPopupEvents();
   }
 
   function showGptRecommendation(recordId, isLoading = false) {
