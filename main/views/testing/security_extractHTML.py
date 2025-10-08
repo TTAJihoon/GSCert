@@ -1,3 +1,4 @@
+
 import json
 import re
 from bs4 import BeautifulSoup
@@ -90,52 +91,63 @@ def extract_vulnerability_sections(html_content):
         h2_text = h2_tag.text.strip()
         cleaned_title = re.sub(r'^\d+\.\s*', '', h2_text)
 
+        # [디버깅] HSTS 항목일 경우 디버깅 로그 출력 시작
+        is_hsts_item = "hsts" in cleaned_title.lower() or "엄격한 전송 보안" in cleaned_title
+        if is_hsts_item:
+            print("\n--- HSTS 결함 디버깅 시작 ---")
+            print(f"HTML 제목: '{cleaned_title}'")
+
         matched_row = None
         if not df_security_map.empty:
             best_match_score = 0
             best_match_row = None
-            
-            # FuzzyWuzzy를 사용하여 가장 유사한 행을 찾는 로직
             for index, row in df_security_map.iterrows():
                 invicti_item = str(row['invicti 결함 리포트 항목']).strip()
-                if not invicti_item:
-                    continue
+                if not invicti_item: continue
                 
-                # 단어 순서, 개수에 상관없이 유사도 점수 계산
                 score = fuzz.token_set_ratio(cleaned_title, invicti_item)
                 
+                # [디버깅] HSTS 관련 항목과 비교할 때만 점수 출력
+                if is_hsts_item and ("hsts" in invicti_item.lower() or "엄격한 전송 보안" in invicti_item):
+                    print(f"엑셀 항목 '{invicti_item}' 와(과)의 유사도 점수: {score}")
+
                 if score > best_match_score:
                     best_match_score = score
                     best_match_row = row
             
-            # 가장 높은 점수가 임계값을 넘을 경우에만 매칭된 것으로 인정
             if best_match_score >= SIMILARITY_THRESHOLD:
                 matched_row = best_match_row
-        
+            
+            # [디버깅] HSTS 항목일 경우 최종 매칭 결과 출력
+            if is_hsts_item:
+                if best_match_row is not None:
+                    print(f"최고 점수: {best_match_score}")
+                    print(f"선택된 엑셀 항목: '{best_match_row['invicti 결함 리포트 항목']}'")
+                    if matched_row is not None:
+                        print(f"매칭 결과: 성공 (임계값 {SIMILARITY_THRESHOLD}점 이상)")
+                    else:
+                        print(f"매칭 결과: 실패 (임계값 {SIMILARITY_THRESHOLD}점 미만)")
+                else:
+                    print("최적의 매칭 항목을 찾지 못했습니다.")
+                print("--- HSTS 결함 디버깅 종료 ---\n")
+
         defect_summary = h2_text
         defect_description = "\n".join([p.text.strip() for p in vuln_desc_div.find_all('p')])
 
         if matched_row is not None:
             template_summary = str(matched_row['TTA 결함 리포트 결함 요약'])
             template_description = str(matched_row['결함 내용'])
-            
             o_text = ''
             match = re.search(r'\((.*?)\)', h2_text)
-            if match:
-                o_text = match.group(1).strip()
-            
-            # 다른 변수들은 핸들러를 통해 추출
+            if match: o_text = match.group(1).strip()
             handler_id = matched_row['번호']
             handler = VARIABLE_HANDLERS.get(handler_id, get_variables_default)
             other_variables = handler(vuln_desc_div)
-            
-            # 모든 변수를 합치고 템플릿에 적용
             all_variables = {'o': o_text, **other_variables}
             for key, value in all_variables.items():
                 if value:
                     template_summary = template_summary.replace(f'{{{key}}}', value)
                     template_description = template_description.replace(f'{{{key}}}', value)
-            
             defect_summary = template_summary
             defect_description = template_description
         
