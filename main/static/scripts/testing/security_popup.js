@@ -7,6 +7,7 @@
   function rebindPopupEvents() {
     if (!modalContent) return;
 
+    // 1. '대책 보기/숨기기' 토글 기능
     const toggleLabels = modalContent.querySelectorAll('.more-detail-input + label');
     toggleLabels.forEach(label => {
       label.addEventListener('click', (e) => {
@@ -19,12 +20,26 @@
       });
     });
     
+    // 2. 취약점 상세 내용(URL 목록) 토글 기능
     const vulnUrlToggles = modalContent.querySelectorAll('.vuln-url[style*="cursor: pointer"]');
     vulnUrlToggles.forEach(toggle => {
       toggle.addEventListener('click', (e) => {
-        if (e.target.closest('a')) {
+        // --- 디버깅 로그 시작 ---
+        console.log("'.vuln-url' Div 클릭 이벤트가 발생했습니다!");
+        console.log("클릭된 실제 요소 (e.target):", e.target);
+
+        const linkElement = e.target.closest('a');
+        console.log("가장 가까운 <a> 태그 찾기 결과 (e.target.closest('a')):", linkElement);
+        // --- 디버깅 로그 종료 ---
+
+        // 클릭한 대상이 <a> 태그(링크)인 경우, 아무것도 하지 않고 기본 동작을 허용
+        if (linkElement) {
+          console.log("링크 클릭으로 판단하여 기본 동작을 허용합니다.");
           return;
         }
+
+        // 링크가 아닌 다른 곳을 클릭했을 때만 토글 기능 수행
+        console.log("링크 클릭이 아니므로, 상세 내용 토글을 실행하고 기본 동작을 막습니다.");
         e.preventDefault();
         const vulnDiv = e.target.closest('.vuln');
         if (vulnDiv) {
