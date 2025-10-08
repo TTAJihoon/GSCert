@@ -7,28 +7,31 @@
   function rebindPopupEvents() {
     if (!modalContent) return;
 
-    // 1. '대책 보기/숨기기' 같은 토글 버튼 기능 재설정
     const toggleLabels = modalContent.querySelectorAll('.more-detail-input + label');
     toggleLabels.forEach(label => {
       label.addEventListener('click', (e) => {
-        e.preventDefault(); // 기본 동작 방지
+        e.preventDefault();
         const input = label.previousElementSibling;
         if (input && input.type === 'checkbox') {
           input.checked = !input.checked;
-          // ARIA 속성 업데이트
           input.setAttribute('aria-expanded', input.checked);
         }
       });
     });
     
-    // 2. 취약점 상세 내용(URL 목록) 토글 기능 재설정
     const vulnUrlToggles = modalContent.querySelectorAll('.vuln-url[style*="cursor: pointer"]');
     vulnUrlToggles.forEach(toggle => {
       toggle.addEventListener('click', (e) => {
+        if (e.target.closest('a')) {
+          return;
+        }
         e.preventDefault();
-        const input = toggle.parentElement.querySelector('.vuln-input');
-        if (input && input.type === 'checkbox') {
-          input.checked = !input.checked;
+        const vulnDiv = e.target.closest('.vuln');
+        if (vulnDiv) {
+            const input = vulnDiv.querySelector('.vuln-input');
+            if (input && input.type === 'checkbox') {
+              input.checked = !input.checked;
+            }
         }
       });
     });
