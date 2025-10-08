@@ -11,24 +11,37 @@
       return;
     }
 
-    // 1. 다운로드할 HTML 콘텐츠 가져오기
-    const htmlContent = rec.invicti_analysis;
+    const cssStyles = App.state.reportCss || '';
+    const htmlBody = rec.invicti_analysis;
+    const reportTitle = rec.invicti_report || 'Invicti Report';
 
-    // 2. 파일명 만들기 (취약점 제목에서 특수문자 제거)
-    const sanitizedTitle = (rec.invicti_report || "vulnerability_report").replace(/[\\/:*?"<>|]/g, '').trim();
+    const fullHtmlContent = `
+      <!DOCTYPE html>
+      <html lang="ko">
+      <head>
+        <meta charset="UTF-8">
+        <title>${reportTitle}</title>
+        <style>
+          ${cssStyles}
+        </style>
+      </head>
+      <body>
+        ${htmlBody}
+      </body>
+      </html>
+    `;
+
+    const sanitizedTitle = reportTitle.replace(/[\\/:*?"<>|]/g, '').trim();
     const fileName = `${sanitizedTitle}.html`;
 
-    // 3. Blob 객체를 사용하여 다운로드 링크 생성 및 실행
-    const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+    const blob = new Blob([fullHtmlContent], { type: 'text/html;charset=utf-8' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
     link.download = fileName;
     
-    // 링크를 클릭하여 다운로드 실행
     document.body.appendChild(link);
     link.click();
     
-    // 임시 링크 제거
     document.body.removeChild(link);
     URL.revokeObjectURL(link.href);
   }
