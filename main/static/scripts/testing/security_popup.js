@@ -2,102 +2,106 @@
   const App = (window.SecurityApp = window.SecurityApp || {});
   App.popup = App.popup || {};
 
-  function getDom() {
-    return {
-      modal: document.getElementById("modal"),
-      modalTitle: document.getElementById("modalTitle"),
-      modalContent: document.getElementById("modalContent"),
-      closeBtn: document.getElementById("closeModal"),
-      downloadBtn: document.getElementById("downloadHtmlBtn"),
-    };
+  let modal, modalContent, closeBtn, backdrop, downloadBtn;
+
+  function ensureDom() {
+    modal        = modal        || document.getElementById("modal");
+    modalContent = modalContent || document.getElementById("modalContent");
+    closeBtn     = closeBtn     || document.getElementById("closeModal");
+    downloadBtn  = downloadBtn  || document.getElementById("downloadHtml");
+    backdrop     = backdrop     || document.querySelector("#modal .modal-backdrop");
   }
 
-  function open() {
-    const { modal } = getDom();
+  function openModal() {
+    ensureDom();
     if (!modal) return;
     modal.classList.remove("hidden");
     document.body.classList.add("overflow-hidden");
   }
 
-  function close() {
-    const { modal } = getDom();
+  function closeModal() {
+    ensureDom();
     if (!modal) return;
     modal.classList.add("hidden");
     document.body.classList.remove("overflow-hidden");
+    if (modalContent) modalContent.innerHTML = "";
+    document.removeEventListener("keydown", escHandler);
   }
 
-  function findRowById(rowId) {
-    const st = App.state || {};
-    return (st.currentData || []).find((r) => r.id === rowId);
+  function escHandler(e) {
+    if (e.key === "Escape") closeModal();
   }
 
-  function buildDownloadHtml(snippetHtml) {
-    // 페이지에 주입해 둔 원본 CSS(App.state.reportCss)를 함께 포함해서 다운로드
-    const css = (App.state && App.state.reportCss) ? App.state.reportCss : "";
-    return `<!doctype html>
-<html lang="ko">
-<head>
-<meta charset="utf-8">
-<title>Invicti 분석 스니펫</title>
-<style>${css}</style>
-</head>
-<body>
-${snippetHtml}
-</body>
-</html>`;
+  // 모달 내 여백/스크롤 등 최소한의 오버라이드
+  function injectModalOverrides() {
+    const id = "invicti-modal-overrides";
+    if (document.getElementById(id)) return;
+    const style = document.createElement("style");
+    style.id = id;
+    style.textContent = `
+      #modal .modal-shell { width: 80vw; height: 80vh; }
+      #modal #modalContent { padding: 0.75rem; }
+      #modal #modalContent .container-fluid { margin: 0 !important; padding: 0.5rem !important; }
+      #modal #modalContent pre { white-space: pre-wrap; overflow: auto; }
+    `;
+    document.head.appendChild(style);
   }
 
-  function download(filename, content) {
-    const blob = new Blob([content], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.download = filename || "invicti_snippet.html";
-    a.href = url;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
-  // 공개 API: 테이블의 "Invicti 분석" 버튼이 호출
-  async function showInvictiAnalysis(rowId) {
-    const { modalTitle, modalContent, downloadBtn } = getDom();
-    const row = findRowById(rowId);
-    if (!row) return App.showError("해당 행을 찾을 수 없습니다.");
-
-    // 제목과 내용 주입 (원본 스타일은 이미 App.state.reportCss로 페이지에 주입됨)
-    modalTitle.textContent = row.invicti_report || "Invicti 분석";
-    modalContent.innerHTML = row.invicti_analysis || "<p>표시할 내용이 없습니다.</p>";
-
-    // 다운로드 버튼 핸들러
-    if (downloadBtn) {
-      downloadBtn.onclick = () => {
-        const full = buildDownloadHtml(modalContent.innerHTML);
-        // 파일명은 H2 텍스트(있으면) 기반으로 간단히 생성
-        const safeName = (row.invicti_report || "invicti_snippet")
-          .replace(/[\\/:*?"<>|]/g, "_")
-          .slice(0, 80);
-        download(`${safeName}.html`, full);
-      };
-    }
-
-    open();
-  }
-
-  // 모달 공통 이벤트 바인딩
-  document.addEventListener("DOMContentLoaded", () => {
-    const { modal, closeBtn } = getDom();
-    // 닫기
-    closeBtn && closeBtn.addEventListener("click", close);
-    // 배경 클릭 닫기
-    modal && modal.addEventListener("click", (e) => {
-      if (e.target.classList.contains("modal-backdrop")) close();
+  // 원본 리포트의 inline onclick 제거로 사라진 동작을 JS로 보완
+  // (vuln-url 클릭 -> 직전 형제 input.vuln-input 체크 토글)
+  function wireInvictiInteractions(root) {
+    if (!root) return;
+    root.querySelectorAll(".vuln-url").forEach((el) => {
+      el.style.cursor = "pointer";
+      el.addEventListener("click", (e) => {
+        const vuln = e.currentTarget.closest(".vuln");
+        if (!vuln) return;
+        const checkbox = vuln.previousElementSibling;
+        if (checkbox && checkbox.classList && checkbox.classList.contains("vuln-input")) {
+          checkbox.checked = !checkbox.checked;
+          checkbox.setAttribute("aria-expanded", checkbox.checked ? "true" : "false");
+          // CSS : input.vuln-input:checked ~ .vuln .vuln-detail {display:block;} 에 의존
+        }
+      });
     });
-    // ESC 닫기
-    document.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") close();
-    });
-  });
+  }
 
-  App.popup.showInvictiAnalysis = showInvictiAnalysis;
+  App.popup.showInvictiAnalysis = function (rowId) {
+    ensureDom();
+    injectModalOverrides();
+
+    const rows = (App.state && App.state.currentData) || [];
+    const row = rows.find((r) => r.id === rowId);
+    if (!row) { App.showError("행 데이터를 찾을 수 없습니다."); return; }
+
+    // 원본 스타일은 전역(App.state.reportCss)으로 이미 주입됨.
+    // 모달에는 HTML만 그대로 넣습니다.
+    const html = row.invicti_analysis || '<div class="text-gray-400">표시할 내용이 없습니다.</div>';
+    modalContent.innerHTML = html;
+
+    // vuln-url 클릭 동작 복원
+    wireInvictiInteractions(modalContent);
+
+    // 열기
+    openModal();
+
+    // 닫기/다운로드 바인딩
+    closeBtn && (closeBtn.onclick = closeModal);
+    backdrop && (backdrop.onclick = closeModal);
+    document.addEventListener("keydown", escHandler);
+
+    downloadBtn && (downloadBtn.onclick = function () {
+      const bodyHtml = modalContent.innerHTML;
+      const cssText = (App.state && App.state.reportCss) ? `<style>${App.state.reportCss}</style>` : "";
+      const doc = `<!doctype html><html lang="ko"><head><meta charset="utf-8">${cssText}</head><body>${bodyHtml}</body></html>`;
+      const blob = new Blob([doc], { type: "text/html" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${(row.invicti_report || "invicti_section")}.html`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    });
+  };
 })(window);
