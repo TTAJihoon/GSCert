@@ -269,6 +269,64 @@ ${bodyHtml}
     };
   };
 
+  function toSafeName(name, fallback) {
+    const base = (name || fallback || "invicti_section").toString().trim();
+    return base.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120) || "invicti_section";
+  }
+
+  // 모든 행을 HTML로 만든 뒤 zip으로 묶어서 저장
+  App.popup.downloadAllHtmlZip = async function () {
+    try {
+      if (typeof JSZip === "undefined") {
+        alert("JSZip이 로드되지 않았습니다. security.html에 JSZip 스크립트 태그를 추가하세요.");
+        return;
+      }
+      const rows = (App.state && App.state.currentData) || [];
+      if (!rows.length) {
+        alert("다운로드할 데이터가 없습니다. 먼저 HTML 파일을 업로드/분석하세요.");
+        return;
+      }
+
+      const zip = new JSZip();
+      const folder = zip.folder("invicti_html") || zip;
+
+      for (const row of rows) {
+        const bodyHtml = row.invicti_analysis || "<div>표시할 내용이 없습니다.</div>";
+        const html = (typeof buildDownloadHtml === "function")
+          ? buildDownloadHtml(bodyHtml)
+          : bodyHtml; // 혹시 함수가 없으면 원문이라도 저장
+
+        const fname = toSafeName(row.invicti_report || row.title || `row_${row.id}`, "invicti_section");
+        folder.file(`${fname}.html`, html);
+      }
+
+      const now = new Date();
+      const ts = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0"),
+        String(now.getHours()).padStart(2, "0"),
+        String(now.getMinutes()).padStart(2, "0")
+      ].join("");
+
+      const blob = await zip.generateAsync({ type: "blob" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `invicti_all_html_${ts}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    } catch (err) {
+      console.error(err);
+      alert("ZIP 생성 중 오류가 발생했습니다.");
+    }
+  };
+
   // 초기화(필요 시 다른 코드에서 호출 없이도 준비)
   document.addEventListener("DOMContentLoaded", ensureModal);
+  document.addEventListener("DOMContentLoaded", () => {
+    const btn = document.getElementById("downloadAllHtmlZip");
+    if (btn) btn.addEventListener("click", App.popup.downloadAllHtmlZip);
+  });
 })(window);
