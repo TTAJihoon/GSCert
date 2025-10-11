@@ -9,6 +9,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
 
 <link rel="stylesheet" href="{% static 'css/testing/security.css' %}"/>
 <link rel="stylesheet" href="{% static 'css/testing/security_table.css' %}"/>
@@ -81,6 +82,9 @@
           <span class="text-sm text-gray-600">
             총 <span id="totalCount" class="font-semibold text-sky-700">0</span>개 항목
           </span>
+          <button id="downloadAllHtmlZip" class="inline-flex items-center rounded-md border px-3 py-1.5 text-sm bg-white hover:bg-gray-50">
+            전체 HTML 다운로드
+          </button>
           <button id="exportBtn" class="inline-flex items-center px-3 py-2 bg-emerald-500 text-white rounded text-sm font-medium hover:bg-emerald-600 transition-colors">
             <i class="fas fa-file-excel mr-1"></i>
             엑셀 다운로드
