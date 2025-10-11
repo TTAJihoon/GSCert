@@ -52,11 +52,50 @@
     return (sel || "").replace(/[^a-zA-Z0-9_-]/g, "\\$&");
   }
 
+  function buildFixCSS() {
+    return `
+    /* 레이아웃 깨짐 방지 기본 */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; }
+    img, svg, canvas, video, iframe, table { max-width: 100%; height: auto; }
+    pre { white-space: pre-wrap; word-break: break-word; overflow: auto; }
+
+    /* Invicti 리포트 쪽 그리드/컨테이너 보정 (부트스트랩류 음수 마진/너비 누수 차단) */
+    .container, .container-fluid {
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+      padding-left: 8px !important;
+      padding-right: 8px !important;
+      max-width: 100% !important;
+      width: 100% !important;
+    }
+    .row {
+      margin-left: 0 !important;
+      margin-right: 0 !important;
+    }
+    [class^="col-"], [class*=" col-"], .col {
+      padding-left: 8px !important;
+      padding-right: 8px !important;
+      min-width: 0; /* 긴 코드블록 등으로 인한 col 폭 깨짐 방지 */
+    }
+
+    /* 100vw 사용 폭이 Shadow DOM 컨테이너를 밀어내는 현상 방지 */
+    [style*="100vw"] { width: 100% !important; }
+
+    /* 폼류 요소들 간격 과도 방지 */
+    input, button, select, textarea { max-width: 100%; }
+  `;
+}
+  
   // .vuln-url 클릭 → 직전 input.vuln-input 체크 토글
   function wireToggleUrls(root) {
     root.querySelectorAll(".vuln-url").forEach((el) => {
       el.style.cursor = "pointer";
       el.addEventListener("click", (e) => {
+        // a/href 이동 등 방지
+        e.preventDefault();
+        e.stopPropagation();
+
         const vuln = e.currentTarget.closest(".vuln");
         if (!vuln) return;
         const checkbox = vuln.previousElementSibling;
@@ -64,6 +103,13 @@
           checkbox.checked = !checkbox.checked;
           checkbox.setAttribute("aria-expanded", checkbox.checked ? "true" : "false");
         }
+      });
+    });
+
+    // (신규) .vuln-more.row 클릭 시 전파 방지: 다른 토글과 간섭 방지
+    root.querySelectorAll(".vuln-more.row").forEach((el) => {
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
       });
     });
   }
@@ -111,26 +157,24 @@
 
   // ====== 다운로드용 HTML 생성 (원본 CSS + 내장 스크립트 포함) ======
   function buildDownloadHtml(bodyHtml) {
-  const css = (App.state && App.state.reportCss) ? App.state.reportCss : "";
-  const inlineScript = `
+    const css = (App.state && App.state.reportCss) ? App.state.reportCss : "";
+    const fixCss = buildFixCSS(); // 위에서 추가한 함수 재사용
+
+    const inlineScript = `
     (function(){
       function cssEscape(s){ if(window.CSS&&CSS.escape) return CSS.escape(s); return (s||"").replace(/[^a-zA-Z0-9_-]/g,"\\\\$&"); }
 
       function findToggleCheckbox(el){
-        // 1) 원본 구조: .vuln-url 포함 .vuln 의 '직전 형제'가 input.vuln-input
         var vuln = el.closest(".vuln");
         if(!vuln) return null;
         var prev = vuln.previousElementSibling;
         if (prev && prev.classList && prev.classList.contains("vuln-input")) return prev;
-
-        // 2) 예외: 구조가 달라졌을 경우, 같은 컨테이너 내 가장 가까운 input.vuln-input 탐색
         var candidate = vuln.parentElement ? vuln.parentElement.querySelector("input.vuln-input") : null;
         return candidate || null;
       }
 
       function wireToggleUrls(root) {
         root.querySelectorAll(".vuln-url").forEach(function(el){
-          // a 태그일 수 있으므로 기본 이동 방지
           el.addEventListener("click", function(e){
             e.preventDefault();
             e.stopPropagation();
@@ -140,8 +184,10 @@
               checkbox.setAttribute("aria-expanded", checkbox.checked ? "true":"false");
             }
           });
-          // 커서 표시 (원본에 없으면)
-          if (!el.style.cursor) el.style.cursor = "pointer";
+        });
+        // .vuln-more.row 클릭 시 전파 방지
+        root.querySelectorAll(".vuln-more.row").forEach(function(el){
+          el.addEventListener("click", function(e){ e.stopPropagation(); });
         });
       }
 
@@ -153,21 +199,17 @@
           var panels  = tabs.querySelectorAll(".vuln-tab");
 
           function show(btn){
-            // 버튼 상태
             buttons.forEach(function(b){ b.classList.remove("active"); b.setAttribute("aria-selected","false"); });
             btn.classList.add("active"); btn.setAttribute("aria-selected","true");
 
-            // 패널 표시/숨김 (원본 CSS가 없더라도 보장되도록 명시적 display 제어)
             var id = btn.getAttribute("aria-controls") || "";
             var panel = id ? tabs.querySelector("#"+cssEscape(id)) : null;
             panels.forEach(function(p){ p.style.display = (p===panel) ? "" : "none"; });
           }
 
-          // 초기 활성 탭
           var initBtn = Array.prototype.find.call(buttons, function(b){ return b.getAttribute("aria-selected")==="true"; }) || buttons[0];
           if(initBtn) show(initBtn);
 
-          // 클릭 이벤트
           buttons.forEach(function(b){
             b.addEventListener("click", function(e){ e.preventDefault(); show(b); });
           });
@@ -179,20 +221,18 @@
         wireToggleUrls(root);
         wireTabs(root);
       }
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", init);
-      } else {
-        init();
-      }
+      if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
+      else init();
     })();
   `;
 
-  return `<!doctype html>
+    return `<!doctype html>
 <html lang="ko">
 <head>
 <meta charset="utf-8">
 <title>Invicti 분석 스니펫</title>
 <style>${css}</style>
+<style>${fixCss}</style>
 </head>
 <body>
 ${bodyHtml}
@@ -208,36 +248,38 @@ ${bodyHtml}
     const row = rows.find((r) => r.id === rowId);
     if (!row) { App.showError("행 데이터를 찾을 수 없습니다."); return; }
 
-    // 전역 스타일 비활성화(누수 방지)
     disableGlobalInvictiStyle();
 
-    // Shadow DOM 준비
     if (!host) return;
     if (!shadowRoot) shadowRoot = host.attachShadow({ mode: "open" });
-    shadowRoot.innerHTML = ""; // 초기화
+    shadowRoot.innerHTML = "";
 
     const cssText = (App.state && App.state.reportCss) ? App.state.reportCss : "";
-    const styleEl = document.createElement("style");
-    styleEl.textContent = cssText;
+
+    // 원본 CSS
+    const styleOriginal = document.createElement("style");
+    styleOriginal.textContent = cssText;
+
+    // (신규) 보정 CSS
+    const styleFix = document.createElement("style");
+    styleFix.textContent = buildFixCSS();
 
     const container = document.createElement("div");
-    container.className = "invicti-root";              // 단순 래퍼
+    container.className = "invicti-root";
     container.innerHTML = row.invicti_analysis || '<div class="text-gray-400">표시할 내용이 없습니다.</div>';
 
-    shadowRoot.appendChild(styleEl);
+    shadowRoot.appendChild(styleOriginal);
+    shadowRoot.appendChild(styleFix);          // ← 보정 CSS 주입
     shadowRoot.appendChild(container);
 
-    // 내부 인터랙션 연결
     wireInteractions(shadowRoot);
 
-    // 팝업 열기
     openModal();
 
-    // 버튼 배선
     closeBtn && (closeBtn.onclick = closeModal);
     backdrop && (backdrop.onclick = closeModal);
     downloadBtn && (downloadBtn.onclick = function () {
-      const html = buildDownloadHtml(container.innerHTML);
+      const html = buildDownloadHtml(container.innerHTML);  // 아래 2번 패치한 함수
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
       const safe = (row.invicti_report || "invicti_section").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
