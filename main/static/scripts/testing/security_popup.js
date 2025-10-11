@@ -2,55 +2,58 @@
   const App = (window.SecurityApp = window.SecurityApp || {});
   App.popup = App.popup || {};
 
-  let modal, modalContent, closeBtn, backdrop, downloadBtn;
+  let modal, host, closeBtn, backdrop, downloadBtn;
+  let shadowRoot = null;
+  let disabledGlobalStyle = false;
 
-  function ensureDom() {
-    modal        = modal        || document.getElementById("modal");
-    modalContent = modalContent || document.getElementById("modalContent");
-    closeBtn     = closeBtn     || document.getElementById("closeModal");
-    downloadBtn  = downloadBtn  || document.getElementById("downloadHtml");
-    backdrop     = backdrop     || document.querySelector("#modal .modal-backdrop");
+  function $$() {
+    modal      = modal      || document.getElementById("modal");
+    host       = host       || document.getElementById("modalContent");
+    closeBtn   = closeBtn   || document.getElementById("closeModal");
+    downloadBtn= downloadBtn|| document.getElementById("downloadHtml");
+    backdrop   = backdrop   || document.querySelector("#modal .modal-backdrop");
+  }
+
+  function disableGlobalInvictiStyle() {
+    const style = document.getElementById("invicti-dynamic-styles"); // 주입 위치
+    if (style && !style.disabled) {
+      style.disabled = true; // 전역 누수 차단
+      disabledGlobalStyle = true;
+    }
+  }
+  function restoreGlobalInvictiStyle() {
+    const style = document.getElementById("invicti-dynamic-styles");
+    if (style && disabledGlobalStyle) {
+      style.disabled = false;
+    }
+    disabledGlobalStyle = false;
   }
 
   function openModal() {
-    ensureDom();
     if (!modal) return;
     modal.classList.remove("hidden");
     document.body.classList.add("overflow-hidden");
+    document.addEventListener("keydown", escHandler);
   }
-
   function closeModal() {
-    ensureDom();
     if (!modal) return;
     modal.classList.add("hidden");
     document.body.classList.remove("overflow-hidden");
-    if (modalContent) modalContent.innerHTML = "";
     document.removeEventListener("keydown", escHandler);
+    // Shadow DOM 정리
+    if (shadowRoot) { shadowRoot.innerHTML = ""; }
+    restoreGlobalInvictiStyle();
+  }
+  function escHandler(e){ if (e.key === "Escape") closeModal(); }
+
+  // ====== 상호작용 배선 (ShadowRoot 내부) ======
+  function cssEscape(sel) {
+    if (window.CSS && CSS.escape) return CSS.escape(sel);
+    return (sel || "").replace(/[^a-zA-Z0-9_-]/g, "\\$&");
   }
 
-  function escHandler(e) {
-    if (e.key === "Escape") closeModal();
-  }
-
-  // 모달 내 여백/스크롤 등 최소한의 오버라이드
-  function injectModalOverrides() {
-    const id = "invicti-modal-overrides";
-    if (document.getElementById(id)) return;
-    const style = document.createElement("style");
-    style.id = id;
-    style.textContent = `
-      #modal .modal-shell { width: 80vw; height: 80vh; }
-      #modal #modalContent { padding: 0.75rem; }
-      #modal #modalContent .container-fluid { margin: 0 !important; padding: 0.5rem !important; }
-      #modal #modalContent pre { white-space: pre-wrap; overflow: auto; }
-    `;
-    document.head.appendChild(style);
-  }
-
-  // 원본 리포트의 inline onclick 제거로 사라진 동작을 JS로 보완
-  // (vuln-url 클릭 -> 직전 형제 input.vuln-input 체크 토글)
-  function wireInvictiInteractions(root) {
-    if (!root) return;
+  // .vuln-url 클릭 → 직전 input.vuln-input 체크 토글
+  function wireToggleUrls(root) {
     root.querySelectorAll(".vuln-url").forEach((el) => {
       el.style.cursor = "pointer";
       el.addEventListener("click", (e) => {
@@ -60,48 +63,194 @@
         if (checkbox && checkbox.classList && checkbox.classList.contains("vuln-input")) {
           checkbox.checked = !checkbox.checked;
           checkbox.setAttribute("aria-expanded", checkbox.checked ? "true" : "false");
-          // CSS : input.vuln-input:checked ~ .vuln .vuln-detail {display:block;} 에 의존
         }
       });
     });
   }
 
+  // .vuln-tabs-nav 버튼 클릭 → 해당 패널만 표시
+  function wireTabs(root) {
+    root.querySelectorAll(".vuln-tabs").forEach((tabs) => {
+      const nav = tabs.querySelector(".vuln-tabs-nav");
+      if (!nav) return;
+
+      const buttons = nav.querySelectorAll("button[role='tab']");
+      const panels  = tabs.querySelectorAll(".vuln-tab");
+
+      function showPanelByButton(btn) {
+        // 버튼 상태
+        buttons.forEach(b => { b.classList.remove("active"); b.setAttribute("aria-selected", "false"); });
+        btn.classList.add("active");
+        btn.setAttribute("aria-selected", "true");
+
+        // 패널 표시/숨김
+        const targetId = btn.getAttribute("aria-controls") || "";
+        const panel = tabs.querySelector("#" + cssEscape(targetId));
+        panels.forEach(p => { p.style.display = (p === panel) ? "" : "none"; });
+      }
+
+      // 초기 표시: [aria-selected="true"]가 가리키는 패널
+      const initial = Array.from(buttons).find(b => b.getAttribute("aria-selected") === "true") || buttons[0];
+      if (initial) showPanelByButton(initial);
+
+      // 클릭 배선
+      buttons.forEach(btn => {
+        btn.addEventListener("click", (e) => {
+          e.preventDefault();
+          showPanelByButton(btn);
+        });
+      });
+    });
+  }
+
+  // 팝업 내부 DOM에 각종 상호작용 배선
+  function wireInteractions(root) {
+    wireToggleUrls(root);
+    wireTabs(root);
+  }
+
+  // ====== 다운로드용 HTML 생성 (원본 CSS + 내장 스크립트 포함) ======
+  function buildDownloadHtml(bodyHtml) {
+  const css = (App.state && App.state.reportCss) ? App.state.reportCss : "";
+  const inlineScript = `
+    (function(){
+      function cssEscape(s){ if(window.CSS&&CSS.escape) return CSS.escape(s); return (s||"").replace(/[^a-zA-Z0-9_-]/g,"\\\\$&"); }
+
+      function findToggleCheckbox(el){
+        // 1) 원본 구조: .vuln-url 포함 .vuln 의 '직전 형제'가 input.vuln-input
+        var vuln = el.closest(".vuln");
+        if(!vuln) return null;
+        var prev = vuln.previousElementSibling;
+        if (prev && prev.classList && prev.classList.contains("vuln-input")) return prev;
+
+        // 2) 예외: 구조가 달라졌을 경우, 같은 컨테이너 내 가장 가까운 input.vuln-input 탐색
+        var candidate = vuln.parentElement ? vuln.parentElement.querySelector("input.vuln-input") : null;
+        return candidate || null;
+      }
+
+      function wireToggleUrls(root) {
+        root.querySelectorAll(".vuln-url").forEach(function(el){
+          // a 태그일 수 있으므로 기본 이동 방지
+          el.addEventListener("click", function(e){
+            e.preventDefault();
+            e.stopPropagation();
+            var checkbox = findToggleCheckbox(e.currentTarget);
+            if(checkbox){
+              checkbox.checked = !checkbox.checked;
+              checkbox.setAttribute("aria-expanded", checkbox.checked ? "true":"false");
+            }
+          });
+          // 커서 표시 (원본에 없으면)
+          if (!el.style.cursor) el.style.cursor = "pointer";
+        });
+      }
+
+      function wireTabs(root) {
+        root.querySelectorAll(".vuln-tabs").forEach(function(tabs){
+          var nav = tabs.querySelector(".vuln-tabs-nav");
+          if(!nav) return;
+          var buttons = nav.querySelectorAll("button[role='tab']");
+          var panels  = tabs.querySelectorAll(".vuln-tab");
+
+          function show(btn){
+            // 버튼 상태
+            buttons.forEach(function(b){ b.classList.remove("active"); b.setAttribute("aria-selected","false"); });
+            btn.classList.add("active"); btn.setAttribute("aria-selected","true");
+
+            // 패널 표시/숨김 (원본 CSS가 없더라도 보장되도록 명시적 display 제어)
+            var id = btn.getAttribute("aria-controls") || "";
+            var panel = id ? tabs.querySelector("#"+cssEscape(id)) : null;
+            panels.forEach(function(p){ p.style.display = (p===panel) ? "" : "none"; });
+          }
+
+          // 초기 활성 탭
+          var initBtn = Array.prototype.find.call(buttons, function(b){ return b.getAttribute("aria-selected")==="true"; }) || buttons[0];
+          if(initBtn) show(initBtn);
+
+          // 클릭 이벤트
+          buttons.forEach(function(b){
+            b.addEventListener("click", function(e){ e.preventDefault(); show(b); });
+          });
+        });
+      }
+
+      function init(){
+        var root = document;
+        wireToggleUrls(root);
+        wireTabs(root);
+      }
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", init);
+      } else {
+        init();
+      }
+    })();
+  `;
+
+  return `<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Invicti 분석 스니펫</title>
+<style>${css}</style>
+</head>
+<body>
+${bodyHtml}
+<script>${inlineScript}</script>
+</body>
+</html>`;
+}
+
   App.popup.showInvictiAnalysis = function (rowId) {
-    ensureDom();
-    injectModalOverrides();
+    $$();
 
     const rows = (App.state && App.state.currentData) || [];
     const row = rows.find((r) => r.id === rowId);
     if (!row) { App.showError("행 데이터를 찾을 수 없습니다."); return; }
 
-    // 원본 스타일은 전역(App.state.reportCss)으로 이미 주입됨.
-    // 모달에는 HTML만 그대로 넣습니다.
-    const html = row.invicti_analysis || '<div class="text-gray-400">표시할 내용이 없습니다.</div>';
-    modalContent.innerHTML = html;
+    // 전역 스타일 비활성화(누수 방지)
+    disableGlobalInvictiStyle();
 
-    // vuln-url 클릭 동작 복원
-    wireInvictiInteractions(modalContent);
+    // Shadow DOM 준비
+    if (!host) return;
+    if (!shadowRoot) shadowRoot = host.attachShadow({ mode: "open" });
+    shadowRoot.innerHTML = ""; // 초기화
 
-    // 열기
+    const cssText = (App.state && App.state.reportCss) ? App.state.reportCss : "";
+    const styleEl = document.createElement("style");
+    styleEl.textContent = cssText;
+
+    const container = document.createElement("div");
+    container.className = "invicti-root";              // 단순 래퍼
+    container.innerHTML = row.invicti_analysis || '<div class="text-gray-400">표시할 내용이 없습니다.</div>';
+
+    shadowRoot.appendChild(styleEl);
+    shadowRoot.appendChild(container);
+
+    // 내부 인터랙션 연결
+    wireInteractions(shadowRoot);
+
+    // 팝업 열기
     openModal();
 
-    // 닫기/다운로드 바인딩
+    // 버튼 배선
     closeBtn && (closeBtn.onclick = closeModal);
     backdrop && (backdrop.onclick = closeModal);
-    document.addEventListener("keydown", escHandler);
-
     downloadBtn && (downloadBtn.onclick = function () {
-      const bodyHtml = modalContent.innerHTML;
-      const cssText = (App.state && App.state.reportCss) ? `<style>${App.state.reportCss}</style>` : "";
-      const doc = `<!doctype html><html lang="ko"><head><meta charset="utf-8">${cssText}</head><body>${bodyHtml}</body></html>`;
-      const blob = new Blob([doc], { type: "text/html" });
+      const html = buildDownloadHtml(container.innerHTML);
       const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = `${(row.invicti_report || "invicti_section")}.html`;
+      a.href = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
+      const safe = (row.invicti_report || "invicti_section").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
+      a.download = `${safe}.html`;
       document.body.appendChild(a);
       a.click();
       URL.revokeObjectURL(a.href);
       a.remove();
     });
   };
+
+  // 초기 공통 이벤트
+  document.addEventListener("DOMContentLoaded", () => {
+    $$();
+  });
 })(window);
