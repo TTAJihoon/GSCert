@@ -13,6 +13,7 @@ from main.views.testing.history_ECMbtn import start_job, job_status
 from main.views.certy.prdinfo_generate import generate_prdinfo
 from main.views.certy.prdinfo_URL import source_excel_view
 from main.views.certy.prdinfo_download import download_filled_prdinfo
+from main.views.certy.prdinfo_db import lookup_cert_info
 
 urlpatterns = [
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
@@ -33,6 +34,7 @@ urlpatterns = [
     path("api/job/<uuid:job_id>/", job_status, name="job_status"),
 
     path('prdinfo/', prdinfo, name='prdinfo'),
+    path('lookup_cert_info/', lookup_cert_info, name='lookup_cert_info'),
     path('generate_prdinfo/', generate_prdinfo, name='generate_prdinfo'),
     path('source-excel/', source_excel_view, name='source-excel'),
     path("download-filled/", download_filled_prdinfo, name="download_filled"),
