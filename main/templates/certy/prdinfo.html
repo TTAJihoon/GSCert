@@ -6,10 +6,8 @@
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
 
-<!-- SheetJS -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 
-<!-- Luckysheet -->
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/css/pluginsCss.css"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/plugins.css"/>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/css/luckysheet.css"/>
@@ -17,14 +15,12 @@
 <script src="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/plugins/js/plugin.js" defer></script>
 <script src="https://cdn.jsdelivr.net/npm/luckysheet@2.1.13/dist/luckysheet.umd.js" defer></script>
 
-<!-- ✅ LuckyExcel -->
 <script src="https://cdn.jsdelivr.net/npm/luckyexcel@1.0.1/dist/luckyexcel.umd.js" defer></script>
 
 <link rel="stylesheet" href="{% static 'css/certy/prdinfo.css' %}"/>
 <link rel="stylesheet" href="{% static 'css/certy/prdinfo_tab.css' %}"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 
-<!-- 페이지 스크립트 -->
 <script src="{% static 'scripts/certy/prdinfo_tab.js' %}" defer></script>
 <script src="{% static 'scripts/certy/prdinfo_Luckysheet.js' %}" defer></script>
 <script src="{% static 'scripts/certy/prdinfo_upload.js' %}" defer></script>
@@ -60,7 +56,6 @@
               <div class="file-list hidden" id="fileList"></div>
 
               <div class="content-spacer"></div>
-              <!-- 페이지 이동 방지: type="button" -->
               <button type="button" class="action-button" id="btn-generate">제품 정보 요청 엑셀 파일 생성</button>
             </div>
           </div>
@@ -69,7 +64,6 @@
     </div>
   </div>
 
-  <!-- 우측 콘텐츠 영역 -->
   <div class="content-card">
     <div class="loading-container hidden" id="loadingContainer">
       <div class="spinner"></div>
@@ -87,17 +81,14 @@
         <button type="button" class="action-button download" id="btn-download">다운로드</button>
       </div>
         
-      <!-- 탭 컨테이너 -->
       <div class="main-tab-container">
         <div class="main-tab active" data-tab="preInput">사전 입력 사항</div>
         <div class="main-tab" data-tab="resultSheet">결과 시트</div>
       </div>
 
-      <!-- 사전 입력 사항 탭 내용 -->
       <div class="tab-content active" id="preInputContent">
         <div class="input-form-container">
            
-          <!-- 클라우드 환경 구성 섹션 -->
           <div class="form-section">
             <div class="form-item">
               <div class="form-input-group">
@@ -121,7 +112,6 @@
             </div>
           </div>
 
-          <!-- SaaS형 제품 섹션 -->
           <div class="form-section">
             <div class="form-item">
               <div class="form-input-group">
@@ -140,7 +130,6 @@
             </div>
           </div>
 
-          <!-- 재인증 여부 섹션 -->
           <div class="form-section">
             <div class="form-item">
               <div class="form-input-group">
@@ -153,23 +142,19 @@
                 </select>
               </div>
 
-              <div class="sub-section hidden-section" id="reCertSection1">
-                <div class="sub-label">기 인증번호</div>
-                <textarea class="form-textarea" id="reCert1"></textarea>
+              <div class="sub-section hidden-section" id="reCertLookupSection">
+                  <div class="sub-label">기존 인증 제품 번호</div>
+                  <div class="lookup-group">
+                      <input type="text" class="form-input" id="reCertNumberInput" placeholder="GS-X-XX-XXXX를 입력하세요.">
+                      <button type="button" class="lookup-button" id="btnLookupCert">조회</button>
+                  </div>
               </div>
-              <div class="sub-section hidden-section" id="reCertSection2">
-                <div class="sub-label">기 인증 제품명 및 버전</div>
-                <textarea class="form-textarea" id="reCert2"></textarea>
+              <div class="sub-section hidden-section" id="reCertResultSection">
+                  <textarea class="form-textarea result-display" id="reCertResultText" readonly></textarea>
               </div>
-              <div class="sub-section hidden-section" id="reCertSection3">
-                <div class="sub-label">기 인증 제품 WD</div>
-                <textarea class="form-textarea" id="reCert3"></textarea>
               </div>
-                
-            </div>
           </div>
 
-          <!-- 보안성 시험 면제 여부 섹션 -->
           <div class="form-section">
             <div class="form-item">
               <div class="form-input-group">
@@ -204,7 +189,6 @@
         </div>
       </div>
 
-      <!-- 결과 시트 탭 내용 -->
       <div class="tab-content" id="resultSheetContent">
         <div id="luckysheetContainer" style="width:100%;min-height:600px;height:80vh;"></div>
       </div>
