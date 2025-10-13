@@ -142,15 +142,13 @@
                 </select>
               </div>
 
-              <div class="sub-section hidden-section" id="reCertLookupSection">
-                  <div class="sub-label">기존 인증 제품 번호</div>
-                  <div class="lookup-group">
-                      <input type="text" class="form-input" id="reCertNumberInput" placeholder="GS-X-XX-XXXX를 입력하세요.">
-                      <button type="button" class="lookup-button" id="btnLookupCert">조회</button>
+              <div class="sub-section hidden-section" id="reCertSection">
+                  <div class="sub-label-group">
+                      <div class="sub-label">기존 인증 제품 번호</div>
+                      <button type="button" class="action-button action-button-small" id="btnLookupCert">조회</button>
                   </div>
-              </div>
-              <div class="sub-section hidden-section" id="reCertResultSection">
-                  <textarea class="form-textarea result-display" id="reCertResultText" readonly></textarea>
+                  <input type="text" class="form-input" id="reCertNumberInput" placeholder="GS-X-XX-XXXX를 입력하세요.">
+                  <textarea class="form-textarea single-line" id="reCertResultText" rows="1"></textarea>
               </div>
               </div>
           </div>
