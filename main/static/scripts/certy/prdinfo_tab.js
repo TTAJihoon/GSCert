@@ -47,8 +47,9 @@ document.addEventListener('DOMContentLoaded', function () {
   cloudRadios.forEach(r => r.addEventListener('change', updateCloudVisibility));
   updateCloudVisibility();
 
+  // 재인증 구분 관련 로직
   const reCertSelect = document.getElementById('reCertType');
-  const reCertSection = document.getElementById('reCertSection'); // 변수 통합
+  const reCertSection = document.getElementById('reCertSection');
   const reCertResultText = document.getElementById('reCertResultText');
   const btnLookupCert = document.getElementById('btnLookupCert');
   const reCertNumberInput = document.getElementById('reCertNumberInput');
@@ -56,7 +57,8 @@ document.addEventListener('DOMContentLoaded', function () {
   // 재인증 구분 드롭다운 변경 시 조회 영역 표시/숨김 처리
   function updateReCertVisibility() {
     const isApplicable = reCertSelect.value !== '해당사항 없음';
-    reCertSection.classList.toggle('hidden-section', !isApplicable); // 통합된 섹션 하나만 제어
+    reCertSection.classList.toggle('hidden-section', !isApplicable);
+    reCertResultText.classList.add('hidden-section'); 
     reCertResultText.value = ''; // 결과 내용 초기화
     reCertNumberInput.value = ''; // 입력 내용 초기화
   }
@@ -73,6 +75,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
     btnLookupCert.textContent = '조회 중...';
     btnLookupCert.disabled = true;
+    reCertResultText.classList.add('hidden-section'); // 조회 시작 시 결과 칸 숨김
 
     fetch(`/lookup_cert_info/?cert_no=${encodeURIComponent(certNo)}`)
       .then(response => {
@@ -84,14 +87,14 @@ document.addEventListener('DOMContentLoaded', function () {
       .then(result => {
         if (result.success) {
           const data = result.data;
-          // 성공 시, 결과 텍스트를 textarea에 설정 (이제 수정 가능)
           reCertResultText.value =
             `- 기 인증번호: ${data.cert_id}\n` +
             `- 기 인증 제품명 및 버전: ${data.product_name}\n` +
             `- 기 인증 제품 WD: ${data.total_wd}`;
+          reCertResultText.classList.remove('hidden-section');
         } else {
           alert(result.message || '데이터를 조회하지 못했습니다.');
-          reCertResultText.value = ''; // 조회 실패 시 내용 비움
+          reCertResultText.value = '';
         }
       })
       .catch(error => {
