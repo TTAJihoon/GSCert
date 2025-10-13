@@ -1,79 +1,21 @@
 (function (window) {
+  // ---- 공개 API 네임스페이스(테이블/버튼에서 호출) ----
   const App = (window.SecurityApp = window.SecurityApp || {});
   App.popup = App.popup || {};
 
-  // ---------- 공용 모달 ----------
+  // ---- 상태/DOM ----
   let modal, backdrop, shell, host, closeBtn, downloadBtn;
   let shadowRoot = null;
   let disabledGlobalStyle = false;
 
-  function ensureModal() {
-    modal = document.getElementById("modal");
-    if (!modal) {
-      modal = document.createElement("div");
-      modal.id = "modal";
-      modal.className = "fixed inset-0 z-50 hidden";
-      modal.innerHTML = `
-        <div class="modal-backdrop fixed inset-0 bg-black bg-opacity-50"></div>
-        <div class="modal-shell absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
-                     bg-white rounded-lg shadow-xl overflow-hidden w-[80vw] h-[80vh]">
-          <div id="modalContent" class="h-full overflow-auto p-3"></div>
-          <div class="flex items-center justify-end gap-2 border-t px-3 py-2">
-            <button type="button" id="downloadHtml"
-                    class="inline-flex items-center rounded-md border px-3 py-1.5 text-sm bg-white hover:bg-gray-50">
-              다운로드
-            </button>
-            <button type="button" id="closeModal"
-                    class="inline-flex items-center rounded-md px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700">
-              닫기
-            </button>
-          </div>
-        </div>`;
-      document.body.appendChild(modal);
-    }
-    backdrop   = modal.querySelector(".modal-backdrop");
-    shell      = modal.querySelector(".modal-shell");
-    host       = modal.querySelector("#modalContent");
-    closeBtn   = modal.querySelector("#closeModal");
-    downloadBtn= modal.querySelector("#downloadHtml");
-
-    shell.style.width = "80vw";
-    shell.style.height = "80vh";
-    host.style.overflow = "auto";
-    host.style.padding = "12px";
-  }
-
-  function openModal() {
-    modal.classList.remove("hidden");
-    document.body.classList.add("overflow-hidden");
-    document.addEventListener("keydown", escHandler);
-  }
-  function closeModal() {
-    modal.classList.add("hidden");
-    document.body.classList.remove("overflow-hidden");
-    document.removeEventListener("keydown", escHandler);
-    if (shadowRoot) shadowRoot.innerHTML = "";
-    restoreGlobalInvictiStyle();
-  }
-  function escHandler(e){ if (e.key === "Escape") closeModal(); }
-
-  function disableGlobalInvictiStyle() {
-    const style = document.getElementById("invicti-dynamic-styles");
-    if (style && !style.disabled) { style.disabled = true; disabledGlobalStyle = true; }
-  }
-  function restoreGlobalInvictiStyle() {
-    const style = document.getElementById("invicti-dynamic-styles");
-    if (style && disabledGlobalStyle) style.disabled = false;
-    disabledGlobalStyle = false;
-  }
-
-  // ---------- Invicti 분석(HTML)용: 스타일/인터랙션 ----------
+  // 보정 CSS: 부트스트랩류 .row 음수 마진, 100vw 누수 등으로 깨짐 방지
   function buildFixCSS() {
     return `
       *, *::before, *::after { box-sizing: border-box; }
       html, body { width: 100%; height: 100%; }
       pre { white-space: pre-wrap; word-break: break-word; overflow: auto; }
       img, svg, canvas, video, iframe, table { max-width: 100%; height: auto; }
+
       .container, .container-fluid {
         margin-left: 0 !important; margin-right: 0 !important;
         padding-left: 8px !important; padding-right: 8px !important;
@@ -88,11 +30,77 @@
     `;
   }
 
+  // 팝업 모달 마크업이 없으면 생성 (80vw/80vh, 내부 스크롤, 상단 타이틀 없음, 여백 컴팩트)
+  function ensureModal() {
+    modal = document.getElementById("modal");
+    if (!modal) {
+      modal = document.createElement("div");
+      modal.id = "modal";
+      modal.className = "fixed inset-0 z-50 hidden";
+      modal.innerHTML = `
+        <div class="modal-backdrop fixed inset-0 bg-gray-500 bg-opacity-50"></div>
+        <div class="modal-shell absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
+                     bg-white rounded-lg shadow-xl overflow-hidden w-[80vw] h-[80vh]">
+          <div id="modalContent" class="h-full overflow-auto p-3"></div>
+          <div class="flex items-center justify-end gap-2 border-t px-3 py-2">
+            <button type="button" id="downloadHtml"
+                    class="inline-flex items-center rounded-md border px-3 py-1.5 text-sm bg-white hover:bg-gray-50">
+              HTML 다운로드
+            </button>
+            <button type="button" id="closeModal"
+                    class="inline-flex items-center rounded-md px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700">
+              닫기
+            </button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+    }
+    // DOM 캐시
+    backdrop   = modal.querySelector(".modal-backdrop");
+    shell      = modal.querySelector(".modal-shell");
+    host       = modal.querySelector("#modalContent");
+    closeBtn   = modal.querySelector("#closeModal");
+    downloadBtn= modal.querySelector("#downloadHtml");
+    // 크기/스크롤 보증(보완)
+    shell.style.width = "80vw";
+    shell.style.height = "80vh";
+    host.style.overflow = "auto";
+    host.style.padding = "12px";
+  }
+
+  // 전역으로 주입된 원본 CSS 비활성화(팝업 동안만) → 레이아웃 누수 방지
+  function disableGlobalInvictiStyle() {
+    const style = document.getElementById("invicti-dynamic-styles");
+    if (style && !style.disabled) { style.disabled = true; disabledGlobalStyle = true; }
+  }
+  function restoreGlobalInvictiStyle() {
+    const style = document.getElementById("invicti-dynamic-styles");
+    if (style && disabledGlobalStyle) style.disabled = false;
+    disabledGlobalStyle = false;
+  }
+
+  function openModal() {
+    modal.classList.remove("hidden");
+    document.body.classList.add("overflow-hidden");
+    document.addEventListener("keydown", escHandler);
+  }
+  function closeModal() {
+    modal.classList.add("hidden");
+    document.body.classList.remove("overflow-hidden");
+    document.removeEventListener("keydown", escHandler);
+    // Shadow DOM 정리
+    if (shadowRoot) shadowRoot.innerHTML = "";
+    restoreGlobalInvictiStyle();
+  }
+  function escHandler(e){ if (e.key === "Escape") closeModal(); }
+
+  // ========= 상호작용 배선 =========
   function cssEscape(sel) {
     if (window.CSS && CSS.escape) return CSS.escape(sel);
     return (sel || "").replace(/[^a-zA-Z0-9_-]/g, "\\$&");
   }
 
+  // .vuln-url: 바로 앞 형제 input.vuln-input 토글(펼치기/접기)
   function wireToggleUrls(root) {
     function findToggleCheckbox(el){
       const vuln = el.closest(".vuln");
@@ -113,21 +121,25 @@
         }
       });
     });
+    // .vuln-more.row 클릭 시 전파 방지(레이아웃 깨짐 방지)
     root.querySelectorAll(".vuln-more.row").forEach((el) => {
       el.addEventListener("click", (e) => e.stopPropagation());
     });
   }
 
+  // .vuln-tabs-nav: 버튼(active)에 따라 대응 패널(.vuln-tab.*)만 표시
   function wireTabs(root) {
     root.querySelectorAll(".vuln-tabs").forEach((tabs) => {
       const nav = tabs.querySelector(".vuln-tabs-nav");
       if (!nav) return;
+
       const buttons = nav.querySelectorAll("button[role='tab']");
       const panels  = tabs.querySelectorAll(".vuln-tab");
 
       function show(btn){
         buttons.forEach((b)=>{ b.classList.remove("active"); b.setAttribute("aria-selected","false"); });
         btn.classList.add("active"); btn.setAttribute("aria-selected","true");
+
         const id = btn.getAttribute("aria-controls") || "";
         const panel = id ? tabs.querySelector("#" + cssEscape(id)) : null;
         panels.forEach((p)=>{ p.style.display = (p === panel) ? "" : "none"; });
@@ -147,7 +159,7 @@
     wireTabs(root);
   }
 
-  // 다운로드용: 원본 CSS + 보정 CSS + 인터랙션 스크립트 포함 HTML 생성
+  // ========= 다운로드 HTML 생성(원본 CSS + 보정 CSS + 배선 스크립트 내장) =========
   function buildDownloadHtml(bodyHtml) {
     const reportCss = (App.state && App.state.reportCss) ? App.state.reportCss : "";
     const fixCss = buildFixCSS();
@@ -165,10 +177,7 @@
             el.addEventListener("click", function(e){
               e.preventDefault(); e.stopPropagation();
               var checkbox = findToggleCheckbox(e.currentTarget);
-              if(checkbox){
-                checkbox.checked = !checkbox.checked;
-                checkbox.setAttribute("aria-expanded", checkbox.checked ? "true" : "false");
-              }
+              if(checkbox){ checkbox.checked = !checkbox.checked; checkbox.setAttribute("aria-expanded", checkbox.checked ? "true" : "false"); }
             });
           });
           root.querySelectorAll(".vuln-more.row").forEach(function(el){
@@ -207,29 +216,30 @@ ${bodyHtml}
 </body></html>`;
   }
 
-  // ---------- 공개 API ----------
-  // 1) Invicti 분석 팝업: HTML 미리보기(Shadow DOM)
+  // ========= 공개 API: 테이블의 "Invicti 분석" 버튼에서 호출 =========
   App.popup.showInvictiAnalysis = function (rowId) {
     ensureModal();
 
+    // rows는 /security/invicti/parse/ 응답을 사용(이미 별도 스크립트에서 setData/주입) :contentReference[oaicite:3]{index=3}
     const rows = (App.state && App.state.currentData) || [];
     const row  = rows.find((r) => r.id === rowId);
     if (!row) { alert("행 데이터를 찾을 수 없습니다."); return; }
 
-    // 전역 원본 CSS 누수 방지
+    // 팝업 동안 전역 원본 CSS 비활성화(누수 방지)
     disableGlobalInvictiStyle();
 
+    // Shadow DOM 격리 렌더링
     if (!shadowRoot) shadowRoot = host.attachShadow({ mode: "open" });
     shadowRoot.innerHTML = "";
 
-    const reportCss = (App.state && App.state.reportCss) ? App.state.reportCss : "";
+    const reportCss = (App.state && App.state.reportCss) ? App.state.reportCss : ""; // 원본 CSS 주입
     const styleOriginal = document.createElement("style");
     styleOriginal.textContent = reportCss;
 
-    const styleFix = document.createElement("style");
+    const styleFix = document.createElement("style");   // 레이아웃 보정
     styleFix.textContent = buildFixCSS();
 
-    const container = document.createElement("div");
+    const container = document.createElement("div");    // 내용 컨테이너
     container.className = "invicti-root";
     container.innerHTML = row.invicti_analysis || '<div class="text-gray-400">표시할 내용이 없습니다.</div>';
 
@@ -237,72 +247,86 @@ ${bodyHtml}
     shadowRoot.appendChild(styleFix);
     shadowRoot.appendChild(container);
 
+    // 내부 상호작용 배선
     wireInteractions(shadowRoot);
 
-    // 버튼
+    // 모달 열기
+    openModal();
+
+    // 버튼 배선
+    closeBtn.onclick = closeModal;
+    backdrop.onclick = closeModal;
     downloadBtn.onclick = function () {
       const html = buildDownloadHtml(container.innerHTML);
       const a = document.createElement("a");
       a.href = URL.createObjectURL(new Blob([html], { type: "text/html;charset=utf-8" }));
-      const safe = (row.invicti_report || "invicti_section").replace(/[\\/:*?"<>|]/g, "_").slice(0, 100);
+      const safe = (row.invicti_report || "invicti_section").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80);
       a.download = `${safe}.html`;
       document.body.appendChild(a);
       a.click();
       URL.revokeObjectURL(a.href);
       a.remove();
     };
-    closeBtn.onclick = closeModal;
-    backdrop.onclick = closeModal;
-
-    openModal();
   };
 
-  // 2) GPT 추천 팝업: 프롬프트(템플릿 리터럴) 표시
-  App.popup.showGptPrompt = function (rowId) {
-    ensureModal();
+  function toSafeName(name, fallback) {
+    const base = (name || fallback || "invicti_section").toString().trim();
+    return base.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120) || "invicti_section";
+  }
 
-    const rows = (App.state && App.state.currentData) || [];
-    const row  = rows.find((r) => r.id === rowId);
-    const rowJson = row && row.vuln_detail_json ? row.vuln_detail_json : null;
-    const globalJson = (App.state && App.state.firstVulnDetailJson) || null;
-    const vjson = rowJson || globalJson || {};
+  // 모든 행을 HTML로 만든 뒤 zip으로 묶어서 저장
+  App.popup.downloadAllHtmlZip = async function () {
+    try {
+      if (typeof JSZip === "undefined") {
+        alert("JSZip이 로드되지 않았습니다. security.html에 JSZip 스크립트 태그를 추가하세요.");
+        return;
+      }
+      const rows = (App.state && App.state.currentData) || [];
+      if (!rows.length) {
+        alert("다운로드할 데이터가 없습니다. 먼저 HTML 파일을 업로드/분석하세요.");
+        return;
+      }
 
-    // 텍스트 프롬프트 (멀티라인 템플릿)
-    const prompt = `다음은 보안성 결함을 찾아주는 도구의 결과 데이터(json)입니다.
-다음 json 값에 대한 추천 수정 방안을 간략히 알려주세요.
+      const zip = new JSZip();
+      const folder = zip.folder("invicti_html") || zip;
 
-아래는 json 값입니다.
-${JSON.stringify(vjson, null, 2)}
-`;
+      for (const row of rows) {
+        const bodyHtml = row.invicti_analysis || "<div>표시할 내용이 없습니다.</div>";
+        const html = (typeof buildDownloadHtml === "function")
+          ? buildDownloadHtml(bodyHtml)
+          : bodyHtml; // 혹시 함수가 없으면 원문이라도 저장
 
-    // Shadow DOM 불필요 → 일반 텍스트 렌더
-    host.innerHTML = "";
-    const pre = document.createElement("pre");
-    pre.style.whiteSpace = "pre-wrap";
-    pre.style.wordBreak = "break-word";
-    pre.style.fontFamily = "ui-monospace, SFMono-Regular, Menlo, monospace";
-    pre.style.fontSize = "12px";
-    pre.style.margin = "0";
-    pre.textContent = prompt;
-    host.appendChild(pre);
+        const fname = toSafeName(row.invicti_report || row.title || `row_${row.id}`, "invicti_section");
+        folder.file(`${fname}.html`, html);
+      }
 
-    downloadBtn.onclick = function () {
-      const blob = new Blob([prompt], { type: "text/plain;charset=utf-8" });
+      const now = new Date();
+      const ts = [
+        now.getFullYear(),
+        String(now.getMonth() + 1).padStart(2, "0"),
+        String(now.getDate()).padStart(2, "0"),
+        String(now.getHours()).padStart(2, "0"),
+        String(now.getMinutes()).padStart(2, "0")
+      ].join("");
+
+      const blob = await zip.generateAsync({ type: "blob" });
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      const base = (row && (row.invicti_report || row.title)) || "gpt_prompt";
-      const safe = base.replace(/[\\/:*?"<>|]/g, "_").slice(0, 100);
-      a.download = `${safe}.txt`;
+      a.download = `invicti_all_html_${ts}.zip`;
       document.body.appendChild(a);
       a.click();
       URL.revokeObjectURL(a.href);
       a.remove();
-    };
-    closeBtn.onclick = closeModal;
-    backdrop.onclick = closeModal;
-
-    openModal();
+    } catch (err) {
+      console.error(err);
+      alert("ZIP 생성 중 오류가 발생했습니다.");
+    }
   };
 
+  // 초기화(필요 시 다른 코드에서 호출 없이도 준비)
   document.addEventListener("DOMContentLoaded", ensureModal);
+  document.addEventListener("DOMContentLoaded", () => {
+    const btn = document.getElementById("downloadAllHtmlZip");
+    if (btn) btn.addEventListener("click", App.popup.downloadAllHtmlZip);
+  });
 })(window);
