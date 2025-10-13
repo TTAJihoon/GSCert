@@ -112,7 +112,7 @@
 
 .form-textarea {
   width: 100%;
-  min-height: 35px;
+  height: 35px;
   padding: 5px 12px;
   border: 1px solid #d1d5db;
   border-radius: 6px;
@@ -139,6 +139,7 @@
 
 .sub-label {
   font-weight: 500;
+  width: 150px;
   color: #1e40af;
   margin-bottom: 8px;
   font-size: 14px;
@@ -180,20 +181,20 @@
 /* '기존 인증 제품 번호' 라벨과 '조회' 버튼을 한 줄에 정렬하기 위한 그룹 */
 .sub-label-group {
   display: flex;
-  align-items: center;
-  margin-bottom: 8px; /* 아래 입력칸과의 간격 */
+  align-items: baseline;
 }
 
 /* '제품 정보 요청...' 버튼 기반의 작은 버튼 스타일 */
 .action-button-small {
   padding: 5px 12px !important; /* 위아래 5px, 중요! 스타일 덮어쓰기 */
   font-size: 14px !important;   /* 폰트 크기 14px, 중요! 스타일 덮어쓰기 */
-  margin-left: 12px; /* 라벨과의 간격 */
+  width: 50px;
+  margin: 0px; /* 라벨과의 간격 */
 }
 
 /* textarea의 높이를 1줄로 고정하고 크기 조절 비활성화 */
 .form-textarea.single-line {
-  height: auto;
+  height: 95px;
   resize: none; /* 사용자가 크기를 조절할 수 없도록 설정 */
   overflow: hidden; /* 스크롤바 숨김 */
 }
