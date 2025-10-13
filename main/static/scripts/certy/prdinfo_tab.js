@@ -48,8 +48,7 @@ document.addEventListener('DOMContentLoaded', function () {
   updateCloudVisibility();
 
   const reCertSelect = document.getElementById('reCertType');
-  const reCertLookupSection = document.getElementById('reCertLookupSection');
-  const reCertResultSection = document.getElementById('reCertResultSection');
+  const reCertSection = document.getElementById('reCertSection'); // 변수 통합
   const reCertResultText = document.getElementById('reCertResultText');
   const btnLookupCert = document.getElementById('btnLookupCert');
   const reCertNumberInput = document.getElementById('reCertNumberInput');
@@ -57,10 +56,9 @@ document.addEventListener('DOMContentLoaded', function () {
   // 재인증 구분 드롭다운 변경 시 조회 영역 표시/숨김 처리
   function updateReCertVisibility() {
     const isApplicable = reCertSelect.value !== '해당사항 없음';
-    reCertLookupSection.classList.toggle('hidden-section', !isApplicable);
-    // 선택이 바뀌면 결과 영역은 항상 숨김 처리
-    reCertResultSection.classList.add('hidden-section');
+    reCertSection.classList.toggle('hidden-section', !isApplicable); // 통합된 섹션 하나만 제어
     reCertResultText.value = ''; // 결과 내용 초기화
+    reCertNumberInput.value = ''; // 입력 내용 초기화
   }
   reCertSelect.addEventListener('change', updateReCertVisibility);
   updateReCertVisibility(); // 초기 상태 반영
@@ -73,12 +71,9 @@ document.addEventListener('DOMContentLoaded', function () {
       return;
     }
 
-    // 로딩 중임을 표시 (예: 버튼 텍스트 변경)
     btnLookupCert.textContent = '조회 중...';
     btnLookupCert.disabled = true;
-    reCertResultSection.classList.add('hidden-section');
 
-    // 백엔드 API 호출 (URL은 urls.py에 설정된 경로와 일치해야 함)
     fetch(`/lookup_cert_info/?cert_no=${encodeURIComponent(certNo)}`)
       .then(response => {
         if (!response.ok) {
@@ -89,24 +84,21 @@ document.addEventListener('DOMContentLoaded', function () {
       .then(result => {
         if (result.success) {
           const data = result.data;
-          // 성공적으로 데이터를 받아오면 textarea에 형식에 맞춰 텍스트 작성
+          // 성공 시, 결과 텍스트를 textarea에 설정 (이제 수정 가능)
           reCertResultText.value =
             `- 기 인증번호: ${data.cert_id}\n` +
             `- 기 인증 제품명 및 버전: ${data.product_name}\n` +
             `- 기 인증 제품 WD: ${data.total_wd}`;
-          reCertResultSection.classList.remove('hidden-section');
         } else {
-          // 서버에서 '못 찾음' 등의 메시지를 보냈을 경우
           alert(result.message || '데이터를 조회하지 못했습니다.');
+          reCertResultText.value = ''; // 조회 실패 시 내용 비움
         }
       })
       .catch(error => {
-        // 네트워크 오류 등 fetch 자체의 실패
         console.error('Fetch Error:', error);
         alert('데이터 조회 중 오류가 발생했습니다. 콘솔을 확인해주세요.');
       })
       .finally(() => {
-        // 성공/실패 여부와 관계없이 버튼 상태를 원상 복구
         btnLookupCert.textContent = '조회';
         btnLookupCert.disabled = false;
       });
