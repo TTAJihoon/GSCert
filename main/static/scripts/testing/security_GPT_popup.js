@@ -5,7 +5,6 @@
   window.App = window.App || {};
   window.App.popup = AppNS.popup;
 
-  // ====== 기존 모달 재사용 ======
   let modal, backdrop, shell, host, closeBtn;
 
   function ensureModal() {
@@ -21,7 +20,6 @@
       return false;
     }
 
-    // 요구사항: 80vw x 80vh, 내부 스크롤, 여백 컴팩트
     shell.style.width = "80vw";
     shell.style.height = "80vh";
     host.style.overflow = "auto";
@@ -32,7 +30,7 @@
       closeBtn.addEventListener("click", close);
       backdrop.addEventListener("click", close);
       document.addEventListener("keydown", function esc(e) {
-        if (e.key === "Escape") { close(); document.removeEventListener("keydown", esc); }
+        if (e.key === "Escape") { close(); } // esc 이벤트 리스너는 계속 유지되도록 수정
       });
       modal._gptHandlersBound = true;
     }
@@ -50,30 +48,27 @@
   }
 
   // ====== GPT 추천 팝업 ======
-  // 호출: App.popup.showGptRecommendation(rowId)
   AppNS.popup.showGptRecommendation = function (rowId) {
     if (!ensureModal()) return;
 
-    const state = (window.App && window.App.state) || (window.SecurityApp && window.SecurityApp.state) || {};
+    const state = (window.SecurityApp && window.SecurityApp.state) || {};
     const rows = state.currentData || [];
     const row = rows.find(r => r.id === rowId);
 
-    // 우선순위: 행 단위 JSON → 전역(firstVulnDetailJson)
-    const rowJson = row && row.vuln_detail_json ? row.vuln_detail_json : null;
-    const globalJson = state.firstVulnDetailJson || null;
-    const vjson = rowJson || globalJson || {};
+    if (!row || !row.vuln_detail_json) {
+        console.error("해당 행의 상세 JSON 데이터를 찾을 수 없습니다.", rowId);
+        host.textContent = "오류: 해당 결함의 상세 데이터를 찾을 수 없습니다.";
+        openModal();
+        return;
+    }
 
-    const prompt = `다음은 Invicti 원본 HTML의 한 결함 섹션(snippet)에서 추출한 데이터입니다.
-- 이 섹션 내부에 포함된 div.vuln-detail *하나*만 대상입니다.
-- 결과는 JSON으로만 답해주세요. 불필요한 설명/코드는 넣지 마세요.
+    const vjson = row.vuln_detail_json;
+    const headerText = vjson.header ? `
+${vjson.header}
+` : '';
 
-요구사항:
-1) vuln-detail 안의 표를 "열 정의(columns)/행(rows)" 구조의 JSON으로 유지하세요.
-2) "url"은 증명 URL 링크 주소만 값으로 넣어 주세요.
-3) ".vuln-tab.vuln-req1-tab" 내부 pre(있으면 code) 텍스트를 "request"로 넣어 주세요.
-4) ".vuln-tab.vuln-resp1-tab" 내부 pre(있으면 code) 텍스트를 "response"로 넣어 주세요.
-
-아래는 제가 미리 추출해둔 값입니다(JSON 그대로 사용 가능).
+    const prompt = `다음은 보안성 도구에서 발견된 ${headerText} 결함에 대한 데이터입니다.
+아래 json 값을 확인하여 추천 수정 방안을 가볍게 제안해주세요.
 ${JSON.stringify(vjson, null, 2)}
 `;
 
