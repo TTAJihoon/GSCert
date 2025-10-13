@@ -1,6 +1,6 @@
 import json
 import re
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 from typing import Optional, Dict, Any, List
 import pandas as pd
 import bleach
@@ -127,27 +127,28 @@ def _vd_extract_pre_text(container, selector: str) -> Optional[str]:
     code = pre.find('code')
     return code.get_text("\n", strip=False) if code else pre.get_text("\n", strip=False)
 
-def extract_first_vuln_detail_json_from_html(html: str) -> Optional[Dict[str, Any]]:
+def _extract_vuln_detail_as_json(vuln_block: BeautifulSoup) -> Optional[Dict[str, Any]]:
     """
-    원본 html에서 '첫 번째' vuln-detail만 JSON으로 추출.
-    ※ 기존 soup를 건드리지 않도록 '별도 soup'에서만 읽음
-    우선순위 컨테이너: div.vulns.highs → div.vulns → 문서 전체
+    개별 취약점 블록(BeautifulSoup 객체)에서 상세 정보를 JSON으로 추출합니다.
     """
-    s = BeautifulSoup(html, 'html.parser')
-    container = s.select_one('div.vulns.highs') or s.select_one('div.vulns')
-    if container:
-        detail = container.select_one('div.vuln-detail')
-    else:
-        detail = s.select_one('div.vuln-detail')
-    if not detail:
+    if not vuln_block:
         return None
+        
+    detail_container = vuln_block.select_one('div.vuln-detail')
+    header_div = vuln_block.select_one('div.vuln-desc-header')
+
+    # 상세 정보 컨테이너가 없는 경우를 대비
+    if not detail_container:
+        detail_container = vuln_block
 
     return {
-        "table": _vd_parse_table(detail),
-        "url": _vd_find_proof_url(detail),
-        "request": _vd_extract_pre_text(detail, '.vuln-tab.vuln-req1-tab'),
-        "response": _vd_extract_pre_text(detail, '.vuln-tab.vuln-resp1-tab'),
+        "header": _clean_text(header_div),
+        "table": _vd_parse_table(detail_container),
+        "url": _vd_find_proof_url(detail_container),
+        "request": _vd_extract_pre_text(detail_container, '.vuln-tab.vuln-req1-tab'),
+        "response": _vd_extract_pre_text(detail_container, '.vuln-tab.vuln-resp1-tab'),
     }
+
 
 # --- 4. 메인 추출 함수 ---
 def extract_vulnerability_sections(html_content):
@@ -159,8 +160,6 @@ def extract_vulnerability_sections(html_content):
     
     # 유사도 점수 임계값 (이 값을 조절하여 매칭 민감도를 변경할 수 있습니다)
     SIMILARITY_THRESHOLD = 85
-
-    first_vuln_detail_json = extract_first_vuln_detail_json_from_html(html_content)
     
     target_divs = soup.select('div.vuln-desc.criticals, div.vuln-desc.highs, div.vuln-desc.mediums')
     for vuln_desc_div in target_divs:
@@ -219,17 +218,24 @@ def extract_vulnerability_sections(html_content):
             defect_summary = template_summary
             defect_description = template_description
         
-        vuln_elements_for_snippet = [vuln_desc_div]
+        # --- 각 결함에 대한 전체 HTML 블록 및 JSON 데이터 추출 ---
+        vuln_block_elements = [vuln_desc_div]
         for sibling in vuln_desc_div.find_next_siblings():
             if sibling.name == 'div' and 'vuln-desc' in sibling.get('class', []):
                 break
-            vuln_elements_for_snippet.append(sibling)
+            vuln_block_elements.append(sibling)
+        
+        # 1. GPT 추천 팝업에 사용될 JSON 데이터 추출
+        block_html_for_json = "".join(str(el) for el in vuln_block_elements)
+        vuln_block_soup = BeautifulSoup(block_html_for_json, 'html.parser')
+        vuln_detail_json = _extract_vuln_detail_as_json(vuln_block_soup)
 
+        # 2. Invicti 분석 팝업에 사용될 HTML 스니펫 생성
         parent_container = vuln_desc_div.find_parent(class_='container-fluid')
         html_snippet = ""
         if parent_container:
             parent_class = ' '.join(parent_container.get('class', []))
-            inner_html = "".join(el.prettify() for el in vuln_elements_for_snippet)
+            inner_html = "".join(el.prettify() for el in vuln_block_elements)
             raw_html = f'<div class="{parent_class}">{inner_html}</div>'
             allowed_tags = set(bleach.sanitizer.ALLOWED_TAGS) | {'div', 'h2', 'h3', 'h4', 'p', 'pre', 'code', 'span', 'ul', 'li', 'ol', 'a', 'svg', 'use', 'path', 'g', 'circle', 'rect', 'polygon', 'defs', 'style', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'input', 'label', 'button'}
             allowed_attrs = {'*': ['class', 'id', 'style', 'aria-label', 'tabindex', 'role', 'aria-labelledby', 'scope', 'type', 'checked', 'for', 'data-responseid', 'data-button', 'data-panel', 'aria-controls', 'aria-selected', 'aria-expanded', 'aria-hidden', 'viewbox', 'xmlns', 'points', 'cx', 'cy', 'r', 'd', 'fill', 'transform', 'x', 'y', 'width', 'height', 'rx', 'ry', 'xlink:href', 'x1', 'y1', 'x2', 'y2', 'stroke', 'stroke-width']}
@@ -244,11 +250,11 @@ def extract_vulnerability_sections(html_content):
             "frequency": "A", "quality_attribute": "보안성",
             "defect_description": defect_description, "invicti_report": h2_text,
             "invicti_analysis": html_snippet, "gpt_recommendation": "GPT 분석 버튼을 눌러주세요.",
+            "vuln_detail_json": vuln_detail_json, # 각 행에 개별 JSON 데이터 추가
         }
         results_rows.append(row_data)
 
     return {
         "css": css_styles,
         "rows": results_rows,
-        "first_vuln_detail_json": first_vuln_detail_json
     }
