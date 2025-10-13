@@ -159,9 +159,10 @@ def extract_vulnerability_sections(html_content):
     
     # 유사도 점수 임계값 (이 값을 조절하여 매칭 민감도를 변경할 수 있습니다)
     SIMILARITY_THRESHOLD = 85
+
+    first_vuln_detail_json = extract_first_vuln_detail_json_from_html(html_content)
     
     target_divs = soup.select('div.vuln-desc.criticals, div.vuln-desc.highs, div.vuln-desc.mediums')
-    
     for vuln_desc_div in target_divs:
         h2_tag = vuln_desc_div.find('h2')
         if not h2_tag: continue
@@ -246,10 +247,8 @@ def extract_vulnerability_sections(html_content):
         }
         results_rows.append(row_data)
 
-        first_vuln_detail_json = extract_first_vuln_detail_json_from_html(html_content)
-
     return {
-        "css": css,
-        "rows": rows,
+        "css": css_styles,
+        "rows": results_rows,
         "first_vuln_detail_json": first_vuln_detail_json
     }
