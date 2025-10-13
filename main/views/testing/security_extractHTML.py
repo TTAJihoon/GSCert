@@ -73,16 +73,14 @@ VARIABLE_HANDLERS = {
 def _clean_text(el) -> str:
     return "" if el is None else el.get_text("\n", strip=True)
 
-def _vd_parse_table(detail_div) -> Optional[Dict[str, Any]]:
-    table = detail_div.find('table')
-    if not table:
+def _vd_parse_table(table_tag) -> Optional[Dict[str, Any]]:
+    if not table_tag:
         return None
-    first_tr = table.find('tr')
+    first_tr = table_tag.find('tr')
     if not first_tr:
         return None
     headers = [th.get_text(strip=True) for th in first_tr.find_all(['th','td'])]
 
-    # 열 key 매핑 (사람이/LLM이 이해 쉬운 columns/rows 구조)
     mapping: List[tuple] = []
     for h in headers:
         h_norm = h.replace(" ", "").lower()
@@ -93,7 +91,7 @@ def _vd_parse_table(detail_div) -> Optional[Dict[str, Any]]:
         else: mapping.append((f"col_{len(mapping)}", h))
 
     rows = []
-    for tr in table.find_all('tr')[1:]:
+    for tr in table_tag.find_all('tr')[1:]:
         cells = [td.get_text("\n", strip=True) for td in tr.find_all(['td','th'])]
         if len(cells) < len(mapping):
             cells += ['']*(len(mapping)-len(cells))
@@ -105,19 +103,9 @@ def _vd_parse_table(detail_div) -> Optional[Dict[str, Any]]:
     columns = [{"key": k, "label": lbl} for (k, lbl) in mapping]
     return {"columns": columns, "rows": rows}
 
-def _vd_find_proof_url(detail_div) -> Optional[str]:
-    lab = detail_div.find(string=re.compile(r'증명\s*URL|Proof\s*URL', re.I))
-    if lab and lab.parent:
-        a = lab.parent.find('a', href=True)
-        if a and a.get('href'):
-            return a['href']
-        a2 = lab.find_next('a', href=True)
-        if a2 and a2.get('href'):
-            return a2['href']
-    a = detail_div.find('a', href=True)
-    return a['href'] if a else None
-
 def _vd_extract_pre_text(container, selector: str) -> Optional[str]:
+    if not container:
+        return None
     el = container.select_one(selector)
     if not el:
         return None
@@ -129,26 +117,64 @@ def _vd_extract_pre_text(container, selector: str) -> Optional[str]:
 
 def _extract_vuln_detail_as_json(vuln_block: BeautifulSoup) -> Optional[Dict[str, Any]]:
     """
-    개별 취약점 블록(BeautifulSoup 객체)에서 상세 정보를 JSON으로 추출합니다.
+    개별 취약점 블록에서 첫 번째 vuln의 상세 정보를 JSON으로 추출합니다.
     """
     if not vuln_block:
         return None
         
-    detail_container = vuln_block.select_one('div.vuln-detail')
     header_div = vuln_block.select_one('div.vuln-desc-header')
+    
+    # 첫 번째 vuln 요소만 선택
+    first_vuln = vuln_block.select_one('div.vuln')
+    if not first_vuln:
+        return None
 
-    # 상세 정보 컨테이너가 없는 경우를 대비
+    detail_container = first_vuln.select_one('div.vuln-detail')
     if not detail_container:
-        detail_container = vuln_block
+        return {
+            "header": _clean_text(header_div),
+            "list": [],
+            "request": None,
+            "response": None,
+        }
+
+    data_list = []
+    
+    # 테이블 파싱
+    table_tag = detail_container.find('table')
+    if table_tag:
+        table_data = _vd_parse_table(table_tag)
+        if table_data:
+            data_list.append({"type": "table", "data": table_data})
+            
+    # 코드 블록 파싱 (pre.cprompt)
+    code_block = detail_container.select_one('pre.cprompt')
+    if code_block:
+        key_tag = code_block.find_previous_sibling('h3') or code_block.find_previous_sibling('h4')
+        key = _clean_text(key_tag) if key_tag else "Code Block"
+        data_list.append({"type": "code", "key": key, "value": _clean_text(code_block)})
+
+    # h4 + ul/a 구조 파싱 (key-value, link)
+    h4_tags = detail_container.find_all('h4')
+    for h4 in h4_tags:
+        key = _clean_text(h4)
+        next_sibling = h4.find_next_sibling()
+        if next_sibling and next_sibling.name == 'ul':
+            link_tag = next_sibling.find('a')
+            li_tag = next_sibling.find('li')
+            if link_tag:
+                value = link_tag.get('href', _clean_text(link_tag))
+                data_list.append({"type": "link", "key": key, "value": value})
+            elif li_tag:
+                value = _clean_text(li_tag)
+                data_list.append({"type": "key-value", "key": key, "value": value})
 
     return {
         "header": _clean_text(header_div),
-        "table": _vd_parse_table(detail_container),
-        "url": _vd_find_proof_url(detail_container),
+        "list": data_list,
         "request": _vd_extract_pre_text(detail_container, '.vuln-tab.vuln-req1-tab'),
         "response": _vd_extract_pre_text(detail_container, '.vuln-tab.vuln-resp1-tab'),
     }
-
 
 # --- 4. 메인 추출 함수 ---
 def extract_vulnerability_sections(html_content):
@@ -158,7 +184,6 @@ def extract_vulnerability_sections(html_content):
     css_sanitizer = CSSSanitizer(allowed_css_properties=allowed_css_properties)
     results_rows = []
     
-    # 유사도 점수 임계값 (이 값을 조절하여 매칭 민감도를 변경할 수 있습니다)
     SIMILARITY_THRESHOLD = 85
     
     target_divs = soup.select('div.vuln-desc.criticals, div.vuln-desc.highs, div.vuln-desc.mediums')
@@ -174,20 +199,16 @@ def extract_vulnerability_sections(html_content):
             best_match_score = 0
             best_match_row = None
             
-            # FuzzyWuzzy를 사용하여 가장 유사한 행을 찾는 로직
             for index, row in df_security_map.iterrows():
                 invicti_item = str(row['invicti 결함 리포트 항목']).strip()
-                if not invicti_item:
-                    continue
+                if not invicti_item: continue
                 
-                # 단어 순서, 개수에 상관없이 유사도 점수 계산
                 score = fuzz.token_set_ratio(cleaned_title, invicti_item)
                 
                 if score > best_match_score:
                     best_match_score = score
                     best_match_row = row
             
-            # 가장 높은 점수가 임계값을 넘을 경우에만 매칭된 것으로 인정
             if best_match_score >= SIMILARITY_THRESHOLD:
                 matched_row = best_match_row
         
@@ -203,12 +224,10 @@ def extract_vulnerability_sections(html_content):
             if match:
                 o_text = match.group(1).strip()
             
-            # 다른 변수들은 핸들러를 통해 추출
             handler_id = matched_row['번호']
             handler = VARIABLE_HANDLERS.get(handler_id, get_variables_default)
             other_variables = handler(vuln_desc_div)
             
-            # 모든 변수를 합치고 템플릿에 적용
             all_variables = {'o': o_text, **other_variables}
             for key, value in all_variables.items():
                 if value:
@@ -218,19 +237,26 @@ def extract_vulnerability_sections(html_content):
             defect_summary = template_summary
             defect_description = template_description
         
-        # --- 각 결함에 대한 전체 HTML 블록 및 JSON 데이터 추출 ---
         vuln_block_elements = [vuln_desc_div]
         for sibling in vuln_desc_div.find_next_siblings():
             if sibling.name == 'div' and 'vuln-desc' in sibling.get('class', []):
                 break
             vuln_block_elements.append(sibling)
         
-        # 1. GPT 추천 팝업에 사용될 JSON 데이터 추출
         block_html_for_json = "".join(str(el) for el in vuln_block_elements)
         vuln_block_soup = BeautifulSoup(block_html_for_json, 'html.parser')
         vuln_detail_json = _extract_vuln_detail_as_json(vuln_block_soup)
 
-        # 2. Invicti 분석 팝업에 사용될 HTML 스니펫 생성
+        gpt_prompt = ""
+        if vuln_detail_json:
+            clean_json_data = {k: v for k, v in vuln_detail_json.items() if v}
+            prompt_body = json.dumps(clean_json_data, indent=2, ensure_ascii=False)
+            gpt_prompt = (
+                "다음 Invicti 취약점 데이터에 대한 구체적인 해결 방안을 한글로 제시해줘.\n"
+                "코드가 포함된 답변이라면, 해당 코드는 마크다운 코드 블록으로 감싸줘.\n\n"
+                f"{prompt_body}"
+            )
+
         parent_container = vuln_desc_div.find_parent(class_='container-fluid')
         html_snippet = ""
         if parent_container:
@@ -249,8 +275,9 @@ def extract_vulnerability_sections(html_content):
             "defect_summary": defect_summary, "defect_level": defect_level,
             "frequency": "A", "quality_attribute": "보안성",
             "defect_description": defect_description, "invicti_report": h2_text,
-            "invicti_analysis": html_snippet, "gpt_recommendation": "GPT 분석 버튼을 눌러주세요.",
-            "vuln_detail_json": vuln_detail_json, # 각 행에 개별 JSON 데이터 추가
+            "invicti_analysis": html_snippet,
+            "vuln_detail_json": vuln_detail_json,
+            "gpt_prompt": gpt_prompt,
         }
         results_rows.append(row_data)
 
