@@ -120,6 +120,7 @@
         App.state.reportCss = json.css;
         injectStyles(json.css);
       }
+      App.state.firstVulnDetailJson = json.first_vuln_detail_json || null;
 
       rows.forEach((r) => { if (!r.id) r.id = App.generateId(); });
       App.setData(rows);
