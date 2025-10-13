@@ -8,7 +8,6 @@ def invicti_parse_view(request):
         return JsonResponse({"error": "업로드된 파일이 없습니다."}, status=400)
 
     all_rows, css_data = [], ""
-    first_vuln_detail_json = None
     
     try:
         for i, uploaded_file in enumerate(request.FILES.getlist('file')):
@@ -23,7 +22,6 @@ def invicti_parse_view(request):
             
             if i == 0:
                 css_data = parsed_data.get("css", "")
-                first_vuln_detail_json = parsed_data.get("first_vuln_detail_json")
             
             all_rows.extend(parsed_data.get("rows", []))
             
@@ -33,5 +31,4 @@ def invicti_parse_view(request):
     return JsonResponse({
         "css": css_data,
         "rows": all_rows,
-        "first_vuln_detail_json": first_vuln_detail_json
     })
