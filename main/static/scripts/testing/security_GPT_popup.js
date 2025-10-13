@@ -7,18 +7,38 @@
 
   function escHandler(e) { if (e.key === "Escape") closeModal(); }
 
+  /**
+   * 모달 컴포넌트를 찾고, Shadow DOM 문제를 해결하기 위해 필요 시 초기화합니다.
+   */
   function ensureModal() {
     if (!modal) modal = document.getElementById("modal");
     if (modal) {
-      backdrop  = modal.querySelector(".modal-backdrop");
-      shell     = modal.querySelector(".modal-shell");
-      host      = modal.querySelector("#modalContent");
-      closeBtn  = modal.querySelector("#closeModal");
+      backdrop = modal.querySelector(".modal-backdrop");
+      shell = modal.querySelector(".modal-shell");
+      
+      // --- Shadow DOM 충돌 해결 로직 ---
+      let contentHost = modal.querySelector("#modalContent");
+      if (contentHost && contentHost.shadowRoot) {
+        // Invicti 팝업이 사용했던 Shadow DOM이 남아있으면, 해당 div를 새로 만들어서 교체합니다.
+        console.log("Shadow DOM detected. Re-creating modal content area.");
+        const newHost = document.createElement('div');
+        newHost.id = 'modalContent';
+        newHost.className = 'h-full overflow-auto p-3'; // 기존 클래스 유지
+        contentHost.parentNode.replaceChild(newHost, contentHost);
+        host = newHost;
+      } else {
+        host = contentHost;
+      }
+      // --- 로직 종료 ---
+
+      closeBtn = modal.querySelector("#closeModal");
     }
+
     if (!modal || !backdrop || !shell || !host || !closeBtn) {
-        console.error("Modal components not found");
-        return false;
+      console.error("Modal components could not be initialized.");
+      return false;
     }
+
     if (!modal._gptHandlersBound) {
       closeBtn.addEventListener("click", closeModal);
       backdrop.addEventListener("click", closeModal);
@@ -43,14 +63,17 @@
   }
 
   /**
-   * GPT 답변을 화면에 표시하는 함수
-   * @param {string} content - 표시할 HTML 또는 텍스트 콘텐츠
+   * 팝업의 컨텐츠를 안전하게 표시하는 함수
+   * @param {string} content - 표시할 HTML 콘텐츠
    */
   function displayContent(content) {
-    if (!host) return;
+    if (!host) {
+      console.error("Modal host element is not available to display content.");
+      return;
+    }
     host.innerHTML = content;
   }
-  
+
   /**
    * GPT API를 호출하고 결과를 캐싱하며 팝업에 표시하는 비동기 함수
    * @param {string} rowId - 테이블 행의 고유 ID
@@ -67,17 +90,17 @@
       return;
     }
 
-    // 1. 캐시된 응답 확인
+    // 1. 캐시된 응답이 있으면 즉시 표시
     if (row.gpt_response) {
-      const content = `
-        <div class="p-3 prose max-w-none">
-          <h3 class="font-bold text-lg mb-2 text-gray-800">🤖 GPT 추천 수정 방안 (캐시됨)</h3>
-          <pre class="whitespace-pre-wrap bg-gray-50 p-4 rounded-md text-sm text-gray-700 leading-relaxed">${row.gpt_response}</pre>
+      const cachedContent = `
+        <div class="p-3">
+          <h3 class="font-bold text-lg mb-2 text-gray-800">🤖 GPT 추천 수정 방안 (저장된 답변)</h3>
+          <pre class="whitespace-pre-wrap bg-gray-50 p-4 rounded-md text-sm text-gray-700 leading-relaxed font-sans">${row.gpt_response}</pre>
         </div>
       `;
-      displayContent(content);
+      displayContent(cachedContent);
       openModal();
-      return; // 캐시된 데이터 표시 후 함수 종료
+      return;
     }
     
     // 2. 캐시가 없을 경우: 프롬프트 유효성 검사
@@ -108,25 +131,24 @@
       });
 
       const result = await response.json();
-      console.log("Response from server:", result); // 서버 응답을 콘솔에 기록
 
       if (!response.ok) {
         throw new Error(result.error || `서버에서 오류가 발생했습니다: ${response.status}`);
       }
       
-      // 5. 성공 시, 응답을 캐싱하고 팝업에 표시
-      row.gpt_response = result.response; // 답변을 행 데이터에 저장 (캐싱)
+      // 5. 성공 시, 응답을 캐싱하고 <pre> 태그를 사용해 안전하게 표시
+      row.gpt_response = result.response; 
 
       const successContent = `
-        <div class="p-3 prose max-w-none">
+        <div class="p-3">
           <h3 class="font-bold text-lg mb-2 text-gray-800">🤖 GPT 추천 수정 방안</h3>
-          <pre class="whitespace-pre-wrap bg-gray-50 p-4 rounded-md text-sm text-gray-700 leading-relaxed">${result.response}</pre>
+          <pre class="whitespace-pre-wrap bg-gray-50 p-4 rounded-md text-sm text-gray-700 leading-relaxed font-sans">${result.response}</pre>
         </div>
       `;
       displayContent(successContent);
 
     } catch (error) {
-      // 6. 실패 시, 에러 메시지를 팝업에 표시
+      // 6. 실패 시, 에러 메시지 표시
       console.error('GPT 요청 실패:', error);
       const errorContent = `
         <div class="p-4 text-red-800 bg-red-50 border border-red-300 rounded-md">
