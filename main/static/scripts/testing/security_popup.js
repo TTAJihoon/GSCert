@@ -268,17 +268,10 @@ ${bodyHtml}
     const vjson = rowJson || globalJson || {};
 
     // 텍스트 프롬프트 (멀티라인 템플릿)
-    const prompt = `다음은 Invicti 원본 HTML의 한 결함 섹션(snippet)에서 추출한 데이터입니다.
-- 이 섹션 내부에 포함된 div.vuln-detail *하나*만 대상입니다.
-- 결과는 JSON으로만 답해주세요. 불필요한 설명/코드는 넣지 마세요.
+    const prompt = `다음은 보안성 결함을 찾아주는 도구의 결과 데이터(json)입니다.
+다음 json 값에 대한 추천 수정 방안을 간략히 알려주세요.
 
-요구사항:
-1) vuln-detail 안의 표를 "열 정의(columns)/행(rows)" 구조의 JSON으로 유지하세요.
-2) "url"은 증명 URL 링크 주소만 값으로 넣어 주세요.
-3) ".vuln-tab.vuln-req1-tab" 내부 pre(있으면 code) 텍스트를 "request"로 넣어 주세요.
-4) ".vuln-tab.vuln-resp1-tab" 내부 pre(있으면 code) 텍스트를 "response"로 넣어 주세요.
-
-아래는 제가 미리 추출해둔 값입니다(JSON 그대로 사용 가능).
+아래는 json 값입니다.
 ${JSON.stringify(vjson, null, 2)}
 `;
 
