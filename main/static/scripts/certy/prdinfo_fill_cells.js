@@ -50,4 +50,49 @@
     const [, colStr, rowStr] = m;
     let col = 0;
     for (let i = 0; i < colStr.length; i++) {
-      col = col * 26 + (
+      col = col * 26 + (colStr.charCodeAt(i) & 31);
+    }
+    return { r: parseInt(rowStr, 10) - 1, c: col - 1 };
+  }
+
+  // Luckysheet 준비 확인
+  function ensureLSReady() {
+    const api = LS();
+    if (!api) throw new Error("Luckysheet 전역이 없습니다.");
+    const files = (typeof api.getluckysheetfile === "function")
+      ? api.getluckysheetfile()
+      : null;
+    if (!files || !files.length) throw new Error("Luckysheet 파일이 없습니다.");
+    return { api, files };
+  }
+
+  // 메인 적용 함수
+  async function apply(fillMap) {
+    const { api, files } = ensureLSReady();
+
+    for (const [sheetName, cells] of Object.entries(fillMap || {})) {
+      const sheet = findSheet(files, sheetName);
+
+      const sheetIndex = sheet ? parseInt(sheet.index, 10) : NaN;
+      if (isNaN(sheetIndex) || sheetIndex < 0) {
+        console.warn(`[PrdinfoFill] 시트 "${sheetName}"를 찾을 수 없거나 유효한 index가 없습니다. (받은 값: ${sheet?.index})`);
+        continue;
+      }
+
+      api.setSheetActive(sheetIndex);
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      for (const [addr, value] of Object.entries(cells || {})) {
+        const rc = a1ToRC(addr);
+        if (!rc) continue;
+        
+        api.setCellValue(rc.r, rc.c, value);
+      }
+    }
+
+    api.refresh();
+  }
+
+  // 전역 노출
+  window.PrdinfoFill = { apply };
+})();
