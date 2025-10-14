@@ -67,7 +67,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // '조회' 버튼 클릭 이벤트
   btnLookupCert.addEventListener('click', function() {
-    const certNo = reCertNumberInput.value.trim();
+    const certNo = reCertNumberInput.value.trim().toUpperCase();
     if (!certNo) {
       alert('기존 인증 제품 번호를 입력하세요.');
       return;
