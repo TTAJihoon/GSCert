@@ -70,9 +70,15 @@
     }
 
     try {
-      // 데이터 직접 수정 후 화면 갱신
+      // 데이터 직접 수정 후, 전체 레이아웃을 강제로 재계산하고 새로고침
       const inst = LS();
-      if (inst && typeof inst.refresh === "function") inst.refresh();
+      if (inst && typeof inst.resize === "function") {
+        // .refresh()보다 강력한 .resize()를 호출하여 레이아웃 재계산
+        inst.resize();
+      } else if (inst && typeof inst.refresh === "function") {
+        // resize가 없는 구버전일 경우를 대비해 refresh는 남겨둡니다.
+        inst.refresh();
+      }
     } catch (_) {}
   }
 
