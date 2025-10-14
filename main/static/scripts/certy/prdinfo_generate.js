@@ -34,7 +34,7 @@ document.addEventListener('DOMContentLoaded', function () {
     // Helper: ID로 엘리먼트 값 가져오기 (없을 경우 기본값 반환)
     const getValue = (id, defaultValue = '') => document.getElementById(id)?.value || defaultValue;
 
-    // 1. 클라우드 환경 구성
+    // 1. 클라우드 환경 구성 (B9, D9)
     if (document.getElementById('cloud_yes')?.checked) {
       fillData['B9'] = 'O';
       fillData['D9'] = getValue('testEnvironment', '-');
@@ -43,10 +43,18 @@ document.addEventListener('DOMContentLoaded', function () {
       fillData['D9'] = '-';
     }
 
-    // 2. SaaS형 제품
+    // 2. SaaS형 제품 (F9)
     fillData['F9'] = document.getElementById('saas_yes')?.checked ? 'O' : 'X';
 
-    // 3. 재인증 구분
+    // 3. 재계약 여부 (I5) - 추가됨
+    if (document.getElementById('recontract_no')?.checked) {
+        const recontractNum = getValue('recontractNumber');
+        fillData['I5'] = recontractNum ? `${recontractNum} 재계약` : '재계약';
+    } else {
+        fillData['I5'] = '-';
+    }
+
+    // 4. 재인증 구분 (G9, H9)
     const reCertType = getValue('reCertType');
     if (reCertType === '해당사항 없음') {
       fillData['G9'] = '해당사항 없음';
@@ -56,7 +64,10 @@ document.addEventListener('DOMContentLoaded', function () {
       fillData['H9'] = getValue('reCertResultText', '-');
     }
 
-    // 4. 보안성 시험 면제 여부
+    // 5. 시험원 (K5) - 추가됨
+    fillData['K5'] = getValue('tester', '-');
+
+    // 6. 보안성 시험 면제 여부 (J9, L9)
     if (document.getElementById('security_yes')?.checked) {
       fillData['J9'] = 'O';
       const security1 = getValue('security1', '-');
