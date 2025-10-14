@@ -7,30 +7,25 @@
     return String(s || "").replace(/\s+/g, "").toLowerCase();
   }
 
-  // ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼ 이 부분이 수정되었습니다 ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
-  // 시트 찾기 함수에 디버깅 로그 추가
+  // 시트 찾기 함수 (디버깅 로그 포함)
   function findSheet(files, targetName) {
     console.log(`[Debug] ===== 시트 찾기 시작 =====`);
     console.log(`[Debug] 찾으려는 시트 원본 이름: "${targetName}"`);
 
-    // 현재 열려있는 모든 시트의 이름을 출력합니다.
     const availableNames = files.map(f => f.name);
     console.log(`[Debug] 현재 사용 가능한 시트 목록:`, availableNames);
 
     const t = normName(targetName);
     console.log(`[Debug] 정규화된 타겟 이름: "${t}"`);
 
-    // 1. 이름이 완전히 일치하는 시트 찾기
     let s = files.find(x => normName(x.name) === t);
     console.log(`[Debug] 1. 완전 일치 검색 결과:`, s ? s.name : '못 찾음');
 
-    // 2. 완전 일치하는 시트가 없으면, 이름에 타겟이 포함된 시트 찾기
     if (!s) {
       s = files.find(x => normName(x.name).includes(t));
       console.log(`[Debug] 2. 부분 일치 검색 결과:`, s ? s.name : '못 찾음');
     }
     
-    // 3. 그래도 없으면 첫 번째 시트를 기본값으로 사용
     if (!s) {
       s = files[0];
       console.log(`[Debug] 3. 기본값(첫 번째 시트) 선택:`, s ? s.name : '첫 번째 시트도 없음');
@@ -40,7 +35,6 @@
     console.log(`[Debug] ========================`);
     return s;
   }
-  // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
   // "A1" → { r: 0-based row, c: 0-based col }
   function a1ToRC(a1) {
@@ -73,13 +67,17 @@
     for (const [sheetName, cells] of Object.entries(fillMap || {})) {
       const sheet = findSheet(files, sheetName);
 
-      const sheetIndex = sheet ? parseInt(sheet.index, 10) : NaN;
-      if (isNaN(sheetIndex) || sheetIndex < 0) {
-        console.warn(`[PrdinfoFill] 시트 "${sheetName}"를 찾을 수 없거나 유효한 index가 없습니다. (받은 값: ${sheet?.index})`);
+      // ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼ 이 부분이 수정되었습니다 ▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼▼
+      // sheet.index 대신 sheet.order를 사용하여 시트 순서를 가져옵니다.
+      const sheetOrder = sheet ? parseInt(sheet.order, 10) : NaN;
+      if (isNaN(sheetOrder) || sheetOrder < 0) {
+        console.warn(`[PrdinfoFill] 시트 "${sheetName}"를 찾을 수 없거나 유효한 order가 없습니다. (받은 값: ${sheet?.order})`);
         continue;
       }
+      // ▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲▲
 
-      api.setSheetActive(sheetIndex);
+      // 유효한 order로 시트를 활성화합니다.
+      api.setSheetActive(sheetOrder);
       await new Promise(resolve => setTimeout(resolve, 0));
 
       for (const [addr, value] of Object.entries(cells || {})) {
