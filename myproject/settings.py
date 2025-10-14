@@ -32,6 +32,7 @@ ALLOWED_HOSTS = ['*']
 # Application definition
 
 INSTALLED_APPS = [
+    'channels',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -40,7 +41,6 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     "django_rq",
     'main.apps.MainConfig',  # 문자열로 직접 앱 클래스를 지정해야 ready()가 호출됨
-    'channels',
 ]
 
 RQ_QUEUES = {
@@ -52,8 +52,6 @@ RQ_QUEUES = {
         "WORKER_CLASS": "django_rq.workers.SimpleWorker",
     },
 }
-
-ASGI_APPLICATION = 'myproject.asgi.application'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
@@ -83,7 +81,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'myproject.wsgi.application'
-
+ASGI_APPLICATION = 'myproject.asgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
