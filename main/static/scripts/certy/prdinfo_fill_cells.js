@@ -40,46 +40,36 @@
     return { api, files };
   }
 
-  // 시트 data에 직접 기록(활성 시트/옵션 사용 안 함 → order 오류/머지 로그 방지)
-  function setDataCell(sheet, r, c, value) {
-    sheet.data = sheet.data || [];
-    // 행 확장
-    while (sheet.data.length <= r) sheet.data.push([]);
-    // 열 확장
-    sheet.data[r] = sheet.data[r] || [];
-    while (sheet.data[r].length <= c) sheet.data[r].push(null);
-
-    const isNumber = typeof value === "number" && isFinite(value);
-    const v = isNumber ? value : String(value == null ? "" : value);
-    sheet.data[r][c] = { v, m: String(v) };
-  }
-
-  // 메인 적용 함수
   async function apply(fillMap) {
     const { api, files } = ensureLSReady();
 
+    // API는 보통 활성 시트에 대해 동작하므로, 시트별로 순회하며 작업합니다.
     for (const [sheetName, cells] of Object.entries(fillMap || {})) {
       const sheet = findSheet(files, sheetName);
-      if (!sheet) continue;
+      // 시트를 찾고, 활성화에 필요한 'index' 속성이 있는지 확인합니다.
+      if (!sheet || typeof sheet.index === 'undefined') {
+        console.warn(`[PrdinfoFill] 시트 "${sheetName}"를 찾을 수 없거나 index가 없습니다.`);
+        continue;
+      }
 
+      // 값을 입력할 시트를 활성화합니다.
+      // 이 작업은 비동기일 수 있으므로 약간의 지연을 줍니다.
+      api.setSheetActive(sheet.index);
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // 해당 시트의 모든 셀에 대해 공식 API를 사용하여 값을 설정합니다.
       for (const [addr, value] of Object.entries(cells || {})) {
         const rc = a1ToRC(addr);
         if (!rc) continue;
-        setDataCell(sheet, rc.r, rc.c, value);
+        
+        // 공식 API: setCellValue(행, 열, 값)
+        // 이 함수는 값 설정뿐만 아니라 필요한 모든 내부 상태를 안전하게 업데이트합니다.
+        api.setCellValue(rc.r, rc.c, value);
       }
     }
 
-    try {
-      // 데이터 직접 수정 후, 전체 레이아웃을 강제로 재계산하고 새로고침
-      const inst = LS();
-      if (inst && typeof inst.resize === "function") {
-        // .refresh()보다 강력한 .resize()를 호출하여 레이아웃 재계산
-        inst.resize();
-      } else if (inst && typeof inst.refresh === "function") {
-        // resize가 없는 구버전일 경우를 대비해 refresh는 남겨둡니다.
-        inst.refresh();
-      }
-    } catch (_) {}
+    // 모든 값 입력 후, 최종적으로 한 번 화면을 새로고침하여 모든 변경사항을 반영합니다.
+    api.refresh();
   }
 
   // 전역 노출
