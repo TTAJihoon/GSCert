@@ -147,6 +147,11 @@ document.addEventListener('DOMContentLoaded', function () {
       // 3. Luckysheet에 최종 병합된 값 채우기
       await window.PrdinfoFill.apply(finalFillMap);
 
+      const resultTab = document.querySelector('.main-tab[data-tab="resultSheet"]');
+      if (resultTab) {
+        resultTab.click();
+      }
+
       console.log('GS Number:', data.gsNumber);
     } catch (err) {
       console.error(err);
