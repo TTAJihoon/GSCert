@@ -47,6 +47,16 @@ document.addEventListener('DOMContentLoaded', function () {
   cloudRadios.forEach(r => r.addEventListener('change', updateCloudVisibility));
   updateCloudVisibility();
 
+  // 재계약 여부 관련 로직
+  const recontractRadios = document.querySelectorAll('input[name="recontract_status"]');
+  const recontractSection = document.getElementById('recontractSection');
+  function updateRecontractVisibility() {
+    const isYes = document.getElementById('recontract_yes').checked;
+    recontractSection.classList.toggle('hidden-section', !isYes);
+  }
+  recontractRadios.forEach(r => r.addEventListener('change', updateRecontractVisibility));
+  updateRecontractVisibility();
+  
   // 재인증 구분 관련 로직
   const reCertSelect = document.getElementById('reCertType');
   const reCertSection = document.getElementById('reCertSection');
