@@ -133,6 +133,27 @@
           <div class="form-section">
             <div class="form-item">
               <div class="form-input-group">
+                <label class="form-label">재계약 여부</label>
+                <div class="radio-group">
+                  <div class="radio-item">
+                    <input type="radio" id="recontract_yes" name="recontract_status" value="yes">
+                    <label for="recontract_yes">O</label>
+                  </div>
+                  <div class="radio-item">
+                    <input type="radio" id="recontract_no" name="recontract_status" value="no" checked>
+                    <label for="recontract_no">X</label>
+                  </div>
+                </div>
+              </div>
+              <div class="sub-section hidden-section" id="recontractSection">
+                <div class="sub-label">기존 시험 신청 번호</div>
+                <textarea class="form-textarea" id="recontractNumber"></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="form-section">
+            <div class="form-item">
+              <div class="form-input-group">
                 <label class="form-label">재인증 구분</label>
                 <select class="form-select" id="reCertType">
                   <option value="해당사항 없음">해당사항 없음</option>
@@ -147,12 +168,23 @@
                       <div class="sub-label">기존 인증 제품 번호</div>
                       <button type="button" class="action-button action-button-small" id="btnLookupCert">조회</button>
                   </div>
-                  <input type="text" class="form-input" id="reCertNumberInput" placeholder="GS-X-XX-XXXX">
+                  <input type="text" class="form-input" id="reCertNumberInput" placeholder="GS-X-XX-XXXX를 입력하세요.">
                   <textarea class="form-textarea single-line hidden-section" id="reCertResultText" rows="1"></textarea>
               </div>
             </div>
           </div>
 
+          <div class="form-section">
+            <div class="form-item">
+                <div class="form-input-group" style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <label class="form-label" style="min-width: 110px;">시험원</label>
+                    <label for="tester_pl" style="margin-left: 8px; font-weight: 500;">PL</label>
+                    <input type="text" id="tester_pl" class="form-input" style="flex: 1 1 120px;">
+                    <label for="tester_member" style="margin-left: 16px; font-weight: 500;">시험원</label>
+                    <input type="text" id="tester_member" class="form-input" style="flex: 1 1 120px;">
+                </div>
+            </div>
+          </div>
           <div class="form-section">
             <div class="form-item">
               <div class="form-input-group">
