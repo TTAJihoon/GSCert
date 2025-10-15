@@ -33,7 +33,7 @@ ALLOWED_HOSTS = ['*']
 
 INSTALLED_APPS = [
     'channels',
-    'playwright_job'
+    'playwright_job',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
