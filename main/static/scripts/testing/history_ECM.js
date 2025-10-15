@@ -1,5 +1,3 @@
-// history_ECM.js (WebSocket 버전)
-
 document.addEventListener('DOMContentLoaded', function () {
     const loading = document.getElementById('loadingIndicator');
 
@@ -56,7 +54,6 @@ document.addEventListener('DOMContentLoaded', function () {
                     // 미리 열어둔 탭이 있다면 그 탭을 사용하고, 없다면 새로 엽니다.
                     if (window.previewWin && !window.previewWin.closed) {
                         window.previewWin.location.href = url;
-                        try { window.previewWin.focus(); } catch (_) {}
                     } else {
                         window.open(url, '_blank');
                     }
