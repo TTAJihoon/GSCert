@@ -47,9 +47,13 @@ class PlaywrightJobConfig(AppConfig):
         """Django 앱이 준비되면 호출되는 메소드"""
         # ready()는 동기 메소드이므로, 비동기 초기화 함수를
         # 별도의 스레드에서 실행하여 메인 스레드를 막지 않도록 합니다.
+        if platform.system() == "Windows":
+            asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+        
         if BROWSER_POOL.empty():
              # 백그라운드 스레드에서 비동기 함수 실행
             threading.Thread(target=lambda: asyncio.run(initialize_browsers()), daemon=True).start()
 
         # ※ 참고: 실제 프로덕션 환경에서는 서버 종료 시그널(cleanup)을 받아
         # shutdown_browsers()를 호출해주는 로직을 추가하면 더 좋습니다.
+
