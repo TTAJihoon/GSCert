@@ -1,13 +1,14 @@
 import os
 from django.core.asgi import get_asgi_application
 from channels.routing import ProtocolTypeRouter, URLRouter
-import playwright_job.routing
+from channels.auth import AuthMiddlewareStack
+from myproject import routing as project_routing
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'myproject.settings')
 
 application = ProtocolTypeRouter({
     "http": get_asgi_application(),
-    "websocket": URLRouter(
-        playwright_job.routing.websocket_urlpatterns
+    "websocket": AuthMiddlewareStack(
+        URLRouter(project_routing.websocket_urlpatterns)
     ),
 })
