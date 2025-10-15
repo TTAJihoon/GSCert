@@ -1,14 +1,10 @@
-from channels.routing import ProtocolTypeRouter, URLRouter
-from channels.auth import AuthMiddlewareStack
+from channels.routing import URLRouter
+from django.urls import path
 import main.routing
 import playwright_job.routing
 
-application = ProtocolTypeRouter({
-    "websocket": AuthMiddlewareStack(
-        URLRouter(
-            main.routing.websocket_urlpatterns
-            + playwright_job.routing.websocket_urlpatterns
-        )
-    ),
-    # (http는 Django가 처리)
-})
+# 'websocket_urlpatterns' 이름으로 합쳐서 export
+websocket_urlpatterns = (
+    main.routing.websocket_urlpatterns
+    + playwright_job.routing.websocket_urlpatterns
+)
