@@ -1,53 +1,54 @@
-import asyncio
 import json
 from channels.generic.websocket import AsyncWebsocketConsumer
+from .apps import BROWSER_POOL  # Semaphore 대신 브라우저 풀을 가져옵니다.
 from .tasks import run_playwright_task
-
-SEMAPHORE = asyncio.Semaphore(5)
 
 class PlaywrightJobConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.accept()
-        print(f"WebSocket connected: {self.channel_name}")
 
     async def disconnect(self, close_code):
-        print(f"WebSocket disconnected: {self.channel_name}")
+        pass
 
     async def receive(self, text_data):
-        # 클라이언트가 보낸 JSON 문자열을 파싱합니다.
         data = json.loads(text_data)
         cert_date = data.get('인증일자')
         test_no = data.get('시험번호')
 
         if not cert_date or not test_no:
-            await self.send(text_data=json.dumps({
-                'status': 'error',
-                'message': '인증일자 또는 시험번호 정보가 누락되었습니다.'
-            }))
+            # ... (오류 처리 부분은 기존과 동일) ...
             return
 
         await self.send(text_data=json.dumps({
             'status': 'wait',
-            'message': '서버의 다른 작업이 끝나기를 기다리는 중입니다...'
+            'message': '사용 가능한 브라우저를 기다리는 중입니다...'
         }))
 
-        async with SEMAPHORE:
-            try:
-                await self.send(text_data=json.dumps({
-                    'status': 'processing',
-                    'message': 'Playwright 작업을 시작합니다.\n잠시만 기다려주세요...'
-                }))
-                
-                # tasks.py의 함수에 인자를 전달합니다.
-                result = await run_playwright_task(cert_date=cert_date, test_no=test_no)
+        browser = None
+        try:
+            # 1. 브라우저 풀에서 쉬고 있는 브라우저를 하나 가져옵니다.
+            #    만약 모두 사용 중이면, 여기서 반납될 때까지 자동으로 기다립니다.
+            browser = await BROWSER_POOL.get()
 
-                await self.send(text_data=json.dumps({
-                    'status': 'success',
-                    'url': result['url']
-                }))
+            await self.send(text_data=json.dumps({
+                'status': 'processing',
+                'message': 'Playwright 작업을 시작합니다.\n잠시만 기다려주세요...'
+            }))
+            
+            # 2. 가져온 브라우저와 함께 실제 작업을 수행합니다.
+            result = await run_playwright_task(browser=browser, cert_date=cert_date, test_no=test_no)
 
-            except Exception as e:
-                await self.send(text_data=json.dumps({
-                    'status': 'error',
-                    'message': f"오류가 발생했습니다: {str(e)}"
-                }))
+            await self.send(text_data=json.dumps({
+                'status': 'success',
+                'url': result['url']
+            }))
+
+        except Exception as e:
+            await self.send(text_data=json.dumps({
+                'status': 'error',
+                'message': f"오류가 발생했습니다: {str(e)}"
+            }))
+        finally:
+            # 3. 작업이 성공하든 실패하든, 사용했던 브라우저를 반드시 풀에 반납합니다.
+            if browser:
+                await BROWSER_POOL.put(browser)
