@@ -1,7 +1,9 @@
 import asyncio
 import threading
+import sys
+import platform
 from django.apps import AppConfig
-from playwright.async_api import async_playwright, Browser
+from playwright.async_api import async_playwright, Browserr
 
 # 동시에 5개의 브라우저를 담을 수 있는 '브라우저 보관함' (Queue)
 BROWSER_POOL = asyncio.Queue(maxsize=5)
@@ -56,4 +58,5 @@ class PlaywrightJobConfig(AppConfig):
 
         # ※ 참고: 실제 프로덕션 환경에서는 서버 종료 시그널(cleanup)을 받아
         # shutdown_browsers()를 호출해주는 로직을 추가하면 더 좋습니다.
+
 
