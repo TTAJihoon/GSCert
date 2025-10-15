@@ -1,7 +1,7 @@
 import asyncio
 import re
 from re import Pattern
-from playwright.async_api import Browser, Page, Locator, Pattern, expect
+from playwright.async_api import Browser, Page, Locator, expect
 
 def _get_date_parts(cert_date: str) -> tuple[str, str]:
     """ 'yyyy.mm.dd' 형식의 날짜를 'yyyy', 'yyyymmdd'로 분리 """
