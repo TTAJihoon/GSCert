@@ -40,19 +40,8 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    "django_rq",
     'main.apps.MainConfig',  # 문자열로 직접 앱 클래스를 지정해야 ready()가 호출됨
 ]
-
-RQ_QUEUES = {
-    "default": {
-        "HOST": "127.0.0.1",
-        "PORT": 6379,
-        "DB": 0,
-        "DEFAULT_TIMEOUT": 1800,
-        "WORKER_CLASS": "django_rq.workers.SimpleWorker",
-    },
-}
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
