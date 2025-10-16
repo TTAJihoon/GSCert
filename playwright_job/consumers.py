@@ -1,54 +1,59 @@
+import asyncio
 import json
+import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
-from .apps import BROWSER_POOL  # Semaphore 대신 브라우저 풀을 가져옵니다.
-from .tasks import run_playwright_task
+from .apps import get_browser_safe, put_browser_safe  # ★ 새 유틸 사용
+
+logger = logging.getLogger(__name__)
 
 class PlaywrightJobConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.accept()
+        self.task = None
 
-    async def disconnect(self, close_code):
-        pass
+    async def disconnect(self, code):
+        if self.task and not self.task.done():
+            self.task.cancel()
 
     async def receive(self, text_data):
-        data = json.loads(text_data)
-        cert_date = data.get('인증일자')
-        test_no = data.get('시험번호')
-
-        if not cert_date or not test_no:
-            # ... (오류 처리 부분은 기존과 동일) ...
+        try:
+            payload = json.loads(text_data)
+        except Exception:
+            await self.send(text_data=json.dumps({"status": "error", "message": "잘못된 요청"}))
             return
 
-        await self.send(text_data=json.dumps({
-            'status': 'wait',
-            'message': '사용 가능한 브라우저를 기다리는 중입니다...'
-        }))
+        # 사용자가 보내는 키 예: {"인증일자": "...", "시험번호": "..."}
+        async def run_one():
+            browser = await get_browser_safe()
+            try:
+                # 고장난 브라우저 방어: new_context 1회 재시도
+                try:
+                    context = await browser.new_context()
+                except Exception as e:
+                    logger.warning("new_context 실패, 1회 재시도: %s", e)
+                    await put_browser_safe(browser)      # 고장났을 수 있으니 즉시 반납(교체)
+                    browser = await get_browser_safe()   # 새로 받아서 재시도
+                    context = await browser.new_context()
 
-        browser = None
-        try:
-            # 1. 브라우저 풀에서 쉬고 있는 브라우저를 하나 가져옵니다.
-            #    만약 모두 사용 중이면, 여기서 반납될 때까지 자동으로 기다립니다.
-            browser = await BROWSER_POOL.get()
+                page = await context.new_page()
+                try:
+                    # 진행 중 알림(선택)
+                    await self.send(text_data=json.dumps({"status": "processing", "message": "Playwright 작업을 시작합니다."}))
+                    # ---- 실제 작업 호출 (기존 tasks 함수) ----
+                    from .tasks import run_playwright_task
+                    result = await run_playwright_task(page, payload)
+                    # ----------------------------------------
+                    await self.send(text_data=json.dumps({"status": "success", "url": result["url"]}))
+                finally:
+                    await context.close()
+            except asyncio.CancelledError:
+                await self.send(text_data=json.dumps({"status": "error", "message": "취소되었습니다."}))
+                raise
+            except Exception as e:
+                logger.exception("작업 실패: %s", e)
+                await self.send(text_data=json.dumps({"status": "error", "message": f"오류가 발생했습니다: {e}"}))
+            finally:
+                await put_browser_safe(browser)
 
-            await self.send(text_data=json.dumps({
-                'status': 'processing',
-                'message': 'Playwright 작업을 시작합니다.\n잠시만 기다려주세요...'
-            }))
-            
-            # 2. 가져온 브라우저와 함께 실제 작업을 수행합니다.
-            result = await run_playwright_task(browser=browser, cert_date=cert_date, test_no=test_no)
-
-            await self.send(text_data=json.dumps({
-                'status': 'success',
-                'url': result['url']
-            }))
-
-        except Exception as e:
-            await self.send(text_data=json.dumps({
-                'status': 'error',
-                'message': f"오류가 발생했습니다: {str(e)}"
-            }))
-        finally:
-            # 3. 작업이 성공하든 실패하든, 사용했던 브라우저를 반드시 풀에 반납합니다.
-            if browser:
-                await BROWSER_POOL.put(browser)
+        # 백그라운드 태스크로 실행
+        self.task = asyncio.create_task(run_one())
