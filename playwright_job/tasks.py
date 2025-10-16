@@ -20,25 +20,77 @@ def _testno_pat(test_no: str) -> Pattern:
     return re.compile(safe_no, re.IGNORECASE)
 
 async def _prime_copy_sniffer(page: Page):
-    """ 클립보드 복사 이벤트를 가로채는 JS 코드 주입 (안정적인 방법) """
+    """
+    클립보드 복사 파이프라인을 페이지 내부에서 안전하게 가로챈다.
+    - navigator.clipboard.writeText
+    - document 'copy' 캡처 이벤트
+    - document.execCommand('copy') 래핑
+    """
     inject_js = r"""
     (() => {
         if (window.__copy_sniffer_installed) return;
         window.__copy_sniffer_installed = true;
         window.__last_copied = '';
-        const _origWrite = navigator.clipboard.writeText.bind(navigator.clipboard);
-        navigator.clipboard.writeText = async (t) => {
-            window.__last_copied = t;
-            return _origWrite(t);
-        };
+        window.__copy_seq = 0;  // 변화 감지용 시퀀스
+
+        // 1) writeText 오버라이드
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            const _origWrite = navigator.clipboard.writeText.bind(navigator.clipboard);
+            navigator.clipboard.writeText = async (t) => {
+                try { window.__last_copied = String(t || ''); window.__copy_seq++; } catch(e) {}
+                return _origWrite(t);
+            };
+        }
+
+        // 2) 'copy' 캡처 단계 이벤트 (execCommand/clipboardData 경로)
+        document.addEventListener('copy', (e) => {
+            try {
+                let txt = '';
+                if (e && e.clipboardData) {
+                    txt = e.clipboardData.getData('text/plain') || '';
+                }
+                if (!txt && window.getSelection) {
+                    txt = String(window.getSelection() || '');
+                }
+                if (txt) { window.__last_copied = String(txt); window.__copy_seq++; }
+            } catch (err) {}
+        }, true);
+
+        // 3) execCommand('copy') 래핑 (구형 대비)
+        const _origExec = document.execCommand ? document.execCommand.bind(document) : null;
+        if (_origExec) {
+            document.execCommand = function(command, ui, value) {
+                try {
+                    if ((command || '').toLowerCase() === 'copy') {
+                        // selection 기반 복사 추정
+                        const txt = String(window.getSelection ? (window.getSelection() || '') : '');
+                        if (txt) { window.__last_copied = txt; window.__copy_seq++; }
+                    }
+                } catch (err) {}
+                return _origExec(command, ui, value);
+            };
+        }
     })();
     """
     await page.add_init_script(inject_js)
     await page.evaluate(inject_js)
 
-async def _get_sniffed_text(page: Page) -> str:
-    """ 주입된 스니퍼를 통해 복사된 텍스트를 가져옴 """
-    return await page.evaluate("() => window.__last_copied || ''")
+async def _get_sniffed_text(page: Page, last_seq_before: int, timeout_ms: int = 5000) -> str:
+    """
+    __copy_seq가 증가(새 복사 발생)할 때까지 짧게 폴링.
+    발생하면 __last_copied 반환.
+    """
+    import math
+    deadline = timeout_ms
+    interval = 100
+    tried = 0
+    while tried * interval < deadline:
+        seq, txt = await page.evaluate("""() => [window.__copy_seq|0, String(window.__last_copied||'')]""")
+        if seq > last_seq_before and txt:
+            return txt
+        await page.wait_for_timeout(interval)
+        tried += 1
+    return ""
 
 
 # --- Main Task Function (메인 작업 함수) ---
@@ -92,16 +144,17 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         checkbox = target_row.locator('input[type="checkbox"]')
         await checkbox.check()
 
-        # 6. 클립보드 복사 및 내용 읽기
+        # 6. 클립보드 복사 및 내용 읽기 (안정한 방식)
         await _prime_copy_sniffer(page)
-        await page.locator('div#prop-view-document-btn-url-copy').click()
-        
-        # 복사가 JS에 의해 처리될 시간을 잠시 기다림
-        await page.wait_for_timeout(1000)
-        copied_text = await _get_sniffed_text(page)
+        # 복사 이전의 시퀀스 값을 읽어둔다
+        last_seq_before = await page.evaluate("() => window.__copy_seq|0")
 
+        await page.locator('div#prop-view-document-btn-url-copy').click()
+
+        # 복사가 실제 발생할 때까지 최대 5초 대기(100ms 폴링)
+        copied_text = await _get_sniffed_text(page, last_seq_before, timeout_ms=5000)
         if not copied_text:
-            raise RuntimeError("클립보드에서 텍스트를 가져오지 못했습니다.")
+            raise RuntimeError("복사 이벤트를 확인하지 못했습니다. (타임아웃)")
 
         # 7. 최종 URL 추출 및 반환
         first_line = copied_text.splitlines()[0]
