@@ -1,3 +1,5 @@
+import logging; logging.getLogger(__name__).warning(">>> main.routing 로딩됨")
+
 from django.urls import re_path
 from . import consumers
 
