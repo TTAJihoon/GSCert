@@ -34,34 +34,49 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     // 서버로부터 메시지를 받았을 때 처리하는 로직
-    socket.onmessage = function(e) {
-        const data = JSON.parse(e.data);
-        console.log("서버로부터 메시지 수신:", data);
+    socket.onmessage = function (e) {
+        const raw = typeof e.data === 'string' ? e.data : '';
+        // HTML(오류 페이지) 탐지
+        if (raw.startsWith('<!DOCTYPE') || raw.startsWith('<html')) {
+            console.error('[WS] HTML 수신 (아마 404/403/500). 앞부분:', raw.slice(0, 200));
+            alert('서버에서 JSON 대신 HTML을 보냈습니다. (오류 가능)\n관리자 로그를 확인해주세요.');
+            return;
+        }
+
+        let data;
+        try {
+            data = JSON.parse(raw);
+        } catch (err) {
+            console.error('[WS] JSON 파싱 실패:', err, 'payload preview:', raw.slice(0, 200));
+            alert('서버 응답(JSON) 파싱에 실패했습니다. 로그를 확인해주세요.');
+            return;
+        }
+
+        console.log('서버로부터 메시지 수신:', data);
 
         switch (data.status) {
             case 'wait':
             case 'processing':
                 showLoading(data.message);
                 break;
-            
             case 'success':
                 hideLoading();
-                // 모든 작업이 완료된 후, 여기서 새 탭 열기를 시도합니다.
-                // 이 부분은 브라우저 팝업 차단기에 의해 막힐 수 있습니다.
                 try {
                     window.open(data.url, '_blank');
                 } catch (err) {
-                    console.error("새 탭 열기 실패:", err);
-                    alert("새 탭을 여는 데 실패했습니다. 브라우저의 팝업 차단 설정을 확인해주세요.");
+                    console.error('새 탭 열기 실패:', err);
+                    alert('새 탭을 여는 데 실패했습니다. 팝업 차단 설정을 확인해주세요.');
                 }
                 break;
-
             case 'error':
                 hideLoading();
                 alert('작업 실패: ' + data.message);
                 break;
+            default:
+                console.warn('[WS] 알 수 없는 status:', data.status, data);
         }
     };
+
 
     document.addEventListener('click', async (e) => {
         const btn = e.target.closest('.download-btn');
