@@ -11,15 +11,29 @@ POOL_SIZE = 5
 
 # 큐(있으면 재사용, 없으면 즉시 새로 띄움)
 BROWSER_POOL: asyncio.Queue[Browser] = asyncio.Queue(maxsize=POOL_SIZE)
-_playwright = None  # async_playwright 핸들 (전역 1회)
-_pool_warmup_started = False  # 선택: 백그라운드 웜업 중복 방지
+# 파일 상단 근처에 추가
+_playwright = None
+_playwright_lock = asyncio.Lock()
 
 async def _ensure_playwright_started():
-    """전역 playwright 런타임을 1회만 시작."""
+    """전역 Playwright 런타임을 1회만 시작 (동시성 보호)."""
     global _playwright
-    if _playwright is None:
-        logger.warning(">>> Playwright 런타임 시작")
-        _playwright = await async_playwright().start()
+    if _playwright is not None:
+        return
+    async with _playwright_lock:
+        if _playwright is None:
+            from playwright.async_api import async_playwright
+            # 여기서도 혹시 모를 정책 누락 대비(중복무해)
+            import sys, asyncio as _aio
+            if sys.platform.startswith("win"):
+                try:
+                    _aio.set_event_loop_policy(_aio.WindowsProactorEventLoopPolicy())
+                except Exception:
+                    pass
+            # 실제 시작
+            logger.warning(">>> Playwright 런타임 시작")
+            _playwright = await async_playwright().start()
+
 
 async def _launch_browser() -> Browser:
     """브라우저 하나 새로 띄움."""
@@ -124,3 +138,4 @@ class PlaywrightJobConfig(AppConfig):
         except Exception:
             # 관리명령/마이그레이션 등 이벤트 루프가 없을 수 있음 -> 무시
             pass
+
