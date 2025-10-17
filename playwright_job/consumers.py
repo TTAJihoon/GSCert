@@ -41,15 +41,16 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
             return
 
     async def run_one():
-        # 1) 먼저 대기 안내 전송 → 프런트에서 loadingIndicator 표시용
+        # 1) 먼저 대기 안내 전송 → 로딩 표시
         await self.send(text_data=json.dumps({
             "status": "wait",
             "message": "사용 가능한 브라우저를 기다리는 중입니다..."
         }))
-
-        # 2) 브라우저 획득 (풀 미초기화/장애 대비 타임아웃)
+        # 2) 브라우저 획득 (게으른 확보 + 타임아웃)
         try:
+            logger.warning("[WS] get_browser_safe 대기 시작: %s %s", cert_date, test_no)
             browser = await asyncio.wait_for(get_browser_safe(), timeout=30)
+            logger.warning("[WS] get_browser_safe 획득 완료: %s %s", cert_date, test_no)
         except asyncio.TimeoutError:
             await self.send(text_data=json.dumps({
                 "status": "error",
@@ -59,18 +60,20 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
             return
 
         try:
-            # 3) 실제 작업 시작 안내
+            # 3) 실제 작업 시작 알림
             await self.send(text_data=json.dumps({
                 "status": "processing",
                 "message": "Playwright 작업을 시작합니다."
             }))
+            logger.warning("[WS] run_playwright_task 진입: %s %s", cert_date, test_no)
 
-            # 4) tasks는 내부에서 context/page 생성 및 정리 수행
+            # 4) 작업 타임아웃 (필요 시 조정)
             result = await asyncio.wait_for(
                 run_playwright_task(browser, cert_date, test_no),
-                timeout=180  # 필요 시 조정
+                timeout=120
             )
 
+            logger.warning("[WS] run_playwright_task 반환: %s %s -> %s", cert_date, test_no, result)
             url = (result or {}).get("url")
             if not url:
                 raise RuntimeError("URL 생성 실패")
@@ -88,15 +91,18 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
             }))
             raise
         except Exception as e:
-            logger.exception("작업 실패: %s", e)
+            logger.exception("[WS] 작업 실패 (%s %s): %s", cert_date, test_no, e)
             await self.send(text_data=json.dumps({
                 "status": "error",
                 "message": f"오류가 발생했습니다: {e}"
             }))
         finally:
-            # 6) 브라우저 반납(끊겼으면 put이 내부적으로 교체), 소켓 종료
-            await put_browser_safe(browser)
+            # 6) 브라우저 반납 + 소켓 종료
             try:
-                await self.close()   # 요청별 WS: 작업 종료 후 소켓 닫기
+                await put_browser_safe(browser)
+            except Exception as e:
+                logger.exception("[WS] put_browser_safe 실패: %s", e)
+            try:
+                await self.close()
             except Exception:
                 pass
