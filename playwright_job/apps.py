@@ -1,85 +1,126 @@
-import os
 import asyncio
 import logging
+from typing import Optional
 from django.apps import AppConfig
 from playwright.async_api import async_playwright, Browser
 
 logger = logging.getLogger(__name__)
 
+# 원하는 풀 크기
 POOL_SIZE = 5
-BROWSER_POOL: asyncio.Queue[Browser] = asyncio.Queue(maxsize=POOL_SIZE)
-_playwright = None  # async_playwright() 핸들 보관
 
-async def _launch_browser() -> Browser:
-    """단일 Playwright 핸들에서 브라우저 하나를 띄운다."""
+# 큐(있으면 재사용, 없으면 즉시 새로 띄움)
+BROWSER_POOL: asyncio.Queue[Browser] = asyncio.Queue(maxsize=POOL_SIZE)
+_playwright = None  # async_playwright 핸들 (전역 1회)
+_pool_warmup_started = False  # 선택: 백그라운드 웜업 중복 방지
+
+async def _ensure_playwright_started():
+    """전역 playwright 런타임을 1회만 시작."""
     global _playwright
     if _playwright is None:
+        logger.warning(">>> Playwright 런타임 시작")
         _playwright = await async_playwright().start()
-    # 필요에 따라 chromium/firefox/webkit 선택
-    browser = await _playwright.chromium.launch(headless=True)
-    return browser
 
-def _is_connected(browser: Browser) -> bool:
+async def _launch_browser() -> Browser:
+    """브라우저 하나 새로 띄움."""
+    await _ensure_playwright_started()
+    # 필요에 따라 firefox/webkit 변경 가능
+    b = await _playwright.chromium.launch(headless=True)
+    return b
+
+def _is_connected(b: Optional[Browser]) -> bool:
     try:
-        return bool(browser) and browser.is_connected()
+        return bool(b) and b.is_connected()
     except Exception:
         return False
 
-async def init_browser_pool():
-    """앱 기동 시 브라우저 풀을 미리 채운다."""
-    logger.warning(">>> 브라우저 풀 초기화 시작")
-    for i in range(POOL_SIZE):
-        b = await _launch_browser()
-        await BROWSER_POOL.put(b)
-        logger.warning("브라우저 %d번 풀에 추가 완료", i + 1)
-    logger.warning("브라우저 풀 초기화 완료. 현재 풀 크기: %d", BROWSER_POOL.qsize())
-
 async def get_browser_safe() -> Browser:
     """
-    풀에서 하나 꺼내되, 끊어진 브라우저면 폐기하고 새로 만들어 반환.
-    (풀은 put_browser_safe가 보충)
+    항상 '살아있는' 브라우저를 반환.
+    - 큐에 있으면 꺼내 검사
+    - 큐가 비어있거나 끊겨 있으면 즉시 새로 띄워 반환 (게으른 확보)
     """
-    while True:
-        browser = await BROWSER_POOL.get()
-        if _is_connected(browser):
-            return browser
-        try:
-            await browser.close()
-        except Exception:
-            pass
-        # 끊어진 브라우저는 새로 교체
-        browser = await _launch_browser()
-        return browser  # 풀 보충은 put_browser_safe에서 수행
+    try:
+        b: Optional[Browser] = None
+        if not BROWSER_POOL.empty():
+            b = await BROWSER_POOL.get()
+            if _is_connected(b):
+                return b
+            # 끊긴 경우 정리 후 새로
+            try:
+                await b.close()
+            except Exception:
+                pass
+        # 큐가 비거나 끊겼으면 새로 띄움
+        fresh = await _launch_browser()
+        return fresh
+    except Exception as e:
+        logger.exception("get_browser_safe 실패: %s", e)
+        # 최후의 보루로 하나 더 시도
+        fresh = await _launch_browser()
+        return fresh
 
-async def put_browser_safe(browser: Browser):
+async def put_browser_safe(b: Optional[Browser]):
     """
-    반납 시에도 끊어져 있으면 새로 보충하여 풀 크기 유지.
+    브라우저 반납.
+    - 살아있고 큐가 여유 있으면 큐에 되돌림
+    - 아니면 닫아 버림
     """
     try:
-        if _is_connected(browser):
-            await BROWSER_POOL.put(browser)
-            return
+        if _is_connected(b):
+            try:
+                BROWSER_POOL.put_nowait(b)
+                return
+            except asyncio.QueueFull:
+                pass
     except Exception:
         pass
-    # 여기까지 왔으면 끊김 → 폐기 후 새로 보충
+    # 여기 오면 끊겼거나 큐가 가득 찬 경우 -> 닫아 버림
     try:
-        if browser:
-            await browser.close()
+        if b:
+            await b.close()
     except Exception:
         pass
-    fresh = await _launch_browser()
-    await BROWSER_POOL.put(fresh)
+
+async def _warmup_pool():
+    """
+    (선택) 백그라운드 웜업: 여유 있을 때만 큐를 목표 크기까지 채움.
+    이 함수가 실패해도 get_browser_safe가 항상 즉시 브라우저를 띄우므로 서비스 영향 없음.
+    """
+    global _pool_warmup_started
+    if _pool_warmup_started:
+        return
+    _pool_warmup_started = True
+    logger.warning(">>> 브라우저 풀 웜업 시작 (lazy)")
+    try:
+        while BROWSER_POOL.qsize() < POOL_SIZE:
+            b = await _launch_browser()
+            try:
+                BROWSER_POOL.put_nowait(b)
+            except asyncio.QueueFull:
+                await b.close()
+                break
+        logger.warning("브라우저 풀 웜업 완료. 큐 크기: %d", BROWSER_POOL.qsize())
+    except Exception as e:
+        logger.exception("풀 웜업 실패: %s", e)
+    finally:
+        _pool_warmup_started = False
 
 class PlaywrightJobConfig(AppConfig):
     name = "playwright_job"
     verbose_name = "Playwright Job"
-    _pool_started = False  # 중복 방지 플래그
 
     def ready(self):
-        # Daphne(ASGI)에서도 실행되어야 하므로 RUN_MAIN 가드 제거
-        if self.__class__._pool_started:
-            return
-        self.__class__._pool_started = True
-
-        loop = asyncio.get_event_loop()
-        loop.create_task(init_browser_pool())
+        """
+        ASGI/Daphne 환경의 라이프사이클과 무관하게 동작하도록
+        풀은 요청 시점(get_browser_safe)에서 lazy 생성.
+        여기서는 선택적으로 백그라운드 웜업만 시도한다.
+        """
+        try:
+            loop = asyncio.get_event_loop()
+            # 이벤트 루프가 살아있다면 웜업을 비동기로 걸어둔다(실패해도 서비스 영향 없음)
+            if loop.is_running():
+                loop.create_task(_warmup_pool())
+        except Exception:
+            # 관리명령/마이그레이션 등 이벤트 루프가 없을 수 있음 -> 무시
+            pass
