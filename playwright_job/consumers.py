@@ -40,32 +40,63 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        async def run_one():
-            browser = await get_browser_safe()
+    async def run_one():
+        # 1) 먼저 대기 안내 전송 → 프런트에서 loadingIndicator 표시용
+        await self.send(text_data=json.dumps({
+            "status": "wait",
+            "message": "사용 가능한 브라우저를 기다리는 중입니다..."
+        }))
+
+        # 2) 브라우저 획득 (풀 미초기화/장애 대비 타임아웃)
+        try:
+            browser = await asyncio.wait_for(get_browser_safe(), timeout=30)
+        except asyncio.TimeoutError:
+            await self.send(text_data=json.dumps({
+                "status": "error",
+                "message": "브라우저 풀을 초기화하지 못했습니다. 서버 로그를 확인해주세요."
+            }))
+            await self.close()
+            return
+
+        try:
+            # 3) 실제 작업 시작 안내
+            await self.send(text_data=json.dumps({
+                "status": "processing",
+                "message": "Playwright 작업을 시작합니다."
+            }))
+
+            # 4) tasks는 내부에서 context/page 생성 및 정리 수행
+            result = await asyncio.wait_for(
+                run_playwright_task(browser, cert_date, test_no),
+                timeout=180  # 필요 시 조정
+            )
+
+            url = (result or {}).get("url")
+            if not url:
+                raise RuntimeError("URL 생성 실패")
+
+            # 5) 성공 응답
+            await self.send(text_data=json.dumps({
+                "status": "success",
+                "url": url
+            }))
+
+        except asyncio.CancelledError:
+            await self.send(text_data=json.dumps({
+                "status": "error",
+                "message": "작업이 취소되었습니다."
+            }))
+            raise
+        except Exception as e:
+            logger.exception("작업 실패: %s", e)
+            await self.send(text_data=json.dumps({
+                "status": "error",
+                "message": f"오류가 발생했습니다: {e}"
+            }))
+        finally:
+            # 6) 브라우저 반납(끊겼으면 put이 내부적으로 교체), 소켓 종료
+            await put_browser_safe(browser)
             try:
-                await self.send(text_data=json.dumps({"status": "processing", "message": "Playwright 작업을 시작합니다."}))
-
-                # tasks는 내부에서 context/page 생성 및 정리 수행
-                result = await asyncio.wait_for(
-                    run_playwright_task(browser, cert_date, test_no),
-                    timeout=180  # 필요 시 조정
-                )
-                url = (result or {}).get("url")
-                if not url:
-                    raise RuntimeError("URL 생성 실패")
-
-                await self.send(text_data=json.dumps({"status": "success", "url": url}))
-            except asyncio.CancelledError:
-                await self.send(text_data=json.dumps({"status": "error", "message": "작업이 취소되었습니다."}))
-                raise
-            except Exception as e:
-                logger.exception("작업 실패: %s", e)
-                await self.send(text_data=json.dumps({"status": "error", "message": f"오류가 발생했습니다: {e}"}))
-            finally:
-                await put_browser_safe(browser)
-                try:
-                    await self.close()   # 요청별 WS: 작업 종료 후 소켓 닫기
-                except Exception:
-                    pass
-
-        self._task = asyncio.create_task(run_one())
+                await self.close()   # 요청별 WS: 작업 종료 후 소켓 닫기
+            except Exception:
+                pass
