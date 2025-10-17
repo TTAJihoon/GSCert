@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import Optional
 from django.apps import AppConfig
-from playwright.async_api import async_playwright, Browser
+from playwright.async_api import Browser  # ← Browser 타입만 남기고, async_playwright는 함수 안에서 import
 
 logger = logging.getLogger(__name__)
 
@@ -11,9 +11,14 @@ POOL_SIZE = 5
 
 # 큐(있으면 재사용, 없으면 즉시 새로 띄움)
 BROWSER_POOL: asyncio.Queue[Browser] = asyncio.Queue(maxsize=POOL_SIZE)
-# 파일 상단 근처에 추가
+
+# 전역 Playwright 핸들/락
 _playwright = None
 _playwright_lock = asyncio.Lock()
+
+# ★ 누락되어 있던 플래그 선언 추가
+_pool_warmup_started = False
+
 
 async def _ensure_playwright_started():
     """전역 Playwright 런타임을 1회만 시작 (동시성 보호)."""
@@ -22,7 +27,7 @@ async def _ensure_playwright_started():
         return
     async with _playwright_lock:
         if _playwright is None:
-            from playwright.async_api import async_playwright
+            from playwright.async_api import async_playwright  # ← 여기서 import
             # 여기서도 혹시 모를 정책 누락 대비(중복무해)
             import sys, asyncio as _aio
             if sys.platform.startswith("win"):
@@ -30,7 +35,6 @@ async def _ensure_playwright_started():
                     _aio.set_event_loop_policy(_aio.WindowsProactorEventLoopPolicy())
                 except Exception:
                     pass
-            # 실제 시작
             logger.warning(">>> Playwright 런타임 시작")
             _playwright = await async_playwright().start()
 
@@ -60,26 +64,20 @@ async def get_browser_safe() -> Browser:
             b = await BROWSER_POOL.get()
             if _is_connected(b):
                 return b
-            # 끊긴 경우 정리 후 새로
             try:
                 await b.close()
             except Exception:
                 pass
-        # 큐가 비거나 끊겼으면 새로 띄움
         fresh = await _launch_browser()
         return fresh
     except Exception as e:
         logger.exception("get_browser_safe 실패: %s", e)
-        # 최후의 보루로 하나 더 시도
+        # 최후의 보루
         fresh = await _launch_browser()
         return fresh
 
 async def put_browser_safe(b: Optional[Browser]):
-    """
-    브라우저 반납.
-    - 살아있고 큐가 여유 있으면 큐에 되돌림
-    - 아니면 닫아 버림
-    """
+    """브라우저 반납. 살아있고 큐가 여유 있으면 큐에 되돌리고, 아니면 닫음."""
     try:
         if _is_connected(b):
             try:
@@ -89,7 +87,6 @@ async def put_browser_safe(b: Optional[Browser]):
                 pass
     except Exception:
         pass
-    # 여기 오면 끊겼거나 큐가 가득 찬 경우 -> 닫아 버림
     try:
         if b:
             await b.close()
@@ -97,10 +94,7 @@ async def put_browser_safe(b: Optional[Browser]):
         pass
 
 async def _warmup_pool():
-    """
-    (선택) 백그라운드 웜업: 여유 있을 때만 큐를 목표 크기까지 채움.
-    이 함수가 실패해도 get_browser_safe가 항상 즉시 브라우저를 띄우므로 서비스 영향 없음.
-    """
+    """(선택) 백그라운드 웜업: 있으면 큐를 목표 크기까지 채움."""
     global _pool_warmup_started
     if _pool_warmup_started:
         return
@@ -132,10 +126,7 @@ class PlaywrightJobConfig(AppConfig):
         """
         try:
             loop = asyncio.get_event_loop()
-            # 이벤트 루프가 살아있다면 웜업을 비동기로 걸어둔다(실패해도 서비스 영향 없음)
             if loop.is_running():
                 loop.create_task(_warmup_pool())
         except Exception:
-            # 관리명령/마이그레이션 등 이벤트 루프가 없을 수 있음 -> 무시
             pass
-
