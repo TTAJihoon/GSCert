@@ -1,3 +1,7 @@
+// 요청별 WebSocket 버전
+// - 버튼 클릭마다 WebSocket을 새로 열고(open→send→recv→close)
+// - 'wait'/'processing' 수신 시 로딩 표시, 'success'/'error' 시 로딩 해제
+// - 성공 시 그때 새 탭으로 URL 오픈
 (function () {
   const WS_PATH = "/ws/run_job/"; // Channels routing과 일치(끝 슬래시 포함)
 
@@ -7,7 +11,15 @@
     testNo: 2    // 시험번호 (템플릿 상 3번째 열)
   };
 
-  // 중복 새 탭 오픈 방지 (같은 URL이 반복 도착할 때)
+  // 로딩 표시/해제
+  function setLoading(on) {
+    const el = document.getElementById("loadingIndicator");
+    if (!el) return;
+    if (on) el.classList.remove("hidden");
+    else el.classList.add("hidden");
+  }
+
+  // 중복 새 탭 오픈 방지
   const openedOnce = new Set();
 
   // --- 유틸: 테이블 헤더에서 목표 열 인덱스 찾기 ---
@@ -52,12 +64,16 @@
       const url = `${scheme}://${location.host}${WS_PATH}`;
       console.log("[WS] connect:", url);
 
+      // 로딩 시작
+      setLoading(true);
+
       const ws = new WebSocket(url);
       let settled = false;
 
       const done = (fn, val) => {
         if (!settled) {
           settled = true;
+          setLoading(false);            // 로딩 해제 보장
           try { ws.close(); } catch (e) {}
           fn(val);
         }
@@ -87,8 +103,9 @@
           return done(reject, new Error("서버 응답(JSON) 파싱 실패"));
         }
 
-        if (msg.status === "processing" || msg.status === "wait") {
-          // 진행중 알림이 필요하면 UI 갱신
+        if (msg.status === "wait" || msg.status === "processing") {
+          // 로딩 유지
+          setLoading(true);
           return;
         }
         if (msg.status === "success" && msg.url) {
