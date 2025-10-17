@@ -73,10 +73,13 @@ async def put_browser_safe(browser: Browser):
 class PlaywrightJobConfig(AppConfig):
     name = "playwright_job"
     verbose_name = "Playwright Job"
+    _pool_started = False  # 중복 방지 플래그
 
     def ready(self):
-        # runserver 리로더 부모 프로세스에서 중복 실행 방지
-        if os.environ.get("RUN_MAIN") != "true":
+        # Daphne(ASGI)에서도 실행되어야 하므로 RUN_MAIN 가드 제거
+        if self.__class__._pool_started:
             return
+        self.__class__._pool_started = True
+
         loop = asyncio.get_event_loop()
         loop.create_task(init_browser_pool())
