@@ -1,33 +1,27 @@
 (function () {
-  const WS_PATH = "/ws/run_job/"; // Channels routing과 일치해야 함 (끝 슬래시 포함)
-  const TABLE_FALLBACK = {
-    enabled: true,         // 버튼 data-*가 없을 때만 사용
-    certDateCellIndex: 0,  // 인증일자가 들어있는 셀의 인덱스 (0부터)
-    testNoCellIndex: 1     // 시험번호가 들어있는 셀의 인덱스 (0부터)
+  const WS_PATH = "/ws/run_job/"; // Channels routing과 일치 (끝 슬래시 포함)
+
+  // 헤더 자동 인식 실패 시 사용할 fallback 인덱스 (0부터)
+  const FALLBACK_INDEX = {
+    certDate: 0, // 인증일자
+    testNo: 2    // 시험번호 (템플릿에서 3번째 열)
   };
 
-  // 중복 새 탭 오픈 방지 (서버가 같은 url을 두 번 보낼 때)
+  // 중복 새 탭 오픈 방지
   const openedOnce = new Set();
 
-  // 간단한 로딩 토스트 (원하면 교체/제거 가능)
-  let loadingCount = 0;
-  function showLoading(msg) {
-    loadingCount++;
-    if (msg) console.log("[WS] " + msg);
-  }
-  function hideLoading() {
-    loadingCount = Math.max(0, loadingCount - 1);
-  }
-
-  // ---- WebSocket 연결/재연결 ---------------------------------------------
+  // ------------------------------------------------------------------
+  // WebSocket 연결
+  // ------------------------------------------------------------------
   let socket = null;
   let socketReady = false;
-  let pendingSends = []; // 연결 전 큐잉
+  let pendingSends = [];
 
   function wsUrl() {
     const scheme = location.protocol === "https:" ? "wss" : "ws";
-    return `${scheme}://${location.host}${WS_PATH}`;
-    // 프록시/서브패스가 있으면 필요한 만큼 앞에 prefix를 추가하세요.
+    const u = `${scheme}://${location.host}${WS_PATH}`;
+    console.log("[WS] 연결 시도:", u);
+    return u;
   }
 
   function connectWS() {
@@ -37,19 +31,18 @@
     socket = new WebSocket(wsUrl());
 
     socket.addEventListener("open", () => {
+      console.log("[WS] open");
       socketReady = true;
-      // 보류 중인 전송들을 flush
       if (pendingSends.length) {
-        for (const payload of pendingSends) {
-          try { socket.send(payload); } catch (e) { console.error("WS send failed:", e); }
+        for (const payload of pendingSends.splice(0)) {
+          try { socket.send(payload); } catch (e) { console.error("[WS] send 실패:", e); }
         }
-        pendingSends = [];
       }
     });
 
     socket.addEventListener("close", () => {
+      console.warn("[WS] close");
       socketReady = false;
-      // 재연결 (간단 backoff)
       setTimeout(connectWS, 1000);
     });
 
@@ -62,9 +55,11 @@
 
   function sendWS(obj) {
     const payload = JSON.stringify(obj);
+    console.log("[WS] send:", payload);
     if (socketReady && socket && socket.readyState === WebSocket.OPEN) {
-      try { socket.send(payload); } catch (e) { console.error("WS send failed:", e); }
+      try { socket.send(payload); } catch (e) { console.error("[WS] send 실패:", e); }
     } else {
+      console.warn("[WS] 아직 미연결, 큐잉");
       pendingSends.push(payload);
       connectWS();
     }
@@ -72,9 +67,11 @@
 
   function onWSMessage(e) {
     const raw = typeof e.data === "string" ? e.data : "";
+    console.log("[WS] recv:", raw.slice(0, 200));
+
     // HTML(오류 페이지) 방어
     if (raw.startsWith("<!DOCTYPE") || raw.startsWith("<html")) {
-      console.error("[WS] HTML 수신 (아마 404/500). preview:", raw.slice(0, 160));
+      console.error("[WS] HTML 수신 (404/500 가능). preview:", raw.slice(0, 160));
       alert("서버에서 JSON 대신 HTML을 보냈습니다. (오류 가능) 관리자 로그를 확인해주세요.");
       return;
     }
@@ -88,15 +85,12 @@
       return;
     }
 
-    // 상태 처리
     switch (msg.status) {
       case "wait":
       case "processing":
-        showLoading(msg.message || "처리 중...");
+        console.log("[WS]", msg.status, msg.message || "");
         break;
-
       case "success":
-        hideLoading();
         if (msg.url) {
           const key = `url:${msg.url}`;
           if (!openedOnce.has(key)) {
@@ -105,7 +99,7 @@
               window.open(msg.url, "_blank");
             } catch (err) {
               console.error("새 탭 열기 실패:", err);
-              // fallback a 태그
+              // fallback: a 태그 클릭
               const a = document.createElement("a");
               a.href = msg.url;
               a.target = "_blank";
@@ -115,73 +109,80 @@
             }
           }
         } else {
-          console.warn("[WS] success인데 url이 없습니다:", msg);
+          console.warn("[WS] success인데 url 없음:", msg);
         }
         break;
-
       case "error":
-        hideLoading();
         alert("작업 실패: " + (msg.message || "알 수 없는 오류"));
         break;
-
       default:
-        console.warn("[WS] 알 수 없는 status:", msg.status, msg);
+        console.warn("[WS] unknown status:", msg);
     }
   }
 
-  // 첫 진입 시 연결 시도
   connectWS();
 
-  // ---- 버튼 클릭 -> 데이터 추출 -> WS 전송 -------------------------------
+  // ------------------------------------------------------------------
+  // 테이블에서 인증일자/시험번호 추출
+  // ------------------------------------------------------------------
 
-  // 버튼에서 인증일자/시험번호를 추출
-  function extractParamsFromButton(btn) {
-    // 1) data-* 우선
-    let certDate = btn.dataset.certDate || btn.getAttribute("data-cert-date");
-    let testNo   = btn.dataset.testNo   || btn.getAttribute("data-test-no");
-
-    // 2) fallback: 같은 행의 셀에서 텍스트 추출
-    if ((!certDate || !testNo) && TABLE_FALLBACK.enabled) {
-      const tr = btn.closest("tr");
-      if (tr) {
-        const cells = Array.from(tr.querySelectorAll("td,th"));
-        if (!certDate && cells[TABLE_FALLBACK.certDateCellIndex]) {
-          certDate = cells[TABLE_FALLBACK.certDateCellIndex].textContent.trim();
-        }
-        if (!testNo && cells[TABLE_FALLBACK.testNoCellIndex]) {
-          testNo = cells[TABLE_FALLBACK.testNoCellIndex].textContent.trim();
-        }
-      }
+  // 헤더에서 목표 열 인덱스를 찾아주는 유틸 (못 찾으면 -1)
+  function findColumnIndexByHeader(tableEl, headerText) {
+    const ths = tableEl.querySelectorAll("thead th");
+    for (let i = 0; i < ths.length; i++) {
+      const txt = (ths[i].textContent || "").trim();
+      if (txt === headerText) return i;
     }
-
-    // 3) 마지막 정리
-    // 서버는 '인증일자'에 yyyy.mm.dd 또는 yyyy-mm-dd를 기대 (tasks에서 둘 다 허용하도록 패치함)
-    if (certDate) certDate = certDate.replace(/[\/]/g, "-").trim();
-    if (testNo)   testNo   = testNo.trim();
-
-    return { certDate, testNo };
+    return -1;
   }
 
-  // 모든 download-btn에 클릭 핸들러 바인딩 (동적 추가 대응: 이벤트 위임 사용)
+  function extractParamsFromButton(btn) {
+    // 같은 행
+    const tr = btn.closest("tr");
+    if (!tr) return { certDate: "", testNo: "" };
+
+    // 표 요소
+    const table = tr.closest("table");
+    if (!table) return { certDate: "", testNo: "" };
+
+    // 헤더 기준으로 인덱스 탐색
+    let certIdx = findColumnIndexByHeader(table, "인증일자");
+    let testIdx = findColumnIndexByHeader(table, "시험번호");
+
+    // 못 찾으면 fallback
+    if (certIdx < 0) certIdx = FALLBACK_INDEX.certDate;
+    if (testIdx < 0) testIdx = FALLBACK_INDEX.testNo;
+
+    const cells = Array.from(tr.querySelectorAll("td,th"));
+    const certDate = cells[certIdx] ? (cells[certIdx].textContent || "").trim() : "";
+    const testNo   = cells[testIdx] ? (cells[testIdx].textContent || "").trim() : "";
+
+    // 서버는 '인증일자'에 yyyy.mm.dd 또는 yyyy-mm-dd 허용(tasks.py 패치 가정)
+    const normCert = certDate.replace(/[\/]/g, "-").trim();
+    const normTest = testNo.trim();
+
+    return { certDate: normCert, testNo: normTest };
+  }
+
+  // ------------------------------------------------------------------
+  // 클릭 이벤트 (이벤트 위임)
+  // ------------------------------------------------------------------
   document.addEventListener("click", function (evt) {
     const btn = evt.target.closest && evt.target.closest(".download-btn");
     if (!btn) return;
 
     evt.preventDefault();
+    console.log("click .download-btn");
 
     const { certDate, testNo } = extractParamsFromButton(btn);
+    console.log("extracted:", { certDate, testNo });
 
     if (!certDate || !testNo) {
-      alert("인증일자 또는 시험번호를 찾지 못했습니다.\n버튼에 data-cert-date/data-test-no를 넣거나, TABLE_FALLBACK 인덱스를 맞춰주세요.");
+      alert("인증일자/시험번호를 찾지 못했습니다.\n테이블 헤더/열 구성을 확인해주세요.");
       return;
     }
 
     // 서버가 기대하는 키 이름에 맞춰 전송(한국어 키)
-    const payload = {
-      "인증일자": certDate,
-      "시험번호": testNo
-    };
-
-    sendWS(payload);
+    sendWS({ "인증일자": certDate, "시험번호": testNo });
   });
 })();
