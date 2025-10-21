@@ -139,21 +139,12 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         logger.warning("[TASK] Step2-3: 인증일자 클릭 → %s", date_str)
         await tree.get_by_text(date_str).click(timeout=TO["click"])
         logger.warning("[TASK] Step2-4: 시험번호 클릭 → %s", test_no)
-        await tree.get_by_text(test_no).click(timeout=TO["click"])
-
-        # ★★★★★★★★★★★★★★★★★★★★★ 수정된 부분 ★★★★★★★★★★★★★★★★★★★
-        # ★ Step 2.5: 문서 '테이블의 행'이 로딩될 때까지 기다립니다. (더 정확한 대상)
-        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-        table_row_selector = "tr.prop-view-file-list-item" # Step 4에서 사용하던 선택자를 미리 사용
-        logger.warning("[TASK] Step2.5: 문서 테이블 로딩 대기...")
-        await page.wait_for_selector(table_row_selector, timeout=TO["doc_list_appear"])
-        
+        await tree.get_by_text(test_no).click(timeout=TO["click"])        
 
         # Step 3: 문서 목록에서 대상 문서 클릭
         doc_list_selector = 'span[event="document-list-viewDocument-click"]'
         doc_list = page.locator(doc_list_selector)
         logger.warning("[TASK] Step3: 문서 목록 필터링 (시험성적서 우선)")
-        # ... 이하 모든 코드는 기존과 동일합니다 ...
         target_doc = doc_list.filter(has_text=test_no_pattern).filter(has_text="시험성적서")
         clicked = False
         cnt = await target_doc.count()
