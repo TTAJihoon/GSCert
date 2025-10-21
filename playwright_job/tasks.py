@@ -3,6 +3,7 @@ import re
 import logging
 from re import Pattern
 from typing import Dict
+from datetime import datetime  # ★ 스크린샷 시간 기록을 위해 추가
 from playwright.async_api import Browser, Page, Locator, expect
 
 logger = logging.getLogger(__name__)
@@ -36,14 +37,13 @@ async def _prime_copy_sniffer(page: Page):
     """
     페이지 내에서 클립보드 복사 이벤트를 가로채기 위한 JavaScript를 주입합니다.
     """
+    # ... (이 함수 내용은 변경 없음) ...
     inject_js = r"""
     (() => {
         if (window.__copy_sniffer_installed) return;
         window.__copy_sniffer_installed = true;
         window.__last_copied = '';
         window.__copy_seq = 0;
-
-        // navigator.clipboard.writeText 래핑
         if (navigator.clipboard && navigator.clipboard.writeText) {
             const _origWrite = navigator.clipboard.writeText.bind(navigator.clipboard);
             navigator.clipboard.writeText = async (t) => {
@@ -51,22 +51,14 @@ async def _prime_copy_sniffer(page: Page):
                 return _origWrite(t);
             };
         }
-
-        // 'copy' 이벤트 리스너
         document.addEventListener('copy', (e) => {
             try {
                 let txt = '';
-                if (e && e.clipboardData) {
-                    txt = e.clipboardData.getData('text/plain') || '';
-                }
-                if (!txt && window.getSelection) {
-                    txt = String(window.getSelection() || '');
-                }
+                if (e && e.clipboardData) { txt = e.clipboardData.getData('text/plain') || ''; }
+                if (!txt && window.getSelection) { txt = String(window.getSelection() || ''); }
                 if (txt) { window.__last_copied = String(txt); window.__copy_seq++; }
             } catch (err) {}
         }, true);
-
-        // document.execCommand 래핑
         const _origExec = document.execCommand ? document.execCommand.bind(document) : null;
         if (_origExec) {
             document.execCommand = function(command, ui, value) {
@@ -89,6 +81,7 @@ async def _get_sniffed_text(page: Page, last_seq_before: int, timeout_ms: int = 
     """
     JavaScript에 주입된 변수를 폴링하여 복사된 텍스트를 가져옵니다.
     """
+    # ... (이 함수 내용은 변경 없음) ...
     interval = 100
     elapsed = 0
     while elapsed < timeout_ms:
@@ -112,57 +105,52 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
 
     logger.warning("[TASK] 시작: cert_date=%s(%s), test_no=%s", cert_date, date_str, test_no)
 
-    # 각 작업을 완벽히 격리하기 위해 새 컨텍스트와 페이지를 생성합니다.
     context = await browser.new_context()
     page = await context.new_page()
 
-    # 작업 단계별 타임아웃 설정
     TO = {
         "goto": 60_000,
         "tree_appear": 30_000,
         "click": 30_000,
+        "doc_list_appear": 15_000, # ★ 문서 목록 로딩을 기다릴 타임아웃 추가
         "row_expect": 10_000,
         "copy_wait": 5_000,
     }
 
     try:
-        # Step 0: ECM 홈으로 이동
+        # Step 0 ~ 1: 페이지 이동 및 트리 메뉴 로딩 (변경 없음)
         logger.warning("[TASK] Step0: goto %s", ECM_BASE_URL)
         resp = await page.goto(ECM_BASE_URL, timeout=TO["goto"], wait_until="domcontentloaded")
-        try:
-            status = resp.status if resp else None
-            logger.warning("[TASK] Step0: 응답 상태 = %s", status)
-        except Exception:
-            pass
-
-        # 간단한 로그인 페이지 감지
+        logger.warning("[TASK] Step0: 응답 상태 = %s", resp.status if resp else None)
         html = await page.content()
         if "로그인" in html or "password" in html.lower():
             raise RuntimeError("ECM 로그인 페이지로 이동했습니다. 세션/인증이 필요합니다.")
-
-        # Step 1: 왼쪽 트리 메뉴 로딩 대기
         tree_selector = "div.edm-left-panel-menu-sub-item"
         logger.warning("[TASK] Step1: 트리 로딩 대기 (%s)", tree_selector)
         await page.wait_for_selector(tree_selector, timeout=TO["tree_appear"])
 
-        # Step 2: 트리 메뉴 탐색
+        # Step 2: 트리 메뉴 탐색 (변경 없음)
         tree = page.locator(tree_selector)
-
         logger.warning("[TASK] Step2-1: 연도 클릭 → %s", year)
         await tree.get_by_text(year).click(timeout=TO["click"])
-
         logger.warning("[TASK] Step2-2: 'GS인증심의위원회' 클릭")
         await tree.get_by_text("GS인증심의위원회").click(timeout=TO["click"])
-
         logger.warning("[TASK] Step2-3: 인증일자 클릭 → %s", date_str)
         await tree.get_by_text(date_str).click(timeout=TO["click"])
-
         logger.warning("[TASK] Step2-4: 시험번호 클릭 → %s", test_no)
         await tree.get_by_text(test_no).click(timeout=TO["click"])
 
-        # Step 3: 문서 목록에서 대상 문서 클릭
+        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        # ★ Step 2.5: 문서 목록이 로딩될 때까지 명시적으로 기다립니다. ★
+        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
         doc_list_selector = 'span[event="document-list-viewDocument-click"]'
+        logger.warning("[TASK] Step2.5: 문서 목록 로딩 대기...")
+        await page.wait_for_selector(doc_list_selector, timeout=TO["doc_list_appear"])
+        
+
+        # Step 3: 문서 목록에서 대상 문서 클릭 (이제 안정적으로 동작)
         doc_list = page.locator(doc_list_selector)
+        # ... (이하 로직은 기존과 동일) ...
         logger.warning("[TASK] Step3: 문서 목록 필터링 (시험성적서 우선)")
         target_doc = doc_list.filter(has_text=test_no_pattern).filter(has_text="시험성적서")
 
@@ -186,32 +174,23 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         if not clicked:
             raise RuntimeError(f"문서 목록에서 '{test_no}'에 해당하는 정확한 대상을 찾지 못했습니다.")
 
-        # Step 4: 파일 목록에서 대상 파일의 체크박스 선택
+        # Step 4 ~ 7: 파일 선택, 복사, URL 추출 (변경 없음)
         table_rows = page.locator("tr.prop-view-file-list-item")
         target_row = table_rows.filter(has_text=test_no_pattern).filter(has_text="시험성적서")
-
         logger.warning("[TASK] Step4: 파일 행 존재 확인 (시험성적서, 10s)")
         await expect(target_row).to_have_count(1, timeout=TO["row_expect"])
-
         checkbox = target_row.locator('input[type="checkbox"]')
         logger.warning("[TASK] Step4: 체크박스 체크")
         await checkbox.check(timeout=TO["click"])
-
-        # Step 5: URL 복사 버튼 클릭
         await _prime_copy_sniffer(page)
         last_seq_before = await page.evaluate("() => window.__copy_seq|0")
-
         copy_btn_selector = "div#prop-view-document-btn-url-copy"
         logger.warning("[TASK] Step5: URL 복사 버튼 클릭 (%s)", copy_btn_selector)
         await page.locator(copy_btn_selector).click(timeout=TO["click"])
-
-        # Step 6: 복사된 텍스트 결과 폴링
         logger.warning("[TASK] Step6: 복사 결과 대기 (최대 %dms)", TO["copy_wait"])
         copied_text = await _get_sniffed_text(page, last_seq_before, timeout_ms=TO["copy_wait"])
         if not copied_text:
             raise RuntimeError("복사 이벤트를 확인하지 못했습니다. (타임아웃)")
-
-        # Step 7: 복사된 텍스트에서 URL 추출
         first_line = copied_text.splitlines()[0]
         m = re.search(r'(https?://\S+)', first_line)
         if not m:
@@ -222,10 +201,12 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         return {"url": url}
 
     except Exception as e:
-        # 예외 발생 시 디버깅을 위해 스크린샷 저장
+        # ★ 수정: 파일명에 현재 시간을 포함하여 스크린샷 저장
         try:
-            await page.screenshot(path="playwright_error_screenshot.png")
-            logger.warning("[TASK] 예외 발생, 스크린샷 저장(playwright_error_screenshot.png)")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            screenshot_path = f"playwright_error_{timestamp}.png"
+            await page.screenshot(path=screenshot_path)
+            logger.warning(f"[TASK] 예외 발생, 스크린샷 저장({screenshot_path})")
         except Exception:
             pass
         raise e
