@@ -95,6 +95,8 @@ async def _get_sniffed_text(page: Page, last_seq_before: int, timeout_ms: int = 
 
 # ---------- 메인 Playwright 작업 함수 ----------
 
+# playwright_job/tasks.py 파일의 이 함수만 교체해주세요.
+
 async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) -> Dict[str, str]:
     """
     독립된 브라우저 컨텍스트를 생성하여 ECM 사이트 자동화 작업을 수행하고,
@@ -112,13 +114,14 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         "goto": 60_000,
         "tree_appear": 30_000,
         "click": 30_000,
-        "doc_list_appear": 15_000, # ★ 문서 목록 로딩을 기다릴 타임아웃 추가
+        "doc_list_appear": 15_000,
+        "file_list_appear": 15_000, # ★ 파일 목록 대기용 타임아웃
         "row_expect": 10_000,
         "copy_wait": 5_000,
     }
 
     try:
-        # Step 0 ~ 1: 페이지 이동 및 트리 메뉴 로딩 (변경 없음)
+        # Step 0 ~ 2: 페이지 이동 및 트리 메뉴 탐색
         logger.warning("[TASK] Step0: goto %s", ECM_BASE_URL)
         resp = await page.goto(ECM_BASE_URL, timeout=TO["goto"], wait_until="domcontentloaded")
         logger.warning("[TASK] Step0: 응답 상태 = %s", resp.status if resp else None)
@@ -128,8 +131,6 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         tree_selector = "div.edm-left-panel-menu-sub-item"
         logger.warning("[TASK] Step1: 트리 로딩 대기 (%s)", tree_selector)
         await page.wait_for_selector(tree_selector, timeout=TO["tree_appear"])
-
-        # Step 2: 트리 메뉴 탐색 (변경 없음)
         tree = page.locator(tree_selector)
         logger.warning("[TASK] Step2-1: 연도 클릭 → %s", year)
         await tree.get_by_text(year).click(timeout=TO["click"])
@@ -140,31 +141,23 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         logger.warning("[TASK] Step2-4: 시험번호 클릭 → %s", test_no)
         await tree.get_by_text(test_no).click(timeout=TO["click"])
 
-        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
-        # ★ Step 2.5: 문서 목록이 로딩될 때까지 명시적으로 기다립니다. ★
-        # ★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★★
+        # ★★★★★★★★★★★★★★★★★★★★★ 1. 순서 바로잡기 ★★★★★★★★★★★★★★★★★★★
+        # Step 2.5: '문서 목록'이 로딩될 때까지 기다립니다.
         doc_list_selector = 'span[event="document-list-viewDocument-click"]'
         logger.warning("[TASK] Step2.5: 문서 목록 로딩 대기...")
         await page.wait_for_selector(doc_list_selector, timeout=TO["doc_list_appear"])
         
-
-        # Step 3: 문서 목록에서 대상 문서 클릭 (이제 안정적으로 동작)
+        # Step 3: '문서 목록'에서 대상 문서를 클릭합니다.
         doc_list = page.locator(doc_list_selector)
-        # ... (이하 로직은 기존과 동일) ...
-        logger.warning("[TASK] Step3: 문서 목록 필터링 (시험성적서 우선)")
+        logger.warning("[TASK] Step3: 문서 목록 필터링 및 클릭")
         target_doc = doc_list.filter(has_text=test_no_pattern).filter(has_text="시험성적서")
 
         clicked = False
-        cnt = await target_doc.count()
-        if cnt == 1:
+        if await target_doc.count() == 1:
             await target_doc.click(timeout=TO["click"])
             clicked = True
             logger.warning("[TASK] Step3: '시험성적서' 문서 클릭 완료")
         else:
-            logger.warning("[TASK] Step3: '시험성적서'가 정확히 1개가 아님(count=%s) → fallback 시도", cnt)
-
-        if not clicked:
-            logger.warning("[TASK] Step3-fallback: '품질평가보고서' 제외, 시험번호 포함 대상 클릭")
             fallback_doc = doc_list.filter(has_text=test_no_pattern).filter(has_not_text="품질평가보고서")
             if await fallback_doc.count() == 1:
                 await fallback_doc.click(timeout=TO["click"])
@@ -174,14 +167,25 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         if not clicked:
             raise RuntimeError(f"문서 목록에서 '{test_no}'에 해당하는 정확한 대상을 찾지 못했습니다.")
 
-        # Step 4 ~ 7: 파일 선택, 복사, URL 추출 (변경 없음)
-        table_rows = page.locator("tr.prop-view-file-list-item")
+        # ★★★★★★★★★★★★★★★★★★★★★ 2. 새로운 대기 추가 ★★★★★★★★★★★★★★★★★★★
+        # Step 3.5: 문서를 클릭했으니, 이제 '첨부 파일 목록'이 나타날 때까지 기다립니다.
+        table_row_selector = "tr.prop-view-file-list-item"
+        logger.warning("[TASK] Step3.5: 첨부 파일 목록 로딩 대기...")
+        await page.wait_for_selector(table_row_selector, timeout=TO["file_list_appear"])
+
+
+        # Step 4: '첨부 파일 목록'에서 대상 파일의 체크박스를 선택합니다.
+        table_rows = page.locator(table_row_selector)
         target_row = table_rows.filter(has_text=test_no_pattern).filter(has_text="시험성적서")
-        logger.warning("[TASK] Step4: 파일 행 존재 확인 (시험성적서, 10s)")
+
+        logger.warning("[TASK] Step4: 파일 행 존재 확인")
         await expect(target_row).to_have_count(1, timeout=TO["row_expect"])
+
         checkbox = target_row.locator('input[type="checkbox"]')
         logger.warning("[TASK] Step4: 체크박스 체크")
         await checkbox.check(timeout=TO["click"])
+
+        # ... 이하 Step 5, 6, 7 및 나머지 코드는 모두 기존과 동일합니다 ...
         await _prime_copy_sniffer(page)
         last_seq_before = await page.evaluate("() => window.__copy_seq|0")
         copy_btn_selector = "div#prop-view-document-btn-url-copy"
@@ -201,18 +205,13 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         return {"url": url}
 
     except Exception as e:
-        # ★ 수정: 파일명에 현재 시간을 포함하여 스크린샷 저장
-        try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            screenshot_path = f"playwright_error_{timestamp}.png"
-            await page.screenshot(path=screenshot_path)
-            logger.warning(f"[TASK] 예외 발생, 스크린샷 저장({screenshot_path})")
-        except Exception:
-            pass
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        screenshot_path = f"playwright_error_{timestamp}.png"
+        await page.screenshot(path=screenshot_path)
+        logger.warning(f"[TASK] 예외 발생, 스크린샷 저장({screenshot_path})")
         raise e
 
     finally:
-        # 작업이 성공하든 실패하든 항상 컨텍스트를 닫아 리소스를 정리합니다.
         try:
             await context.close()
         except Exception as e:
