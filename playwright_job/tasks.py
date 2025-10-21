@@ -102,7 +102,6 @@ async def _get_sniffed_text(page: Page, last_seq_before: int, timeout_ms: int = 
 
 
 # ---------- 메인 작업 ----------
-
 async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) -> Dict[str, str]:
     """
     ECM 홈으로 이동 → 트리/문서 탐색 → 체크박스 → URL 복사 → {"url": "..."} 반환.
@@ -125,7 +124,7 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
     }
 
     try:
-        # 0) ECM 홈으로 이동 (★ 추가됨)
+        # 0) ECM 홈으로 이동
         logger.warning("[TASK] Step0: goto %s", ECM_BASE_URL)
         resp = await page.goto(ECM_BASE_URL, timeout=TO["goto"], wait_until="domcontentloaded")
         try:
@@ -134,7 +133,7 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         except Exception:
             pass
 
-        # 간단한 로그인 감지(필요시 구체화)
+        # 간단한 로그인 감지
         html = await page.content()
         if "로그인" in html or "password" in html.lower():
             raise RuntimeError("ECM 로그인 페이지로 이동했습니다. 세션/인증이 필요합니다.")
@@ -148,16 +147,16 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         tree = page.locator(tree_selector)
 
         logger.warning("[TASK] Step2-1: 연도 클릭 → %s", year)
-        await tree.get_by_text(year, exact=True).click(timeout=TO["click"])
+        await tree.get_by_text(year).click(timeout=TO["click"])  # ★ 수정: exact=True 제거
 
         logger.warning("[TASK] Step2-2: 'GS인증심의위원회' 클릭")
-        await tree.get_by_text("GS인증심의위원회", exact=True).click(timeout=TO["click"])
+        await tree.get_by_text("GS인증심의위원회").click(timeout=TO["click"])  # ★ 수정: exact=True 제거
 
         logger.warning("[TASK] Step2-3: 인증일자 클릭 → %s", date_str)
-        await tree.get_by_text(date_str, exact=True).click(timeout=TO["click"])
+        await tree.get_by_text(date_str).click(timeout=TO["click"])  # ★ 수정: exact=True 제거
 
         logger.warning("[TASK] Step2-4: 시험번호 클릭 → %s", test_no)
-        await tree.get_by_text(test_no, exact=True).click(timeout=TO["click"])
+        await tree.get_by_text(test_no).click(timeout=TO["click"])  # ★ 수정: exact=True 제거
 
         # 3) 문서 목록에서 대상 문서 선택
         doc_list_selector = 'span[event="document-list-viewDocument-click"]'
@@ -212,10 +211,10 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
 
         # 7) 복사 텍스트에서 URL 추출
         first_line = copied_text.splitlines()[0]
-        m = re.search(r'https?://\S+', first_line)
+        m = re.search(r'(https?://\S+)', first_line) # ★ 수정: 정규식에 괄호 추가
         if not m:
             raise ValueError("복사된 텍스트의 첫 줄에서 URL을 찾을 수 없습니다.")
-        url = m.group(1)
+        url = m.group(1) # ★ 수정: group(0) -> group(1) 올바른 그룹 참조
         logger.warning("[TASK] 완료 URL: %s", url)
 
         return {"url": url}
