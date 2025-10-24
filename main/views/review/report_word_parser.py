@@ -1,4 +1,3 @@
-# main_script.py
 import json
 import re
 import pdfplumber
@@ -9,10 +8,11 @@ from docx.oxml.text.paragraph import CT_P
 from docx.oxml.table import CT_Tbl
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from xml.etree import ElementTree as ET # 수식 XML 처리 위해 추가
 
 # --- 다른 파일에서 함수 임포트 ---
 from report_table_parser import parse_table
-from report_math_parser import parse_omml_to_latex_like
+from report_math_parser import parse_omml_to_latex_like, ns # ns도 가져옴
 # ---------------------------------
 
 # --- 파일 경로 설정 ---
@@ -21,11 +21,11 @@ PDF_PATH = "C://GSCert//myproject//GS-B-25-0094 시험성적서 v1.0.pdf"
 # ---------------------
 
 def normalize_text(text: str):
-    """텍스트의 모든 종류 공백(유니코드 포함)을 단일 스페이스로 정규화합니다."""
+    """[최종 수정] 텍스트의 모든 종류 공백(유니코드 포함)을 단일 스페이스로 정규화합니다."""
     if not text: return ""
     return re.sub(r'\s+', ' ', text).strip()
 
-# --- 1. 라벨 식별 함수 (동일) ---
+# --- 1. 라벨 식별 함수 (사용자 코드 기반) ---
 RE_VER_STRING = re.compile(r'^\s*v\d+\.\d+')
 RE_NUM_LABEL = re.compile(r'^\s*(\d+(\.\d+)*)[\.\s]\s*(.*)')
 RE_TAG_LABEL = re.compile(r'^\s*<\s*([^>]+?)\s*>\s*(.*)')
@@ -60,7 +60,16 @@ def get_label_info(text: str):
          if original_suffix == '.': final_label = label_prefix
     if not full_label_text.strip() and label_prefix:
         if label_prefix.endswith('.'): final_label = label_prefix
-    if re.match(r'^\d+\.$', final_label): return None
+    # [수정] 단순 숫자. 라벨 제외 로직 보강
+    if re.match(r'^\d+\.$', final_label) and final_label == clean_text:
+        # print(f"  [라벨 제외] 단순 숫자. 형식: {final_label}")
+        return None
+    # "1." 과 "1. " 구분 -> "1."만 제외
+    if final_label == label_prefix and final_label.endswith('.') and not full_label_text:
+         if '.' not in label_prefix[:-1]: # "1." ok, "1.1." not ok
+             return None
+
+
     return final_label, final_rest, depth
 
 # --- 2. PDF 분석 함수 (7% 경계 수정) ---
@@ -78,6 +87,7 @@ def analyze_pdf(pdf_path: str):
             footer_boundary = height * 0.93 # 7% 수정
             header_lines = []; footer_lines = []
 
+            # extract_words 사용 (이전과 동일)
             words = page.extract_words(keep_blank_chars=True, y_tolerance=3, x_tolerance=1)
             content_words = [w for w in words if header_boundary <= w['top'] and w['bottom'] <= footer_boundary]
             anchor_text = None
@@ -87,6 +97,7 @@ def analyze_pdf(pdf_path: str):
                 anchor_raw_text = "".join(w['text'] for w in first_line_words)
                 anchor_text = normalize_text(anchor_raw_text)
 
+            # 헤더/푸터 라인 추출 (이전과 동일)
             all_lines = page.extract_text_lines(return_chars=False)
             if all_lines:
                  for line in all_lines:
@@ -127,9 +138,9 @@ def parse_docx_flat(docx_path: str, pdf_page_data: dict):
 
         if isinstance(element, CT_P):
             para = Paragraph(element, doc)
-            current_element_anchor_text = normalize_text(para.text)
+            current_element_anchor_text = normalize_text(para.text) # 정규화된 텍스트
 
-            if current_element_anchor_text and current_element_anchor_text in anchors:
+            if current_element_anchor_text and current_element_anchor_text in anchors: # 빈 텍스트 비교 방지
                 new_page_num = anchors[current_element_anchor_text]
                 if new_page_num != current_page_num:
                     print(f"  [페이지 전환] P: '{current_element_anchor_text}' -> Page {new_page_num}")
@@ -137,16 +148,36 @@ def parse_docx_flat(docx_path: str, pdf_page_data: dict):
                 is_anchor_found = True
 
             # --- 수식 처리 ---
-            # 단락 XML 내부에 <m:oMathPara> 또는 <m:oMath> 태그가 있는지 확인
-            omml_tags = element.xpath('.//m:oMathPara | .//m:oMath', namespaces={'m': ns['m']})
+            omml_tags = element.xpath('.//m:oMathPara | .//m:oMath', namespaces=ns)
             if omml_tags:
-                 print(f"  [수식 발견] Page {current_page_num}, 내용: {para.text[:30]}...")
-                 # 첫 번째 수식 태그의 XML 문자열 추출
-                 omml_xml_string = ET.tostring(omml_tags[0], encoding='unicode')
-                 # math_parser 호출
-                 math_text = parse_omml_to_latex_like(omml_xml_string)
-                 block = {"type": "sen", "sen": math_text}
-                 # TODO: 수식 앞뒤 텍스트 처리 필요 시 추가 로직
+                 # 수식 앞뒤 텍스트와 수식 자체를 결합 (더 정확한 처리)
+                 full_text = ""
+                 math_results = []
+                 current_text = ""
+                 # 단락 내 run들을 순회하며 텍스트와 수식 분리/처리
+                 for run_element in element.xpath('.//w:r | .//m:oMathPara | .//m:oMath', namespaces={'w': qn('w').uri, 'm': ns['m']}):
+                      if run_element.tag.endswith('oMathPara') or run_element.tag.endswith('oMath'):
+                           # 현재까지 모인 텍스트 추가
+                           if current_text: math_results.append(current_text)
+                           current_text = ""
+                           # 수식 파싱
+                           omml_xml_string = ET.tostring(run_element, encoding='unicode')
+                           math_text = parse_omml_to_latex_like(omml_xml_string)
+                           math_results.append(math_text)
+                      elif run_element.tag.endswith('r'): # 일반 텍스트 run
+                           # run 내부 텍스트 추출 (Paragraph 객체 재사용 어려움)
+                           text_tags = run_element.xpath('.//w:t', namespaces={'w': qn('w').uri})
+                           for t in text_tags:
+                                if t.text: current_text += t.text
+                 # 마지막 텍스트 추가
+                 if current_text: math_results.append(current_text)
+
+                 full_text = " ".join(math_results).strip() # 공백으로 연결
+
+                 # 수식이 포함된 경우 라벨 검사는 건너뛰고 sen으로 처리 (단순화)
+                 if full_text: # 수식 파싱 결과가 있는 경우만
+                     block = {"type": "sen", "sen": full_text}
+
             elif para.text.strip(): # 수식이 아니고 빈 단락도 아니면 기존 로직
                 label_info = get_label_info(para.text.strip())
                 if label_info:
@@ -172,7 +203,7 @@ def parse_docx_flat(docx_path: str, pdf_page_data: dict):
 
             if table.rows:
                # --- table_parser 호출 ---
-               block = parse_table(table)
+               block = parse_table(table) # 최종 병합 로직 호출
                block["type"] = "table"
 
         if block: page_flat_content[current_page_num].append(block)
@@ -185,7 +216,7 @@ def parse_docx_flat(docx_path: str, pdf_page_data: dict):
             try:
                 tbl_element = element; tr = tbl_element.tr_lst[2]; tc = tr.tc_lst[1]
                 page_1_stack = []
-                for p in tc.xpath('.//w:p', namespaces=qn.nsmap): # Use qn.nsmap
+                for p in tc.xpath('.//w:p', namespaces=qn.nsmap):
                     para = Paragraph(p, table); para_text = para.text.strip()
                     if not para_text: continue
                     label_info = get_label_info(para_text)
@@ -198,6 +229,7 @@ def parse_docx_flat(docx_path: str, pdf_page_data: dict):
                     elif para_text.startswith("·") and page_1_stack:
                         last_label_block_ref, _ = page_1_stack[-1]
                         if "content" not in last_label_block_ref: last_label_block_ref["content"] = []
+                        # 직접 리스트에 추가 (build_nested_content는 페이지 단위)
                         last_label_block_ref["content"].append({"sen": para_text})
             except (IndexError, AttributeError) as e:
                 print(f"  [경고] 1페이지 테이블 구조 분석 실패: {e}.")
@@ -225,7 +257,7 @@ def build_nested_content(flat_blocks: list):
                 parent_label_block["content"].append(block)
             stack.append((block, depth))
         elif block_type in ["sen", "table"]:
-             current_block = block #if block_type else {"sen": block["sen"]}
+             current_block = block
              if not stack: nested_content.append(current_block)
              else:
                  parent_label_block, _ = stack[-1]
@@ -248,7 +280,8 @@ def save_as_custom_json(data, filename: str):
         table_str = match.group(1)
         try:
             table_list = json.loads(table_str)
-            compressed_str = json.dumps(table_list, ensure_ascii=False, separators=(',', ':')) # 공백 최소화
+            # separators 추가하여 공백 최소화
+            compressed_str = json.dumps(table_list, ensure_ascii=False, separators=(',', ':'))
             return f'"table": {compressed_str}'
         except json.JSONDecodeError as e:
             print(f"  [경고] 테이블 JSON 압축 실패 (파싱 오류): {e} - {table_str[:100]}...")
