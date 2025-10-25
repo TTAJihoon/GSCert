@@ -27,7 +27,7 @@ def prdinfo(request):
 
 
 def checkreport(request):
-    return render(request, 'checkreport.html')
+    return render(request, 'review/checkreport.html')
     
 def test(request):
     return render(request, 'test.html')
