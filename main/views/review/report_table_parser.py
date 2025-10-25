@@ -1,115 +1,145 @@
-import re
-from docx.table import Table, _Cell
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
+# -*- coding: utf-8 -*-
+"""
+report_table_parser.py
+- Parse Word tables directly from word/document.xml (flat WordprocessingML).
+- Keeps OMML in cell text (inline converted by math parser).
 
-# --- 표 파싱 (vMerge, gridSpan) [최종 로직] ---
-def parse_table(docx_table: Table):
-    """
-    [최종 로직] docx 테이블 객체를 [row, col, rowspan, colspan, text] 형식으로 변환합니다.
-    사용자 가이드에 맞춘 '가상 그리드' 방식 + OxmlElement 직접 접근.
-    """
+Exports:
+  - parse_tables_from_document_xml(xml_bytes) -> List[{"index", "cells"}]
+  - parse_table_element(tbl_el) -> {"cells": [...]}
 
-    # { (r, c) : {"cell_data": [r, c, rs, cs, text], "is_start": True/False } }
-    grid = {}
-    max_rows = len(docx_table.rows)
-    max_cols = 0
-    tbl = docx_table._tbl # OxmlElement 접근
+Each cell: [row, col, rowspan, colspan, "text"]  (1-indexed)
+"""
 
-    # OxmlElement를 사용하여 XML 직접 분석으로 최대 열 개수 계산 (가장 정확)
+from typing import List, Dict, Any
+from lxml import etree
+
+# math parser import (name normalization)
+try:
+    from report_math_parser import parse_omml_to_latex_like as parse_omml_to_text
+except ImportError:
+    from report_math_parser import parse_omml_to_text  # if a wrapper exists
+
+NS = {
+    "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
+    "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
+}
+
+def _serialize(el) -> str:
+    return etree.tostring(el, encoding="unicode", with_tail=False)
+
+def _extract_para_with_math(p) -> str:
+    """Paragraph → one-line string (math-aware). Avoid parent-level ./w:t duplication."""
+    out, skip = [], set()
+    for el in p.iter():
+        if el in skip:
+            continue
+        local = el.tag.rsplit('}', 1)[-1] if isinstance(el.tag, str) else ''
+        if local in ('oMath', 'oMathPara'):
+            out.append(parse_omml_to_text(_serialize(el)))
+            for sub in el.iter():
+                skip.add(sub)  # prevent collecting w:t inside math twice
+            continue
+        if local == 't':
+            out.append(el.text or '')
+            continue
+    return ' '.join(''.join(out).split())
+
+def _cell_text(tc_el) -> str:
+    paras = tc_el.findall('.//w:p', namespaces=NS)
+    parts = [_extract_para_with_math(p) for p in paras]
+    return '\n'.join([t for t in parts if t])
+
+def _int_attr(el, qname: str, default: int = 1) -> int:
+    if el is None:
+        return default
+    val = el.get(qname)
+    if val is None:
+        return default
     try:
-        grid_cols = tbl.tblGrid.gridCol_lst if tbl.tblGrid is not None else []
-        if grid_cols:
-            max_cols = len(grid_cols)
-        else: # tblGrid가 없는 경우 fallback
-             # print("  [경고] tblGrid 정보 없음. Fallback 열 개수 계산.")
-             for tr in tbl.tr_lst:
-                  current_row_cols = 0
-                  for tc in tr.xpath('./w:tc'):
-                       grid_span_val = 1
-                       tcPr = tc.find(qn('w:tcPr'))
-                       if tcPr is not None:
-                           gridSpan = tcPr.find(qn('w:gridSpan'))
-                           if gridSpan is not None and gridSpan.val is not None:
-                               try: grid_span_val = int(gridSpan.val)
-                               except ValueError: pass
-                       current_row_cols += grid_span_val
-                  max_cols = max(max_cols, current_row_cols)
-    except Exception as e:
-         print(f"  [경고] 테이블 열 개수 계산 실패: {e}. Fallback 사용.")
-         max_cols = max(len(row.cells) for row in docx_table.rows) if max_rows > 0 else 0
+        return int(val)
+    except ValueError:
+        return default
 
+def parse_table_element(tbl_el) -> dict:
+    """
+    Input: lxml Element (w:tbl)
+    Output: {"cells": [[row, col, rowspan, colspan, "text"], ...]}
+    """
+    # estimate column count
+    grid = tbl_el.find('./w:tblGrid', namespaces=NS)
+    if grid is not None:
+        max_cols = len(grid.findall('./w:gridCol', namespaces=NS))
+    else:
+        max_cols = 0
+        for tr in tbl_el.findall('./w:tr', namespaces=NS):
+            cc = 0
+            for tc in tr.findall('./w:tc', namespaces=NS):
+                gridSpan = tc.find('./w:tcPr/w:gridSpan', namespaces=NS)
+                span = _int_attr(gridSpan, '{%s}val' % NS['w'], 1)
+                cc += span
+            if cc > max_cols:
+                max_cols = cc
 
-    final_cells_list = []
+    occupancy = {}  # (r,c) -> origin cell list
+    final_cells: List[list] = []
+    rows = tbl_el.findall('./w:tr', namespaces=NS)
 
-    for r_idx, row in enumerate(docx_table.rows):
-
-        real_c_idx = 0
-        tr = tbl.tr_lst[r_idx]
-        tc_elements = tr.xpath('./w:tc') # 직계 자식 tc만
-
-        for tc in tc_elements:
-            cell = _Cell(tc, docx_table) # _Cell 객체 사용
-
-            # (r_idx, real_c_idx)가 점유되었는지 확인
-            while (r_idx, real_c_idx) in grid and real_c_idx < max_cols:
-                real_c_idx += 1
-
-            if real_c_idx >= max_cols:
+    for r_idx, tr in enumerate(rows):
+        real_c = 0
+        for tc in tr.findall('./w:tc', namespaces=NS):
+            while (r_idx, real_c) in occupancy and real_c < max_cols:
+                real_c += 1
+            if real_c >= max_cols:
                 break
 
-            # OxmlElement 사용하여 속성 접근
-            tcPr = tc.tcPr
-            vmerge_val = None
-            colspan_val = 1
+            gridSpan = tc.find('./w:tcPr/w:gridSpan', namespaces=NS)
+            vMerge   = tc.find('./w:tcPr/w:vMerge',   namespaces=NS)
+            colspan  = _int_attr(gridSpan, '{%s}val' % NS['w'], 1)
+            vmerge_val = vMerge.get('{%s}val' % NS['w']) if vMerge is not None else None
 
-            if tcPr is not None:
-                vMerge = tcPr.vMerge
-                if vMerge is not None:
-                    vmerge_val = vMerge.val or 'continue' # val 없으면 continue
+            # vertical merge continue
+            if vmerge_val == 'continue' or (vMerge is not None and vmerge_val is None):
+                origin = None
+                for up in range(r_idx - 1, -1, -1):
+                    if (up, real_c) in occupancy:
+                        origin = occupancy[(up, real_c)]
+                        break
+                if origin is not None:
+                    origin[2] += 1  # rowspan++
+                    for c_off in range(colspan):
+                        if real_c + c_off < max_cols:
+                            occupancy[(r_idx, real_c + c_off)] = origin
+                    real_c += colspan
+                    continue
 
-                gridSpan = tcPr.gridSpan
-                if gridSpan is not None and gridSpan.val is not None:
-                    try: colspan_val = int(gridSpan.val)
-                    except ValueError: pass
+            text = _cell_text(tc)
+            cell = [r_idx + 1, real_c + 1, 1, colspan, ' '.join((text or '').split())]
+            final_cells.append(cell)
+            for c_off in range(colspan):
+                if real_c + c_off < max_cols:
+                    occupancy[(r_idx, real_c + c_off)] = cell
+            real_c += colspan
 
-            text = cell.text.strip()
-            rowspan_val = 1
+    return {"cells": final_cells}
 
-            if vmerge_val == 'continue':
-                # [가이드] 이어지는 셀
-                root_cell_info = None
-                for r_scan in range(r_idx - 1, -1, -1):
-                    if (r_scan, real_c_idx) in grid:
-                        candidate_info = grid[(r_scan, real_c_idx)]
-                        if candidate_info["is_start"]:
-                           root_cell_info = candidate_info
-                           break
-                        break # 바로 위가 시작 아니면 중단
+def parse_tables_from_document_xml(xml_bytes: bytes) -> List[Dict[str, Any]]:
+    """
+    Input: word/document.xml bytes
+    Output: [{"index": 1, "cells": [...]}, ...]
+    """
+    root = etree.fromstring(xml_bytes)
+    body = root.find('.//w:body', namespaces=NS)
+    if body is None:
+        return []
 
-                if root_cell_info:
-                    root_cell_data = root_cell_info["cell_data"]
-                    # [가이드] rowspan 계산: 루트 셀의 rowspan 값 증가
-                    root_cell_data[2] += 1
-                    # 현재 셀의 공간(colspan까지)을 루트 셀 정보로 채움
-                    for c_offset in range(colspan_val):
-                        if real_c_idx + c_offset < max_cols:
-                            grid[(r_idx, real_c_idx + c_offset)] = {"cell_data": root_cell_data, "is_start": False}
-
-                real_c_idx += colspan_val
-                continue
-
-            # 'restart' 또는 vMerge가 없는 셀
-            current_cell_data = [r_idx + 1, real_c_idx + 1, rowspan_val, colspan_val, text]
-            final_cells_list.append(current_cell_data)
-
-            # 그리드 기록
-            is_start_cell = (vmerge_val == 'restart' or vmerge_val is None)
-            for r_offset in range(rowspan_val): # 현재는 1
-                for c_offset in range(colspan_val):
-                    if r_idx + r_offset < max_rows and real_c_idx + c_offset < max_cols:
-                        grid[(r_idx + r_offset, real_c_idx + c_offset)] = {"cell_data": current_cell_data, "is_start": is_start_cell}
-
-            real_c_idx += colspan_val
-
-    return {"table": final_cells_list}
+    tables_out: List[Dict[str, Any]] = []
+    idx = 0
+    for node in body:
+        if not isinstance(node.tag, str):
+            continue
+        if node.tag.rsplit('}', 1)[-1] == 'tbl':
+            idx += 1
+            t = parse_table_element(node)
+            tables_out.append({"index": idx, "cells": t["cells"]})
+    return tables_out
