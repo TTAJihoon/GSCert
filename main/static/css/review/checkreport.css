@@ -229,18 +229,3 @@ body {
   display: flex;
   align-items: center;
 }
-
-#luckysheetContainer {
-  width: 100%;
-  min-width: 600px;
-  height: 100%;
-  min-height: 600px;
-  max-height: 850px;
-  position: relative;
-}
-
-.download {
-  width: 100px;
-  text-align: center;
-  margin-top: 0px;
-}
