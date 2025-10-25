@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path, include
 from django.views.generic import RedirectView
-from main.views.init import index, similar, security, prdinfo, genspark, test
+from main.views.init import index, similar, security, prdinfo, checkreport, test
 
 from main.views.testing.history import history
 from main.views.testing.similar_summary import summarize_document
@@ -33,6 +33,6 @@ urlpatterns = [
     path('source-excel/', source_excel_view, name='source-excel'),
     path("download-filled/", download_filled_prdinfo, name="download_filled"),
     
-    path('genspark/', genspark, name='genspark'),
+    path('checkreport/', checkreport, name='checkreport'),
     path('test/', test, name='genspark2'),
 ]
