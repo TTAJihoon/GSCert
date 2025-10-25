@@ -26,8 +26,8 @@ def prdinfo(request):
     return render(request, 'certy/prdinfo.html')
 
 
-def genspark(request):
-    return render(request, 'genspark.html')
+def checkreport(request):
+    return render(request, 'checkreport.html')
     
 def test(request):
     return render(request, 'test.html')
