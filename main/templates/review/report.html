@@ -1,0 +1,117 @@
+{% extends 'header.html' %}
+{% load static %}
+{% block title %}보안성 시험 결과{% endblock %}
+
+{% block head %}
+<link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
+<link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
+
+<link rel="stylesheet" href="{% static 'css/review/checkreport.css' %}"/>
+<link rel="stylesheet" href="{% static 'css/review/checkreport_table.css' %}"/>
+<link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
+
+<script src="{% static 'scripts/review/checkreport_submit.js' %}" defer></script>
+{% endblock %}
+
+{% block content %}
+<div class="app-container">
+  <div class="main-content">
+    <div class="sidebar-container">
+      <div class="search-title">
+        <i class="fas fa-search search-icon"></i> 시험결과서 자동 검토
+        <span class="tooltip">ⓘ
+          <span class="tooltiptext upload">시험결과서를 2가지 확장자(docx, pdf)로<br/>업로드 해주세요.</span>
+        </span>
+      </div>
+      <div class="sidebar">
+        <form id="queryForm" method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          <div class="file-upload-container">
+            <div class="content-container" id="content-auto">
+              <input class="file-input" id="fileInput" type="file" name="file" multiple accept=".html"/>
+
+              <div class="drop-area" id="dropArea">
+                <i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
+                <p>파일을 이곳에 드래그하거나</p>
+                <p><span class="text-blue-500 font-medium">클릭</span>하여 업로드하세요</p>
+                <p class="upload-limit-message">* docx, pdf 파일을 업로드 해주세요.</p>
+              </div>
+
+              <div class="file-list hidden" id="fileList"></div>
+
+              <div class="content-spacer"></div>
+              <!-- 페이지 이동 방지: type="button" -->
+              <button type="button" class="action-button" id="btn-generate">시험결과서 자동 검토토</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 우측 콘텐츠 영역 -->
+  <div class="content-card">
+    <div class="results-container">
+      <div class="results-header flex flex-wrap items-center justify-between gap-3">
+        <div class="results-title">
+          <div class="results-title">시험결과서 자동 검토 결과</div>
+          <span class="tooltip">ⓘ
+            <span class="tooltiptext result">설명</span>
+          </span>
+        </div>
+        <div class="flex items-center space-x-3">
+          <span class="text-sm text-gray-600">
+            총 <span id="totalCount" class="font-semibold text-sky-700">0</span>개 항목
+          </span>
+        </div>
+      </div>
+
+      <!-- 결과 시트 탭 내용 -->
+      <div class="tab-content" id="resultSheetContent">
+        <!-- === html1의 테이블 컨테이너 삽입 시작 === -->
+        <div class="bg-white rounded-lg shadow-sm border border-gray-200 table-container">
+          <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+              <thead class="bg-gray-50">
+                  <tr id="tableHeader">
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">번호</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">구분(점검항목)</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">심각도</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">위치(표/정/문장)</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">문제 요약</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">근거(원문 일부 인용)</th>
+                    <th class="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">권장 수정안</th>
+                  </tr>
+                </thead>
+              <tbody id="tableBody" class="bg-white divide-y divide-gray-200">
+                <!-- 데이터는 JavaScript에서 동적으로 생성 -->
+              </tbody>
+            </table>
+          </div>
+          
+          <!-- 로딩 상태 -->
+          <div id="loadingState" class="text-center py-12">
+            <div class="inline-flex items-center px-4 py-2 font-semibold leading-6 text-sm shadow rounded-md text-gray-500 bg-white">
+              <i class="fas fa-spinner fa-spin mr-2"></i>
+              시험결과서 검토 결과를 작성하는 중...
+            </div>
+          </div>
+
+          <!-- 빈 상태 -->
+          <div id="emptyState" class="text-center py-12">
+            <i class="fas fa-check-circle text-green-300 text-4xl mb-4"></i>
+            <p class="text-gray-500 text-lg mb-2 font-semibold">수정이 필요한 부분을 발견하지 못했습니다.</p>
+            <p class="text-gray-400 text-sm">혹시 놓친 부분이 있을 수 있으니 다시 한 번 확인해보세요.</p>
+          </div>
+        </div>
+        <!-- === html1의 테이블 컨테이너 삽입 끝 === -->
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
