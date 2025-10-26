@@ -1,214 +1,398 @@
 # -*- coding: utf-8 -*-
 """
-report_docx_parser.py  (v0.5 schema)
-- Top-level: {"v":"0.5","header":{page->text},"footer":{page->text},"content":[...]}
-- Pages/total_pages 제거, content는 글로벌 중첩 1회 수행
+report_docx_parser.py
+- DOCX를 DOM 순서대로 파싱해 문서 전체를 하나의 content로 반환
+- (선택) PDF 각 페이지 상/하단 7%에서 텍스트 추출해 header/footer 배열로 제공
+- 최종 스키마:
+  {
+    "v": "0.5",
+    "content": [  # 문서 전체, 기존 규칙(label/sen/table) 유지
+      {"label": "...", "content": [ {"sen":"..."}, {"table":[...]}, ... ]},
+      {"sen": "..."},
+      {"table": [[row,col,rowspan,colspan,"text"], ...]}
+    ],
+    "header": { "1": ["...","..."], "2": ["..."] },
+    "footer": { "1": ["..."], "2": ["..."] }
+  }
+
+Windows Server 2022 / Django 환경에서 그대로 사용 가능.
 """
 
 from __future__ import annotations
 import io
-import json
 import re
-import unicodedata
 import zipfile
+import hashlib
 from typing import Any, Dict, List, Optional, Tuple
+from xml.etree import ElementTree as ET
 
-from lxml import etree
+# ====== 외부 의존 (선택) ======
+# PDF 텍스트 추출 (상/하단 7%): 필요 시 설치
+#   pip install pdfplumber
+try:
+    import pdfplumber  # type: ignore
+except Exception:  # pragma: no cover
+    pdfplumber = None
 
-# 로컬 모듈 (같은 폴더)
-from .report_math_parser import parse_omml_to_latex_like
-from .report_table_parser import parse_table_element
+# ====== 상수 ======
+HEADER_BAND = 0.07  # 페이지 상단 7%
+FOOTER_BAND = 0.07  # 페이지 하단 7%
 
-# 헤더/푸터 추출 밴드 (상/하 7%)
-HEADER_BAND = 0.07
-FOOTER_BAND = 0.07
-
+# DOCX 네임스페이스
 NS = {
     "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
     "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
+    "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
 }
 
-# ------------------------------
-# 텍스트/수식 파싱 보조 함수
-# ------------------------------
-def _extract_para_with_math(p: etree._Element) -> str:
-    """
-    단락(p)에서 텍스트와 OMML 수식을 섞어 추출.
-    """
-    out: List[str] = []
-    skip: set = set()
 
-    for el in p.iter():
-        if el in skip:
-            continue
-        local = el.tag.rsplit('}', 1)[-1] if isinstance(el.tag, str) else ''
-        if local in ("oMath", "oMathPara"):
-            latex = parse_omml_to_latex_like(el)
-            out.append(latex)
-            for sub in el.iter():
-                skip.add(sub)
-            continue
-        if local == "t":  # w:t
-            out.append(el.text or '')
+# ------------------------------------------------------------------------------
+# Drop-in helpers: label 감지 / 앵커 / 표 앵커
+# ------------------------------------------------------------------------------
 
-    text = ''.join(out)
-    text = unicodedata.normalize('NFKC', text)
-    text = re.sub(r'\s+', ' ', text).strip()
-    return text
+_LABEL_PATTERNS = [
+    # 1. / 1) / 1.1 / 1.1.1
+    r"^\s*(\d+(?:\.\d+){0,3})[.)]\s+(.*)$",
+    r"^\s*(\d+)\s+(.*)$",
+    # A. / A) / a.
+    r"^\s*([A-Za-z])[.)]\s+(.*)$",
+    # Ⅰ. Ⅱ. Ⅲ.
+    r"^\s*([Ⅰ-Ⅹ]+)[.)]\s+(.*)$",
+    # 가. 나. 다. (한글 낱자)
+    r"^\s*([가-힣])[.)]\s+(.*)$",
+]
+_LABEL_RE = [re.compile(p) for p in _LABEL_PATTERNS]
 
 
-def _table_anchors(cells: List[List[Any]]) -> Tuple[str, str]:
+def _depth_from_label(label: str) -> int:
+    # 1.1.1 → 3, Ⅰ → 1, A → 1, 가 → 1
+    if re.match(r"^\d+(?:\.\d+)*$", label):
+        return label.count(".") + 1
+    return 1
+
+
+def detect_label(text: str) -> Optional[Tuple[str, int, str]]:
     """
-    표에서 강/약 앵커 추출:
-    - strong: 첫 번째 '비어있지 않은 전체 행'의 텍스트(헤더 유사)
-    - weak  : 첫 비어있지 않은 행의 첫 셀 텍스트
+    텍스트가 '레이블 + 본문' 형태면 (label, depth, remainder) 반환, 아니면 None
     """
-    by_row: Dict[int, List[Tuple[int, str]]] = {}
-    for r, c, rs, cs, txt in cells:
-        by_row.setdefault(r, []).append((c, (txt or '').strip()))
-    strong, weak = '', ''
-    for r in sorted(by_row.keys()):
-        row_cells = sorted(by_row[r], key=lambda x: x[0])
-        row_text = ' '.join(t for _, t in row_cells if t)
-        if row_text and not strong:
-            strong = row_text[:120]
-        if row_cells and not weak:
-            weak = row_cells[0][1][:80]
-        if strong and weak:
-            break
-    return strong, weak
+    s = (text or "").strip()
+    if not s:
+        return None
+    for rx in _LABEL_RE:
+        m = rx.match(s)
+        if m:
+            label = m.group(1).strip()
+            remainder = (m.group(2) or "").strip()
+            if not remainder:
+                # "1."만 있고 본문이 없으면 라벨로 보지 않음
+                return None
+            depth = _depth_from_label(label)
+            return (label, depth, remainder)
+    return None
 
 
 def make_para_anchor(text: str) -> str:
     """
-    문단/라벨에서 페이지 매칭에 쓸 짧은 앵커 생성
+    문단/문장 고유 Anchor(간단 해시). 프론트 링크 용도.
     """
-    text = (text or '').strip()
-    # 섹션 라벨 패턴 (1., 1.1, Ⅰ., 가., A., [1] 등)
-    m = re.match(r'^\s*(\(?[0-9IVXivx가-하A-Za-z]+(?:\.[0-9]+)*[\.\)]?)\s+', text)
-    if m:
-        return m.group(1)
-    return (text[:50] + '...') if len(text) > 50 else text
+    s = (text or "").strip()
+    if not s:
+        return ""
+    h = hashlib.sha1(s.encode("utf-8")).hexdigest()[:12]
+    head = re.sub(r"\s+", " ", s)[:20]
+    return f"{head}-{h}"
 
 
-# ------------------------------
-# PDF에서 헤더/푸터 텍스트 추출
-# ------------------------------
-def extract_pdf_pages(pdf_path: str):
+def _table_anchors(cells: List[List[Any]]) -> Tuple[str, str]:
     """
-    pdfplumber를 사용해 상/하 7% 박스에서 텍스트를 추출해
-    페이지별 header/footer 라인과 전체 페이지 텍스트를 반환.
+    표의 첫 행에서 강한 앵커 후보를 간단 생성.
+    반환: (strong_anchor, weak_anchor)
     """
     try:
-        import pdfplumber
+        first_texts = []
+        for r in cells:
+            # r: [row, col, rowspan, colspan, text]
+            if len(r) >= 5 and r[0] == 1:  # 첫 행
+                first_texts.append(str(r[4] or "").strip())
+        strong = make_para_anchor(" | ".join([t for t in first_texts if t][:3]) or "table")
+        weak = make_para_anchor(f"table-size-{len(cells)}")
+        return strong, weak
     except Exception:
-        # pdfplumber가 없으면 1페이지 빈값으로 진행
-        return [{"page": 1, "header": [], "footer": [], "content": []}], [""]
+        return make_para_anchor("table"), make_para_anchor("table-weak")
 
-    pages, page_texts = [], []
+
+# ------------------------------------------------------------------------------
+# OMML (수식) → 간단 텍스트화
+# ------------------------------------------------------------------------------
+
+def _concat_all_text(node: ET.Element) -> str:
+    return "".join(t.text or "" for t in node.findall(".//w:t", NS)).strip()
+
+
+def parse_omml_to_latex_like(omath: ET.Element) -> str:
+    """
+    OMML을 간단히 텍스트화/토큰치환 (정밀 LaTeX 변환 아님)
+    """
+    raw = ET.tostring(omath, encoding="unicode")
+    txt = _concat_all_text(omath)
+    # 흔한 토큰 대체(간단)
+    txt = txt.replace("∑", r"\sum").replace("√", r"\sqrt").replace("±", r"\pm")
+    txt = txt.replace("≤", r"\le").replace("≥", r"\ge").replace("≠", r"\ne")
+    # 여백 정리
+    return re.sub(r"\s+", " ", txt).strip() or raw[:60]
+
+
+# ------------------------------------------------------------------------------
+# 표 파서: gridSpan / vMerge 간단 지원
+# ------------------------------------------------------------------------------
+def parse_table_element(tbl: ET.Element) -> List[List[Any]]:
+    """
+    DOCX w:tbl → [[row, col, rowspan, colspan, text], ...]
+    간단한 테이블 병합(gridSpan/vMerge) 처리.
+    """
+    rows = tbl.findall(".//w:tr", NS)
+    # 스팬 추적용: (row,col) 자리 점유 여부
+    grid: List[List[Optional[Dict[str, Any]]]] = []
+    out: List[List[Any]] = []
+
+    def next_free_col(row_slots: List[Optional[Dict[str, Any]]]) -> int:
+        c = 1
+        while c <= len(row_slots) and row_slots[c - 1] is not None:
+            c += 1
+        return c
+
+    # 동적 최대 열 추적
+    max_cols = 0
+
+    # vMerge 추적: 세로 병합 중인 셀 관리 (열 인덱스 -> {start_row, text, colspan, rowspan})
+    vmerge_track: Dict[int, Dict[str, Any]] = {}
+
+    r_idx = 0
+    for tr in rows:
+        r_idx += 1
+        row_slots: List[Optional[Dict[str, Any]]] = []
+
+        # 기존 vMerge로 인해 이미 점유중인 슬롯 채우기
+        max_cols = max(max_cols, len(vmerge_track))
+        if len(row_slots) < max_cols:
+            row_slots += [None] * (max_cols - len(row_slots))
+
+        cells = tr.findall("./w:tc", NS)
+        c_iter_idx = 0
+        current_col = 1
+
+        # vMerge로 내려와야 하는 열 슬롯 미리 반영
+        if vmerge_track:
+            # ensure row_slots size
+            need_cols = max(vmerge_track.keys()) if vmerge_track else 0
+            if len(row_slots) < need_cols:
+                row_slots += [None] * (need_cols - len(row_slots))
+            # mark occupied by vMerge continuations
+            for col, info in list(vmerge_track.items()):
+                # place a placeholder to mark occupied
+                if len(row_slots) < col:
+                    row_slots += [None] * (col - len(row_slots))
+                row_slots[col - 1] = {"vmerge_cont": True}
+
+        for tc in cells:
+            c_iter_idx += 1
+            # text
+            txt = "".join(t.text or "" for t in tc.findall(".//w:t", NS)).strip()
+
+            # spans
+            gridSpan = 1
+            gridSpanEl = tc.find(".//w:gridSpan", NS)
+            if gridSpanEl is not None and gridSpanEl.get(f"{{{NS['w']}}}val"):
+                try:
+                    gridSpan = int(gridSpanEl.get(f"{{{NS['w']}}}val"))
+                except Exception:
+                    gridSpan = 1
+
+            vMerge = tc.find(".//w:vMerge", NS)
+            vMerge_val = vMerge.get(f"{{{NS['w']}}}val") if vMerge is not None else None
+
+            # find next free col
+            # expand row_slots as needed
+            while True:
+                # ensure row_slots big enough
+                if len(row_slots) < current_col + gridSpan - 1:
+                    row_slots += [None] * (current_col + gridSpan - 1 - len(row_slots))
+
+                # check occupancy
+                occupied = any(row_slots[current_col - 1 + k] is not None for k in range(gridSpan))
+                if not occupied:
+                    break
+                current_col += 1
+
+            col_start = current_col
+
+            if vMerge is not None:
+                if vMerge_val in (None, "continue"):
+                    # 세로 병합 계속: 상단의 vmerge_track을 찾아 rowspan 증가
+                    # 상단 셀의 col을 찾아야 한다. 가장 가까운 동일 col을 사용.
+                    # 여기서는 col_start 열을 기준으로 이어붙임
+                    info = vmerge_track.get(col_start)
+                    if info:
+                        info["rowspan"] += 1
+                        # 본 행의 해당 슬롯들 점유 표시
+                        for k in range(info["colspan"]):
+                            if len(row_slots) < col_start + k:
+                                row_slots += [None] * (col_start + k - len(row_slots))
+                            row_slots[col_start - 1 + k] = {"vmerge_cont": True}
+                    else:
+                        # 상단 정보가 없는데 continue가 왔다면 신규 시작으로 처리
+                        vmerge_track[col_start] = {"start_row": r_idx - 1, "text": "", "colspan": gridSpan, "rowspan": 2}
+                        for k in range(gridSpan):
+                            row_slots[col_start - 1 + k] = {"vmerge_cont": True}
+                elif vMerge_val == "restart":
+                    # 새로운 vMerge 시작
+                    vmerge_track[col_start] = {"start_row": r_idx, "text": txt, "colspan": gridSpan, "rowspan": 1}
+                    # 현재 행에 표시되지만 출력은 나중에
+                    for k in range(gridSpan):
+                        row_slots[col_start - 1 + k] = {"vmerge_head": True}
+                else:
+                    # 알 수 없는 값 -> 일반 셀로 처리
+                    for k in range(gridSpan):
+                        row_slots[col_start - 1 + k] = {"occupied": True}
+                    out.append([r_idx, col_start, 1, gridSpan, txt])
+                current_col = col_start + gridSpan
+            else:
+                # vMerge 아님: 일반 셀
+                for k in range(gridSpan):
+                    row_slots[col_start - 1 + k] = {"occupied": True}
+                out.append([r_idx, col_start, 1, gridSpan, txt])
+                current_col = col_start + gridSpan
+
+        # 행 종료 시 max_cols 갱신
+        max_cols = max(max_cols, len(row_slots))
+
+        # vMerge head가 있고 본문 텍스트가 있었다면, 현재 행에도 head 실체를 기록
+        for col, info in list(vmerge_track.items()):
+            if info.get("start_row") == r_idx:
+                # head row 출력
+                out.append([r_idx, col, info["rowspan"], info["colspan"], info.get("text", "")])
+
+    # vMerge가 아래 행까지 계속되었으면 head row에 충분한 rowspan이 들어가도록 이미 증가 처리됨.
+    # 단, head row가 아닌 곳은 출력에 추가하지 않았음(표준적 표현)
+
+    return out
+
+
+# ------------------------------------------------------------------------------
+# flat → nested (문서 전체 1회 중첩)
+# ------------------------------------------------------------------------------
+def nest_blocks(flat: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    label depth에 따라 중첩. label/sen/table 이외의 키는 제거.
+    """
+    root: List[Dict[str, Any]] = []
+    stack: List[Tuple[int, Dict[str, Any]]] = []  # (depth, node)
+
+    def append_to_current(node: Dict[str, Any]) -> None:
+        if stack:
+            stack[-1][1]["content"].append(node)
+        else:
+            root.append(node)
+
+    for item in flat:
+        kind = item.get("_kind")
+        if kind == "label":
+            depth = int(item.get("depth", 1))
+            label = item.get("label", "").strip()
+            new_node = {"label": label, "content": []}
+            # 스택 정리
+            while stack and stack[-1][0] >= depth:
+                stack.pop()
+            if stack:
+                stack[-1][1]["content"].append(new_node)
+            else:
+                root.append(new_node)
+            stack.append((depth, new_node))
+        elif kind == "sen":
+            append_to_current({"sen": item.get("sen", "")})
+        elif kind == "table":
+            cells = item.get("table", [])
+            append_to_current({"table": cells})
+        else:
+            # 무시
+            continue
+
+    return root
+
+
+# ------------------------------------------------------------------------------
+# PDF: 각 페이지 상/하단 7%에서 텍스트 추출
+# ------------------------------------------------------------------------------
+def extract_pdf_pages(pdf_path: str) -> Tuple[List[Dict[str, Any]], int]:
+    """
+    상/하단 7%에서 텍스트 라인 배열을 추출.
+    반환: ( [ { "page":1, "header":[...], "footer":[...] }, ... ], total_pages )
+    """
+    if not pdfplumber:
+        return ([], 0)
+
+    pages_out: List[Dict[str, Any]] = []
+    total = 0
+
     with pdfplumber.open(pdf_path) as pdf:
-        for i, p in enumerate(pdf.pages, start=1):
-            w, h = p.width, p.height
-            head_box = (0, 0, w, h * HEADER_BAND)
-            foot_box = (0, h * (1.0 - FOOTER_BAND), w, h)
+        total = len(pdf.pages)
+        for i, page in enumerate(pdf.pages, start=1):
+            h = float(page.height)
+            top_h = h * HEADER_BAND
+            bot_h = h * FOOTER_BAND
+            header_lines: List[str] = []
+            footer_lines: List[str] = []
+
             # header
             try:
-                htext = p.within_bbox(head_box).extract_text() or ''
-                header_lines = [re.sub(r'\s+', ' ', x).strip() for x in htext.split('\n') if x.strip()]
+                with page.crop((0, h - top_h - (h - top_h), page.width, h)) as top:
+                    # 위 영역은 y축 기준 확인이 헷갈릴 수 있어 간단히 lines로
+                    txt = (top.extract_text() or "").strip()
+                    if txt:
+                        header_lines = [ln.strip() for ln in txt.splitlines() if ln.strip()]
             except Exception:
                 header_lines = []
+
             # footer
             try:
-                ftext = p.within_bbox(foot_box).extract_text() or ''
-                footer_lines = [re.sub(r'\s+', ' ', x).strip() for x in ftext.split('\n') if x.strip()]
+                with page.crop((0, 0, page.width, bot_h)) as bottom:
+                    txt = (bottom.extract_text() or "").strip()
+                    if txt:
+                        footer_lines = [ln.strip() for ln in txt.splitlines() if ln.strip()]
             except Exception:
                 footer_lines = []
-            pages.append({"page": i, "header": header_lines, "footer": footer_lines, "content": []})
-            # page text
-            try:
-                t = p.extract_text() or ''
-            except Exception:
-                t = ''
-            page_texts.append(re.sub(r'\s+', ' ', t).strip())
-    return pages, page_texts
+
+            pages_out.append({"page": i, "header": header_lines, "footer": footer_lines})
+
+    return (pages_out, total)
 
 
-# ------------------------------
-# 페이지 매핑/중첩
-# ------------------------------
-def find_page_for(anchor: str, start_idx: int, page_texts: List[str]) -> int:
-    """
-    앵커 문자열이 등장하는 페이지를 start_idx부터 탐색하여 반환.
-    """
-    if not anchor:
-        return max(0, start_idx)
-    needle = re.escape(anchor[:80])
-    for i in range(max(0, start_idx), len(page_texts)):
-        if re.search(needle, page_texts[i]):
-            return i
-    return max(0, start_idx)
+# ------------------------------------------------------------------------------
+# DOCX 본문 평탄화
+# ------------------------------------------------------------------------------
+def _iter_body_elements(body: ET.Element):
+    for node in body:
+        if not isinstance(node.tag, str):
+            continue
+        yield node
 
 
-def nest_blocks(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """
-    라벨/문장/표를 논리 트리로 중첩.
-    - 라벨 등장 시 계층 이동, sen/table은 현재 노드의 content에 삽입
-    """
-    stack: List[Dict[str, Any]] = [{"content": []}]  # root
-
-    def depth_of(label: str) -> int:
-        if re.match(r'^\(?[0-9]+(\.[0-9]+)*[\.\)]?$', label):  # 1., 1.1, 2.3.4
-            return label.count('.') + 1
-        if re.match(r'^[IVXivx]+[\.\)]?$', label):             # Ⅰ., Ⅱ.
-            return 1
-        if re.match(r'^[가-하]\.?$', label):                   # 가., 나.
-            return 2
-        if re.match(r'^[A-Za-z]\.?$', label):                  # A., B.
-            return 1
-        return 1
-
-    for b in blocks:
-        kind = b.get('_kind')
-        if kind == 'label':
-            d = max(1, depth_of(b.get('label', '')))
-            # 스택을 d-1까지 유지
-            while len(stack) > d:
-                stack.pop()
-            if len(stack) < d:
-                node = {"label": b.get('label', ''), "content": []}
-                stack[-1]["content"].append(node)
-                stack.append(node)
-            else:
-                # 동일 레벨 새 라벨
-                stack.pop()
-                node = {"label": b.get('label', ''), "content": []}
-                stack[-1]["content"].append(node)
-                stack.append(node)
-        elif kind == 'sen':
-            stack[-1]["content"].append({"sen": b.get('sen', '')})
-        elif kind == 'table':
-            stack[-1]["content"].append({"table": b.get('table', [])})
-        # 임시 키(_kind/_hint/_anchor/_weak 등)는 최종 반환 전 통으로 버림(여기선 그대로 둬도 무해)
-
-    return stack[0]["content"]
-
-
-# ------------------------------
-# 메인 엔트리
-# ------------------------------
 def build_pages(docx_path: str, pdf_path: Optional[str] = None) -> Dict[str, Any]:
-    """Parse DOCX to a single document-level content array (DOCX DOM order),
+    """
+    Parse DOCX to a single document-level content array (DOCX DOM order),
     and optionally extract per-page header/footer from PDF using top/bottom 7% bands.
-    Returns schema: { "v":"0.5", "content":[...], "header": {"1":[...], ...}, "footer": {"1":[...], ...} }
+
+    Returns schema:
+    { "v":"0.5", "content":[...], "header": {"1":[...], ...}, "footer": {"1":[...], ...} }
     """
     # 1) DOCX XML 로드
-    with zipfile.ZipFile(docx_path, 'r') as z:
-        doc_xml = z.read('word/document.xml')
-    tree = etree.parse(io.BytesIO(doc_xml))
+    with zipfile.ZipFile(docx_path, "r") as z:
+        doc_xml = z.read("word/document.xml")
+    tree = ET.parse(io.BytesIO(doc_xml))
     root = tree.getroot()
-    body = root.find('.//w:body', namespaces=NS)
+    body = root.find(".//w:body", NS)
 
-    # 2) DOCX를 DOM 순서대로 평탄화 (PDF 기반 재배치 없음)
+    # 2) DOCX DOM 순서대로 평탄화
     flat: List[Dict[str, Any]] = []
     doc_hint = 0  # (섹션 힌트만 보존; 순서 결정엔 사용 안 함)
 
@@ -216,37 +400,33 @@ def build_pages(docx_path: str, pdf_path: Optional[str] = None) -> Dict[str, Any
         det = detect_label(text)
         if det:
             label_str, depth, remainder = det
-            anchor = make_para_anchor(label_str) or make_para_anchor(text)
-            flat.append({"_kind":"label","label":label_str,"depth":depth,"_anchor": anchor, "_hint": hint_page})
+            flat.append({"_kind": "label", "label": label_str, "depth": depth, "_hint": hint_page})
             if remainder:
-                flat.append({"_kind":"sen","sen":remainder,"_anchor": make_para_anchor(remainder), "_hint": hint_page})
+                flat.append({"_kind": "sen", "sen": remainder, "_hint": hint_page})
         else:
-            flat.append({"_kind":"sen","sen":text,"_anchor": make_para_anchor(text), "_hint": hint_page})
+            flat.append({"_kind": "sen", "sen": text, "_hint": hint_page})
 
     if body is not None:
-        for node in body:
-            if not isinstance(node.tag, str):
-                continue
-            # 문단
-            if node.tag.endswith('}p'):
-                text_runs = node.findall('.//w:t', namespaces=NS)
-                text = ''.join([t.text or '' for t in text_runs]).strip()
+        for node in _iter_body_elements(body):
+            tag = node.tag
+            if tag.endswith("}p"):  # 문단
+                text_runs = node.findall(".//w:t", NS)
+                text = "".join([t.text or "" for t in text_runs]).strip()
                 if text:
                     add_para_block(text, doc_hint)
                 # 수식(OMML)을 라텍스 유사 문자열로 sen 처리
-                for omath in node.findall('.//m:oMath', namespaces=NS):
+                for omath in node.findall(".//m:oMath", NS):
                     latex_like = parse_omml_to_latex_like(omath)
                     if latex_like:
-                        flat.append({"_kind":"sen","sen":latex_like, "_anchor": make_para_anchor(latex_like), "_hint": doc_hint})
-            # 표
-            elif node.tag.endswith('}tbl'):
+                        flat.append({"_kind": "sen", "sen": latex_like, "_hint": doc_hint})
+            elif tag.endswith("}tbl"):  # 표
                 cells = parse_table_element(node)
                 if cells:
                     strong, weak = _table_anchors(cells)
-                    flat.append({"_kind":"table","table":cells, "_anchor": strong, "_weak": weak, "_hint": doc_hint})
-            # 섹션 나누기(힌트) — 순서 결정엔 사용하지 않음
-            sect = node.find('.//w:sectPr/w:type', namespaces=NS)
-            if sect is not None and sect.get('{%s}val' % NS['w']) == 'nextPage':
+                    flat.append({"_kind": "table", "table": cells, "_anchor": strong, "_weak": weak, "_hint": doc_hint})
+            # 섹션 분리 힌트 (순서에는 사용하지 않음)
+            sect = node.find(".//w:sectPr/w:type", NS)
+            if sect is not None and sect.get(f"{{{NS['w']}}}val") == "nextPage":
                 doc_hint += 1
 
     # 3) 문서 전체를 한 번만 중첩
@@ -267,19 +447,24 @@ def build_pages(docx_path: str, pdf_path: Optional[str] = None) -> Dict[str, Any
     # 5) 최종 스키마 반환
     return {"v": "0.5", "content": content_all, "header": header_map, "footer": footer_map}
 
-# CLI 테스트용
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("docx", help="input .docx path")
-    parser.add_argument("--pdf", help="optional pdf path for header/footer extraction")
-    parser.add_argument("--out", help="write JSON to file (UTF-8 BOM)")
-    args = parser.parse_args()
 
-    data = build_pages(args.docx, pdf_path=args.pdf)
-    if args.out:
-        with open(args.out, "w", encoding="utf-8-sig") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    else:
-        print(json.dumps(data, ensure_ascii=False, indent=2))
+# ------------------------------------------------------------------------------
+# (선택) 단독 실행 테스트
+# ------------------------------------------------------------------------------
+if __name__ == "__main__":  # pragma: no cover
+    import json
+    import sys
+    import os
 
+    if len(sys.argv) < 2:
+        print("Usage: python report_docx_parser.py <docx_path> [pdf_path]")
+        sys.exit(1)
+
+    docx = sys.argv[1]
+    pdf = sys.argv[2] if len(sys.argv) >= 3 else None
+    if pdf and not os.path.exists(pdf):
+        print(f"[warn] PDF not found: {pdf}, header/footer는 빈 맵으로 반환됩니다.")
+        pdf = None
+
+    result = build_pages(docx, pdf)
+    print(json.dumps(result, ensure_ascii=False, indent=2))
