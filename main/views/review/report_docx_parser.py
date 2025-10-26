@@ -8,13 +8,8 @@ report_docx_parser.py (fixed v2.2)
 import io, json, sys, zipfile, re, unicodedata
 from typing import List, Dict, Any, Optional, Tuple
 from lxml import etree
-
-try:
-    from report_math_parser import parse_omml_to_latex_like as parse_omml_to_text
-except ImportError:
-    from report_math_parser import parse_omml_to_text
-
-from report_table_parser import parse_table_element
+from .report_math_parser import parse_omml_to_latex_lik
+from .report_table_parser import parse_table_element
 
 HEADER_BAND = 0.07
 FOOTER_BAND = 0.07
@@ -347,3 +342,4 @@ if __name__ == "__main__":
             json.dump(data, f, ensure_ascii=False, indent=2)
     else:
         print(json.dumps(data, ensure_ascii=False, indent=2))
+
