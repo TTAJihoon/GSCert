@@ -13,6 +13,7 @@ from main.views.certy.prdinfo_URL import source_excel_view
 from main.views.certy.prdinfo_download import download_filled_prdinfo
 from main.views.certy.prdinfo_db import lookup_cert_info
 
+from main.views.review.checkreport_api import parse_checkreport
 
 urlpatterns = [
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
@@ -33,4 +34,5 @@ urlpatterns = [
     path("download-filled/", download_filled_prdinfo, name="download_filled"),
     
     path('checkreport/', checkreport, name='checkreport'),
+    path("parse/", parse_checkreport, name="parse_checkreport"),
 ]
