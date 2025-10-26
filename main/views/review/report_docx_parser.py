@@ -197,129 +197,75 @@ def nest_blocks(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
 # 메인 엔트리
 # ------------------------------
 def build_pages(docx_path: str, pdf_path: Optional[str] = None) -> Dict[str, Any]:
+    """Parse DOCX to a single document-level content array (DOCX DOM order),
+    and optionally extract per-page header/footer from PDF using top/bottom 7% bands.
+    Returns schema: { "v":"0.5", "content":[...], "header": {"1":[...], ...}, "footer": {"1":[...], ...} }
     """
-    DOCX 본문을 파싱하여 글로벌 트리를 만들고,
-    (옵션) PDF에서 헤더/푸터를 추출해 최상단 dict로 반환.
-    """
-    # DOCX XML 로드
-    with zipfile.ZipFile(docx_path, 'r') as zf:
-        doc_xml = zf.read('word/document.xml')
+    # 1) DOCX XML 로드
+    with zipfile.ZipFile(docx_path, 'r') as z:
+        doc_xml = z.read('word/document.xml')
     tree = etree.parse(io.BytesIO(doc_xml))
     root = tree.getroot()
     body = root.find('.//w:body', namespaces=NS)
 
-    # PDF 페이지 정보
-    if pdf_path:
-        pages, page_texts = extract_pdf_pages(pdf_path)
-    else:
-        pages, page_texts = [{"page": 1, "header": [], "footer": [], "content": []}], [""]
-
-    total_pages = len(pages)
-
-    # --- 플랫 블록 생성 ---
+    # 2) DOCX를 DOM 순서대로 평탄화 (PDF 기반 재배치 없음)
     flat: List[Dict[str, Any]] = []
-    doc_hint = 0  # lastRenderedPageBreak/sectPr nextPage를 만나면 +1
+    doc_hint = 0  # (섹션 힌트만 보존; 순서 결정엔 사용 안 함)
 
-    def add_para_block(text: str, hint_page: int) -> None:
-        # 라벨 + 본문 분리 (예: "1. 개요 내용...")
-        m = re.match(r'^\s*(\(?[0-9IVXivx가-하A-Za-z]+(?:\.[0-9]+)*[\.\)]?)\s+(.*)$', text)
-        if m:
-            label_str = m.group(1).strip()
-            remainder = (m.group(2) or '').strip()
+    def add_para_block(text: str, hint_page: int):
+        det = detect_label(text)
+        if det:
+            label_str, depth, remainder = det
             anchor = make_para_anchor(label_str) or make_para_anchor(text)
-            flat.append({
-                "_kind": "label",
-                "label": label_str,
-                "_anchor": anchor,
-                "_hint": hint_page
-            })
+            flat.append({"_kind":"label","label":label_str,"depth":depth,"_anchor": anchor, "_hint": hint_page})
             if remainder:
-                flat.append({
-                    "_kind": "sen",
-                    "sen": remainder,
-                    "_anchor": make_para_anchor(remainder),
-                    "_hint": hint_page
-                })
+                flat.append({"_kind":"sen","sen":remainder,"_anchor": make_para_anchor(remainder), "_hint": hint_page})
         else:
-            flat.append({
-                "_kind": "sen",
-                "sen": text,
-                "_anchor": make_para_anchor(text),
-                "_hint": hint_page
-            })
+            flat.append({"_kind":"sen","sen":text,"_anchor": make_para_anchor(text), "_hint": hint_page})
 
     if body is not None:
         for node in body:
             if not isinstance(node.tag, str):
                 continue
-            local = node.tag.rsplit('}', 1)[-1]
-
-            if local == 'p':
-                # 페이지 나누기 마커(lastRenderedPageBreak) → 힌트 증가
-                if node.findall('.//w:lastRenderedPageBreak', namespaces=NS):
-                    doc_hint += 1
-                text = _extract_para_with_math(node).strip()
+            # 문단
+            if node.tag.endswith('}p'):
+                text_runs = node.findall('.//w:t', namespaces=NS)
+                text = ''.join([t.text or '' for t in text_runs]).strip()
                 if text:
                     add_para_block(text, doc_hint)
+                # 수식(OMML)을 라텍스 유사 문자열로 sen 처리
+                for omath in node.findall('.//m:oMath', namespaces=NS):
+                    latex_like = parse_omml_to_latex_like(omath)
+                    if latex_like:
+                        flat.append({"_kind":"sen","sen":latex_like, "_anchor": make_para_anchor(latex_like), "_hint": doc_hint})
+            # 표
+            elif node.tag.endswith('}tbl'):
+                cells = parse_table_element(node)
+                if cells:
+                    strong, weak = _table_anchors(cells)
+                    flat.append({"_kind":"table","table":cells, "_anchor": strong, "_weak": weak, "_hint": doc_hint})
+            # 섹션 나누기(힌트) — 순서 결정엔 사용하지 않음
+            sect = node.find('.//w:sectPr/w:type', namespaces=NS)
+            if sect is not None and sect.get('{%s}val' % NS['w']) == 'nextPage':
+                doc_hint += 1
 
-                # sectPr nextPage도 페이지 힌트 증가
-                sect_type = node.find('.//w:sectPr/w:type', namespaces=NS)
-                if sect_type is not None and sect_type.get(f'{{{NS["w"]}}}val') == 'nextPage':
-                    doc_hint += 1
+    # 3) 문서 전체를 한 번만 중첩
+    content_all = nest_blocks(flat)
 
-            elif local == 'tbl':
-                tdict = parse_table_element(node)  # {"cells":[[r,c,rs,cs,"text"], ...]}
-                strong, weak = _table_anchors(tdict["cells"])
-                flat.append({
-                    "_kind": "table",
-                    "table": tdict["cells"],
-                    "_anchor": strong,
-                    "_weak": weak,
-                    "_hint": doc_hint
-                })
-                # 표 뒤에 섹션 나눔이 따르는 경우를 대비
-                sect_type = node.find('.//w:sectPr/w:type', namespaces=NS)
-                if sect_type is not None and sect_type.get(f'{{{NS["w"]}}}val') == 'nextPage':
-                    doc_hint += 1
+    # 4) PDF 상/하단 7% 영역에서 header/footer 추출 (선택)
+    header_map: Dict[str, List[str]] = {}
+    footer_map: Dict[str, List[str]] = {}
+    if pdf_path:
+        pages, _ = extract_pdf_pages(pdf_path)
+        for p in pages:
+            pn = str(p.get("page", ""))
+            if not pn:
+                continue
+            header_map[pn] = p.get("header", []) or []
+            footer_map[pn] = p.get("footer", []) or []
 
-    # --- 1차 페이지 매핑(힌트+앵커) ---
-    page_buckets: List[List[Optional[Dict[str, Any]]]] = [[] for _ in range(total_pages)]
-    current_page = 0
-    for b in flat:
-        start = min(max(b.get('_hint', current_page), 0), total_pages - 1)
-        page_idx = find_page_for(b.get('_anchor') or '', start, page_texts)
-        page_buckets[page_idx].append(b)
-        current_page = max(current_page, page_idx)
-
-    # --- (선택) 표 충돌 간단 분배: 같은 weak 헤더 다중 연속 시 앞쪽 페이지로 분산 ---
-    # 복잡한 재분배는 생략(필요 시 후속 개선), None 마킹 없이 그대로 사용
-
-    # --- 최상단 header/footer dict 구성 ---
-    header_map: Dict[str, str] = {
-        str(pg.get("page", i + 1)): "\n".join(pg.get("header", []))
-        for i, pg in enumerate(pages)
-    }
-    footer_map: Dict[str, str] = {
-        str(pg.get("page", i + 1)): "\n".join(pg.get("footer", []))
-        for i, pg in enumerate(pages)
-    }
-
-    # --- 글로벌 중첩: 모든 페이지 블록을 합쳐 1회 nest_blocks() ---
-    all_blocks: List[Dict[str, Any]] = []
-    for i in range(total_pages):
-        for b in page_buckets[i]:
-            if b is not None:
-                all_blocks.append(b)
-
-    content = nest_blocks(all_blocks)
-
-    return {
-        "v": "0.5",
-        "header": header_map,
-        "footer": footer_map,
-        "content": content,
-    }
-
+    # 5) 최종 스키마 반환
+    return {"v": "0.5", "content": content_all, "header": header_map, "footer": footer_map}
 
 # CLI 테스트용
 if __name__ == "__main__":
@@ -336,3 +282,4 @@ if __name__ == "__main__":
             json.dump(data, f, ensure_ascii=False, indent=2)
     else:
         print(json.dumps(data, ensure_ascii=False, indent=2))
+
