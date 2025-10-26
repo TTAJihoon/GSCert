@@ -1,347 +1,396 @@
 # -*- coding: utf-8 -*-
 """
 report_docx_parser.py
+- DOCX(Word)에서 문단/표를 순서대로 파싱해 JSON으로 반환
+- OMML(수식) → LaTeX 유사 선형 텍스트로 변환
+- 표 병합(rowspan/colspan) 좌표 계산
+- 라벨 탐지 규칙 유지
+- 페이지 정보 미사용(선형 트리)
 
-- DOCX에서 표/문단/수식을 문서 흐름 순서대로 파싱하여 JSON으로 반환
-- OMML(∑, 분수, 첨자, 괄호, limLow/limUpp 등) 선형화
-- 일반 텍스트 런(w:r)의 vertAlign(sub/sup)도 수식처럼 선형화 (A_{i}, x^{2})
-- 표 병합(rowspan/colspan) 정확 반영
-- meta 제거
+반환 예시:
+{
+  "v": "1",
+  "content": [
+    {"sen": "문장..."},
+    {"label": "1 개요", "content": [...]},
+    {"table": [[r,c,rowspan,colspan,text], ...]},
+    ...
+  ]
+}
 """
 
 from __future__ import annotations
-import io
-import zipfile
-import xml.etree.ElementTree as ET
-from collections import defaultdict
-from typing import List, Dict, Any, Optional
+from io import BytesIO
+from zipfile import ZipFile
+from lxml import etree as ET
+import re
+from typing import List, Dict, Any, Optional, Tuple
 
-W_NS = {'w': 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'}
-M_NS = {'m': 'http://schemas.openxmlformats.org/officeDocument/2006/math'}
 
-WVAL  = ET.QName(W_NS['w'], 'val')
-WCHAR = ET.QName(W_NS['w'], 'char')
+W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+M_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+NS = {"w": W_NS, "m": M_NS}
 
-# =========================
-# OMML → 선형 텍스트
-# =========================
+# -------------------------------
+# OMML → 선형 텍스트 (핵심 개선)
+# -------------------------------
 
-def _text_all(el: ET.Element, xpath: str, ns: dict) -> str:
-    return ''.join((t.text or '') for t in el.findall(xpath, ns))
+def _cat(parts: List[str]) -> str:
+    return "".join(parts)
 
-def _omml_text(el: Optional[ET.Element]) -> str:
-    if el is None:
-        return ''
-    local = el.tag.split('}', 1)[-1]
+def _text_all(node: ET._Element) -> str:
+    parts = node.xpath(".//w:t | .//m:t", namespaces=NS)
+    return "".join((p.text or "") for p in parts)
 
-    # 컨테이너
-    if local in ('oMathPara', 'oMath'):
-        return ''.join(_omml_text(ch) for ch in list(el))
+def omml_to_text(node: ET._Element) -> str:
+    """
+    OMML 수식 노드를 LaTeX 유사 선형 텍스트로 재귀 변환.
+    - n-ary(시그마/파이): m:nary[m:sub/m:sup/m:e]
+    - 분수: m:f[m:num, m:den]
+    - 첨자: m:sSub/m:sSup/m:sSubSup
+    - 괄호: m:d (m:dPr/m:begChr, m:endChr)
+    - 루트, 오버바 등은 필요 최소만
+    """
+    tag = ET.QName(node).localname
+    ns  = ET.QName(node).namespace
 
-    # 수식 런
-    if local == 'r':
-        out = []
-        t = el.find('m:t', M_NS)
-        if t is not None and t.text:
-            out.append(t.text)
-        for t2 in el.findall('w:t', W_NS):
-            if t2.text:
-                out.append(t2.text)
-        for inner in el.findall('m:oMath', M_NS):
-            out.append(_omml_text(inner))
-        return ''.join(out)
+    # 기본 텍스트
+    if tag == "t":
+        return node.text or ""
+    if tag == "r":
+        tnodes = node.xpath(".//m:t | .//w:t", namespaces=NS)
+        return tnodes[0].text if tnodes else ""
 
-    # 대형 연산자(∑ 등)
-    if local == 'nary':
-        # 연산자
-        chr_el = el.find('m:naryPr/m:chr', M_NS)
-        op = '∑'
-        if chr_el is not None:
-            v = chr_el.get(ET.QName(M_NS['m'], 'val'))
-            if v:
-                try:
-                    op = chr(int(v, 16))
-                except Exception:
-                    pass
+    # 수식 컨테이너
+    if tag in ("oMathPara", "oMath"):
+        return _cat([omml_to_text(ch) for ch in node])
 
-        # 하/상한과 본문
-        sub_txt = _omml_text(el.find('m:sub', M_NS)) or ''
-        sup_txt = _omml_text(el.find('m:sup', M_NS)) or ''
+    # n-ary (∑ 등)
+    if tag == "nary":
+        chr_node = node.find("./m:naryPr/m:chr", namespaces=NS)
+        symbol = chr_node.get("{%s}val" % M_NS) if chr_node is not None else "∑"
 
-        # 본문은 m:e가 여러 개일 수 있어 모두 결합
-        e_nodes = el.findall('m:e', M_NS)
-        if e_nodes:
-            body = ''.join(_omml_text(n) for n in e_nodes)
-        else:
-            # 폴백: 내부 모든 텍스트 수집
-            body = _text_all(el, './/w:t', W_NS)
+        sub = node.find("./m:sub", namespaces=NS)
+        sup = node.find("./m:sup", namespaces=NS)
+        sub_txt = omml_to_text(sub) if sub is not None else ""
+        sup_txt = omml_to_text(sup) if sup is not None else ""
 
-        limiter = ''
-        if sub_txt and sup_txt:
-            limiter = f"_{{{sub_txt}}}^{{{sup_txt}}}"
-        elif sub_txt:
-            limiter = f"_{{{sub_txt}}}"
-        elif sup_txt:
-            limiter = f"^{{{sup_txt}}}"
+        lims = ""
+        if sub_txt:
+            lims += f"_{{{sub_txt}}}"
+        if sup_txt:
+            lims += f"^{{{sup_txt}}}"
 
-        # 상/하한이 비면 생략
-        return f"{op}{limiter}({body})"
+        base = node.find("./m:e", namespaces=NS)
+        base_txt = omml_to_text(base) if base is not None else ""
 
-    # limLow / limUpp (∑ 이외 일반 개체에 붙는 상하한)
-    if local == 'limLow':
-        base = _omml_text(el.find('m:e', M_NS))
-        low  = _omml_text(el.find('m:lim', M_NS))
-        return f"{base}_{{{low}}}" if low else base
-    if local == 'limUpp':
-        base = _omml_text(el.find('m:e', M_NS))
-        upp  = _omml_text(el.find('m:lim', M_NS))
-        return f"{base}^{{{upp}}}" if upp else base
+        # 본문이 비면 ∑() 같은 빈 형태를 만들지 않도록 보호
+        base_txt = base_txt.strip()
+        if not base_txt:
+            # 연산자만 출력하거나, 완전히 무시하는 선택지 중 택1
+            return f"{symbol}{lims}"  # 여기선 연산자만 표시
+
+        return f"{symbol}{lims} {base_txt}"
 
     # 분수
-    if local == 'f':
-        num = _omml_text(el.find('m:num', M_NS))
-        den = _omml_text(el.find('m:den', M_NS))
-        return f"({num})/({den})"
+    if tag == "f":
+        num = node.find("./m:num", namespaces=NS)
+        den = node.find("./m:den", namespaces=NS)
+        return f"({omml_to_text(num)})/({omml_to_text(den)})"
 
-    # 첨자
-    if local == 'sSup':
-        base = _omml_text(el.find('m:e',   M_NS))
-        sup  = _omml_text(el.find('m:sup', M_NS))
-        return f"{base}^{sup}" if sup else base
-    if local == 'sSub':
-        base = _omml_text(el.find('m:e',   M_NS))
-        sub  = _omml_text(el.find('m:sub', M_NS))
-        return f"{base}_{sub}" if sub else base
-    if local == 'sSubSup':
-        base = _omml_text(el.find('m:e',   M_NS))
-        sub  = _omml_text(el.find('m:sub', M_NS))
-        sup  = _omml_text(el.find('m:sup', M_NS))
-        if sub and sup:
-            return f"{base}_{sub}^{sup}"
-        if sub:
-            return f"{base}_{sub}"
-        if sup:
-            return f"{base}^{sup}"
-        return base
+    # 첨자류
+    if tag == "sSub":
+        base = node.find("./m:e", namespaces=NS)
+        sub  = node.find("./m:sub", namespaces=NS)
+        return f"{omml_to_text(base)}_{{{omml_to_text(sub)}}}"
+    if tag == "sSup":
+        base = node.find("./m:e", namespaces=NS)
+        sup  = node.find("./m:sup", namespaces=NS)
+        return f"{omml_to_text(base)}^{{{omml_to_text(sup)}}}"
+    if tag == "sSubSup":
+        base = node.find("./m:e", namespaces=NS)
+        sub  = node.find("./m:sub", namespaces=NS)
+        sup  = node.find("./m:sup", namespaces=NS)
+        return f"{omml_to_text(base)}_{{{omml_to_text(sub)}}}^{{{omml_to_text(sup)}}}"
 
-    # 델리미터(괄호 등)
-    if local == 'd':
-        beg = el.find('m:dPr/m:begChr', M_NS)
-        end = el.find('m:dPr/m:endChr', M_NS)
-        begc = beg.get(ET.QName(M_NS['m'], 'val')) if beg is not None else '('
-        endc = end.get(ET.QName(M_NS['m'], 'val')) if end is not None else ')'
-        inner = ''.join(_omml_text(c) for c in el.findall('m:e', M_NS))
-        return f"{begc}{inner}{endc}"
+    # 괄호 Delimiter
+    if tag == "d":
+        beg = node.find("./m:dPr/m:begChr", namespaces=NS)
+        end = node.find("./m:dPr/m:endChr", namespaces=NS)
+        begc = beg.get("{%s}val" % M_NS) if beg is not None else "("
+        endc = end.get("{%s}val" % M_NS) if end is not None else ")"
+        e = node.find("./m:e", namespaces=NS)
+        return f"{begc}{omml_to_text(e)}{endc}"
 
-    # 기타(상자, 오버바 등)는 내부 텍스트만
-    return _text_all(el, './/w:t', W_NS)
+    # 루트/오버바(필요 최소)
+    if tag == "rad":  # sqrt / n-th root
+        e = node.find("./m:e", namespaces=NS)
+        deg = node.find("./m:deg", namespaces=NS)
+        if deg is not None:
+            return f"root[{omml_to_text(deg)}]({omml_to_text(e)})"
+        return f"sqrt({omml_to_text(e)})"
+    if tag == "bar":
+        e = node.find("./m:e", namespaces=NS)
+        return f"overline({omml_to_text(e)})"
+
+    # 중간 컨테이너 통과
+    if tag in ("e","num","den","sub","sup","box","groupChr","ctrlPr","rPr",
+               "naryPr","dPr","deg","acc"):
+        return _cat([omml_to_text(ch) for ch in node])
+
+    # 그 외: 자식 재귀
+    return _cat([omml_to_text(ch) for ch in node])
 
 
-# =========================
-# 일반 텍스트 런 처리(첨자)
-# =========================
-
-def _run_text_with_math(r: ET.Element, prev_base: Optional[str]) -> (str, Optional[str]):
+def para_text_with_math(w_p: ET._Element) -> str:
     """
-    w:r을 선형 텍스트로.
-    - w:sym → 문자(∑ 등)
-    - w:t → 일반 텍스트
-    - m:oMath → OMML
-    - w:rPr/w:vertAlign = subscript/superscript → _{...}/^{...}
-      - base는 직전 토큰(prev_base)에 붙인다.
+    하나의 문단(w:p)을 순회하며 평문 + 수식을 순서 보존하여 선형 텍스트로 만든다.
+    - 수식 블록(m:oMath, m:oMathPara)은 omml_to_text()로 치환
+    - 나머지 w:t/m:t는 있는 그대로
     """
-    out = []
-    rPr = r.find('w:rPr', W_NS)
-    vert = rPr.find('w:vertAlign', W_NS) if rPr is not None else None
-    vert_val = vert.get(WVAL) if vert is not None else None
+    out: List[str] = []
+    # 문단 하위 노드를 **문서 순서대로** 훑는다
+    for ch in w_p.iter():
+        ns = ET.QName(ch).namespace
+        tag = ET.QName(ch).localname
 
-    # 수식이 런 안에 직접 있을 수 있음
-    math_inside = r.findall('m:oMath', M_NS)
-    if math_inside:
-        txt = ''.join(_omml_text(m) for m in math_inside)
-        out.append(txt)
-        return ''.join(out), None
+        # 수식 블록 발견 즉시 변환
+        if ns == M_NS and tag in ("oMath", "oMathPara"):
+            out.append(omml_to_text(ch))
+            continue
 
-    # 심볼(예: ∑)
-    sym = r.find('w:sym', W_NS)
-    if sym is not None:
-        ch = sym.get(WCHAR)
-        if ch:
-            try:
-                out.append(chr(int(ch, 16)))
-                return ''.join(out), out[-1]  # 방금 출력한 문자를 base 후보로
-            except Exception:
-                pass
+        if (ns == W_NS and tag == "t") or (ns == M_NS and tag == "t"):
+            if ch.text:
+                out.append(ch.text)
 
-    # 일반 텍스트
-    t_texts = [t.text for t in r.findall('w:t', W_NS) if t.text]
-    raw = ''.join(t_texts)
+    # 공백 정리 (여러 칸 → 한 칸)
+    txt = " ".join("".join(out).split())
+    return txt
 
-    if not raw:
-        return '', prev_base
 
-    if vert_val in ('subscript', 'superscript'):
-        # 첨자인 경우: 직전 base가 있으면 붙이고, 없으면 자체를 base로 간주
-        token = raw.strip()
-        if not token:
-            return '', prev_base
+# -------------------------------
+# 테이블 파서 (병합 포함)
+# -------------------------------
 
-        if prev_base:
-            # prev_base를 out에서 제거하고, 결합하여 다시 out에 넣어준다
-            base = prev_base
-            # out이 비어있으면 base는 직전 문단에서 올 수 있으니 그대로 사용
-            # 첨자는 항상 { }로 감쌈 (여러 글자 보호)
-            if vert_val == 'subscript':
-                combined = f"{base}_{{{token}}}"
+def _cell_text_with_math(tc: ET._Element) -> str:
+    # 셀 안의 문단들을 합치되, 수식 변환 포함
+    paras = tc.findall(".//w:p", namespaces=NS)
+    parts = []
+    for p in paras:
+        parts.append(para_text_with_math(p))
+    # 줄바꿈은 '\n'로 유지
+    return "\n".join([s for s in parts if s])
+
+def _table_grid(table: ET._Element) -> int:
+    # w:tblGrid/w:gridCol로 열 수 추정 (없으면 행 내 최대 cell 개수로)
+    grid_cols = table.findall(".//w:tblGrid/w:gridCol", namespaces=NS)
+    if grid_cols:
+        return len(grid_cols)
+    # fallback: 첫 행의 셀 개수 기준 (gridSpan 반영 전)
+    first_row = table.find(".//w:tr", namespaces=NS)
+    if first_row is None:
+        return 0
+    cells = first_row.findall(".//w:tc", namespaces=NS)
+    return max(1, len(cells))
+
+def _parse_table(table: ET._Element) -> List[List[Any]]:
+    """
+    표를 (row, col, rowspan, colspan, text) 리스트로 반환.
+    - 행/열 인덱스는 1-based
+    - w:vMerge(세로 병합), w:gridSpan(가로 병합) 처리
+    """
+    rows = table.findall("./w:tr", namespaces=NS)
+    if not rows:
+        return []
+
+    # 결과와 점유 상태 맵
+    result: List[List[Any]] = []
+
+    # 그리드 폭 추정(동적 확장 허용)
+    max_cols_seen = 0
+
+    # 세로병합 추적: (r,c) → anchor_row
+    # 하지만 좌표는 우리가 직접 채울 것이므로, vMerge="continue"는 실제로 "위쪽 셀로 흡수"
+    occupied: Dict[Tuple[int,int], bool] = {}
+
+    # 각 행마다 실제 좌표 칸을 채우며 진행
+    # cell place 헬퍼
+    def next_free_col(r: int, start_c: int) -> int:
+        c = start_c
+        while occupied.get((r, c), False):
+            c += 1
+        return c
+
+    cur_row_idx = 0
+    # vMerge 그룹을 관리: (row, col) → (rowspan 증가)
+    # 최종적으로는 anchor 셀(row,col)의 rowspan을 늘리고, continue 셀은 개별 레코드로 만들지 않음.
+    anchors: Dict[Tuple[int,int], Dict[str,int]] = {}  # {(ar,ac): {"rowspan":N, "colspan":M}}
+
+    for tr in rows:
+        cur_row_idx += 1
+        cur_col_idx = 1
+
+        # 이번 행에서의 진행 열(occupied 피해서)
+        cells = tr.findall("./w:tc", namespaces=NS)
+        # 행 내 순회
+        for tc in cells:
+            cur_col_idx = next_free_col(cur_row_idx, cur_col_idx)
+
+            # 병합 속성
+            vmerge = tc.find(".//w:vMerge", namespaces=NS)
+            gridspan = tc.find(".//w:gridSpan", namespaces=NS)
+            colspan = int(gridspan.get("{%s}val" % W_NS)) if gridspan is not None else 1
+
+            text = _cell_text_with_math(tc)
+
+            if vmerge is not None:
+                # 값이 없거나 "restart"면 앵커 시작
+                vm_val = vmerge.get("{%s}val" % W_NS)
+                if vm_val is None or vm_val == "restart":
+                    # 일단 rowspan 1로 시작. 아래 행이 이어지는지 보면서 키움.
+                    anchor_rc = (cur_row_idx, cur_col_idx)
+                    anchors[anchor_rc] = {"rowspan": 1, "colspan": colspan}
+                    # 가로 병합 영역 자리 점유
+                    for dc in range(colspan):
+                        occupied[(cur_row_idx, cur_col_idx + dc)] = True
+                    # 결과에 우선 기록
+                    result.append([cur_row_idx, cur_col_idx, 1, colspan, text])
+                else:
+                    # continue: 위쪽에서 시작된 anchor에 rowspan +1
+                    # 현재 열 위치에 해당하는 anchor를 찾아야 함
+                    # 같은 열 블록(가로 병합 포함) 내 앵커를 역추적
+                    # 전략: 같은 컬럼 또는 동일 블록 시작열을 역으로 찾기
+                    # 가장 가까운 위 행부터 내려오며 찾기
+                    find_anchor = None
+                    scan_row = cur_row_idx - 1
+                    while scan_row >= 1 and find_anchor is None:
+                        # 이 열부터 왼쪽으로 anchor가 있는지 체크 (colspan 고려)
+                        for (ar, ac), meta in anchors.items():
+                            if ar <= scan_row and (ac <= cur_col_idx < ac + meta["colspan"]):
+                                # 이 블록 열 범위 안
+                                # 그리고 anchor의 세로 범위가 scan_row~현재-1 포함해야 함
+                                # 일단 anchor로 본다
+                                find_anchor = (ar, ac)
+                                break
+                        scan_row -= 1
+                    if find_anchor is not None:
+                        anchors[find_anchor]["rowspan"] += 1
+                        # 현재 자리 점유(가로 병합 폭만큼)
+                        for dc in range(anchors[find_anchor]["colspan"]):
+                            occupied[(cur_row_idx, (anchors[find_anchor]["colspan"] == 1 and cur_col_idx or find_anchor[1] + dc))] = True
+                    # continue 셀은 개별 레코드 만들지 않음
             else:
-                combined = f"{base}^{{{token}}}"
-            # prev_base가 이미 out 끝에 존재할지 확실치 않으므로 그냥 combined만 반환
-            return combined, combined  # 결합된 식을 새 base로
-        else:
-            # base가 없다면 토큰만(다음 런에서 base로 쓸 수 있도록)
-            # 표기상 의미가 애매하므로 그냥 토큰 반환
-            if vert_val == 'subscript':
-                return f"_{{{token}}}", f"_{{{token}}}"
-            else:
-                return f"^{{{token}}}", f"^{{{token}}}"
+                # 세로병합 없음: 일반 셀(가로 병합만 고려)
+                # 자리 점유
+                for dc in range(colspan):
+                    occupied[(cur_row_idx, cur_col_idx + dc)] = True
+                result.append([cur_row_idx, cur_col_idx, 1, colspan, text])
 
-    # 일반 텍스트(첨자 아님)
-    out.append(raw)
-    # 마지막 문자(영숫자/그리스 등)만 base 후보로 삼는다
-    tail = raw.rstrip()
-    new_base = None
-    if tail:
-        last = tail[-1]
-        if last.isalnum() or last in ('∑', ')', ']','}','₀','₁','₂','₃','₄','₅','₆','₇','₈','₉'):
-            new_base = tail  # 단어 전체를 base 후보로 둔다 (A, B, n 등)
-    return ''.join(out), new_base
+            max_cols_seen = max(max_cols_seen, cur_col_idx + colspan - 1)
+            cur_col_idx += colspan
+
+    # anchors 정보를 result에 반영(rowspan 업데이트)
+    anchor_set = set(anchors.keys())
+    for rec in result:
+        r, c, rs, cs, t = rec
+        if (r, c) in anchor_set:
+            rec[2] = anchors[(r, c)]["rowspan"]  # rowspan 갱신
+
+    return result
 
 
-def _paragraph_text(p: ET.Element) -> str:
+# -------------------------------
+# 라벨 탐지(기존 규칙 유지)
+# -------------------------------
+
+LABEL_PATTERNS = [
+    # "1 개요", "2.1 시험목적", "5.9 일반적 요구사항" 등
+    re.compile(r"^\s*(\d+(\.\d+)*)\s+.+"),
+    # "<첨부1>", "<첨부 2>" 등
+    re.compile(r"^\s*<\s*첨부\s*\d+\s*>\s*$"),
+    # "목 차" 단독
+    re.compile(r"^\s*목\s*차\s*$"),
+]
+
+def is_label_line(text: str) -> bool:
+    for pat in LABEL_PATTERNS:
+        if pat.match(text):
+            return True
+    return False
+
+
+# -------------------------------
+# DOCX 문서 파싱
+# -------------------------------
+
+def parse_docx_bytes(docx_bytes: bytes) -> Dict[str, Any]:
     """
-    문단 텍스트(OMML + 일반 첨자 처리 포함).
+    DOCX 바이트를 받아 JSON 구조로 파싱.
+    - 페이지 불문, 선형 순서 유지
+    - 표와 문단을 문서 흐름대로
     """
-    s = []
-    base_hint: Optional[str] = None
-
-    # 런 단위 순서 유지
-    for r in p.findall('w:r', W_NS):
-        piece, base_hint = _run_text_with_math(r, base_hint)
-        if piece:
-            s.append(piece)
-
-    # 문단 직속 OMML도 합치기
-    for m in p.findall('m:oMath', M_NS):
-        s.append(_omml_text(m))
-    for mp in p.findall('m:oMathPara', M_NS):
-        s.append(_omml_text(mp))
-
-    return ''.join(s).strip()
-
-# =========================
-# 표 파싱(병합 유지)
-# =========================
-
-def _cell_text(tc: ET.Element) -> str:
-    lines = [_paragraph_text(p) for p in tc.findall('.//w:p', W_NS)]
-    for m in tc.findall('.//m:oMath', M_NS):
-        txt = _omml_text(m)
-        if txt:
-            lines.append(txt)
-    lines = [ln for ln in lines if ln]
-    return '\n'.join(lines)
-
-def _parse_table(tbl: ET.Element) -> Dict[str, Any]:
-    out: List[List[Any]] = []
-    rowspans = defaultdict(int)
-    active_v = {}  # col_idx -> start out_idx
-
-    row_idx = 0
-    for tr in tbl.findall('w:tr', W_NS):
-        row_idx += 1
-        col_idx = 1
-        for tc in tr.findall('w:tc', W_NS):
-            tcPr = tc.find('w:tcPr', W_NS)
-            gridSpan = 1
-            vMerge = None
-            if tcPr is not None:
-                g = tcPr.find('w:gridSpan', W_NS)
-                if g is not None and g.get(WVAL):
-                    try:
-                        gridSpan = int(g.get(WVAL))
-                    except Exception:
-                        gridSpan = 1
-                vMerge = tcPr.find('w:vMerge', W_NS)
-
-            text = (_cell_text(tc) or '').strip()
-            vm_val = vMerge.get(WVAL) if vMerge is not None else None
-            is_continue = (vMerge is not None) and (vm_val is None or vm_val == 'continue')
-            is_restart  = (vMerge is not None) and (vm_val and vm_val != 'continue')
-
-            if is_continue:
-                start_idx = active_v.get(col_idx)
-                if start_idx is not None:
-                    rowspans[start_idx] += 1
-            else:
-                entry = [row_idx, col_idx, 1, gridSpan, text]
-                out_idx = len(out)
-                out.append(entry)
-                rowspans[out_idx] += 1
-                if is_restart:
-                    active_v[col_idx] = out_idx
-
-            col_idx += gridSpan
-
-    for i, entry in enumerate(out):
-        entry[2] = rowspans[i]
-
-    return {"table": out}
-
-# =========================
-# DOCX → JSON
-# =========================
-
-def parse_docx_to_json(docx_file: io.BufferedIOBase | io.BytesIO | bytes | str,
-                       with_paragraphs: bool = True) -> Dict[str, Any]:
-    if isinstance(docx_file, str):
-        with open(docx_file, 'rb') as f:
-            data = f.read()
-    elif isinstance(docx_file, (bytes, bytearray)):
-        data = bytes(docx_file)
-    elif hasattr(docx_file, 'read'):
-        data = docx_file.read()
-    else:
-        raise TypeError("parse_docx_to_json: DOCX path/file/bytes only.")
-
-    with zipfile.ZipFile(io.BytesIO(data), 'r') as zf:
-        xml = zf.read('word/document.xml')
+    with ZipFile(BytesIO(docx_bytes)) as zf:
+        with zf.open("word/document.xml") as f:
+            xml = f.read()
 
     root = ET.fromstring(xml)
-    body = root.find('.//w:body', W_NS)
+
+    body = root.find(".//w:body", namespaces=NS)
+    if body is None:
+        return {"v": "1", "content": []}
 
     content: List[Dict[str, Any]] = []
-    if body is None:
-        return {"v": "1", "docx": {"v": "1", "content": content}}
 
-    for child in list(body):
-        tag = child.tag.split('}', 1)[-1]
-        if tag == 'tbl':
-            content.append(_parse_table(child))
-        elif tag == 'p' and with_paragraphs:
-            txt = _paragraph_text(child)
-            if txt:
-                content.append({"sen": txt})
+    # 문서 흐름: body.children = (p, tbl, p, tbl, ...)
+    for child in body:
+        tag = ET.QName(child).localname
+        ns  = ET.QName(child).namespace
 
-    return {"v": "1", "docx": {"v": "1", "content": content}}
+        if ns != W_NS:
+            continue
 
-# =========================
-# CLI
-# =========================
+        if tag == "p":  # 문단
+            text = para_text_with_math(child).strip()
+            if not text:
+                continue
 
+            if is_label_line(text):
+                content.append({"label": text, "content": []})
+            else:
+                content.append({"sen": text})
+
+        elif tag == "tbl":  # 표
+            table_rows = _parse_table(child)
+            if table_rows:
+                content.append({"table": table_rows})
+
+        elif tag == "sectPr":
+            # 섹션 속성은 무시(페이지 처리 안함)
+            continue
+
+    return {"v": "1", "content": content}
+
+
+# -------------------------------
+# 외부에서 호출하는 진입점
+# -------------------------------
+
+def parse_docx(file_obj_or_bytes) -> Dict[str, Any]:
+    """
+    - Django/FileUpload 등 file-like 객체 또는 bytes 모두 지원
+    """
+    if isinstance(file_obj_or_bytes, (bytes, bytearray)):
+        return {"v": "1", "content": parse_docx_bytes(file_obj_or_bytes)["content"]}
+    # file-like
+    data = file_obj_or_bytes.read()
+    return {"v": "1", "content": parse_docx_bytes(data)["content"]}
+
+
+# -------------------------------
+# 로컬 테스트용 (선택)
+# -------------------------------
 if __name__ == "__main__":
     import sys, json
-    if not sys.argv[1:]:
-        print("usage: python report_docx_parser.py <file.docx>")
-        raise SystemExit(1)
-    out = parse_docx_to_json(sys.argv[1], with_paragraphs=True)
-    print(json.dumps(out, ensure_ascii=False, indent=2))
+    with open(sys.argv[1], "rb") as f:
+        out = parse_docx(f)
+    print(json.dumps({"v": "1", "content": out["content"]}, ensure_ascii=False, indent=2))
