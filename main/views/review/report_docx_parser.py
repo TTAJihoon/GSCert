@@ -8,7 +8,7 @@ report_docx_parser.py (fixed v2.2)
 import io, json, sys, zipfile, re, unicodedata
 from typing import List, Dict, Any, Optional, Tuple
 from lxml import etree
-from .report_math_parser import parse_omml_to_latex_lik
+from .report_math_parser import parse_omml_to_latex_like
 from .report_table_parser import parse_table_element
 
 HEADER_BAND = 0.07
@@ -33,7 +33,7 @@ def _extract_para_with_math(p) -> str:
             continue
         local = el.tag.rsplit('}', 1)[-1] if isinstance(el.tag, str) else ''
         if local in ('oMath', 'oMathPara'):
-            out.append(parse_omml_to_text(_serialize(el)))
+            out.append(parse_omml_to_latex_like(_serialize(el)))
             for sub in el.iter():
                 skip.add(sub)
             continue
@@ -342,4 +342,5 @@ if __name__ == "__main__":
             json.dump(data, f, ensure_ascii=False, indent=2)
     else:
         print(json.dumps(data, ensure_ascii=False, indent=2))
+
 
