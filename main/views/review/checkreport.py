@@ -1,66 +1,74 @@
 # -*- coding: utf-8 -*-
-from django.http import JsonResponse, HttpResponseBadRequest
-from django.views.decorators.http import require_POST
-from django.views.decorators.csrf import csrf_exempt
-from tempfile import NamedTemporaryFile
+from __future__ import annotations
 import json
 import os
+import tempfile
+from typing import Tuple
+from django.http import JsonResponse, HttpRequest
+from django.views.decorators.csrf import csrf_exempt
 
-# 동일 디렉토리(또는 파이썬 경로)에 배치된 파서 모듈을 import
-from .report_docx_parser import build_tree as build_docx_tree
-from .report_pdf_parser import extract_headfoot as build_pdf_headfoot
+# 같은 디렉터리(또는 pythonpath)에 두 파일이 있어야 함
+from .report_docx_parser import parse_docx_to_json
+from .report_pdf_parser import extract_header_footer_lines
+
+
+def _pick_files(files) -> Tuple[bytes, bytes]:
+    """
+    <input name="file" multiple> 로 올라온 2개 중 확장자로 DOCX/PDF 구분.
+    반환: (docx_bytes, pdf_bytes)
+    예외: 갯수/형식 오류 시 ValueError
+    """
+    if not files:
+        raise ValueError("Both 'docx' and 'pdf' files are required.")
+
+    docx_bytes = None
+    pdf_bytes = None
+
+    for f in files:
+        name = (getattr(f, "name", "") or "").lower()
+        data = f.read()
+        if name.endswith(".docx"):
+            docx_bytes = data
+        elif name.endswith(".pdf"):
+            pdf_bytes = data
+
+    if not docx_bytes or not pdf_bytes:
+        raise ValueError("Both 'docx' and 'pdf' files are required.")
+
+    return docx_bytes, pdf_bytes
 
 
 @csrf_exempt
-@require_POST
-def parse_docx_pdf(request):
+def parse_view(request: HttpRequest):
     """
-    브라우저에서 docx + pdf 동시 업로드 → 두 JSON을 결합해 반환.
-    - 둘 중 하나라도 누락되면 400 에러
-    - 반환 구조:
-      {
-        "v": "1",
-        "docx": {"v":"1","content":[ ... ]},
-        "pdf":  {"v":"1","total_pages":N,"pages":[{"page":1,"header":[...],"footer":[...]}, ...]}
-      }
+    POST /parse/
+    - form-data field: file (2개: docx + pdf)
     """
-    docx_file = request.FILES.get("docx")
-    pdf_file  = request.FILES.get("pdf")
+    if request.method != "POST":
+        return JsonResponse({"error": "POST only"}, status=405)
 
-    if not docx_file or not pdf_file:
-        return HttpResponseBadRequest("Both 'docx' and 'pdf' files are required.")
-
-    # 임시 저장
-    tmp_docx = NamedTemporaryFile(delete=False, suffix=".docx")
-    tmp_pdf  = NamedTemporaryFile(delete=False, suffix=".pdf")
     try:
-        for chunk in docx_file.chunks():
-            tmp_docx.write(chunk)
-        tmp_docx.flush()
+        files = request.FILES.getlist("file")
+        docx_bytes, pdf_bytes = _pick_files(files)
 
-        for chunk in pdf_file.chunks():
-            tmp_pdf.write(chunk)
-        tmp_pdf.flush()
+        # ---- DOCX 파싱 (문단+표, 수식 선형화 포함) ----
+        docx_json = parse_docx_to_json(docx_bytes, with_paragraphs=True)
 
-        # 파서 호출
-        docx_json = build_docx_tree(tmp_docx.name)
-        pdf_json  = build_pdf_headfoot(tmp_pdf.name)
+        # ---- PDF 파싱 (페이지별 1줄 header/footer) ----
+        pdf_json = extract_header_footer_lines(pdf_bytes)
 
-        # 최종 결합
-        result = {
+        # ---- 최종 결합 (2.3에서 합의한 방식) ----
+        # v/meta는 의미 없다고 했으므로 최소화. v는 placeholder로 둠.
+        combined = {
             "v": "1",
-            "docx": docx_json,
-            "pdf": pdf_json,
+            "docx": docx_json.get("docx", {"v": "1", "content": []}),
+            "pdf": pdf_json  # {"v":"1","total_pages":...,"pages":[...]}
         }
-        return JsonResponse(result, json_dumps_params={"ensure_ascii": False})
-    finally:
-        try:
-            tmp_docx.close()
-            os.unlink(tmp_docx.name)
-        except Exception:
-            pass
-        try:
-            tmp_pdf.close()
-            os.unlink(tmp_pdf.name)
-        except Exception:
-            pass
+
+        return JsonResponse(combined, json_dumps_params={"ensure_ascii": False}, status=200)
+
+    except ValueError as ve:
+        return JsonResponse({"error": str(ve)}, status=400)
+    except Exception as e:
+        # 디버깅 편의를 위해 메시지 노출 (운영에선 로깅 후 일반 메시지 권장)
+        return JsonResponse({"error": f"{type(e).__name__}: {e}"}, status=500)
