@@ -220,7 +220,6 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
                 "content": f"{PARSED_START}\n{json.dumps(parsed_payload, ensure_ascii=False)}\n{PARSED_END}"
             }
         ],
-        "temperature": 0.2,
     }
 
     # 2) 디버그 켜진 경우, 호출 전부터 gpt_request/instruction_text를 채워둠
