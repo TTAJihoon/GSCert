@@ -1,4 +1,4 @@
-// main/static/scripts/review/checkreport_submit.js
+// GSCert/main/static/scripts/review/checkreport_submit.js
 (function () {
   // === 실제 HTML id에 맞춤 ===
   const fileInput  = document.getElementById("fileInput");
@@ -6,8 +6,13 @@
   const dropZone   = document.getElementById("dropArea") || document.body;
   const fileListEl = document.getElementById("fileList"); // optional
 
+  // 상태 요소
+  const loadingEl  = document.getElementById("loadingState");
+  const emptyEl    = document.getElementById("emptyState");
+  const tableEl    = document.getElementById("resultsTable");
+
   // 템플릿에서 아직 .html로 되어 있으면 런타임에서 교체
-  try { if (fileInput && fileInput.accept !== ".docx,.pdf") fileInput.accept = ".docx,.pdf"; } catch {}
+  try { if (fileInput && fileInput.accept !== ".docx,.pdf") fileInput.accept = ".docx,.pdf"; } catch (e) {}
 
   // MIME까지 확인하려면 true (지금은 확장자만 검사)
   const CHECK_MIME = false;
@@ -49,10 +54,13 @@
   }
 
   function renderList() {
+    const docx = chosen.get("docx");
+    const pdf  = chosen.get("pdf");
+
     const items = [];
-    for (const [k, f] of chosen) {
-      if (f) items.push(`<li><strong>${k.toUpperCase()}</strong>: ${escapeHtml(f.name)} (${f.size} bytes)</li>`);
-    }
+    if (docx) items.push(`<li><i class="fa fa-file-word"></i> ${escapeHtml(docx.name)}</li>`);
+    if (pdf)  items.push(`<li><i class="fa fa-file-pdf"></i> ${escapeHtml(pdf.name)}</li>`);
+
     if (fileListEl) {
       fileListEl.innerHTML = items.length
         ? `<ul class="upload-list">${items.join("")}</ul>`
@@ -85,20 +93,12 @@
     acceptFiles(e.target.files);
   });
 
-  // ----- 드래그앤드롭 -----
-  function preventDefaults(e) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-
-  // 브라우저 기본 드롭 동작 방지(새 탭 열림 방지)
-  ["dragover", "drop"].forEach(evt => {
-    window.addEventListener(evt, preventDefaults, false);
-  });
-
-  // 지정된 드롭존 활성화
-  ["dragenter", "dragover", "dragleave", "drop"].forEach(evt => {
-    dropZone.addEventListener(evt, preventDefaults, false);
+  // ----- 드래그/드롭 -----
+  ;["dragenter", "dragover", "dragleave", "drop"].forEach((ev) => {
+    dropZone.addEventListener(ev, (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+    });
   });
 
   dropZone.addEventListener("dragover", () => {
@@ -119,6 +119,24 @@
     dropZone.addEventListener("click", () => fileInput?.click());
   }
 
+  // ===== 상태 토글 =====
+  function showLoading() {
+    loadingEl?.classList.remove("hidden");
+    emptyEl?.classList.add("hidden");
+    tableEl?.classList.add("hidden");
+    window.CheckReportTable?.clear?.();
+  }
+  function showEmpty() {
+    loadingEl?.classList.add("hidden");
+    emptyEl?.classList.remove("hidden");
+    tableEl?.classList.add("hidden");
+  }
+  function showTable() {
+    loadingEl?.classList.add("hidden");
+    emptyEl?.classList.add("hidden");
+    tableEl?.classList.remove("hidden");
+  }
+
   // ----- 제출 (/parse/) -----
   submitBtn?.addEventListener("click", async (e) => {
     e.preventDefault();
@@ -130,30 +148,47 @@
       return;
     }
 
-    const fd = new FormData();
-    // A안: 같은 키(file) 2개 전송 → 서버에서 확장자로 구분
-    fd.append("docx", docx, docx.name);
-    fd.append("pdf",  pdf,  pdf.name);
+    showLoading();
 
     try {
+      const fd = new FormData();
+      fd.append("docx", docx);
+      fd.append("pdf",  pdf);
+
       const resp = await fetch("/parse/", {
         method: "POST",
-        headers: { "X-CSRFToken": csrftoken },
         body: fd,
+        headers: csrftoken ? { "X-CSRFToken": csrftoken } : {}
       });
+
       if (!resp.ok) {
-        const err = await resp.text();
-        console.error("Server error:", err);
-        alert("서버 오류가 발생했습니다.");
+        const t = await resp.text().catch(() => "");
+        console.error("[/parse/] 실패", resp.status, t);
+        alert(`서버 오류: ${resp.status}`);
+        showEmpty();
         return;
       }
+
       const json = await resp.json();
-      console.log("[checkreport] parser output:", json);
+      const hasData = window.CheckReportTable?.render?.(json) === true;
+
+      if (hasData) {
+        showTable();
+      } else {
+        showEmpty();
+      }
     } catch (err) {
       console.error(err);
       alert("요청 중 오류가 발생했습니다.");
+      showEmpty();
     }
   });
+
+  // ===== 초기 상태 =====
+  // 초기화면: loading 숨김, empty 표시, table 숨김
+  loadingEl?.classList.add("hidden");
+  emptyEl?.classList.remove("hidden");
+  tableEl?.classList.add("hidden");
 
   // 초기: 파일 리스트 박스 보이도록
   showListVisible(true);
