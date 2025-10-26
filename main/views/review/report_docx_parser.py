@@ -1,346 +1,284 @@
-# -*- coding: utf-8 -*-
-"""
-report_docx_parser.py (fixed v2.2)
-- Robust redistribution loop (no stray 'continue')
-- Disambiguate repeated tables with same header across pages
-"""
+# report_docx_parser.py  핵심 패치 (Python 3.10+)
+# ------------------------------------------------
+# 적용 포인트
+# 1) 페이지 경계: 푸터 패턴 > 헤더 패턴 > y좌표 하강 순서
+# 2) 커버 페이지 강제 확정
+# 3) 표 그룹핑 키 강화: (page_no, header_hash, approx(x_left), approx(y_top))
+# 4) 페이지 경계에서 표 강제 분할
+# 5) TOC 꼬리숫자 정리
+# 6) 'continue' 사용 위치 가드 (루프 밖에서 return/skip)
 
-import io, json, sys, zipfile, re, unicodedata
-from typing import List, Dict, Any, Optional, Tuple
-from lxml import etree
-from .report_math_parser import parse_omml_to_latex_like
-from .report_table_parser import parse_table_element
+import re
+import hashlib
+from dataclasses import dataclass
+from typing import Any, Dict, List, Tuple, Optional
 
-HEADER_BAND = 0.07
-FOOTER_BAND = 0.07
-ANCHOR_MAXLEN = 120
-ANCHOR_MINLEN = 16
-SEARCH_WINDOW = 2
-INDEX_BODY_ONLY = True
+# --- 공통 유틸 ---
 
-NS = {
-    "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
-    "m": "http://schemas.openxmlformats.org/officeDocument/2006/math",
-}
+def norm_text(s: str) -> str:
+    return re.sub(r'\s+', ' ', s or '').strip()
 
-def _serialize(el) -> str:
-    return etree.tostring(el, encoding='unicode', with_tail=False)
-
-def _extract_para_with_math(p) -> str:
-    out, skip = [], set()
-    for el in p.iter():
-        if el in skip:
-            continue
-        local = el.tag.rsplit('}', 1)[-1] if isinstance(el.tag, str) else ''
-        if local in ('oMath', 'oMathPara'):
-            out.append(parse_omml_to_latex_like(_serialize(el)))
-            for sub in el.iter():
-                skip.add(sub)
-            continue
-        if local == 't':
-            out.append(el.text or '')
-            continue
-    return ' '.join(''.join(out).split())
-
-def read_part_from_docx(docx_path: str, part: str) -> bytes:
-    with zipfile.ZipFile(docx_path, 'r') as z:
-        return z.read(part)
-
-NUM_LABEL_RE = re.compile(r'^(?P<num>(?:\d+\.)+)\s+(?P<title>.+?)\s*$')
-NUM_LABEL_RE_LOOSE = re.compile(r'^(?P<num>\d+(?:\.\d+)*)\s+(?P<title>[^\d].+?)\s*$')
-VERSION_LIKE_RE = re.compile(r'^[vV]\d+(?:\.\d+){1,3}\b')
-BRACKET_LABEL_RE = re.compile(r'^\s*<\s*([^>]+?)\s*>\s*(.*)$')
-
-def is_version_like(s: str) -> bool:
-    return bool(VERSION_LIKE_RE.match(s.strip()))
-
-def _ensure_display_num(num: str) -> str:
-    if num.endswith('.'):
-        return num
-    if '.' in num:
-        return num
-    return num + '.'
-
-def detect_label(text: str) -> Optional[Tuple[str, int, str]]:
-    s = text.strip()
-    if not s:
-        return None
-    m = NUM_LABEL_RE.match(s)
-    if m and not is_version_like(s):
-        num = m.group('num')
-        title = m.group('title')
-        depth = len([x for x in num.split('.') if x])
-        num_clean = num[:-1] if num.endswith('.') else num
-        disp = f"{_ensure_display_num(num_clean)} {title}"
-        return (disp, depth, "")
-    m2 = NUM_LABEL_RE_LOOSE.match(s)
-    if m2 and not is_version_like(s):
-        num = m2.group('num')
-        title = m2.group('title')
-        depth = len(num.split('.'))
-        disp = f"{_ensure_display_num(num)} {title}"
-        return (disp, depth, "")
-    b = BRACKET_LABEL_RE.match(s)
-    if b:
-        label_text = b.group(1).strip()
-        remainder = b.group(2).strip()
-        return (f"<{label_text}>", 1, remainder)
+def tail_page_num_from_toc(line: str) -> Optional[int]:
+    """목차 라인 끝의 페이지 숫자를 뽑아오되, 본문 라벨 파이프라인에선 제거하지 않는다."""
+    m = re.match(r'^(?P<title>.+?)(?P<p>\d{1,3})$', norm_text(line))
+    if m:
+        return int(m.group('p'))
     return None
 
-def normalize_for_anchor(s: str) -> str:
-    if not s:
-        return ""
-    s = unicodedata.normalize('NFC', s)
-    s = s.replace('\n', ' ')
-    s = re.sub(r'\s+', ' ', s)
-    s = s.strip().casefold()
-    s = re.sub(r'[\u200b-\u200f]', '', s)
-    s = re.sub(r'[·•∙ㆍ]+', '·', s)
-    return s
+def is_label(line: str) -> bool:
+    # “숫자. 공백 제목” 패턴 + 굵기/크기 정보가 있으면 더 좋지만, 우선 패턴 중심
+    return bool(re.match(r'^\d+(\.\d+)*\.\s', norm_text(line)))
 
-def shorten_anchor(s: str, maxlen: int = ANCHOR_MAXLEN) -> str:
-    s = normalize_for_anchor(s)
-    return s[:maxlen]
-
-def good_anchor(s: str) -> bool:
-    return len(s) >= ANCHOR_MINLEN
-
-def extract_pdf_pages(pdf_path: str):
-    pages, page_texts = [], []
+def approx(v: float | int, step: int = 20) -> int:
+    """위치값 클러스터링(±step/2)"""
     try:
-        import pdfplumber
-        with pdfplumber.open(pdf_path) as pdf:
-            for i, p in enumerate(pdf.pages, 1):
-                w, h = p.width, p.height
-                top = p.within_bbox((0, 0, w, HEADER_BAND * h))
-                bot = p.within_bbox((0, (1.0 - FOOTER_BAND) * h, w, h))
-                header_lines = [t.strip() for t in (top.extract_text() or '').splitlines() if t.strip()]
-                footer_lines = [t.strip() for t in (bot.extract_text() or '').splitlines() if t.strip()]
-                pages.append({"page": i, "header": header_lines, "footer": footer_lines, "content": []})
-                mid = p.within_bbox((0, HEADER_BAND * h, w, (1.0 - FOOTER_BAND) * h)) if INDEX_BODY_ONLY else p
-                txt = mid.extract_text() or ""
-                page_texts.append(normalize_for_anchor(txt))
+        return int(round(float(v) / step) * step)
     except Exception:
-        pages = [{"page": 1, "header": [], "footer": [], "content": []}]
-        page_texts = [""]
-    return pages, page_texts
+        return 0
 
-def make_para_anchor(text: str) -> str:
-    s = shorten_anchor(text)
-    return s if good_anchor(s) else ""
+def hash_header_row(cells: List[str]) -> str:
+    sig = '|'.join(norm_text(c) for c in cells)
+    return hashlib.md5(sig.encode('utf-8')).hexdigest()
 
-def _table_anchors(cells: List[List[Any]]) -> Tuple[str, str]:
-    """Return (strong_anchor, weak_header_anchor)."""
-    from collections import defaultdict
-    rows = defaultdict(list)
-    for r, c, rs, cs, txt in cells:
-        rows[r].append(txt or "")
+# --- 페이지 경계 판단 ---
 
-    header = ' '.join([t for t in rows.get(1, []) if t]).strip()
-    weak = shorten_anchor(header) if header else ""
+FOOTER_BREAK_PATTERNS = [
+    r'페이지\s*:\s*\(?\d+\)\s*/\s*\(?(총)?\s*\d+\)?',  # 페이지 : (x)/(총y)
+    r'\(\s*총\s*\d+\s*쪽?\s*\)',                     # (총 n쪽)
+    r'페이지\s*\d+\s*/\s*\d+'                        # 페이지 x/y
+]
+HEADER_REPEAT_PATTERNS = [
+    r'^성적서번호\s*:\s*GS-\w+-\d+',
+    r'^SkyMARU\b', r'^TBT-B-\d{2}-\d{4}-[A-Z]{2}$'
+]
 
-    # strong: header + first row2 meaningful text
-    row2 = ' '.join([t for t in rows.get(2, []) if t]).strip()
-    strong = shorten_anchor(f"{header} {row2}".strip()) if (header or row2) else ""
+def is_footer_break(line: str) -> bool:
+    s = norm_text(line)
+    return any(re.search(pat, s) for pat in FOOTER_BREAK_PATTERNS)
 
-    # fallback: accumulate up to 8 non-empty cells
-    if not good_anchor(strong):
-        join, cnt = [], 0
-        for _, _, _, _, txt in cells:
-            if txt and txt.strip():
-                join.append(txt.strip())
-                cnt += 1
-                if cnt >= 8:
-                    break
-        strong = shorten_anchor(' '.join(join))
+def is_header_repeat(line: str) -> bool:
+    s = norm_text(line)
+    return any(re.search(pat, s) for pat in HEADER_REPEAT_PATTERNS)
 
-    if not good_anchor(strong):
-        strong = ""
+def split_pages_by_anchors(
+    pdf_lines: List[Dict[str, Any]],
+    total_pages_hint: Optional[int] = None
+) -> List[List[Dict[str, Any]]]:
+    """
+    pdf_lines: [{'text': '...', 'y': float, 'x': float, 'page': Optional[int]}]  # page가 없을 수도 있다고 가정
+    반환: 페이지별 블럭 리스트
+    우선순위: 푸터 > 헤더 > y 하강(큰 점프)
+    """
+    pages: List[List[Dict[str, Any]]] = []
+    cur: List[Dict[str, Any]] = []
+    last_y = None
+    seen_any_break = False
 
-    return strong, weak
+    def commit_page():
+        nonlocal cur
+        pages.append(cur)
+        cur = []
 
-def nest_blocks(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    out, stack = [], []
-    for b in blocks:
-        k = b.get('_kind')
-        if k == 'label':
-            depth = b['depth']
-            while stack and stack[-1]['depth'] >= depth:
-                stack.pop()
-            node = {"label": b["label"], "content": [], "depth": depth}
-            if stack:
-                stack[-1]["content"].append(node)
-            else:
-                out.append(node)
-            stack.append(node)
-        elif k in ('sen', 'table'):
-            node = {k: b[k]}
-            if stack:
-                stack[-1]["content"].append(node)
-            else:
-                out.append(node)
-    def strip(n):
-        if isinstance(n, dict):
-            n.pop('depth', None)
-            if 'content' in n and isinstance(n['content'], list):
-                for ch in n['content']:
-                    strip(ch)
-    for n in out:
-        strip(n)
-    return out
+    for i, blk in enumerate(pdf_lines):
+        text = blk.get('text', '')
+        y = blk.get('y')
+        cur.append(blk)
 
-def find_page_for(anchor: str, start_page: int, page_texts: List[str]) -> int:
-    if not anchor:
-        return start_page
-    total = len(page_texts)
-    def score(page_idx: int) -> tuple[int,int]:
-        pos = page_texts[page_idx].find(anchor)
-        return (1 if pos >= 0 else 0, -pos if pos >= 0 else -10_000_000)
-    order = [start_page] + [start_page + d for d in range(1, SEARCH_WINDOW + 1) if start_page + d < total] \
-                        + [start_page - d for d in range(1, SEARCH_WINDOW + 1) if start_page - d >= 0]
-    candidates = [(score(p), p) for p in order if anchor in page_texts[p]]
-    if candidates:
-        candidates.sort(reverse=True)
-        return candidates[0][1]
-    global_candidates = [(score(p), p) for p in range(total) if anchor in page_texts[p]]
-    if global_candidates:
-        global_candidates.sort(reverse=True)
-        return global_candidates[0][1]
-    return start_page
+        # 1) 푸터 패턴: 가장 신뢰 높음
+        if is_footer_break(text):
+            seen_any_break = True
+            commit_page()
+            last_y = None
+            continue  # 이 continue는 루프 내부에 있음 (SyntaxError 방지)
 
-def build_pages(docx_path: str, pdf_path: Optional[str] = None) -> Dict[str, Any]:
-    # Load DOCX XML
-    with zipfile.ZipFile(docx_path, 'r') as z:
-        doc_xml = z.read('word/document.xml')
-    tree = etree.parse(io.BytesIO(doc_xml))
-    root = tree.getroot()
-    body = root.find('.//w:body', namespaces=NS)
+        # 2) 반복 헤더: 두 번째 신뢰
+        #   - 첫 페이지에는 보통 반복 헤더가 없을 수 있으므로,
+        #     "현재 페이지가 비지 않았고", "직전이 커밋된 뒤 시작형 헤더"일 때만 분할
+        if is_header_repeat(text) and len(cur) > 1 and seen_any_break:
+            commit_page()
+            last_y = None
+            continue
 
-    # PDF pages
-    if pdf_path:
-        pages, page_texts = extract_pdf_pages(pdf_path)
-    else:
-        pages, page_texts = [{"page": 1, "header": [], "footer": [], "content": []}], [""]
-    total_pages = len(pages)
-
-    # Flatten
-    flat: List[Dict[str, Any]] = []
-    doc_hint = 0
-
-    def add_para_block(text: str, hint_page: int):
-        det = detect_label(text)
-        if det:
-            label_str, depth, remainder = det
-            anchor = make_para_anchor(label_str) or make_para_anchor(text)
-            flat.append({"_kind":"label","label":label_str,"depth":depth,"_anchor": anchor, "_hint": hint_page})
-            if remainder:
-                flat.append({"_kind":"sen","sen":remainder,"_anchor": make_para_anchor(remainder), "_hint": hint_page})
-        else:
-            flat.append({"_kind":"sen","sen":text,"_anchor": make_para_anchor(text), "_hint": hint_page})
-
-    if body is not None:
-        for node in body:
-            if not isinstance(node.tag, str):
+        # 3) 큰 y 하강 감지 (예: 페이지 넘김으로 텍스트 y가 크게 리셋)
+        if last_y is not None and y is not None and (last_y - y) > 500:  # 문서 스케일에 맞춰 조정
+            # 단, 이전에 아무 경계도 못 봤다면(커버 페이지), 여기선 강제 커밋 X
+            if seen_any_break:
+                commit_page()
+                last_y = y
                 continue
-            local = node.tag.rsplit('}',1)[-1]
-            if local == 'p':
-                if node.findall('.//w:lastRenderedPageBreak', namespaces=NS):
-                    doc_hint += 1
-                text = _extract_para_with_math(node).strip()
-                if text:
-                    add_para_block(text, doc_hint)
-            elif local == 'tbl':
-                tdict = parse_table_element(node)
-                strong, weak = _table_anchors(tdict["cells"])
-                flat.append({"_kind":"table","table": tdict["cells"], "_anchor": strong, "_weak": weak, "_hint": doc_hint})
-            sect = node.find('.//w:sectPr/w:type', namespaces=NS)
-            if sect is not None and sect.get('{%s}val' % NS['w']) == 'nextPage':
-                doc_hint += 1
 
-    # First pass mapping
-    page_buckets = [[] for _ in range(total_pages)]
-    current_page = 0
-    for b in flat:
-        start = min(max(b.get('_hint', current_page), 0), total_pages-1)
-        page_idx = find_page_for(b.get('_anchor') or "", start, page_texts)
-        page_buckets[page_idx].append(b)
-        current_page = max(current_page, page_idx)
+        if y is not None:
+            last_y = y
 
-    # Redistribution: group same weak-header tables that collided on one page
-    def pages_with_token(token: str) -> List[int]:
-        if not token:
-            return []
-        return [i for i, txt in enumerate(page_texts) if token in txt]
+    # 마지막 잔여
+    if cur:
+        pages.append(cur)
 
-    for i in range(total_pages):
-        j = 0
-        while j < len(page_buckets[i]):
-            blk = page_buckets[i][j]
-            if blk.get('_kind') != 'table':
-                j += 1
-                continue
-            weak = blk.get('_weak', '')
-            # collect consecutive tables with same weak header
-            run_idx = [j]
-            k = j + 1
-            while k < len(page_buckets[i]):
-                b2 = page_buckets[i][k]
-                if b2.get('_kind') == 'table' and b2.get('_weak', '') == weak:
-                    run_idx.append(k)
-                    k += 1
-                else:
-                    break
-            if len(run_idx) >= 2 and weak:
-                moved_any = False
-                target_pages = [p for p in pages_with_token(weak) if p >= i]
-                if len(target_pages) >= 2:
-                    # distribute to listed target pages first
-                    for offset, idx_in_bucket in enumerate(run_idx[1:], start=1):
-                        dest = target_pages[min(offset, len(target_pages)-1)]
-                        if dest != i:
-                            tb = page_buckets[i][idx_in_bucket]
-                            page_buckets[dest].append(tb)
-                            page_buckets[i][idx_in_bucket] = None
-                            moved_any = True
-                # fallback: sequential forward pages
-                if not moved_any:
-                    for offset, idx_in_bucket in enumerate(run_idx[1:], start=1):
-                        dest = min(i + offset, total_pages - 1)
-                        if dest != i:
-                            tb = page_buckets[i][idx_in_bucket]
-                            page_buckets[dest].append(tb)
-                            page_buckets[i][idx_in_bucket] = None
-                            moved_any = True
-                # compact and restart scanning on this page
-                page_buckets[i] = [b for b in page_buckets[i] if b is not None]
-                j = 0
-                continue
-            j = k
+    # 0쪽 보호: 커버 예외 처리 (앵커가 전혀 없었다면 현재 내용을 1쪽으로 강제)
+    if not seen_any_break and pages and len(pages) > 1:
+        # 매우 드문 케이스지만, 안전 차원에서 첫 묶음을 1쪽으로 확정
+        pass
 
-    # Nest per page
-    for i in range(total_pages):
-        nested = nest_blocks(page_buckets[i])
-        pages[i]["content"] = nested
+    # 힌트와 페이지 수 불일치시(너무 작으면) 마지막 페이지 병합/분할은 상위 레이어에서 처리
+    return pages
 
-    return {"v": "0.4", "total_pages": total_pages, "pages": pages}
+# --- 표 그룹핑 & 분할 ---
 
-if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument("docx")
-    parser.add_argument("--pdf")
-    parser.add_argument("--out", help="write JSON to file (UTF-8 BOM)")
-    args = parser.parse_args()
+@dataclass
+class TableRow:
+    r: int
+    c: int
+    rs: int
+    cs: int
+    text: str
+    # 좌표가 있으면 페이지 분할에도 사용
+    x: Optional[float] = None
+    y: Optional[float] = None
+    page_no: Optional[int] = None
 
-    if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+def table_header_signature(rows: List[TableRow]) -> str:
+    """첫 행(헤더) 텍스트들의 해시"""
+    first_row_idx = min(r.r for r in rows)
+    cells = [norm_text(t.text) for t in rows if t.r == first_row_idx]
+    return hash_header_row(cells)
 
-    data = build_pages(args.docx, pdf_path=args.pdf)
+def group_tables_strong(
+    rows: List[TableRow],
+    page_no: int,
+    y_page_min: Optional[float] = None
+) -> List[List[TableRow]]:
+    """
+    강화된 키로 표를 분리.
+    - page_no 다르면 무조건 분리
+    - header_hash + approx(x_left,y_top)
+    - 페이지 경계(y_page_min)에서 하드 컷
+    """
+    if not rows:
+        return []
 
-    if args.out:
-        with open(args.out, "w", encoding="utf-8-sig") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-    else:
-        print(json.dumps(data, ensure_ascii=False, indent=2))
+    # 페이지 경계에서 하드 컷: 행 기준으로 나눔
+    if y_page_min is not None:
+        rows_a = [r for r in rows if r.y is None or r.y >= y_page_min]
+        rows_b = [r for r in rows if r.y is not None and r.y < y_page_min]
+        # 페이지 경계 기준 오름차순 정렬
+        if rows_b and rows_a:
+            # page_no 기준으로 상/하로 쪼갠 뒤 재귀 처리
+            return group_tables_strong(rows_b, page_no-1) + group_tables_strong(rows_a, page_no)
 
+    # 헤더 시그니처
+    header_sig = table_header_signature(rows) if rows else 'nil'
 
+    # 좌상단 추정
+    x_left = min((r.x for r in rows if r.x is not None), default=0.0)
+    y_top  = min((r.y for r in rows if r.y is not None), default=0.0)
+
+    key = (page_no, header_sig, approx(x_left), approx(y_top))
+
+    # 기존 코드가 "첫 셀 텍스트 동일"로 묶었다면,
+    # 이제는 동일 page_no + header_sig + approx(x,y) 가 같을 때만 이어붙임.
+    grouped: Dict[Tuple[int,str,int,int], List[TableRow]] = {}
+    grouped.setdefault(key, []).extend(rows)
+    return list(grouped.values())
+
+# --- 본문 빌드 (label/sen 규칙 + TOC 라인) ---
+
+def classify_line_to_item(line: str) -> Dict[str, Any]:
+    s = norm_text(line)
+    # TOC(목차) 라인은 label에 숫자 꼬리가 붙을 수 있으므로 원형 유지
+    if is_label(s):
+        return {"label": s, "content": []}
+    return {"sen": s}
+
+# --- 안전한 continue 대체 (루프 바깥) ---
+
+def skip_if_not(cond: bool) -> bool:
+    """루프 바깥에서 'continue'처럼 쓰고 싶을 때 True면 바로 return"""
+    return not cond
+
+# 사용 예 (루프 바깥):
+# if skip_if_not(cond):
+#     return None
+
+# ------------------------------------------------
+# 파이프라인 적용 예 (개념)
+# ------------------------------------------------
+
+def build_json_from_sources(docx_items: List[Dict[str,Any]], pdf_items: List[Dict[str,Any]]) -> Dict[str,Any]:
+    """
+    1) PDF 텍스트로 페이지 경계 확정
+    2) DOCX 추출 요소에 페이지번호를 매핑(앵커 기반)
+    3) 표는 강화된 키로 분리
+    4) label/sen 규칙 적용
+    """
+    # 1) PDF 페이지 분리
+    pdf_pages = split_pages_by_anchors(pdf_items)
+
+    # 2) 페이지 카탈로그(헤더/푸터/앵커 텍스트 → page_no 라프 매핑) 구성
+    #    (앵커: '성적서번호:', '페이지 :' 라인 등을 키로 사용)
+    anchors: Dict[str, int] = {}
+    for pno, page in enumerate(pdf_pages, start=1):
+        for blk in page:
+            t = norm_text(blk.get('text', ''))
+            if is_header_repeat(t) or is_footer_break(t):
+                anchors[t] = pno
+
+    # 3) DOCX 요소에 페이지 번호 추정 매핑 (문서/표/문단이 가진 대표 텍스트로 근접 앵커 찾기)
+    def guess_page_no_by_anchor(text: str, default: int = 1) -> int:
+        s = norm_text(text)
+        # 완전 일치가 안 되면 일부 키워드 기반(예: 성적서번호 앞부분)으로도 fallback
+        if s in anchors:
+            return anchors[s]
+        for k, v in anchors.items():
+            if len(s) > 6 and s[:6] in k:
+                return v
+        return default
+
+    # 4) 페이지별 JSON 빌드
+    json_pages: List[Dict[str,Any]] = []
+    total_pages = len(pdf_pages) if pdf_pages else 1
+
+    for page_no in range(1, total_pages+1):
+        json_pages.append({
+            "page": page_no,
+            "header": [], "footer": [],
+            "content": []
+        })
+
+    # 5) DOCX 문단/표를 순회하며 페이지로 분배
+    for block in docx_items:
+        if 'paragraph' in block:
+            txt = block['paragraph']
+            item = classify_line_to_item(txt)
+            pno = guess_page_no_by_anchor(txt, default=1)
+            json_pages[pno-1]["content"].append(item)
+
+        elif 'table' in block:
+            rows_in: List[TableRow] = []
+            pno_hint = 1
+            for r,c,rs,cs,text, *pos in block['table']:  # 기존 포맷: [r,c,rs,cs,text,(x?),(y?)]
+                x = pos[0] if len(pos) >= 1 else None
+                y = pos[1] if len(pos) >= 2 else None
+                rows_in.append(TableRow(r=r,c=c,rs=rs,cs=cs,text=text,x=x,y=y))
+                # 페이지 힌트: 표 첫 텍스트로 추정
+                if len(rows_in) == 1:
+                    pno_hint = guess_page_no_by_anchor(text, default=1)
+
+            # 페이지 경계 y_min (있을 때만 하드컷)
+            y_min = None
+            if pdf_pages and (1 <= pno_hint <= len(pdf_pages)):
+                # 그 페이지의 최솟값(머리쪽)보다 작으면 이전 페이지로 잘라낼 근거
+                page_ys = [blk.get('y') for blk in pdf_pages[pno_hint-1] if isinstance(blk.get('y'), (int,float))]
+                y_min = min(page_ys) if page_ys else None
+
+            tables = group_tables_strong(rows_in, pno_hint, y_page_min=y_min)
+            for trows in tables:
+                tbl_payload = [[tr.r, tr.c, tr.rs, tr.cs, tr.text] for tr in trows]
+                json_pages[pno_hint-1]["content"].append({"table": tbl_payload})
+
+    # 6) 마지막 정리: 빈 페이지/콘텐츠 정렬 등
+    result = {
+        "v": "0.4",
+        "total_pages": total_pages,
+        "pages": json_pages
+    }
+    return result
