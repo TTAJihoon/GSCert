@@ -7,7 +7,7 @@ from textwrap import dedent
 from openai import OpenAI
 
 # ---------- 내부 호출용 핵심 로직 ----------
-def run_checkreport_gpt(parsed_payload: dict) -> dict:
+def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict, Dict[str, Any]]:
     """
     파싱 결과(합쳐진 JSON 전체)를 받아 테이블 렌더링용 최종 JSON으로 변환.
     - 입력: 파서가 만든 '원본 전체 JSON'(docx/pdf를 합쳐 놓은 최종 구조)
