@@ -2,92 +2,91 @@
 import pdfplumber
 from math import isfinite
 
-# 많은 페이지에서 상단이 비고 하단만 채워졌다면 header<->footer를 전체 스왑
-REPEAT_SWAP_THRESHOLD = 0.6  # 60%
-
-def _split_lines(s: str):
-    if not s:
-        return []
-    return [line.strip() for line in s.splitlines() if line.strip()]
-
-def _lines_from_words(words, x0, y0, x1, y1, y_tol=3.0):
-    """extract_words() 결과를 bbox 내부로 필터링 후 y군집 → 한 줄 문자열 배열"""
+def _cluster_words_to_lines(words, y_tol=3.0):
+    """
+    pdfplumber.extract_words() → y좌표로 클러스터링하여 라인화.
+    return: [{'top': float, 'bottom': float, 'x0': float, 'x1': float, 'text': str}, ...]
+    """
+    words = [
+        w for w in (words or [])
+        if w.get("text")
+        and all(isfinite(w.get(k, 0)) for k in ("x0", "x1", "top", "bottom"))
+    ]
     if not words:
         return []
-    band = [
-        w for w in words
-        if all(isfinite(w.get(k, 0)) for k in ("x0","x1","top","bottom"))
-        and (w["bottom"] <= y1 and w["top"] >= y0 and w["x0"] >= x0 and w["x1"] <= x1)
-    ]
-    if not band:
-        return []
-    band.sort(key=lambda w: (w["top"], w["x0"]))
-    lines, current, current_y = [], [], None
-    for w in band:
+
+    # y(위치)→x(좌) 정렬
+    words.sort(key=lambda w: (w["top"], w["x0"]))
+
+    lines = []
+    cur, cur_top, cur_bottom = [], None, None
+    for w in words:
         y = w["top"]
-        if current_y is None or abs(y - current_y) <= y_tol:
-            current.append(w)
-            current_y = y if current_y is None else (current_y + y) / 2.0
+        if cur_top is None or abs(y - cur_top) <= y_tol:
+            cur.append(w)
+            cur_top    = y if cur_top is None else (cur_top + y) / 2.0
+            cur_bottom = w["bottom"] if cur_bottom is None else max(cur_bottom, w["bottom"])
         else:
-            current.sort(key=lambda t: t["x0"])
-            lines.append(" ".join(t["text"] for t in current if t.get("text")))
-            current, current_y = [w], y
-    if current:
-        current.sort(key=lambda t: t["x0"])
-        lines.append(" ".join(t["text"] for t in current if t.get("text")))
-    return [ln.strip() for ln in lines if ln.strip()]
+            cur.sort(key=lambda t: t["x0"])
+            text = " ".join(t["text"] for t in cur if t.get("text")).strip()
+            if text:
+                lines.append({
+                    "top": cur_top,
+                    "bottom": cur_bottom,
+                    "x0": cur[0]["x0"],
+                    "x1": cur[-1]["x1"],
+                    "text": text,
+                })
+            cur, cur_top, cur_bottom = [w], y, w["bottom"]
 
-def _extract_band_lines(page, bbox):
-    band = page.within_bbox(bbox)
-    # 1) 기본 추출
-    txt = band.extract_text(x_tolerance=1, y_tolerance=1) or ""
-    lines = _split_lines(txt)
-    if lines:
-        return lines
-    # 2) words 폴백
-    words = page.extract_words(use_text_flow=True, keep_blank_chars=False)
-    x0, y0, x1, y1 = bbox
-    return _lines_from_words(words, x0, y0, x1, y1)
+    if cur:
+        cur.sort(key=lambda t: t["x0"])
+        text = " ".join(t["text"] for t in cur if t.get("text")).strip()
+        if text:
+            lines.append({
+                "top": cur_top,
+                "bottom": cur_bottom,
+                "x0": cur[0]["x0"],
+                "x1": cur[-1]["x1"],
+                "text": text,
+            })
+    return lines
 
-def extract_headfoot(pdf_path: str, header_ratio: float = 0.07, footer_ratio: float = 0.09):
+
+def extract_headfoot(pdf_path: str):
     """
-    상단 header_ratio(기본 7%), 하단 footer_ratio(기본 9%) 밴드에서 텍스트 추출.
-    좌표계: y는 아래->위로 증가하므로, 헤더는 (y1 - h_h ~ y1), 푸터는 (y0 ~ y0 + f_h).
-    반환:
-      { "v":"1", "total_pages":N,
-        "pages":[{"page":1,"header":[...],"footer":[...]}, ...] }
+    각 페이지에서 '가장 위 라인 1개'를 header, '가장 아래 라인 1개'를 footer로 채택.
+    - 문서가 '상·하단 1줄 고정'이라는 전제를 사용
+    - 반환 스키마는 동일하게 유지(header/footer는 1줄짜리 배열)
+    {
+      "v": "1",
+      "total_pages": N,
+      "pages": [
+        {"page": 1, "header": ["..."], "footer": ["..."]},
+        ...
+      ]
+    }
     """
     pages_out = []
-    header_empty_footer_nonempty = 0
-
     with pdfplumber.open(pdf_path) as pdf:
         for i, page in enumerate(pdf.pages, start=1):
-            x0, y0, x1, y1 = page.bbox
-            height = y1 - y0
-            h_h = max(1.0, height * header_ratio)
-            f_h = max(1.0, height * footer_ratio)
+            words = page.extract_words(use_text_flow=True, keep_blank_chars=False) or []
+            lines = _cluster_words_to_lines(words, y_tol=3.0)
 
-            # 헤더: 상단 7%
-            header_bbox = (x0, y1 - h_h, x1, y1)
-            # 푸터: 하단 9%
-            footer_bbox = (x0, y0, x1, y0 + f_h)
+            if not lines:
+                pages_out.append({"page": i, "header": [], "footer": []})
+                continue
 
-            header_lines = _extract_band_lines(page, header_bbox)
-            footer_lines = _extract_band_lines(page, footer_bbox)
-
-            if not header_lines and footer_lines:
-                header_empty_footer_nonempty += 1
+            # 좌표계: y는 아래→위로 증가
+            # 최상단 라인: 'top'이 가장 큰 것
+            header_line = max(lines, key=lambda ln: ln["top"])
+            # 최하단 라인: 'bottom'이 가장 작은 것 (혹은 'top'이 가장 작은 것) 중 하나 사용
+            footer_line = min(lines, key=lambda ln: ln["bottom"])
 
             pages_out.append({
                 "page": i,
-                "header": header_lines,
-                "footer": footer_lines
+                "header": [header_line["text"]] if header_line and header_line.get("text") else [],
+                "footer": [footer_line["text"]] if footer_line and footer_line.get("text") else [],
             })
-
-    # 반복성 스왑: 문서 특성상 상단이 늘 비고 하단만 반복될 때 뒤바뀐 추출을 교정
-    total = len(pages_out) or 1
-    if header_empty_footer_nonempty / total >= REPEAT_SWAP_THRESHOLD:
-        for p in pages_out:
-            p["header"], p["footer"] = p["footer"], p["header"]
 
     return {"v": "1", "total_pages": len(pages_out), "pages": pages_out}
