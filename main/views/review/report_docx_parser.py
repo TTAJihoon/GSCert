@@ -122,16 +122,26 @@ def _omml_to_text(node: etree._Element) -> str:
     def parse_nary(n):
         # m:nary (∑, ∏ 등)
         chr_ = n.find("m:chr", NS)
+
+        # ⬇️ 하한/상한: Word는 m:sub / m:sup 를 직접 자식으로 두는 경우가 흔함
+        sub = n.find("m:sub", NS)
+        sup = n.find("m:sup", NS)
+
+        # (일부 문서에서는 limLow/limUpp 컨테이너를 쓸 때도 있어 둘 다 지원)
         limLo = n.find("m:limLow", NS)
         limUp = n.find("m:limUpp", NS)
-        e    = n.find("m:e", NS)  # 본체(피가산항 등)
+
+        e    = n.find("m:e", NS)  # 본체
 
         op = (chr_.get(f"{{{NS['m']}}}val") if chr_ is not None else "∑")
-        lo = parse_any(limLo) if limLo is not None else ""
-        up = parse_any(limUp) if limUp is not None else ""
+
+        # 하한/상한 텍스트 추출
+        lo = parse_any(sub) if sub is not None else (parse_any(limLo) if limLo is not None else "")
+        up = parse_any(sup) if sup is not None else (parse_any(limUp) if limUp is not None else "")
+
         body = parse_any(e) if e is not None else ""
 
-        # 상/하한이 비어있으면 생략
+        # 상/하한이 비어있으면 생략 (요구사항)
         if lo and up:
             return f"{op}_{{{lo}}}^{{{up}}} ({body})"
         if lo:
@@ -181,40 +191,31 @@ def _omml_to_text(node: etree._Element) -> str:
 
 # ---------- 문단 텍스트 추출 (중복 금지 핵심) ----------
 def _paragraph_text_without_math(w_p: etree._Element) -> str:
-    """
-    w:p 를 child 레벨로 순회하여,
-    - m:oMath / m:oMathPara -> 선형화 결과만 추가
-    - 그 외 텍스트 노드만 추가
-    - 수식이 포함된 run 내부의 w:t 는 '절대' 다시 추가하지 않음
-    """
-    out: List[str] = []
-
-    # 문단 내 직계 자식만 순회 (r, hyper, fldSimple, smartTag, m:oMathPara, m:oMath 등)
+    out = []
     for child in w_p:
         q = etree.QName(child)
-        # 수식 컨테이너는 즉시 선형화
+
+        # 1) 수식 컨테이너는 선형화 결과만 추가
         if q.namespace == NS["m"] and q.localname in ("oMath", "oMathPara"):
             out.append(_omml_to_text(child))
             continue
 
-        # run/hyper 등 내부에 수식이 들어있는 경우: 수식을 선형화, 나머지 텍스트만(수식 w:t 제외) 추가
-        # 1) 자손에 수식이 있으면 선형화해서 추가
+        # 2) run/hyper/fldSimple 등 '자손'에 수식이 하나라도 있으면
+        #    → 그 child에서는 '수식 선형화 결과만' 반영하고, 나머지 평문은 **모두 건너뜀**
         math_nodes = child.xpath(".//m:oMath|.//m:oMathPara", namespaces=NS)
         if math_nodes:
             for mn in math_nodes:
                 out.append(_omml_to_text(mn))
-            # 2) 그리고 수식 '밖'의 w:t들만 추가 (수식 내부 w:t는 제외)
-            #    -> 수식 노드들을 모두 제거한 복사본을 만들어 거기서 w:t만 뽑음
-            child_copy = etree.fromstring(etree.tostring(child))
-            for mn in child_copy.xpath(".//m:oMath|.//m:oMathPara", namespaces=NS):
-                mn.getparent().remove(mn)
-            rem_texts = child_copy.xpath(".//w:t", namespaces=NS)
-            if rem_texts:
-                out.append(_get_texts(rem_texts))
+            # 🔴 여기서 더 이상 평문(수식 fallback 포함)을 추가하지 않음
+            #    (기존 코드에서 child_copy에서 w:t를 추가하던 부분을 삭제)
             continue
 
-        # 일반 텍스트
-        wts = child.xpath(".//w:t", namespaces=NS)
+        # 3) 일반 텍스트만 있는 경우에만 w:t 수집
+        #    (혹시 모를 AlternateContent(평문 fallback) 자체를 통째로 제거)
+        child_copy = etree.fromstring(etree.tostring(child))
+        for ac in child_copy.xpath(".//mc:AlternateContent", namespaces=NS):
+            ac.getparent().remove(ac)
+        wts = child_copy.xpath(".//w:t", namespaces=NS)
         if wts:
             out.append(_get_texts(wts))
 
@@ -346,3 +347,4 @@ def parse_docx(file_like) -> Dict[str, Any]:
                 out.append({"sen": text})
 
     return {"v": "1", "content": out}
+
