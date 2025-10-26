@@ -1,4 +1,3 @@
-// main/static/scripts/review/checkreport_submit.js
 (function () {
   const fileInput = document.getElementById("fileInput");
   const submitBtn = document.getElementById("submitBtn");
@@ -44,7 +43,7 @@
     files.forEach(f => fd.append("file", f));
 
     try {
-      const resp = await fetch("/review/checkreport/parse/", {
+      const resp = await fetch("/parse/", {
         method: "POST",
         headers: { "X-CSRFToken": csrftoken },
         body: fd,
