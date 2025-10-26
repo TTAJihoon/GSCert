@@ -5,6 +5,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from textwrap import dedent
 from openai import OpenAI
+from typing import Tuple, Dict, Any
 
 # ---------- 내부 호출용 핵심 로직 ----------
 def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict, Dict[str, Any]]:
