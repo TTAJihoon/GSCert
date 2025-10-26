@@ -1,92 +1,111 @@
 # -*- coding: utf-8 -*-
-import pdfplumber
-from math import isfinite
+"""
+report_pdf_parser.py
 
-def _cluster_words_to_lines(words, y_tol=3.0):
-    """
-    pdfplumber.extract_words() → y좌표로 클러스터링하여 라인화.
-    return: [{'top': float, 'bottom': float, 'x0': float, 'x1': float, 'text': str}, ...]
-    """
-    words = [
-        w for w in (words or [])
-        if w.get("text")
-        and all(isfinite(w.get(k, 0)) for k in ("x0", "x1", "top", "bottom"))
-    ]
-    if not words:
-        return []
+역할:
+- PDF 각 페이지에서 '첫 줄 텍스트'를 header, '마지막 줄 텍스트'를 footer로 추출.
+- 모든 문서가 상/하단 1줄 고정이라는 전제에 최적화.
+- PyMuPDF(권장) 사용, 실패 시 pdfminer.six로 폴백.
 
-    # y(위치)→x(좌) 정렬
-    words.sort(key=lambda w: (w["top"], w["x0"]))
+반환 예:
+{
+  "v": "1",
+  "total_pages": 12,
+  "pages": [
+    {"page": 1, "header": ["1/12 소프트웨어시험인증연구소"], "footer": ["시나몬 음성봇 ..."]},
+    ...
+  ]
+}
+"""
+from __future__ import annotations
+from typing import List, Dict
+import re
 
-    lines = []
-    cur, cur_top, cur_bottom = [], None, None
-    for w in words:
-        y = w["top"]
-        if cur_top is None or abs(y - cur_top) <= y_tol:
-            cur.append(w)
-            cur_top    = y if cur_top is None else (cur_top + y) / 2.0
-            cur_bottom = w["bottom"] if cur_bottom is None else max(cur_bottom, w["bottom"])
-        else:
-            cur.sort(key=lambda t: t["x0"])
-            text = " ".join(t["text"] for t in cur if t.get("text")).strip()
-            if text:
-                lines.append({
-                    "top": cur_top,
-                    "bottom": cur_bottom,
-                    "x0": cur[0]["x0"],
-                    "x1": cur[-1]["x1"],
-                    "text": text,
-                })
-            cur, cur_top, cur_bottom = [w], y, w["bottom"]
+# --------------------------
+# 공통 유틸
+# --------------------------
 
-    if cur:
-        cur.sort(key=lambda t: t["x0"])
-        text = " ".join(t["text"] for t in cur if t.get("text")).strip()
-        if text:
-            lines.append({
-                "top": cur_top,
-                "bottom": cur_bottom,
-                "x0": cur[0]["x0"],
-                "x1": cur[-1]["x1"],
-                "text": text,
+_WS_RE = re.compile(r"[ \t\u00A0\u2000-\u200B]+")
+
+def _clean_line(s: str) -> str:
+    if s is None:
+        return ""
+    s = s.replace("\r", "\n").replace("\xa0", " ")
+    s = _WS_RE.sub(" ", s)
+    s = "\n".join(ch.strip() for ch in s.splitlines())
+    s = s.strip()
+    return s
+
+# --------------------------
+# PyMuPDF 버전
+# --------------------------
+
+def _extract_with_pymupdf(pdf_bytes: bytes) -> Dict:
+    import fitz  # pymupdf
+    pages = []
+    with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
+        total = doc.page_count
+        for i in range(total):
+            p = doc.load_page(i)
+            # 줄 단위 텍스트
+            blocks = p.get_text("blocks")  # [(x0,y0,x1,y1,text,block_no,...)...]
+            # y0 기준 오름차순 정렬 → 화면 위에서 아래
+            blocks.sort(key=lambda b: (round(b[1], 2), round(b[0], 2)))
+            # 텍스트만 추출하여 빈 줄 제거
+            lines = [_clean_line(b[4]) for b in blocks if _clean_line(b[4])]
+            header = [lines[0]] if lines else []
+            footer = [lines[-1]] if len(lines) > 1 else (header[:] if lines else [])
+            pages.append({
+                "page": i + 1,
+                "header": header,
+                "footer": footer
             })
-    return lines
-
-
-def extract_headfoot(pdf_path: str):
-    """
-    각 페이지에서 '가장 위 라인 1개'를 header, '가장 아래 라인 1개'를 footer로 채택.
-    - 문서가 '상·하단 1줄 고정'이라는 전제를 사용
-    - 반환 스키마는 동일하게 유지(header/footer는 1줄짜리 배열)
-    {
-      "v": "1",
-      "total_pages": N,
-      "pages": [
-        {"page": 1, "header": ["..."], "footer": ["..."]},
-        ...
-      ]
+    return {
+        "v": "1",
+        "total_pages": len(pages),
+        "pages": pages
     }
+
+# --------------------------
+# pdfminer.six 폴백
+# --------------------------
+
+def _extract_with_pdfminer(pdf_bytes: bytes) -> Dict:
+    from io import BytesIO
+    from pdfminer.high_level import extract_text
+    from pdfminer.layout import LAParams
+    pages = []
+    laparams = LAParams()
+    # pdfminer의 extract_text는 한 번에 뽑는 편이라 페이지 분리를 위해 LAParams + page_numbers 루프 사용 권장
+    # 하지만 간단화를 위해 한 번에 뽑고 '\x0c'(form feed)로 페이지 분리 처리
+    text_all = extract_text(BytesIO(pdf_bytes), laparams=laparams) or ""
+    split = [t for t in text_all.split("\f")]
+    total = len(split) if split and split[-1] == "" else len(split)
+    for idx, raw in enumerate(split[:total]):
+        lines = [_clean_line(x) for x in raw.splitlines() if _clean_line(x)]
+        header = [lines[0]] if lines else []
+        footer = [lines[-1]] if len(lines) > 1 else (header[:] if lines else [])
+        pages.append({
+            "page": idx + 1,
+            "header": header,
+            "footer": footer
+        })
+    return {
+        "v": "1",
+        "total_pages": len(pages),
+        "pages": pages
+    }
+
+# --------------------------
+# 진입점
+# --------------------------
+
+def extract_header_footer_lines(pdf_bytes: bytes) -> Dict:
     """
-    pages_out = []
-    with pdfplumber.open(pdf_path) as pdf:
-        for i, page in enumerate(pdf.pages, start=1):
-            words = page.extract_words(use_text_flow=True, keep_blank_chars=False) or []
-            lines = _cluster_words_to_lines(words, y_tol=3.0)
-
-            if not lines:
-                pages_out.append({"page": i, "header": [], "footer": []})
-                continue
-
-            # 좌표계: y는 아래→위로 증가
-            # 최상단 라인: 'top'이 가장 큰 것
-            header_line = max(lines, key=lambda ln: ln["top"])
-            # 최하단 라인: 'bottom'이 가장 작은 것 (혹은 'top'이 가장 작은 것) 중 하나 사용
-            footer_line = min(lines, key=lambda ln: ln["bottom"])
-
-            pages_out.append({
-                "page": i,
-                "header": [header_line["text"]] if header_line and header_line.get("text") else [],
-                "footer": [footer_line["text"]] if footer_line and footer_line.get("text") else [],
-            })
-
-    return {"v": "1", "total_pages": len(pages_out), "pages": pages_out}
+    권장: PyMuPDF 사용.
+    미설치/실패 시 pdfminer로 폴백.
+    """
+    try:
+        return _extract_with_pymupdf(pdf_bytes)
+    except Exception:
+        return _extract_with_pdfminer(pdf_bytes)
