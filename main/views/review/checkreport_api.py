@@ -1,30 +1,42 @@
 # main/views/review/checkreport_api.py
-import os, tempfile
+import os, tempfile, json, logging
 from django.http import JsonResponse, HttpResponseNotAllowed
 from django.views.decorators.csrf import csrf_exempt
 from .report_docx_parser import build_pages
 
-@csrf_exempt  # 템플릿에서 CSRF 이미 넣으셨다면 제거해도 됩니다.
+logger = logging.getLogger(__name__)   # django 로거 사용 (stdout로도 출력됨)
+
+def _json_serialize(data) -> str:
+    """
+    JsonResponse와 최대한 동일하게 직렬화해서 원문 텍스트를 로그에 남김.
+    - ensure_ascii=False : 한글이 \uXXXX 로 안 깨지게
+    - separators=(',', ':') : 공백 최소화(네트워크 실제 전송과 동일)
+    - default=str : datetime 등 직렬화 불가 객체 안전 처리
+    """
+    return json.dumps(data, ensure_ascii=False, separators=(",", ":"), default=str)
+
+@csrf_exempt
 def parse_checkreport(request):
     if request.method != "POST":
         return HttpResponseNotAllowed(["POST"])
 
     files = request.FILES.getlist("file")
     if len(files) != 2:
-        return JsonResponse({"error": "docx 1개와 pdf 1개를 함께 업로드하세요."}, status=400)
+        err = {"error":"docx 1개와 pdf 1개를 함께 업로드하세요."}
+        logger.warning("[checkreport][resp] %s", _json_serialize(err))
+        return JsonResponse(err, status=400)
 
     docx_file, pdf_file = None, None
     for f in files:
         name = (f.name or "").lower()
-        if name.endswith(".docx"):
-            docx_file = f
-        elif name.endswith(".pdf"):
-            pdf_file = f
+        if name.endswith(".docx"): docx_file = f
+        elif name.endswith(".pdf"): pdf_file = f
 
     if not docx_file or not pdf_file:
-        return JsonResponse({"error": "docx 1개 + pdf 1개 조합이어야 합니다."}, status=400)
+        err = {"error":"docx 1개 + pdf 1개 조합이어야 합니다."}
+        logger.warning("[checkreport][resp] %s", _json_serialize(err))
+        return JsonResponse(err, status=400)
 
-    # 임시 저장
     tmp_dir = tempfile.gettempdir()
     docx_path = os.path.join(tmp_dir, next(tempfile._get_candidate_names()) + ".docx")
     pdf_path  = os.path.join(tmp_dir, next(tempfile._get_candidate_names()) + ".pdf")
@@ -37,13 +49,19 @@ def parse_checkreport(request):
             for chunk in pdf_file.chunks():
                 out.write(chunk)
 
-        # 핵심: 기존 파서 호출 (원본 그대로 반환)
         data = build_pages(docx_path, pdf_path=pdf_path)
+
+        # ★ 여기서 "원문 그대로" 직렬화한 텍스트를 로그로 남김
+        serialized = _json_serialize(data)
+        logger.info("[checkreport][resp] %s", serialized)
+
+        # 클라이언트에는 기존대로 JsonResponse 반환
         return JsonResponse(data, json_dumps_params={"ensure_ascii": False})
     except Exception as e:
-        return JsonResponse({"error": f"parse failed: {e}"}, status=500)
+        err = {"error": f"parse failed: {e}"}
+        logger.exception("[checkreport][resp-error] %s", _json_serialize(err))
+        return JsonResponse(err, status=500)
     finally:
-        # 임시파일 정리(실패시에도 삭제 시도)
         for p in (docx_path, pdf_path):
             try:
                 if os.path.exists(p):
