@@ -13,12 +13,7 @@ Each cell: [row, col, rowspan, colspan, "text"]  (1-indexed)
 
 from typing import List, Dict, Any
 from lxml import etree
-
-# math parser import (name normalization)
-try:
-    from report_math_parser import parse_omml_to_latex_like as parse_omml_to_text
-except ImportError:
-    from report_math_parser import parse_omml_to_text  # if a wrapper exists
+from .report_math_parser import parse_omml_to_latex_like
 
 NS = {
     "w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main",
@@ -36,7 +31,7 @@ def _extract_para_with_math(p) -> str:
             continue
         local = el.tag.rsplit('}', 1)[-1] if isinstance(el.tag, str) else ''
         if local in ('oMath', 'oMathPara'):
-            out.append(parse_omml_to_text(_serialize(el)))
+            out.append(parse_omml_to_latex_like(_serialize(el)))
             for sub in el.iter():
                 skip.add(sub)  # prevent collecting w:t inside math twice
             continue
@@ -143,3 +138,4 @@ def parse_tables_from_document_xml(xml_bytes: bytes) -> List[Dict[str, Any]]:
             t = parse_table_element(node)
             tables_out.append({"index": idx, "cells": t["cells"]})
     return tables_out
+
