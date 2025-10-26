@@ -1,4 +1,3 @@
-# main/views/review/checkreport_api.py
 import os, tempfile, json, logging
 from django.http import JsonResponse, HttpResponseNotAllowed
 from django.views.decorators.csrf import csrf_exempt
