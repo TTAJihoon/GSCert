@@ -5,11 +5,11 @@
   const dropZone   = document.getElementById("dropZone") || document.body;
   const fileListEl = document.getElementById("fileList"); // optional
 
-  // (선택) MIME까지 확인하려면 true로
+  // MIME 까지 확인하려면 true로 바꾸세요(현재는 확장자만 확인)
   const CHECK_MIME = false;
 
-  // 내부 상태: 확장자별 1개만 유지
-  const chosen = new Map(); // key: 'docx' | 'pdf', value: File
+  // 내부 상태: 확장자별로 1개만 유지
+  const chosen = new Map(); // 'docx' | 'pdf' -> File
 
   function getCookie(name) {
     const cookies = document.cookie ? document.cookie.split("; ") : [];
@@ -35,47 +35,46 @@
     return false;
   }
 
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));
+  }
+
   function renderList() {
     if (!fileListEl) {
-      console.log("[checkreport] selected:", Object.fromEntries([...chosen].map(([k, f]) => [k, f?.name])));
+      console.log("[checkreport] selected:", Object.fromEntries(
+        [...chosen].map(([k, f]) => [k, f?.name])
+      ));
       return;
     }
     const items = [];
     for (const [k, f] of chosen) {
       if (f) items.push(`<li><strong>${k.toUpperCase()}</strong>: ${escapeHtml(f.name)} (${f.size} bytes)</li>`);
     }
-    fileListEl.innerHTML = items.length ? `<ul class="upload-list">${items.join("")}</ul>` :
-      `<div class="muted">docx 1개와 pdf 1개를 선택하세요.</div>`;
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));
+    fileListEl.innerHTML = items.length
+      ? `<ul class="upload-list">${items.join("")}</ul>`
+      : `<div class="muted">docx 1개와 pdf 1개를 선택하세요.</div>`;
   }
 
   function acceptFiles(files) {
     let updated = false;
-    for (const f of files) {
+    for (const f of files || []) {
       if (!f) continue;
       const ext = extOf(f);
-      if (ext !== "docx" && ext !== "pdf") {
-        // 무시(확장자 제한)
-        continue;
-      }
+      if (ext !== "docx" && ext !== "pdf") continue;
       if (!mimeOk(f, ext)) {
         alert(`파일 형식(MIME)이 올바르지 않습니다: ${f.name}`);
         continue;
       }
-      // 같은 확장자면 교체(가장 마지막 드롭/선택이 우선)
+      // 같은 확장자는 가장 마지막 선택/드롭한 것으로 교체
       chosen.set(ext, f);
       updated = true;
     }
     if (updated) renderList();
   }
 
-  // ----- 파일 입력(클릭) -----
+  // ----- 클릭 선택 -----
   fileInput?.addEventListener("change", (e) => {
-    acceptFiles(e.target.files || []);
-    // 파일 입력창 자체 목록은 유지(재선택 가능)
+    acceptFiles(e.target.files);
   });
 
   // ----- 드래그앤드롭 -----
@@ -83,7 +82,14 @@
     e.preventDefault();
     e.stopPropagation();
   }
-  ["dragenter","dragover","dragleave","drop"].forEach(evt => {
+
+  // 전역 방어: 창 밖에서 드롭해도 브라우저가 열지 않게 방지
+  ["dragover", "drop"].forEach(evt => {
+    window.addEventListener(evt, preventDefaults, false);
+  });
+
+  // 지정 드롭존에만 강조/수락
+  ["dragenter", "dragover", "dragleave", "drop"].forEach(evt => {
     dropZone.addEventListener(evt, preventDefaults, false);
   });
 
@@ -95,12 +101,11 @@
   });
   dropZone.addEventListener("drop", (e) => {
     dropZone.classList?.remove("dragover");
-    const dt = e.dataTransfer;
-    const files = dt?.files ? Array.from(dt.files) : [];
+    const files = e.dataTransfer?.files ? Array.from(e.dataTransfer.files) : [];
     acceptFiles(files);
   });
 
-  // 드롭존 클릭 시 파일 선택창 열기(드롭존이 body인 경우엔 동작 안 함)
+  // 드롭존 클릭 시 파일 선택창 열기(드롭존이 body면 클릭 이벤트는 생략)
   if (dropZone !== document.body) {
     dropZone.style.cursor = "pointer";
     dropZone.addEventListener("click", () => fileInput?.click());
@@ -136,7 +141,8 @@
       }
       const json = await resp.json();
       console.log("[checkreport] parser output:", json);
-      // (원하면 요약 테이블도 표시 가능)
+
+      // (원하면 요약 테이블)
       // if (Array.isArray(json?.pages)) {
       //   console.table(json.pages.map((p, i) => ({
       //     page: i + 1,
