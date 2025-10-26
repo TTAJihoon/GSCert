@@ -33,7 +33,7 @@
           {% csrf_token %}
           <div class="file-upload-container">
             <div class="content-container" id="content-auto">
-              <input class="file-input" id="fileInput" type="file" name="file" multiple accept=".html"/>
+              <input class="file-input" id="fileInput" type="file" name="file" multiple accept=".docx, .pdf"/>
 
               <div class="drop-area" id="dropArea">
                 <i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
@@ -46,7 +46,7 @@
 
               <div class="content-spacer"></div>
               <!-- 페이지 이동 방지: type="button" -->
-              <button type="button" class="action-button" id="btn-generate">시험결과서 자동 검토토</button>
+              <button type="button" class="action-button" id="btn-generate">시험결과서 자동 검토</button>
             </div>
           </div>
         </form>
