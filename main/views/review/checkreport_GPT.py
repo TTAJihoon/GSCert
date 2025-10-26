@@ -7,6 +7,9 @@ from django.views.decorators.http import require_http_methods
 from textwrap import dedent
 from openai import OpenAI
 
+PARSED_START = "<<PARSED_PAYLOAD_JSON_START>>"
+PARSED_END   = "<<PARSED_PAYLOAD_JSON_END>>"
+
 # ---------- 내부 호출용 핵심 로직 ----------
 def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict, Dict[str, Any]]:
     """
