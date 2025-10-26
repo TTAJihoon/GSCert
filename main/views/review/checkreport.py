@@ -73,15 +73,21 @@ def parse_view(request: HttpRequest):
         }
     }
 
-    # 3) GPT 분석 (debug_flag를 전달)
-    result, gpt_debug = run_checkreport_gpt(combined, debug=debug_flag)
+    # 3) GPT 분석
+    #   - 신버전(run_checkreport_gpt(parsed, debug))이면 디버그까지 받음
+    #   - 구버전(run_checkreport_gpt(parsed))이면 타입 에러를 캐치해서 하위호환
+    try:
+        result, gpt_debug = run_checkreport_gpt(combined, debug=debug_flag)
+    except TypeError:
+        result = run_checkreport_gpt(combined)  # 구버전 시그니처 호환
+        gpt_debug = {}
 
     # 4) 디버그 요구 시, GPT 입력/요청/응답메타 에코
     if debug_flag:
         result = dict(result)  # shallow copy
         result["_debug"] = {
             "gpt_input": combined,          # 우리가 GPT에 전달한 합쳐진 원본 전체 JSON
-            **gpt_debug                     # gpt_request, gpt_response_meta
+            **gpt_debug                     # gpt_request, gpt_response_meta (있으면 병합)
         }
 
     # 5) 최종 반환
