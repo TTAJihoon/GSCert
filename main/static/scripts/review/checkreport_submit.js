@@ -132,8 +132,8 @@
 
     const fd = new FormData();
     // A안: 같은 키(file) 2개 전송 → 서버에서 확장자로 구분
-    fd.append("file", docx);
-    fd.append("file", pdf);
+    fd.append("docx", docx);
+    fd.append("pdf", pdf);
 
     try {
       const resp = await fetch("/parse/", {
