@@ -1,10 +1,12 @@
 # -*- coding: utf-8 -*-
+# GSCert/main/views/review/checkreport.py
 from django.http import JsonResponse, HttpRequest
 from django.views.decorators.csrf import csrf_exempt
 import os
 
 from .report_docx_parser import parse_docx   # 함수명 유지
 from .report_pdf_parser  import parse_pdf    # 함수명 유지
+from .checkreport_GPT import run_checkreport_gpt
 
 @csrf_exempt
 def parse_view(request: HttpRequest):
@@ -26,9 +28,9 @@ def parse_view(request: HttpRequest):
             elif ext == ".pdf" and pdf_file is None:
                 pdf_file = f
 
-    # 최종 검증
+    # 최종 검증 (요구사항: docx + pdf 고정)
     if docx_file is None or pdf_file is None:
-        return JsonResponse({"error": "Both 'docx' and 'pdf' files are required."}, status=400)
+        return JsonResponse({"version": "1", "total": 0, "items": []})
 
     # 안전: 스트림 포인터 초기화
     try:
@@ -39,20 +41,28 @@ def parse_view(request: HttpRequest):
     except Exception:
         pass
 
-    # 파싱
+    # 1) 파싱
     try:
-        docx_json = parse_docx(docx_file)  # {"v":"1","content":[...]}
+        docx_json = parse_docx(docx_file)  # {"v":"1","content":[...]} 등
     except Exception as e:
         return JsonResponse({"error": f"DOCX parse failed: {e}"}, status=500)
 
     try:
-        pdf_json = parse_pdf(pdf_file)     # {"v":"1","total_pages":N,"pages":[...]}
+        pdf_json = parse_pdf(pdf_file)     # {"v":"1","total_pages":N,"pages":[...]} 등
     except Exception as e:
         return JsonResponse({"error": f"PDF parse failed: {e}"}, status=500)
 
-    out = {
+    parsed = {
         "v": "1",
         "docx": {"v": "1", "content": docx_json.get("content", [])},
-        "pdf": pdf_json,
+        "pdf":  pdf_json,
+        # 필요 시 여기에 규칙 기반 이슈 수집을 추가하여 {"issues":[...]}를 채울 수 있습니다.
+        # 본 A안에서는 GPT가 전체 parsed를 받고 판단하도록 합니다.
     }
-    return JsonResponse(out, json_dumps_params={"ensure_ascii": False})
+
+    # 2) GPT 분석 → 테이블 스키마
+    result = run_checkreport_gpt(parsed)
+
+    # 3) 최종 반환 (프런트 테이블용 스키마)
+    # 데이터 없으면 빈 구조 → 프런트에서 emptyState 표시
+    return JsonResponse(result, json_dumps_params={"ensure_ascii": False})
