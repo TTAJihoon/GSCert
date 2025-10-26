@@ -44,7 +44,7 @@ def parse_docx_pdf(request):
 
         # 파서 호출
         docx_json = build_docx_tree(tmp_docx.name)
-        pdf_json  = build_pdf_headfoot(tmp_pdf.name, header_ratio=0.07, footer_ratio=0.07)
+        pdf_json  = build_pdf_headfoot(tmp_pdf.name)
 
         # 최종 결합
         result = {
