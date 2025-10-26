@@ -213,7 +213,7 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
             },
             {
                 "role": "user",
-                "content": json.dumps(instruction, ensure_ascii=False)
+                "content": json.dumps(instruction_text, ensure_ascii=False)
             },
             {
                 "role": "user",
