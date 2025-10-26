@@ -7,12 +7,6 @@ from .report_docx_parser import build_pages
 logger = logging.getLogger(__name__)   # django 로거 사용 (stdout로도 출력됨)
 
 def _json_serialize(data) -> str:
-    """
-    JsonResponse와 최대한 동일하게 직렬화해서 원문 텍스트를 로그에 남김.
-    - ensure_ascii=False : 한글이 \uXXXX 로 안 깨지게
-    - separators=(',', ':') : 공백 최소화(네트워크 실제 전송과 동일)
-    - default=str : datetime 등 직렬화 불가 객체 안전 처리
-    """
     return json.dumps(data, ensure_ascii=False, separators=(",", ":"), default=str)
 
 @csrf_exempt
