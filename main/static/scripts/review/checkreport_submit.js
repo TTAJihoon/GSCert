@@ -1,14 +1,18 @@
 // main/static/scripts/review/checkreport_submit.js
 (function () {
+  // === 실제 HTML id에 맞춤 ===
   const fileInput  = document.getElementById("fileInput");
-  const submitBtn  = document.getElementById("submitBtn");
-  const dropZone   = document.getElementById("dropZone") || document.body;
+  const submitBtn  = document.getElementById("btn-generate");
+  const dropZone   = document.getElementById("dropArea") || document.body;
   const fileListEl = document.getElementById("fileList"); // optional
 
-  // MIME 까지 확인하려면 true로 바꾸세요(현재는 확장자만 확인)
+  // 템플릿에서 아직 .html로 되어 있으면 런타임에서 교체
+  try { if (fileInput && fileInput.accept !== ".docx,.pdf") fileInput.accept = ".docx,.pdf"; } catch {}
+
+  // MIME까지 확인하려면 true (지금은 확장자만 검사)
   const CHECK_MIME = false;
 
-  // 내부 상태: 확장자별로 1개만 유지
+  // 내부 상태: 확장자별 1개만 유지
   const chosen = new Map(); // 'docx' | 'pdf' -> File
 
   function getCookie(name) {
@@ -39,20 +43,24 @@
     return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":"&#39;"}[c]));
   }
 
+  function showListVisible(hasItems) {
+    if (!fileListEl) return;
+    fileListEl.classList.toggle("hidden", !hasItems);
+  }
+
   function renderList() {
-    if (!fileListEl) {
-      console.log("[checkreport] selected:", Object.fromEntries(
-        [...chosen].map(([k, f]) => [k, f?.name])
-      ));
-      return;
-    }
     const items = [];
     for (const [k, f] of chosen) {
       if (f) items.push(`<li><strong>${k.toUpperCase()}</strong>: ${escapeHtml(f.name)} (${f.size} bytes)</li>`);
     }
-    fileListEl.innerHTML = items.length
-      ? `<ul class="upload-list">${items.join("")}</ul>`
-      : `<div class="muted">docx 1개와 pdf 1개를 선택하세요.</div>`;
+    if (fileListEl) {
+      fileListEl.innerHTML = items.length
+        ? `<ul class="upload-list">${items.join("")}</ul>`
+        : `<div class="muted">docx 1개와 pdf 1개를 선택하세요.</div>`;
+      showListVisible(true);
+    } else {
+      console.log("[checkreport] selected:", Object.fromEntries([...chosen].map(([k, f]) => [k, f?.name])));
+    }
   }
 
   function acceptFiles(files) {
@@ -65,7 +73,7 @@
         alert(`파일 형식(MIME)이 올바르지 않습니다: ${f.name}`);
         continue;
       }
-      // 같은 확장자는 가장 마지막 선택/드롭한 것으로 교체
+      // 같은 확장자는 마지막 선택/드롭으로 교체
       chosen.set(ext, f);
       updated = true;
     }
@@ -83,12 +91,12 @@
     e.stopPropagation();
   }
 
-  // 전역 방어: 창 밖에서 드롭해도 브라우저가 열지 않게 방지
+  // 브라우저 기본 드롭 동작 방지(새 탭 열림 방지)
   ["dragover", "drop"].forEach(evt => {
     window.addEventListener(evt, preventDefaults, false);
   });
 
-  // 지정 드롭존에만 강조/수락
+  // 지정된 드롭존 활성화
   ["dragenter", "dragover", "dragleave", "drop"].forEach(evt => {
     dropZone.addEventListener(evt, preventDefaults, false);
   });
@@ -105,13 +113,13 @@
     acceptFiles(files);
   });
 
-  // 드롭존 클릭 시 파일 선택창 열기(드롭존이 body면 클릭 이벤트는 생략)
+  // 드롭존 클릭 시 파일 선택창 열기(드롭존이 body면 클릭 생략)
   if (dropZone !== document.body) {
     dropZone.style.cursor = "pointer";
     dropZone.addEventListener("click", () => fileInput?.click());
   }
 
-  // ----- 제출 -----
+  // ----- 제출 (/parse/) -----
   submitBtn?.addEventListener("click", async (e) => {
     e.preventDefault();
 
@@ -123,7 +131,7 @@
     }
 
     const fd = new FormData();
-    // A안: 같은 키(file)로 두 개 전송 → 백엔드에서 확장자로 구분
+    // A안: 같은 키(file) 2개 전송 → 서버에서 확장자로 구분
     fd.append("file", docx);
     fd.append("file", pdf);
 
@@ -141,22 +149,13 @@
       }
       const json = await resp.json();
       console.log("[checkreport] parser output:", json);
-
-      // (원하면 요약 테이블)
-      // if (Array.isArray(json?.pages)) {
-      //   console.table(json.pages.map((p, i) => ({
-      //     page: i + 1,
-      //     header: p.header?.length ?? 0,
-      //     footer: p.footer?.length ?? 0,
-      //     blocks: p.content?.length ?? 0,
-      //   })));
-      // }
     } catch (err) {
       console.error(err);
       alert("요청 중 오류가 발생했습니다.");
     }
   });
 
-  // 초기 렌더
+  // 초기: 파일 리스트 박스 보이도록
+  showListVisible(true);
   renderList();
 })();
