@@ -1,82 +1,61 @@
-# checkreport.py
+# -*- coding: utf-8 -*-
+"""
+checkreport.py
+- /parse/ 엔드포인트: docx + pdf 동시 업로드 받아 파싱 결과 결합
+- DOCX: report_docx_parser.parse_docx()
+- PDF : report_pdf_parser.parse_pdf()
+- 둘 중 하나라도 없으면 400
+"""
 
-from __future__ import annotations
-import json
-from typing import Tuple, Optional
 from django.http import JsonResponse, HttpRequest
 from django.views.decorators.csrf import csrf_exempt
 
-from .report_docx_parser import parse_docx_to_json
-from .report_pdf_parser import extract_header_footer_lines
+from .report_docx_parser import parse_docx   # 함수명 유지
+from .report_pdf_parser import parse_pdf     # 함수명 유지
 
-
-def _read_fileobj(f) -> Optional[bytes]:
-    if not f:
-        return None
-    try:
-        data = f.read()
-        return data if data else None
-    except Exception:
-        return None
-
-
-def _pick_files(request: HttpRequest) -> Tuple[bytes, bytes]:
-    """
-    1순위: 필드명이 'docx', 'pdf'인 업로드
-    2순위: 같은 이름 'file'로 2개 올라온 업로드
-    실패 시 ValueError
-    """
-    # 1) 명시 필드 우선
-    docx_bytes = _read_fileobj(request.FILES.get("docx"))
-    pdf_bytes  = _read_fileobj(request.FILES.get("pdf"))
-
-    # 2) 하위호환: 같은 키(file) 2개
-    if not (docx_bytes and pdf_bytes):
-        files = request.FILES.getlist("file")
-        for f in files:
-            name = (getattr(f, "name", "") or "").lower()
-            data = _read_fileobj(f)
-            if not data:
-                continue
-            if name.endswith(".docx") and not docx_bytes:
-                docx_bytes = data
-            elif name.endswith(".pdf") and not pdf_bytes:
-                pdf_bytes = data
-
-    missing = []
-    if not docx_bytes:
-        missing.append("docx")
-    if not pdf_bytes:
-        missing.append("pdf")
-    if missing:
-        raise ValueError(f"Missing required uploads: {', '.join(missing)}")
-
-    return docx_bytes, pdf_bytes
-
+import os
 
 @csrf_exempt
 def parse_view(request: HttpRequest):
     if request.method != "POST":
-        return JsonResponse({"error": "POST only"}, status=405)
+        return JsonResponse({"error": "POST only."}, status=405)
+
+    files = request.FILES.getlist("file")  # 같은 키로 2개 올라옴
+    if not files:
+        return JsonResponse({"error": "Both 'docx' and 'pdf' files are required."}, status=400)
+
+    docx_file = None
+    pdf_file = None
+
+    for f in files:
+        name = getattr(f, "name", "") or ""
+        ext = os.path.splitext(name.lower())[1]
+        if ext == ".docx":
+            docx_file = f
+        elif ext == ".pdf":
+            pdf_file = f
+
+    if docx_file is None or pdf_file is None:
+        return JsonResponse({"error": "Both 'docx' and 'pdf' files are required."}, status=400)
+
+    # --- 파싱 ---
+    try:
+        docx_json = parse_docx(docx_file)  # {"v":"1","content":[...]}
+    except Exception as e:
+        return JsonResponse({"error": f"DOCX parse failed: {e}"}, status=500)
 
     try:
-        docx_bytes, pdf_bytes = _pick_files(request)
-
-        # DOCX 파싱 (문단/표/수식)
-        docx_json = parse_docx_to_json(docx_bytes, with_paragraphs=True)
-
-        # PDF 파싱 (페이지별 1줄 header/1줄 footer)
-        pdf_json = extract_header_footer_lines(pdf_bytes)
-
-        combined = {
-            "v": "1",
-            "docx": docx_json.get("docx", {"v": "1", "content": []}),
-            "pdf": pdf_json,
-        }
-        return JsonResponse(combined, json_dumps_params={"ensure_ascii": False}, status=200)
-
-    except ValueError as ve:
-        # 사용자가 보아도 되는 친절한 400
-        return JsonResponse({"error": str(ve)}, status=400)
+        pdf_json = parse_pdf(pdf_file)     # {"v":"1","total_pages":N,"pages":[...]}
     except Exception as e:
-        return JsonResponse({"error": f"{type(e).__name__}: {e}"}, status=500)
+        return JsonResponse({"error": f"PDF parse failed: {e}"}, status=500)
+
+    # --- 결합 ---
+    out = {
+        "v": "1",
+        "docx": {
+            "v": "1",
+            "content": docx_json.get("content", []),
+        },
+        "pdf": pdf_json
+    }
+    return JsonResponse(out, json_dumps_params={"ensure_ascii": False})
