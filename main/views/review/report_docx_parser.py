@@ -186,6 +186,13 @@ _re_numeric_label = re.compile(r"^\s*(\d+(?:\.\d+)*)([.)]?)\s+(.*)$")
 _re_angle_label   = re.compile(r"^\s*<([^>]+)>\s*(.*)$")
 _re_version_like  = re.compile(r"^\s*v\d+(?:\.\d+)+\s*$", re.IGNORECASE)
 
+def count_pagebreaks_in(el) -> int:
+    """요소 내부의 페이지 브레이크 개수(대략치)"""
+    n = 0
+    n += len(el.findall(".//w:lastRenderedPageBreak", NS))
+    n += len(el.findall('.//w:br[@w:type="page"]', NS))
+    return n
+    
 def detect_label(line: str):
     s = line.strip()
     m = _re_angle_label.match(s)
@@ -205,8 +212,12 @@ def detect_label(line: str):
 
     return False, 0, "", None
 
+
 # ---------------- DOCX → flat ----------------
 def extract_flat_from_docx(docx_path: str):
+    import zipfile
+    from lxml import etree
+
     with zipfile.ZipFile(docx_path) as zf:
         with zf.open("word/document.xml") as f:
             root = etree.fromstring(f.read())
@@ -216,12 +227,23 @@ def extract_flat_from_docx(docx_path: str):
         return []
 
     flat = []
+    current_page = 1  # 페이지 추적 시작
+
     for el in body:
+        # 이 요소 안에서 페이지브레이크 먼저 반영
+        current_page += count_pagebreaks_in(el)
+
         tag = etree.QName(el).localname
         if tag == "p":
             text = paragraph_text_with_omml(el)
             if not text:
                 continue
+
+            # ---- 페이지 3(목차)에서는 라벨 탐지 비활성화 ----
+            if current_page == 3:
+                flat.append({"_kind": "sen", "text": text})
+                continue
+
             is_label, depth, label, rest = detect_label(text)
             if is_label:
                 flat.append({"_kind": "label", "depth": depth, "label": label})
@@ -229,9 +251,22 @@ def extract_flat_from_docx(docx_path: str):
                     flat.append({"_kind": "sen", "text": rest})
             else:
                 flat.append({"_kind": "sen", "text": text})
+
         elif tag == "tbl":
+            # 일반적으로 목차 페이지엔 표가 거의 없지만,
+            # 요구사항이 "모두 sen"이므로, page==3이면 표도 텍스트로 내릴지 여부 선택
+            # 현재는 표 구조 보존(스펙 유지). 필요하면 아래 주석 해제:
+            # if current_page == 3:
+            #     txt = norm_space(" ".join(paragraph_text_with_omml(p) for p in el.findall(".//w:p", NS)))
+            #     if txt:
+            #         flat.append({"_kind": "sen", "text": txt})
+            # else:
             table = parse_table(el)
             flat.append({"_kind": "table", "table": table})
+
+        else:
+            continue
+
     return flat
 
 # ---------------- flat → 트리 ----------------
@@ -257,3 +292,4 @@ def build_tree(docx_path: str):
     flat = extract_flat_from_docx(docx_path)
     content = nest_blocks(flat)
     return {"v": "1", "content": content}
+
