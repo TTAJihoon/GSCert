@@ -101,7 +101,7 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
         - 배열은 원문 등장 순서 보존
         - DOCX에는 페이지 정보가 없음
 
-        위의 구조를 가진 json 데이터만을 근거로 아래 지시에 맞도록 새로운 json 값을 만들어주세요.
+        위의 구조를 가진 시험결과서 json 데이터만을 근거로 아래 지시에 맞도록 새로운 json 값을 만들어주세요.
         Let's think step by step
         ## 역할
         - 당신은 **시험 합의서/시험결과서 기술책임자**입니다.
@@ -199,7 +199,7 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
         - 문서 끝 **결말 문자열**(“- 끝 -” 또는 “-끝-”) 존재 확인.
         - **추가 가정 금지**, 수치·유사도·페이지는 **지어내지 말 것**. 부족하면 **검증불가**로.
 
-다음 메시지에 parsed_payload JSON이 <<PARSED_PAYLOAD_JSON_START>> ~ <<PARSED_PAYLOAD_JSON_END>> 사이에 그대로 제공됩니다. 해당 블록 전체를 데이터로 인식하여 처리하세요.
+다음 메시지에 판단할 시험결과서 JSON이 <<PARSED_PAYLOAD_JSON_START>> ~ <<PARSED_PAYLOAD_JSON_END>> 사이에 그대로 제공됩니다. 해당 블록 전체를 데이터로 인식하여 처리하세요.
     """).strip()
 
     # 1) 실제로 보낼 '요청 페이로드'를 선구성 (오류여도 디버그에 넣기 위함)
