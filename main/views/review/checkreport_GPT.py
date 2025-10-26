@@ -196,6 +196,29 @@ def run_checkreport_gpt(parsed_payload: dict) -> dict:
         }
     }
 
+    # === 우리가 실제로 OpenAI에 보낼 '요청 페이로드'를 먼저 구성 (디버그 에코용) ===
+    request_payload: Dict[str, Any] = {
+        "model": "gpt-5-nano",
+        "response_format": {"type": "json_object"},
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are a strict technical reviewer. Return ONLY a JSON object in the required schema."
+            },
+            {
+                "role": "user",
+                "content": json.dumps(instruction, ensure_ascii=False)
+            },
+            {
+                "role": "user",
+                # 합쳐진 원본 전체 JSON (축약 없이 그대로)
+                "content": json.dumps(parsed_payload, ensure_ascii=False)
+            }
+        ],
+        "temperature": 0.2,
+    }
+
+    debug_payload: Dict[str, Any] = {}
     try:
         completion = client.chat.completions.create(
             model="gpt-5-nano",
@@ -226,8 +249,25 @@ def run_checkreport_gpt(parsed_payload: dict) -> dict:
                 "evidence":        it.get("evidence", ""),
                 "recommendation":  it.get("recommendation", "")
             })
-        return {"version": "1", "total": len(norm), "items": norm}
+        result = {"version": "1", "total": len(norm), "items": norm}
+
+        # 디버그 메타 (요청/응답 요약)
+        if debug:
+            usage = getattr(completion, "usage", None)
+            debug_payload["gpt_request"] = request_payload  # 우리가 보낸 그대로(키만)
+            debug_payload["gpt_response_meta"] = {
+                "id": getattr(completion, "id", None),
+                "created": getattr(completion, "created", None),
+                "model": getattr(completion, "model", None),
+                "usage": {
+                    "prompt_tokens": getattr(usage, "prompt_tokens", None) if usage else None,
+                    "completion_tokens": getattr(usage, "completion_tokens", None) if usage else None,
+                    "total_tokens": getattr(usage, "total_tokens", None) if usage else None,
+                }
+            }
+
+        return result, debug_payload
 
     except Exception:
         # GPT 실패 시에도 빈 결과로 복구
-        return {"version": "1", "total": 0, "items": []}
+        return {"version": "1", "total": 0, "items": []}, debug_payload
