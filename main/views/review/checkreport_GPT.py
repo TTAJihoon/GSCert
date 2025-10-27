@@ -203,7 +203,7 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
 
     # 1) 실제로 보낼 '요청 페이로드'를 선구성 (오류여도 디버그에 넣기 위함)
     request_payload: Dict[str, Any] = {
-        "model": "gpt-5-mini",
+        "model": "gpt-5",
         "response_format": {"type": "json_object"},
         "messages": [
             {
