@@ -30,8 +30,10 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
 
     # 0) instruction 원문 및 스키마(여러 줄 그대로)
     instruction_text = dedent("""\
-        다음은 시험결과서(docx, pdf)를 파싱해 하나의 JSON으로 합친 원본 전체 데이터입니다.
-        해당 json 형식은 아래와 같은 구조를 가집니다.
+        <<PARSED_PAYLOAD_JSON_START>> ~ <<PARSED_PAYLOAD_JSON_END>> 사이에 제공되는 json 값(이하 '원본')은 시험결과서 파일(.docx)를 파싱해 하나의 JSON으로 합친 데이터입니다.
+        아래 구조를 참고하여 원본을 하나의 word 문서로 만들어 '판단 지침'에 따라 결과를 제공해줘.
+
+        ### 원본 구조 설명 ###
         ## 1) 최상위 구조
         {
           "v": "1",
@@ -97,11 +99,9 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
           header: "1/12 소프트웨어시험인증연구소"
           footer: "TPG-1016-5(02)  Copyright 2025 TTA  페이지 : (7)/(총15)"
         ---
-        ## 4) 공통 규칙 요약
-        - 배열은 원문 등장 순서 보존
-        - DOCX에는 페이지 정보가 없음
+        ### 원본 구조 설명 끝 ###
 
-        위의 구조를 가진 시험결과서 json 데이터만을 근거로 아래 지시에 맞도록 새로운 json 값을 만들어주세요.
+        ### 판단 지침 시작 ###
         Let's think step by step
         ## 역할
         - 당신은 **시험 합의서/시험결과서 기술책임자**입니다.
@@ -198,8 +198,7 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
         - **중요도 순(🟥→🟧→🟨→🟦)** 정렬.
         - 문서 끝 **결말 문자열**(“- 끝 -” 또는 “-끝-”) 존재 확인.
         - **추가 가정 금지**, 수치·유사도·페이지는 **지어내지 말 것**. 부족하면 **검증불가**로.
-
-다음 메시지에 판단할 시험결과서 JSON이 <<PARSED_PAYLOAD_JSON_START>> ~ <<PARSED_PAYLOAD_JSON_END>> 사이에 그대로 제공됩니다. 해당 블록 전체를 데이터로 인식하여 처리하세요.
+        ### 판단 지침 끝 ###
     """).strip()
 
     # 1) 실제로 보낼 '요청 페이로드'를 선구성 (오류여도 디버그에 넣기 위함)
