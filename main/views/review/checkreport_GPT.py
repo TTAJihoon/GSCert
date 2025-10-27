@@ -294,7 +294,7 @@ def get_gpt_recommendation_view(request: HttpRequest):
         user_prompt = body.get("prompt", "")
 
         completion = client.chat.completions.create(
-            model="gpt-5-nano",
+            model="gpt-5-mini",
             messages=[
                 {"role": "system", "content": "You are a helpful assistant."},
                 {"role": "user", "content": user_prompt}
