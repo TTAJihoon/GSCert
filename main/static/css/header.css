@@ -19,7 +19,12 @@ body {
 }
 
 .title {
-  height: 50px;
+  height: 65px;
+  margin-right: 30px;
+}
+
+.menu {
+  height: 30px;
   margin-right: 30px;
 }
 
