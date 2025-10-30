@@ -1,4 +1,4 @@
-// 스크롤 애니메이션 및 인터랙션 스크립트 (자동 스크롤 강제 덮어쓰기 버전)
+// 스크롤 애니메이션 및 인터랙션 스크립트 (자동 스크롤 후 자유 스크롤 복구 버전)
 
 document.addEventListener('DOMContentLoaded', function() {
     // 요소들 선택
@@ -9,29 +9,30 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 내부 상태
     let autoScrollTimer = null;
-    let autoScrolling = false;         // 자동 스크롤 진행 중 플래그
-    let rafId = null;                  // requestAnimationFrame id
+    let autoScrolling = false;   // 자동 스크롤 진행 중 플래그
+    let rafId = null;            // requestAnimationFrame id
 
-    // 스크롤 잠금/해제 (자동 스크롤 동안 수동 스크롤 덮어쓰기)
+    // [중요] 스크롤 잠금용 공용 핸들러(같은 참조 유지)
+    const preventScrollHandler = (e) => {
+        if (e.type === 'keydown') {
+            const blockKeys = ['ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End', ' '];
+            if (blockKeys.includes(e.key)) e.preventDefault();
+            return;
+        }
+        e.preventDefault();
+    };
+
+    // 스크롤 잠금/해제
     const passiveFalse = { passive: false };
     function lockScroll(enable) {
-        const prevent = (e) => {
-            // 방향키/스페이스 등 키 입력도 차단
-            if (e.type === 'keydown') {
-                const blockKeys = ['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '];
-                if (blockKeys.includes(e.key)) e.preventDefault();
-                return;
-            }
-            e.preventDefault();
-        };
         if (enable) {
-            window.addEventListener('wheel', prevent, passiveFalse);
-            window.addEventListener('touchmove', prevent, passiveFalse);
-            document.addEventListener('keydown', prevent, passiveFalse);
+            window.addEventListener('wheel', preventScrollHandler, passiveFalse);
+            window.addEventListener('touchmove', preventScrollHandler, passiveFalse);
+            document.addEventListener('keydown', preventScrollHandler, passiveFalse);
         } else {
-            window.removeEventListener('wheel', prevent, passiveFalse);
-            window.removeEventListener('touchmove', prevent, passiveFalse);
-            document.removeEventListener('keydown', prevent, passiveFalse);
+            window.removeEventListener('wheel', preventScrollHandler, passiveFalse);
+            window.removeEventListener('touchmove', preventScrollHandler, passiveFalse);
+            document.removeEventListener('keydown', preventScrollHandler, passiveFalse);
         }
     }
 
@@ -41,13 +42,11 @@ document.addEventListener('DOMContentLoaded', function() {
         const windowHeight = window.innerHeight;
         
         // 스크롤 인디케이터 숨기기
-        if (scrollTop > windowHeight * 0.1) {
-            if (scrollIndicator) {
+        if (scrollIndicator) {
+            if (scrollTop > windowHeight * 0.1) {
                 scrollIndicator.style.opacity = '0';
                 scrollIndicator.style.transform = 'translateX(-50%) translateY(20px)';
-            }
-        } else {
-            if (scrollIndicator) {
+            } else {
                 scrollIndicator.style.opacity = '1';
                 scrollIndicator.style.transform = 'translateX(-50%) translateY(0)';
             }
@@ -75,7 +74,6 @@ document.addEventListener('DOMContentLoaded', function() {
         cards.forEach((card, index) => {
             const cardTop = card.offsetTop;
             const cardParent = card.closest('.section-container');
-            
             if (cardParent && cardParent.classList.contains('visible')) {
                 if (scrollTop + windowHeight > cardTop + 50) {
                     setTimeout(() => {
@@ -95,13 +93,9 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // 스크롤 인디케이터 클릭 이벤트
-    if (scrollIndicator) {
+    if (scrollIndicator && contentSection) {
         scrollIndicator.addEventListener('click', function() {
-            const contentSectionTop = contentSection.offsetTop;
-            window.scrollTo({
-                top: contentSectionTop,
-                behavior: 'smooth'
-            });
+            window.scrollTo({ top: contentSection.offsetTop, behavior: 'smooth' });
         });
     }
 
@@ -109,22 +103,13 @@ document.addEventListener('DOMContentLoaded', function() {
     cards.forEach(card => {
         card.addEventListener('click', function() {
             const title = this.querySelector('.card-title')?.textContent.trim() || '선택한 기능';
-            
-            // 클릭 효과
             this.style.transform = 'scale(0.95)';
-            setTimeout(() => {
-                this.style.transform = '';
-            }, 150);
-
-            // 알림 (실제 서비스에서는 해당 기능 페이지로 이동)
+            setTimeout(() => { this.style.transform = ''; }, 150);
             showNotification(`"${title}" 기능을 선택하셨습니다.`);
         });
-
-        // 카드 호버 효과 개선
         card.addEventListener('mouseenter', function() {
             this.style.transform = 'translateY(-10px) scale(1.02)';
         });
-
         card.addEventListener('mouseleave', function() {
             this.style.transform = 'translateY(0) scale(1)';
         });
@@ -132,18 +117,13 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 알림 표시 함수
     function showNotification(message) {
-        // 기존 알림 제거
         const existingNotification = document.querySelector('.notification');
-        if (existingNotification) {
-            existingNotification.remove();
-        }
+        if (existingNotification) existingNotification.remove();
 
-        // 새 알림 생성
         const notification = document.createElement('div');
         notification.className = 'notification';
         notification.textContent = message;
-        
-        // 알림 스타일
+
         Object.assign(notification.style, {
             position: 'fixed',
             top: '20px',
@@ -162,28 +142,20 @@ document.addEventListener('DOMContentLoaded', function() {
         });
 
         document.body.appendChild(notification);
-
-        // 애니메이션으로 표시
         setTimeout(() => {
             notification.style.opacity = '1';
             notification.style.transform = 'translateX(0)';
         }, 10);
-
-        // 3초 후 자동 제거
         setTimeout(() => {
             notification.style.opacity = '0';
             notification.style.transform = 'translateX(100%)';
-            setTimeout(() => {
-                if (notification.parentNode) {
-                    notification.remove();
-                }
-            }, 300);
+            setTimeout(() => notification.remove(), 300);
         }, 3000);
     }
 
     // 부드러운 스크롤 (진행 중이면 새 호출이 덮어씀)
     function smoothScrollTo(target, duration = 1000) {
-        // 기존 애니메이션 중단
+        if (!target) return;
         if (rafId) cancelAnimationFrame(rafId);
 
         const targetPosition = target.offsetTop;
@@ -207,10 +179,10 @@ document.addEventListener('DOMContentLoaded', function() {
             if (timeElapsed < duration) {
                 rafId = requestAnimationFrame(animation);
             } else {
-                // 종료 정리
+                // 종료 정리: 잠금 해제 + 상태 복구 (여기가 핵심)
                 window.scrollTo(0, targetPosition);
                 autoScrolling = false;
-                lockScroll(false);
+                lockScroll(false);             // ← 스크롤 해제 확실히 수행
                 html.style.scrollBehavior = prevBehavior || '';
                 rafId = null;
             }
@@ -227,23 +199,12 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     // Intersection Observer for better performance
-    const observerOptions = {
-        threshold: 0.1,
-        rootMargin: '0px 0px -50px 0px'
-    };
-
+    const observerOptions = { threshold: 0.1, rootMargin: '0px 0px -50px 0px' };
     const observer = new IntersectionObserver((entries) => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                entry.target.classList.add('visible');
-            }
-        });
+        entries.forEach(entry => { if (entry.isIntersecting) entry.target.classList.add('visible'); });
     }, observerOptions);
 
-    // Observe all animatable elements
-    sectionContainers.forEach(container => {
-        observer.observe(container);
-    });
+    sectionContainers.forEach(container => observer.observe(container));
 
     // 초기 스크롤 위치에 따른 애니메이션 트리거
     window.dispatchEvent(new Event('scroll'));
@@ -257,31 +218,27 @@ document.addEventListener('DOMContentLoaded', function() {
     // 모든 리소스 로딩 완료 후 1초 뒤 자동으로 콘텐츠 섹션으로 강제 스크롤
     window.addEventListener('load', () => {
         autoScrollTimer = setTimeout(() => {
-            // 가시화 선행 처리 (깜빡임 방지)
+            // 가시화 선행 처리(깜빡임 방지)
             contentSection?.classList.add('visible');
             sectionContainers.forEach(c => c.classList.add('visible'));
             cards.forEach(card => {
                 card.style.opacity = '1';
                 card.style.transform = 'translateY(0)';
             });
-
             // 강제 덮어쓰기 스크롤 실행
             if (contentSection) smoothScrollTo(contentSection, 800);
         }, 1000);
     });
 
-    // 키보드 네비게이션 지원 (자동 스크롤 중에는 입력 차단됨)
+    // 키보드 네비게이션 (자동 스크롤 중이면 입력 무시됨)
     document.addEventListener('keydown', function(e) {
-        if (autoScrolling) return; // 잠금으로 이미 막히지만 중복 방지
+        if (autoScrolling) return;
         if (e.key === 'ArrowDown' && window.pageYOffset < window.innerHeight) {
             e.preventDefault();
             smoothScrollTo(contentSection);
         } else if (e.key === 'ArrowUp' && window.pageYOffset > window.innerHeight) {
             e.preventDefault();
-            window.scrollTo({
-                top: 0,
-                behavior: 'smooth'
-            });
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     });
 
