@@ -1,4 +1,4 @@
-// 스크롤 애니메이션 및 인터랙션 스크립트
+// 스크롤 애니메이션 및 인터랙션 스크립트 (자동 스크롤 강제 덮어쓰기 버전)
 
 document.addEventListener('DOMContentLoaded', function() {
     // 요소들 선택
@@ -7,6 +7,34 @@ document.addEventListener('DOMContentLoaded', function() {
     const cards = document.querySelectorAll('.card');
     const scrollIndicator = document.querySelector('.scroll-indicator');
 
+    // 내부 상태
+    let autoScrollTimer = null;
+    let autoScrolling = false;         // 자동 스크롤 진행 중 플래그
+    let rafId = null;                  // requestAnimationFrame id
+
+    // 스크롤 잠금/해제 (자동 스크롤 동안 수동 스크롤 덮어쓰기)
+    const passiveFalse = { passive: false };
+    function lockScroll(enable) {
+        const prevent = (e) => {
+            // 방향키/스페이스 등 키 입력도 차단
+            if (e.type === 'keydown') {
+                const blockKeys = ['ArrowUp','ArrowDown','PageUp','PageDown','Home','End',' '];
+                if (blockKeys.includes(e.key)) e.preventDefault();
+                return;
+            }
+            e.preventDefault();
+        };
+        if (enable) {
+            window.addEventListener('wheel', prevent, passiveFalse);
+            window.addEventListener('touchmove', prevent, passiveFalse);
+            document.addEventListener('keydown', prevent, passiveFalse);
+        } else {
+            window.removeEventListener('wheel', prevent, passiveFalse);
+            window.removeEventListener('touchmove', prevent, passiveFalse);
+            document.removeEventListener('keydown', prevent, passiveFalse);
+        }
+    }
+
     // 스크롤 이벤트 리스너
     window.addEventListener('scroll', function() {
         const scrollTop = window.pageYOffset;
@@ -14,17 +42,23 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // 스크롤 인디케이터 숨기기
         if (scrollTop > windowHeight * 0.1) {
-            scrollIndicator.style.opacity = '0';
-            scrollIndicator.style.transform = 'translateX(-50%) translateY(20px)';
+            if (scrollIndicator) {
+                scrollIndicator.style.opacity = '0';
+                scrollIndicator.style.transform = 'translateX(-50%) translateY(20px)';
+            }
         } else {
-            scrollIndicator.style.opacity = '1';
-            scrollIndicator.style.transform = 'translateX(-50%) translateY(0)';
+            if (scrollIndicator) {
+                scrollIndicator.style.opacity = '1';
+                scrollIndicator.style.transform = 'translateX(-50%) translateY(0)';
+            }
         }
 
         // 컨텐츠 섹션 애니메이션
-        const contentSectionTop = contentSection.offsetTop;
-        if (scrollTop + windowHeight > contentSectionTop + 200) {
-            contentSection.classList.add('visible');
+        if (contentSection) {
+            const contentSectionTop = contentSection.offsetTop;
+            if (scrollTop + windowHeight > contentSectionTop + 200) {
+                contentSection.classList.add('visible');
+            }
         }
 
         // 개별 섹션 컨테이너 애니메이션
@@ -61,18 +95,20 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 
     // 스크롤 인디케이터 클릭 이벤트
-    scrollIndicator.addEventListener('click', function() {
-        const contentSectionTop = contentSection.offsetTop;
-        window.scrollTo({
-            top: contentSectionTop,
-            behavior: 'smooth'
+    if (scrollIndicator) {
+        scrollIndicator.addEventListener('click', function() {
+            const contentSectionTop = contentSection.offsetTop;
+            window.scrollTo({
+                top: contentSectionTop,
+                behavior: 'smooth'
+            });
         });
-    });
+    }
 
     // 카드 클릭 이벤트
     cards.forEach(card => {
         card.addEventListener('click', function() {
-            const title = this.querySelector('.card-title').textContent.trim();
+            const title = this.querySelector('.card-title')?.textContent.trim() || '선택한 기능';
             
             // 클릭 효과
             this.style.transform = 'scale(0.95)';
@@ -93,8 +129,6 @@ document.addEventListener('DOMContentLoaded', function() {
             this.style.transform = 'translateY(0) scale(1)';
         });
     });
-
-
 
     // 알림 표시 함수
     function showNotification(message) {
@@ -147,19 +181,39 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 3000);
     }
 
-    // 부드러운 스크롤 개선
+    // 부드러운 스크롤 (진행 중이면 새 호출이 덮어씀)
     function smoothScrollTo(target, duration = 1000) {
+        // 기존 애니메이션 중단
+        if (rafId) cancelAnimationFrame(rafId);
+
         const targetPosition = target.offsetTop;
         const startPosition = window.pageYOffset;
         const distance = targetPosition - startPosition;
         let startTime = null;
+
+        // 네이티브 smooth와 충돌 방지
+        const html = document.documentElement;
+        const prevBehavior = html.style.scrollBehavior;
+        html.style.scrollBehavior = 'auto';
+
+        autoScrolling = true;
+        lockScroll(true); // 자동 스크롤 동안 수동 스크롤 차단
 
         function animation(currentTime) {
             if (startTime === null) startTime = currentTime;
             const timeElapsed = currentTime - startTime;
             const run = ease(timeElapsed, startPosition, distance, duration);
             window.scrollTo(0, run);
-            if (timeElapsed < duration) requestAnimationFrame(animation);
+            if (timeElapsed < duration) {
+                rafId = requestAnimationFrame(animation);
+            } else {
+                // 종료 정리
+                window.scrollTo(0, targetPosition);
+                autoScrolling = false;
+                lockScroll(false);
+                html.style.scrollBehavior = prevBehavior || '';
+                rafId = null;
+            }
         }
 
         function ease(t, b, c, d) {
@@ -169,7 +223,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return -c / 2 * (t * (t - 2) - 1) + b;
         }
 
-        requestAnimationFrame(animation);
+        rafId = requestAnimationFrame(animation);
     }
 
     // Intersection Observer for better performance
@@ -196,11 +250,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 페이지 로드 완료 후 hero 섹션 애니메이션 시작
     setTimeout(() => {
-        document.querySelector('.hero-content').style.opacity = '1';
+        const hero = document.querySelector('.hero-content');
+        if (hero) hero.style.opacity = '1';
     }, 100);
 
-    // 키보드 네비게이션 지원
+    // 모든 리소스 로딩 완료 후 1초 뒤 자동으로 콘텐츠 섹션으로 강제 스크롤
+    window.addEventListener('load', () => {
+        autoScrollTimer = setTimeout(() => {
+            // 가시화 선행 처리 (깜빡임 방지)
+            contentSection?.classList.add('visible');
+            sectionContainers.forEach(c => c.classList.add('visible'));
+            cards.forEach(card => {
+                card.style.opacity = '1';
+                card.style.transform = 'translateY(0)';
+            });
+
+            // 강제 덮어쓰기 스크롤 실행
+            if (contentSection) smoothScrollTo(contentSection, 800);
+        }, 1000);
+    });
+
+    // 키보드 네비게이션 지원 (자동 스크롤 중에는 입력 차단됨)
     document.addEventListener('keydown', function(e) {
+        if (autoScrolling) return; // 잠금으로 이미 막히지만 중복 방지
         if (e.key === 'ArrowDown' && window.pageYOffset < window.innerHeight) {
             e.preventDefault();
             smoothScrollTo(contentSection);
