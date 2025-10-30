@@ -26,7 +26,6 @@ body {
 .menu-section {
   flex-grow: 1; /* 추가: 남은 공간을 전부 차지 */
   display: flex;
-  gap: 60px; /* 메뉴 간 간격 설정 */
 }
 
 .menu-item {
