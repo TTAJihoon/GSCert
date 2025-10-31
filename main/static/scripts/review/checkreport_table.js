@@ -3,10 +3,10 @@
 
   // 표준화된 키 → CSS 클래스
   const severityMap = {
-    '심각': 'severity-critical',
-    '중요': 'severity-major',
-    '보통': 'severity-medium',
-    '경미': 'severity-minor'
+    '심각': '🟥 심각',
+    '중요': '🟧 중요',
+    '보통': '🟨 보통',
+    '경미': '🟩 경미'
   };
   
   function qs(sel) { return document.querySelector(sel); }
@@ -61,7 +61,6 @@
         const tr = document.createElement("tr");
 
         let sevClass = "";
-        let 
         switch (row.severity) {
           case "심각": sevClass = "severity-critical";
             break;
@@ -79,7 +78,7 @@
         const cells = [
           row.no ?? "",
           row.category ?? "",
-          row.severity ?? "",
+          severityMap[row.severity] ?? "",
           row.location ?? "",
           row.summary ?? "",
           row.evidence ?? "",
