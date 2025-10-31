@@ -60,32 +60,37 @@
       items.forEach(row => {
         const tr = document.createElement("tr");
 
-        const tdNo = document.createElement("td");
-        tdNo.textContent = row.no ?? "";
-        tr.appendChild(tdNo);
+        let sevClass = "";
+        switch (row.severity) {
+          case "심각": sevClass = "severity-critical";
+            break;
+          case "중요": sevClass = "severity-major";
+            break;
+          case "보통": sevClass = "severity-medium";
+            break;
+          case "경미": sevClass = "severity-minor";
+            break;
+          default:
+            break;
+        }
+        if (sevClass) tr.classList.add(sevClass);
 
-        const tdCat = document.createElement("td");
-        tdCat.textContent = row.category ?? "";
-        tr.appendChild(tdCat);
+        const cells = [
+          row.no ?? "",
+          row.category ?? "",
+          row.severity ?? "",
+          row.location ?? "",
+          row.summary ?? "",
+          row.evidence ?? "",
+          row.recommendation ?? ""
+        ];
 
-        const sevClass = severityMap[row.severity];
-        tr.classList.add(sevClass);
-
-        const tdLoc = document.createElement("td");
-        tdLoc.textContent = row.location ?? "";
-        tr.appendChild(tdLoc);
-
-        const tdSum = document.createElement("td");
-        tdSum.textContent = row.summary ?? "";
-        tr.appendChild(tdSum);
-
-        const tdEv = document.createElement("td");
-        tdEv.textContent = row.evidence ?? "";
-        tr.appendChild(tdEv);
-
-        const tdRec = document.createElement("td");
-        tdRec.textContent = row.recommendation ?? "";
-        tr.appendChild(tdRec);
+        for (let i = 0; i < cells.length; i++) {
+          const td = document.createElement("td");
+          const v = cells[i];
+          td.textContent = (v == null) ? "" : String(v);
+          tr.appendChild(td);
+        }
 
         frag.appendChild(tr);
       });
