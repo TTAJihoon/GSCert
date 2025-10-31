@@ -61,6 +61,7 @@
         const tr = document.createElement("tr");
 
         let sevClass = "";
+        let 
         switch (row.severity) {
           case "심각": sevClass = "severity-critical";
             break;
