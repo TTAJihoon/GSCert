@@ -1,0 +1,27 @@
+/* 🟥 심각 */
+.severity-critical {
+  background: #fee2e2 !important;  /* 연한 빨강 */
+  color: #991b1b;                   /* 진한 빨강 */
+  border-left: 3px solid #dc2626;   /* 좌측 빨간 띠 */
+}
+
+/* 🟧 중요 */
+.severity-major {
+  background: #fef3c7 !important;  /* 연한 주황/노랑 */
+  color: #92400e;                   /* 진한 갈색 */
+  border-left: 3px solid #f59e0b;   /* 좌측 주황 띠 */
+}
+
+/* 🟨 보통 */
+.severity-medium {
+  background: #fef9c3 !important;  /* 연한 노랑-그린 */
+  color: #854d0e;                   /* 진한 노랑 텍스트 */
+  border-left: 3px solid #eab308;   /* 좌측 노랑 띠 */
+}
+
+/* 🟩 경미 */
+.severity-minor {
+  background: #dcfce7 !important;  /* 연한 녹색 */
+  color: #166534;                   /* 진한 녹색 */
+  border-left: 3px solid #22c55e;   /* 좌측 녹색 띠 */
+}
