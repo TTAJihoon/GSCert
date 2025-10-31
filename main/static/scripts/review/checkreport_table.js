@@ -92,11 +92,6 @@
         get: (r) => r.section ?? r.category ?? r.item ?? ''
       },
       {
-        key: 'severity',
-        title: '심각도',
-        get: (r) => r.severity ?? ''
-      },
-      {
         key: 'location',
         title: '위치(표/절/문장)',
         get: (r) => r.location ?? r.position ?? r.path ?? ''
