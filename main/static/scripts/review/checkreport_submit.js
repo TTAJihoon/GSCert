@@ -5,7 +5,7 @@
   const dropZone   = document.getElementById("dropArea") || document.body;
   const fileListEl = document.getElementById("fileList"); // optional
 
-  const loadingEl  = document.getElementById("loadingContainer");
+  const loadingEl  = document.getElementById("loadingState");
   const emptyEl    = document.getElementById("emptyState");
   const tableEl    = document.getElementById("resultsTable");
 
