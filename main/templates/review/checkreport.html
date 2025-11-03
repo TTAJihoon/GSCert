@@ -93,9 +93,10 @@
 
           <!-- 로딩 상태: 초기 숨김 -->
           <div id="loadingState" class="text-center py-12 hidden">
-            <div class="inline-flex items-center px-4 py-2 font-bold leading-6 text-sm shadow rounded-md text-gray-500 bg-white">
-              <i class="fas fa-spinner fa-spin mr-2"></i>
-              시험결과서 검토 결과를 작성하는 중...
+            <div class="loading-container hidden" id="loadingContainer">
+                <div class="spinner"></div>
+                <div class="loading-text">분석 중...</div>
+                <div class="loading-description">업로드한 파일을 분석하고 유사 제품을 검색하고 있습니다.</div>
             </div>
           </div>
 
