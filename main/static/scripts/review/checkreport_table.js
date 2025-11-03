@@ -3,10 +3,10 @@
 
   // 표준화된 키 → CSS 클래스
   const severityMap = {
-    '심각': '🟥 심각',
-    '중요': '🟧 중요',
-    '보통': '🟨 보통',
-    '경미': '🟩 경미'
+    '🟥': '🟥 심각',
+    '🟧': '🟧 중요',
+    '🟨': '🟨 보통',
+    '🟩': '🟩 경미'
   };
   
   function qs(sel) { return document.querySelector(sel); }
@@ -61,14 +61,14 @@
         const tr = document.createElement("tr");
 
         let sevClass = "";
-        switch (row.severity) {
-          case "심각": sevClass = "severity-critical";
+        switch (severityMap[row.severity]) {
+          case severityMap[0]: sevClass = "severity-critical";
             break;
-          case "중요": sevClass = "severity-major";
+          case severityMap[1]: sevClass = "severity-major";
             break;
-          case "보통": sevClass = "severity-medium";
+          case severityMap[2]: sevClass = "severity-medium";
             break;
-          case "경미": sevClass = "severity-minor";
+          case severityMap[3]: sevClass = "severity-minor";
             break;
           default:
             break;
