@@ -1,3 +1,7 @@
+.tablebody {
+  
+}
+
 /* 🟥 심각 */
 .severity-critical {
   background: #fee2e2 !important;  /* 연한 빨강 */
@@ -24,6 +28,11 @@
   background: #dcfce7 !important;  /* 연한 녹색 */
   color: #166534;                   /* 진한 녹색 */
   border-left: 3px solid #22c55e;   /* 좌측 녹색 띠 */
+}
+
+#resultsTable th, 
+#resultsTable td {
+  font-size: 13px;
 }
 
 /* 1열: 번호 */
