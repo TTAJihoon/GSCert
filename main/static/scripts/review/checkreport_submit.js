@@ -7,7 +7,6 @@
 
   const loadingEl  = document.getElementById("loadingState");
   const emptyEl    = document.getElementById("emptyState");
-  const tableEl    = document.getElementById("resultsTable");
 
   try { if (fileInput && fileInput.accept !== ".docx,.pdf") fileInput.accept = ".docx,.pdf"; } catch (e) {}
 
@@ -102,18 +101,15 @@
   function showLoading() {
     loadingEl?.classList.remove("hidden");
     emptyEl?.classList.add("hidden");
-    tableEl?.classList.add("hidden");
     window.CheckReportTable?.clear?.();
   }
   function showEmpty() {
     loadingEl?.classList.add("hidden");
     emptyEl?.classList.remove("hidden");
-    tableEl?.classList.add("hidden");
   }
   function showTable() {
     loadingEl?.classList.add("hidden");
     emptyEl?.classList.add("hidden");
-    tableEl?.classList.remove("hidden");
   }
 
   // ----- 제출 (/parse/) -----
