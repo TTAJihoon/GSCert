@@ -30,15 +30,23 @@
   border-left: 3px solid #22c55e;   /* 좌측 녹색 띠 */
 }
 
-#resultsTable th, 
-#resultsTable td {
+#resultsTable tbody th {
+  text-align: center;
+}
+
+#resultsTable tbody td {
   font-size: 13px;
+  padding: 8px
 }
 
 /* 1열: 번호 */
 #resultsTable th:nth-child(1),
 #resultsTable td:nth-child(1) {
   width: 30px;
+}
+
+#resultsTable tbody td:nth-child(1) {
+  text-align: center;
 }
 
 /* 2열: 구분(점검항목) */
