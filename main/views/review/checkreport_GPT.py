@@ -33,7 +33,7 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
         <<PARSED_PAYLOAD_JSON_START>> ~ <<PARSED_PAYLOAD_JSON_END>> 사이에 제공되는 json 값(이하 '원본')은 시험결과서 파일(.docx)를 파싱해 하나의 JSON으로 합친 데이터입니다.
         아래 구조를 참고하여 원본을 하나의 word 문서로 만들어 '판단 지침'에 따라 결과를 제공해줘.
 
-        #### 원본 구조 설명 ####
+        ### 원본 구조 설명 ###
         ## 1) 최상위 구조
         {
           "v": "1",
@@ -99,9 +99,9 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
           header: "1/12 소프트웨어시험인증연구소"
           footer: "TPG-1016-5(02)  Copyright 2025 TTA  페이지 : (7)/(총15)"
         ---
-        #### 원본 구조 설명 끝 ####
+        ### 원본 구조 설명 끝 ###
 
-        #### 판단 지침 시작 ####
+        ### 판단 지침 시작 ###
         Let's think step by step
         ## 역할
         - 당신은 **시험 합의서/시험결과서 기술책임자**입니다.
@@ -112,11 +112,11 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
         - **대소문자·사소한 띄어쓰기·경미한 문체**는 보고하지 않음(의미·계산 영향 시만 보고).
         - 가능하면 **페이지·위치(표/절/문장)**를 함께 명시(불명확 시 “페이지 불명”).
 
-        ## 심각도 기준
-        - 심각: 산식오류로 결과 왜곡, 시험환경/사양 중대 불일치, 안전·규제/버전/의뢰자/번호/기간 불일치
-        - 중요: 핵심 기술 불일치, 단위·치수 오류, 결론에 영향 주는 필수 항목 누락
-        - 보통: 비논리·불명확 서술, 문맥 유사도 기준 미달
-        - 경미: 용어 비표준/표현 개선(의미 동일)
+        ## 심각도(아이콘)
+        - 🟥 **심각**: 산식오류로 결과 왜곡, 시험환경/사양 중대 불일치, 안전·규제/버전/의뢰자/번호/기간 불일치
+        - 🟧 **중요**: 핵심 기술 불일치, 단위·치수 오류, 결론에 영향 주는 필수 항목 누락
+        - 🟨 **보통**: 비논리·불명확 서술, 문맥 유사도 기준 미달
+        - 🟦 **경미**: 용어 비표준/표현 개선(의미 동일)
 
         ## 필수 점검항목
         1. **오타(의미 변형)**
@@ -195,15 +195,10 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
         }}
 
         ## 정렬·마감
-        - **중요도 순(심각→중요→보통→경미)** 정렬.
+        - **중요도 순(🟥→🟧→🟨→🟦)** 정렬.
         - 문서 끝 **결말 문자열**(“- 끝 -” 또는 “-끝-”) 존재 확인.
         - **추가 가정 금지**, 수치·유사도·페이지는 **지어내지 말 것**. 부족하면 **검증불가**로.
-        #### 판단 지침 끝 ####
-
-
-
-
-        
+        ### 판단 지침 끝 ###
     """).strip()
 
     # 1) 실제로 보낼 '요청 페이로드'를 선구성 (오류여도 디버그에 넣기 위함)
@@ -282,33 +277,4 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
         if debug:
             debug_payload["error"] = f"OpenAI call failed: {e}"
         return {"version": "1", "total": 0, "items": []}, debug_payload
-
-
-# ---------- (선택) 하위호환용 엔드포인트 ----------
-@csrf_exempt
-@require_http_methods(["POST"])
-def get_gpt_recommendation_view(request: HttpRequest):
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        return JsonResponse({"error": "OPENAI_API_KEY 환경변수가 설정되지 않았습니다."}, status=500)
-
-    client = OpenAI(api_key=api_key)
-
-    try:
-        body = json.loads(request.body.decode("utf-8") or "{}")
-        user_prompt = body.get("prompt", "")
-
-        completion = client.chat.completions.create(
-            model="gpt-5",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant."},
-                {"role": "user", "content": user_prompt}
-            ]
-        )
-        response_content = completion.choices[0].message.content if completion.choices else ""
-        return JsonResponse({"response": response_content})
-    except Exception as e:
-        msg = str(e)
-        if "The model `gpt-5-nano` does not exist" in msg:
-            msg = "GPT 모델('gpt-5-nano')을 찾을 수 없습니다. 모델명을 확인하거나 OpenAI API Plan을 확인하세요."
-        return JsonResponse({"error": f"GPT API 호출 중 오류 발생: {msg}"}, status=500)
+        
