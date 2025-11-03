@@ -42,7 +42,7 @@
 /* 1열: 번호 */
 #resultsTable th:nth-child(1),
 #resultsTable td:nth-child(1) {
-  width: 30px;
+  min-width: 40px;
 }
 
 #resultsTable tbody td:nth-child(1) {
@@ -52,35 +52,35 @@
 /* 2열: 구분(점검항목) */
 #resultsTable th:nth-child(2),
 #resultsTable td:nth-child(2) {
-  width: 100px;
+  min-width: 100px;
 }
 
 /* 3열: 심각도 */
 #resultsTable th:nth-child(3),
 #resultsTable td:nth-child(3) {
-  width: 30px;
+  min-width: 50px;
 }
 
 /* 4열: 위치(표/절/문장) */
 #resultsTable th:nth-child(4),
 #resultsTable td:nth-child(4) {
-  width: 120px;
+  min-width: 120px;
 }
 
 /* 5열: 문제 요약 */
 #resultsTable th:nth-child(5),
 #resultsTable td:nth-child(5) {
-  width: 251px;
+  min-width: 251px;
 }
 
 /* 6열: 근거(원문 일부 인용) */
 #resultsTable th:nth-child(6),
 #resultsTable td:nth-child(6) {
-  width: 200px;
+  min-width: 200px;
 }
 
 /* 7열: 권장 수정안 */
 #resultsTable th:nth-child(7),
 #resultsTable td:nth-child(7) {
-  width: 200px;
+  min-width: 200px;
 }
