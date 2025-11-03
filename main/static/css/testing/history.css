@@ -92,6 +92,7 @@ body {
 /* 검색 박스 등 폼 공통 */
 .search-section {
   background: white;
+  border-radius: 8px;
   padding: 20px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
@@ -141,7 +142,6 @@ body {
   min-height: 0;         /* 내부 스크롤 가능 */
   overflow: auto;        /* 가로/세로 스크롤 담당 */
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
-  border-radius: 8px;
   background: white;
 }
 
