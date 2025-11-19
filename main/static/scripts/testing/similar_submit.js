@@ -38,7 +38,7 @@ document.addEventListener('DOMContentLoaded', function () {
     resultsContent.classList.remove('hidden');
   }
 
-  form.addEventListener('submit', async function(e) {
+  form.addEventListener('submit', function(e) {
     try {
       e.preventDefault()
       showLoading();
@@ -863,10 +863,10 @@ document.addEventListener('DOMContentLoaded', function () {
         summaryContent.innerHTML = summaryhtml;
         resultsContent.innerHTML = resulthtml;
       }, 3000);
+      hideLoading();
     } catch (err) {
       resultsContent.innerHTML = `<span style="color:red;">에러: ${err.message}</span>`;
     } finally {
-      hideLoading();
     }
   });
 });
