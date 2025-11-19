@@ -860,10 +860,10 @@ document.addEventListener('DOMContentLoaded', function () {
           </div>
         </div>
         `;
+      hideLoading();
         summaryContent.innerHTML = summaryhtml;
         resultsContent.innerHTML = resulthtml;
       }, 3000);
-      hideLoading();
     } catch (err) {
       resultsContent.innerHTML = `<span style="color:red;">에러: ${err.message}</span>`;
     } finally {
