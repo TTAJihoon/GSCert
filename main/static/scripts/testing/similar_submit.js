@@ -39,10 +39,10 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   form.addEventListener('submit', function(e) {
-    try {
-      e.preventDefault()
-      showLoading();
+    e.preventDefault()
+    showLoading();
 
+    try {
       setTimeout(function() {
         const summaryhtml = `홈페이지 및 문서 정보를 기반으로 자연어 대화로 안내하고 할루시네이션 없는 정확한 정보를 제공하는 AI 챗봇 시스템`;
         const resulthtml = `
@@ -860,13 +860,12 @@ document.addEventListener('DOMContentLoaded', function () {
           </div>
         </div>
         `;
-      hideLoading();
         summaryContent.innerHTML = summaryhtml;
         resultsContent.innerHTML = resulthtml;
-      }, 3000);
-    } catch (err) {
-      resultsContent.innerHTML = `<span style="color:red;">에러: ${err.message}</span>`;
-    } finally {
-    }
-  });
+      } catch (err) {
+        resultsContent.innerHTML = `<span style="color:red;">에러: ${err.message}</span>`;
+      } finally {
+        hideLoading();
+      }
+    }, 3000);
 });
