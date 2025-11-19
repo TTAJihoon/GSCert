@@ -862,10 +862,11 @@ document.addEventListener('DOMContentLoaded', function () {
         `;
         summaryContent.innerHTML = summaryhtml;
         resultsContent.innerHTML = resulthtml;
-      } catch (err) {
-        resultsContent.innerHTML = `<span style="color:red;">에러: ${err.message}</span>`;
-      } finally {
-        hideLoading();
       }
-    }, 3000);
+    } catch (err) {
+      resultsContent.innerHTML = `<span style="color:red;">에러: ${err.message}</span>`;
+    } finally {
+      hideLoading();
+    }
+  }, 3000);
 });
