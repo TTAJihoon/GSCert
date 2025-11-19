@@ -1,4 +1,4 @@
-document.getElementById('download-btn').addEventListener('click', function() {
+document.querySelector('.download-btn').addEventListener('click', function() {
   // 버튼 클릭 시 링크를 띄우기까지 3초(3000ms)의 지연 시간을 설정합니다.
   const delayMilliseconds = 3000;
   const targetUrl = 'http://210.104.181.10:80/url/?key=4e45z1Pg8170auuG';
