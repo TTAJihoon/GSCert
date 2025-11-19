@@ -40,6 +40,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   form.addEventListener('submit', async function(e) {
     try {
+      e.preventDefault()
       showLoading();
 
       setTimeout(function() {
