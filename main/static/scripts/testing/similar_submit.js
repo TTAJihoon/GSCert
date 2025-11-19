@@ -39,9 +39,10 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   form.addEventListener('submit', async function(e) {
-    showLoading();
+    try {
+      showLoading();
 
-    setTimeout(function() {
+      setTimeout(function() {
         const summaryhtml = `홈페이지 및 문서 정보를 기반으로 자연어 대화로 안내하고 할루시네이션 없는 정확한 정보를 제공하는 AI 챗봇 시스템`;
         const resulthtml = `
 <div class="results-content" id="resultsContent">
