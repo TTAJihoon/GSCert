@@ -142,7 +142,7 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         await tree.get_by_text(test_no).click(timeout=TO["click"])        
 
         # Step 3: 문서 목록에서 대상 문서 클릭
-        doc_list_selector = 'span[event="document-list-viewDocument-click"]'
+        doc_list_selector = 'span[events="document-list-viewDocument-click"]'
         doc_list = page.locator(doc_list_selector)
         logger.warning("[TASK] Step3: 문서 목록 필터링 (시험성적서 우선)")
         target_doc = doc_list.filter(has_text=test_no_pattern).filter(has_text="시험성적서")
