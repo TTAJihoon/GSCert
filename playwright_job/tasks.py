@@ -6,13 +6,74 @@ from typing import Dict
 from datetime import datetime  # ★ 스크린샷 시간 기록을 위해 추가
 from playwright.async_api import Browser, Page, Locator, expect
 
+# ★ Windows OS 클립보드 사용
+try:
+    import win32clipboard
+    import win32con
+except ImportError:  # pywin32가 없으면 나중에 런타임 에러로 알려주기 위함
+    win32clipboard = None
+    win32con = None
+
 logger = logging.getLogger(__name__)
 
 # ★ 대상 웹사이트의 시작 URL
 ECM_BASE_URL = "http://210.104.181.10"
 
+def _get_clipboard_text_sync() -> str:
+    """
+    동기 방식으로 Windows 클립보드의 유니코드 텍스트를 읽습니다.
+    (async 코드에서 asyncio.to_thread로 감싸서 사용)
+    """
+    if win32clipboard is None or win32con is None:
+        raise RuntimeError("pywin32(win32clipboard, win32con)가 설치되어 있지 않습니다.")
 
-# ---------- 유틸리티 함수 ----------
+    text = ""
+    win32clipboard.OpenClipboard()
+    try:
+        if win32clipboard.IsClipboardFormatAvailable(win32con.CF_UNICODETEXT):
+            text = win32clipboard.GetClipboardData(win32con.CF_UNICODETEXT)
+    finally:
+        win32clipboard.CloseClipboard()
+    return text or ""
+
+async def _get_clipboard_text(retries: int = 5, delay_sec: float = 0.05) -> str:
+    """
+    비동기 코드에서 사용할 클립보드 읽기 함수.
+    클립보드가 잠겨 있을 수 있으므로 약간 재시도합니다.
+    """
+    last_exc: Exception | None = None
+    for _ in range(retries):
+        try:
+            return await asyncio.to_thread(_get_clipboard_text_sync)
+        except Exception as e:
+            last_exc = e
+            await asyncio.sleep(delay_sec)
+    raise RuntimeError(f"클립보드 읽기 실패: {last_exc}")
+
+async def _wait_clipboard_change(
+    before: str,
+    timeout_ms: int = 5000,
+    interval_ms: int = 100,
+) -> str:
+    """
+    기존 클립보드 내용(before)과 다른 텍스트가 들어올 때까지 대기합니다.
+    timeout_ms 내에 변화가 없으면 빈 문자열을 반환합니다.
+    """
+    elapsed = 0
+    while elapsed < timeout_ms:
+        try:
+            current = await _get_clipboard_text()
+        except Exception as e:
+            logger.warning("[TASK] 클립보드 읽기 중 예외 (무시하고 재시도): %s", e)
+            current = ""
+
+        if current and current != before:
+            return current
+
+        await asyncio.sleep(interval_ms / 1000.0)
+        elapsed += interval_ms
+
+    return ""
 
 def _get_date_parts(cert_date: str) -> tuple[str, str]:
     """
@@ -24,14 +85,12 @@ def _get_date_parts(cert_date: str) -> tuple[str, str]:
     year, month, day = m.groups()
     return year, f"{year}{month.zfill(2)}{day.zfill(2)}"
 
-
 def _testno_pat(test_no: str) -> Pattern:
     """
     시험번호의 구분자(하이픈/언더스코어)를 동일하게 취급하는 정규식을 생성합니다.
     """
     safe_no = re.escape(test_no).replace(r'\-', "[-_]")
     return re.compile(safe_no, re.IGNORECASE)
-
 
 async def _prime_copy_sniffer(page: Page):
     """
@@ -76,7 +135,6 @@ async def _prime_copy_sniffer(page: Page):
     await page.add_init_script(inject_js)
     await page.evaluate(inject_js)
 
-
 async def _get_sniffed_text(page: Page, last_seq_before: int, timeout_ms: int = 5000) -> str:
     """
     JavaScript에 주입된 변수를 폴링하여 복사된 텍스트를 가져옵니다.
@@ -94,9 +152,6 @@ async def _get_sniffed_text(page: Page, last_seq_before: int, timeout_ms: int = 
 
 
 # ---------- 메인 Playwright 작업 함수 ----------
-
-# playwright_job/tasks.py 파일의 이 함수만 교체해주세요.
-
 async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) -> Dict[str, str]:
     """
     독립된 브라우저 컨텍스트를 생성하여 ECM 사이트 자동화 작업을 수행하고,
@@ -225,9 +280,26 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         await _prime_copy_sniffer(page)
         last_seq_before = await page.evaluate("() => window.__copy_seq|0")
         
-        # Step 5: URL 복사 버튼 클릭 → 임시 textarea 에 Ctrl+V 로 붙여넣기해서 URL 추출
+        # Step 5: URL 복사 버튼 클릭 (브라우저는 버튼 클릭까지만 ⇒ URL 문자열은 OS 클립보드에서 읽음)
         copy_btn_selector = "div#prop-view-document-btn-url-copy"
-        logger.warning("[TASK] Step5: URL 복사 버튼 클릭 (임시 textarea + Ctrl+V 방식) (%s)", copy_btn_selector)
+        logger.warning("[TASK] Step5: URL 복사 버튼 클릭 (OS 클립보드 방식) (%s)", copy_btn_selector)
+
+        if win32clipboard is None or win32con is None:
+            raise RuntimeError("pywin32(win32clipboard, win32con)가 설치되어 있지 않아 OS 클립보드를 사용할 수 없습니다.")
+
+        # 클릭 전 클립보드 상태를 저장 (변화 감지를 위해)
+        before_clip = ""
+        try:
+            before_clip = await _get_clipboard_text()
+            logger.warning(
+                "[TASK] Step5: 클릭 전 클립보드 텍스트 길이 = %s",
+                len(before_clip or ""),
+            )
+        except Exception as e:
+            logger.warning(
+                "[TASK] Step5: 클릭 전 클립보드 읽기 실패 (무시하고 진행): %s",
+                e,
+            )
 
         copy_btn = page.locator(copy_btn_selector)
         btn_count = await copy_btn.count()
@@ -252,76 +324,22 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
             logger.exception("[TASK] Step5: btn.click() 중 예외 발생: %s", e)
             raise
 
-        # Step 5-1: 브라우저 안에 임시 textarea 생성 (클립보드 내용을 붙여넣을 싱크)
-        sink_id = "__gscert_clipboard_sink"
-
-        await page.evaluate(
-            """
-            (id) => {
-                let el = document.getElementById(id);
-                if (!el) {
-                    el = document.createElement('textarea');
-                    el.id = id;
-                    el.style.position = 'fixed';
-                    el.style.left = '-9999px';
-                    el.style.top = '0';
-                    el.style.width = '10px';
-                    el.style.height = '10px';
-                    el.setAttribute('autocomplete', 'off');
-                    el.setAttribute('autocorrect', 'off');
-                    el.setAttribute('autocapitalize', 'off');
-                    el.setAttribute('spellcheck', 'false');
-                    document.body.appendChild(el);
-                }
-                // 매번 깨끗한 상태로 시작
-                el.value = '';
-            }
-            """,
-            sink_id,
-        )
-        logger.warning("[TASK] Step5-1: 임시 textarea 생성/초기화 완료 (id=%s)", sink_id)
-
-        sink = page.locator(f"textarea#{sink_id}")
-        await sink.focus()
-        logger.warning("[TASK] Step5-1: 임시 textarea 포커스 완료")
-
-        # ECM이 클립보드에 쓰는 시간을 조금 주고, Ctrl+V 수행
-        # (TO['copy_wait'] 를 상한으로 사용, 너무 길게는 기다리지 않도록)
-        try:
-            # 약간의 짧은 딜레이 후 붙여넣기 시도
-            await page.wait_for_timeout(200)
-            logger.warning("[TASK] Step5-2: Ctrl+V 실행 시도")
-            await page.keyboard.press("Control+V")
-            # 붙여넣기가 반영될 시간을 조금 더 줌
-            await page.wait_for_timeout(200)
-        except Exception as e:
-            logger.exception("[TASK] Step5-2: Ctrl+V 수행 중 예외: %s", e)
-            raise
-
-        # Step 6: textarea 에 실제로 붙여넣어진 내용 읽기
-        pasted = await sink.input_value()
+        # Step 6: OS 클립보드 내용이 변경될 때까지 대기
+        logger.warning("[TASK] Step6: 클립보드 변화 대기 (최대 %dms)", TO["copy_wait"])
+        pasted = await _wait_clipboard_change(before_clip, timeout_ms=TO["copy_wait"])
         logger.warning(
-            "[TASK] Step6: 임시 textarea에 붙여넣기된 텍스트 길이 = %s",
+            "[TASK] Step6: 클립보드 변화 감지 후 텍스트 길이 = %s",
             len(pasted or ""),
         )
 
-        # 사용이 끝난 textarea 는 정리 (실패해도 치명적이지 않음)
-        try:
-            await page.evaluate(
-                "(id) => { const el = document.getElementById(id); if (el) el.remove(); }",
-                sink_id,
-            )
-            logger.warning("[TASK] Step6: 임시 textarea 제거 완료")
-        except Exception as e:
-            logger.warning("[TASK] Step6: 임시 textarea 제거 중 예외: %s", e)
-
         if not pasted:
-            raise RuntimeError("URL 복사 후 붙여넣기된 텍스트가 비어 있습니다.")
+            raise RuntimeError("URL 복사 후 클립보드 텍스트를 확인하지 못했습니다. (타임아웃 또는 빈 값)")
 
+        # 복사된 전체 문장에서 첫 줄만 사용 (메모장에 붙는 포맷 기준)
         first_line = pasted.splitlines()[0]
         m = re.search(r"(https?://\S+)", first_line)
         if not m:
-            raise ValueError("붙여넣기된 텍스트의 첫 줄에서 URL을 찾을 수 없습니다.")
+            raise ValueError("클립보드 텍스트의 첫 줄에서 URL을 찾을 수 없습니다.")
         url = m.group(1)
         logger.warning("[TASK] 완료 URL: %s", url)
 
