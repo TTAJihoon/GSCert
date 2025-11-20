@@ -1,0 +1,88 @@
+/* 컨테이너: 모달 내부 좌우 여백과 최대 폭 */
+.gpt-modal {
+  background: #f8fafc; /* slate-50 */
+  padding: 16px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.gpt-msg {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 12px;
+  max-width: 980px;
+  margin: 0 auto 16px auto;
+}
+
+.gpt-avatar {
+  width: 40px; height: 40px;
+  border-radius: 9999px;
+  display: grid; place-items: center;
+  background: #e2e8f0; /* slate-200 */
+  color: #0f172a;      /* slate-900 */
+  font-weight: 700;
+  user-select: none;
+}
+
+.gpt-bubble {
+  background: #ffffff;
+  border: 1px solid #e5e7eb; /* gray-200 */
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.04);
+  overflow: hidden;
+}
+
+.gpt-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9; /* slate-100 */
+  background: #fafafa;
+}
+
+.gpt-title {
+  font-size: 14px; font-weight: 600; color: #0f172a;
+}
+
+.gpt-actions { display: flex; gap: 6px; }
+
+.gpt-btn {
+  appearance: none; border: 1px solid #e5e7eb; background: #ffffff;
+  padding: 6px 10px; border-radius: 8px; font-size: 12px;
+  color: #334155; cursor: pointer;
+}
+.gpt-btn:hover { background: #f8fafc; }
+
+.gpt-body {
+  padding: 12px 14px;
+}
+
+/* 본문 텍스트(프리 포맷) */
+.gpt-body pre {
+  white-space: pre-wrap;        /* 줄바꿈 유지 + 자동 줄바꿈 */
+  word-break: break-word;
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 13px; line-height: 1.6;
+  color: #1f2937;               /* gray-800 */
+  background: #f8fafc;          /* slate-50 */
+  border: 1px solid #e5e7eb;    /* gray-200 */
+  border-radius: 8px;
+  padding: 12px 14px;
+  max-height: 60vh;             /* 너무 길면 스크롤 */
+  overflow: auto;
+}
+
+/* 인라인 코드(답변에 있을 수 있음) */
+.gpt-body code {
+  font-family: inherit;
+  background: #f1f5f9;          /* slate-100 */
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+/* 에러 박스 변형 */
+.gpt-error .gpt-bubble {
+  border-color: #fecaca;        /* red-200 */
+  background: #fff1f2;          /* rose-50 */
+}
+.gpt-error .gpt-title { color: #991b1b; }
