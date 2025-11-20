@@ -225,59 +225,24 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         await _prime_copy_sniffer(page)
         last_seq_before = await page.evaluate("() => window.__copy_seq|0")
         
-        # Step 5: URL 복사 버튼 클릭 (디버깅용 로그 추가)
+        # Step 5: URL 복사 버튼 클릭 → 임시 textarea 에 Ctrl+V 로 붙여넣기해서 URL 추출
         copy_btn_selector = "div#prop-view-document-btn-url-copy"
-        logger.warning("[TASK] Step5: URL 복사 버튼 셀렉터 = %s", copy_btn_selector)
+        logger.warning("[TASK] Step5: URL 복사 버튼 클릭 (임시 textarea + Ctrl+V 방식) (%s)", copy_btn_selector)
 
         copy_btn = page.locator(copy_btn_selector)
         btn_count = await copy_btn.count()
         logger.warning("[TASK] Step5: URL 복사 버튼 개수 = %s", btn_count)
 
         if btn_count == 0:
-            # 혹시 id가 아닌 class 기반으로만 존재하는 경우를 대비한 보조 로그
-            alt_locator = page.locator("div.prop-view-file-btn-internal-urlcopy")
-            alt_count = await alt_locator.count()
-            logger.warning(
-                "[TASK] Step5: class='prop-view-file-btn-internal-urlcopy' 개수 = %s",
-                alt_count,
-            )
             raise RuntimeError("URL 복사 버튼을 찾지 못했습니다.")
-
-        # 브라우저 내부에 클릭 카운터 설치 (버튼 click 이벤트가 실제로 발생하는지 확인용)
-        try:
-            patched = await page.evaluate(
-                """
-                (sel) => {
-                    const btn = document.querySelector(sel);
-                    if (!btn) return false;
-                    if (!window.__copy_btn_clicks) window.__copy_btn_clicks = 0;
-                    if (!btn.__patched_click_counter) {
-                        btn.addEventListener(
-                            'click',
-                            () => { window.__copy_btn_clicks++; },
-                            true
-                        );
-                        btn.__patched_click_counter = true;
-                    }
-                    return true;
-                }
-                """,
-                copy_btn_selector,
-            )
-            logger.warning("[TASK] Step5: 클릭 카운터 패치 결과 = %s", patched)
-        except Exception as e:
-            logger.warning("[TASK] Step5: 클릭 카운터 패치 중 예외: %s", e)
-
-        before_clicks = await page.evaluate(
-            "() => window.__copy_btn_clicks ? window.__copy_btn_clicks|0 : 0"
-        )
-        logger.warning("[TASK] Step5: 클릭 전 window.__copy_btn_clicks = %s", before_clicks)
 
         btn = copy_btn.first
         visible = await btn.is_visible()
         enabled = await btn.is_enabled()
         logger.warning(
-            "[TASK] Step5: 버튼 상태 visible=%s, enabled=%s", visible, enabled
+            "[TASK] Step5: 버튼 상태 visible=%s, enabled=%s",
+            visible,
+            enabled,
         )
 
         try:
@@ -287,42 +252,78 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
             logger.exception("[TASK] Step5: btn.click() 중 예외 발생: %s", e)
             raise
 
-        after_clicks = await page.evaluate(
-            "() => window.__copy_btn_clicks ? window.__copy_btn_clicks|0 : 0"
-        )
-        logger.warning("[TASK] Step5: 클릭 후 window.__copy_btn_clicks = %s", after_clicks)
+        # Step 5-1: 브라우저 안에 임시 textarea 생성 (클립보드 내용을 붙여넣을 싱크)
+        sink_id = "__gscert_clipboard_sink"
 
-        logger.warning("[TASK] Step6: 복사 결과 대기 (최대 %dms)", TO["copy_wait"])
-        copied_text = await _get_sniffed_text(
-            page, last_seq_before, timeout_ms=TO["copy_wait"]
+        await page.evaluate(
+            """
+            (id) => {
+                let el = document.getElementById(id);
+                if (!el) {
+                    el = document.createElement('textarea');
+                    el.id = id;
+                    el.style.position = 'fixed';
+                    el.style.left = '-9999px';
+                    el.style.top = '0';
+                    el.style.width = '10px';
+                    el.style.height = '10px';
+                    el.setAttribute('autocomplete', 'off');
+                    el.setAttribute('autocorrect', 'off');
+                    el.setAttribute('autocapitalize', 'off');
+                    el.setAttribute('spellcheck', 'false');
+                    document.body.appendChild(el);
+                }
+                // 매번 깨끗한 상태로 시작
+                el.value = '';
+            }
+            """,
+            sink_id,
         )
+        logger.warning("[TASK] Step5-1: 임시 textarea 생성/초기화 완료 (id=%s)", sink_id)
+
+        sink = page.locator(f"textarea#{sink_id}")
+        await sink.focus()
+        logger.warning("[TASK] Step5-1: 임시 textarea 포커스 완료")
+
+        # ECM이 클립보드에 쓰는 시간을 조금 주고, Ctrl+V 수행
+        # (TO['copy_wait'] 를 상한으로 사용, 너무 길게는 기다리지 않도록)
+        try:
+            # 약간의 짧은 딜레이 후 붙여넣기 시도
+            await page.wait_for_timeout(200)
+            logger.warning("[TASK] Step5-2: Ctrl+V 실행 시도")
+            await page.keyboard.press("Control+V")
+            # 붙여넣기가 반영될 시간을 조금 더 줌
+            await page.wait_for_timeout(200)
+        except Exception as e:
+            logger.exception("[TASK] Step5-2: Ctrl+V 수행 중 예외: %s", e)
+            raise
+
+        # Step 6: textarea 에 실제로 붙여넣어진 내용 읽기
+        pasted = await sink.input_value()
         logger.warning(
-            "[TASK] Step6: _get_sniffed_text 결과 길이 = %s", len(copied_text or "")
+            "[TASK] Step6: 임시 textarea에 붙여넣기된 텍스트 길이 = %s",
+            len(pasted or ""),
         )
 
-        if not copied_text:
-            # copy_sniffer 상태도 같이 찍어놓기
-            try:
-                seq, last_txt = await page.evaluate(
-                    "() => [window.__copy_seq|0, String(window.__last_copied||'')]"
-                )
-                logger.warning(
-                    "[TASK] Step6: copy_seq=%s, last_copied_len=%s",
-                    seq,
-                    len(last_txt),
-                )
-            except Exception as e:
-                logger.warning("[TASK] Step6: copy_sniffer 상태 조회 중 예외: %s", e)
+        # 사용이 끝난 textarea 는 정리 (실패해도 치명적이지 않음)
+        try:
+            await page.evaluate(
+                "(id) => { const el = document.getElementById(id); if (el) el.remove(); }",
+                sink_id,
+            )
+            logger.warning("[TASK] Step6: 임시 textarea 제거 완료")
+        except Exception as e:
+            logger.warning("[TASK] Step6: 임시 textarea 제거 중 예외: %s", e)
 
-            raise RuntimeError("복사 이벤트를 확인하지 못했습니다. (타임아웃)")
+        if not pasted:
+            raise RuntimeError("URL 복사 후 붙여넣기된 텍스트가 비어 있습니다.")
 
-        first_line = copied_text.splitlines()[0]
+        first_line = pasted.splitlines()[0]
         m = re.search(r"(https?://\S+)", first_line)
         if not m:
-            raise ValueError("복사된 텍스트의 첫 줄에서 URL을 찾을 수 없습니다.")
+            raise ValueError("붙여넣기된 텍스트의 첫 줄에서 URL을 찾을 수 없습니다.")
         url = m.group(1)
         logger.warning("[TASK] 완료 URL: %s", url)
-
 
         return {"url": url}
     except Exception as e:
