@@ -224,19 +224,105 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         await checkbox.check(timeout=TO["click"])
         await _prime_copy_sniffer(page)
         last_seq_before = await page.evaluate("() => window.__copy_seq|0")
+        
+        # Step 5: URL 복사 버튼 클릭 (디버깅용 로그 추가)
         copy_btn_selector = "div#prop-view-document-btn-url-copy"
-        logger.warning("[TASK] Step5: URL 복사 버튼 클릭 (%s)", copy_btn_selector)
-        await page.locator(copy_btn_selector).click(timeout=TO["click"])
+        logger.warning("[TASK] Step5: URL 복사 버튼 셀렉터 = %s", copy_btn_selector)
+
+        copy_btn = page.locator(copy_btn_selector)
+        btn_count = await copy_btn.count()
+        logger.warning("[TASK] Step5: URL 복사 버튼 개수 = %s", btn_count)
+
+        if btn_count == 0:
+            # 혹시 id가 아닌 class 기반으로만 존재하는 경우를 대비한 보조 로그
+            alt_locator = page.locator("div.prop-view-file-btn-internal-urlcopy")
+            alt_count = await alt_locator.count()
+            logger.warning(
+                "[TASK] Step5: class='prop-view-file-btn-internal-urlcopy' 개수 = %s",
+                alt_count,
+            )
+            raise RuntimeError("URL 복사 버튼을 찾지 못했습니다.")
+
+        # 브라우저 내부에 클릭 카운터 설치 (버튼 click 이벤트가 실제로 발생하는지 확인용)
+        try:
+            patched = await page.evaluate(
+                """
+                (sel) => {
+                    const btn = document.querySelector(sel);
+                    if (!btn) return false;
+                    if (!window.__copy_btn_clicks) window.__copy_btn_clicks = 0;
+                    if (!btn.__patched_click_counter) {
+                        btn.addEventListener(
+                            'click',
+                            () => { window.__copy_btn_clicks++; },
+                            true
+                        );
+                        btn.__patched_click_counter = true;
+                    }
+                    return true;
+                }
+                """,
+                copy_btn_selector,
+            )
+            logger.warning("[TASK] Step5: 클릭 카운터 패치 결과 = %s", patched)
+        except Exception as e:
+            logger.warning("[TASK] Step5: 클릭 카운터 패치 중 예외: %s", e)
+
+        before_clicks = await page.evaluate(
+            "() => window.__copy_btn_clicks ? window.__copy_btn_clicks|0 : 0"
+        )
+        logger.warning("[TASK] Step5: 클릭 전 window.__copy_btn_clicks = %s", before_clicks)
+
+        btn = copy_btn.first
+        visible = await btn.is_visible()
+        enabled = await btn.is_enabled()
+        logger.warning(
+            "[TASK] Step5: 버튼 상태 visible=%s, enabled=%s", visible, enabled
+        )
+
+        try:
+            await btn.click(timeout=TO["click"])
+            logger.warning("[TASK] Step5: btn.click() 호출 완료 (예외 없음)")
+        except Exception as e:
+            logger.exception("[TASK] Step5: btn.click() 중 예외 발생: %s", e)
+            raise
+
+        after_clicks = await page.evaluate(
+            "() => window.__copy_btn_clicks ? window.__copy_btn_clicks|0 : 0"
+        )
+        logger.warning("[TASK] Step5: 클릭 후 window.__copy_btn_clicks = %s", after_clicks)
+
         logger.warning("[TASK] Step6: 복사 결과 대기 (최대 %dms)", TO["copy_wait"])
-        copied_text = await _get_sniffed_text(page, last_seq_before, timeout_ms=TO["copy_wait"])
+        copied_text = await _get_sniffed_text(
+            page, last_seq_before, timeout_ms=TO["copy_wait"]
+        )
+        logger.warning(
+            "[TASK] Step6: _get_sniffed_text 결과 길이 = %s", len(copied_text or "")
+        )
+
         if not copied_text:
+            # copy_sniffer 상태도 같이 찍어놓기
+            try:
+                seq, last_txt = await page.evaluate(
+                    "() => [window.__copy_seq|0, String(window.__last_copied||'')]"
+                )
+                logger.warning(
+                    "[TASK] Step6: copy_seq=%s, last_copied_len=%s",
+                    seq,
+                    len(last_txt),
+                )
+            except Exception as e:
+                logger.warning("[TASK] Step6: copy_sniffer 상태 조회 중 예외: %s", e)
+
             raise RuntimeError("복사 이벤트를 확인하지 못했습니다. (타임아웃)")
+
         first_line = copied_text.splitlines()[0]
-        m = re.search(r'(https?://\S+)', first_line)
+        m = re.search(r"(https?://\S+)", first_line)
         if not m:
             raise ValueError("복사된 텍스트의 첫 줄에서 URL을 찾을 수 없습니다.")
         url = m.group(1)
         logger.warning("[TASK] 완료 URL: %s", url)
+
 
         return {"url": url}
     except Exception as e:
