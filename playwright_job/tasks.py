@@ -141,28 +141,80 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         logger.warning("[TASK] Step2-4: 시험번호 클릭 → %s", test_no)
         await tree.get_by_text(test_no).click(timeout=TO["click"])        
 
-        # Step 3: 문서 목록에서 대상 문서 클릭
+        # Step 3: 문서 목록에서 대상 문서 클릭 (디버깅 로그 추가)
+        # ▶ 스크린샷 기준 실제 DOM 속성명은 events="document-list-viewDocument-click"
         doc_list_selector = 'span[events="document-list-viewDocument-click"]'
+        logger.warning("[TASK] Step3: 문서 목록 셀렉터 = %s", doc_list_selector)
+
+        # 문서 목록 로딩 대기
+        await page.wait_for_selector(doc_list_selector, timeout=TO["doc_list_appear"])
+
         doc_list = page.locator(doc_list_selector)
+        total = await doc_list.count()
+        logger.warning("[TASK] Step3: 전체 문서 span 개수 = %s", total)
+
+        # 디버깅용: 전체 텍스트 확인
+        try:
+            texts = await doc_list.all_inner_texts()
+            logger.warning("[TASK] Step3: 전체 span 텍스트 목록 = %s", texts)
+        except Exception as ex:
+            logger.warning("[TASK] Step3: all_inner_texts() 실패: %s", ex)
+
+        logger.warning("[TASK] Step3: 시험번호 정규식 = %s", test_no_pattern.pattern)
+
+        # 1차 필터: 시험번호 포함
+        by_testno = doc_list.filter(has_text=test_no_pattern)
+        cnt_by_testno = await by_testno.count()
+        logger.warning("[TASK] Step3: 시험번호 포함 span 개수 = %s", cnt_by_testno)
+        try:
+            by_testno_texts = await by_testno.all_inner_texts()
+            logger.warning("[TASK] Step3: 시험번호 포함 span 텍스트 = %s", by_testno_texts)
+        except Exception as ex:
+            logger.warning("[TASK] Step3: by_testno.all_inner_texts() 실패: %s", ex)
+
+        # 2차 필터: '시험성적서' 우선
         logger.warning("[TASK] Step3: 문서 목록 필터링 (시험성적서 우선)")
-        target_doc = doc_list.filter(has_text=test_no_pattern).filter(has_text="시험성적서")
+        target_doc = by_testno.filter(has_text="시험성적서")
+
         clicked = False
-        cnt = await target_doc.count()
-        if cnt == 1:
+        cnt_target = await target_doc.count()
+        logger.warning("[TASK] Step3: 시험번호+시험성적서 매칭 개수 = %s", cnt_target)
+
+        if cnt_target == 1:
             await target_doc.click(timeout=TO["click"])
             clicked = True
             logger.warning("[TASK] Step3: '시험성적서' 문서 클릭 완료")
         else:
-            logger.warning("[TASK] Step3: '시험성적서'가 정확히 1개가 아님(count=%s) → fallback 시도", cnt)
+            logger.warning(
+                "[TASK] Step3: '시험성적서'가 정확히 1개가 아님(count=%s) → fallback 시도",
+                cnt_target,
+            )
+
+        # fallback: 시험번호 포함 & '품질평가보고서' 제외
         if not clicked:
-            logger.warning("[TASK] Step3-fallback: '품질평가보고서' 제외, 시험번호 포함 대상 클릭")
-            fallback_doc = doc_list.filter(has_text=test_no_pattern).filter(has_not_text="품질평가보고서")
-            if await fallback_doc.count() == 1:
+            logger.warning(
+                "[TASK] Step3-fallback: '품질평가보고서' 제외, 시험번호 포함 대상 클릭 시도"
+            )
+            fallback_doc = by_testno.filter(has_not_text="품질평가보고서")
+            cnt_fallback = await fallback_doc.count()
+            logger.warning("[TASK] Step3-fallback: 후보 개수 = %s", cnt_fallback)
+            try:
+                fb_texts = await fallback_doc.all_inner_texts()
+                logger.warning("[TASK] Step3-fallback: 후보 텍스트 = %s", fb_texts)
+            except Exception as ex:
+                logger.warning("[TASK] Step3-fallback: all_inner_texts() 실패: %s", ex)
+
+            if cnt_fallback == 1:
                 await fallback_doc.click(timeout=TO["click"])
                 clicked = True
                 logger.warning("[TASK] Step3-fallback: 대표 문서 클릭 완료")
+
         if not clicked:
-            raise RuntimeError(f"문서 목록에서 '{test_no}'에 해당하는 정확한 대상을 찾지 못했습니다.")
+            # 이 시점까지 온 경우, 위의 로그(전체 span, 필터 결과)로 왜 못 찾았는지 역추적 가능
+            raise RuntimeError(
+                f"문서 목록에서 '{test_no}'에 해당하는 정확한 대상을 찾지 못했습니다."
+            )
+
         table_rows = page.locator("tr.prop-view-file-list-item")
         target_row = table_rows.filter(has_text=test_no_pattern).filter(has_text="시험성적서")
         logger.warning("[TASK] Step4: 파일 행 존재 확인 (시험성적서, 10s)")
