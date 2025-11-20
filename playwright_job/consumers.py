@@ -165,12 +165,20 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
 
                 await self.send(text_data=json.dumps({"status": "success", "url": url}))
 
-            except asyncio.TimeoutError:
-                # 워커에서 get_browser_safe / run_playwright_task 타임아웃이 그대로 올라옴
-                await self.send(text_data=json.dumps({"status": "error", "message": "작업 타임아웃(브라우저/Playwright)"}))
+            except asyncio.TimeoutError as e:
+                logger.exception("[WS] 작업 타임아웃 (%s %s): %s", cert_date, test_no, e)
+                user_msg = f"{test_no}의 ECM 불러오기를 실패하였습니다. 다시 요청해주세요."
+                await self.send(text_data=json.dumps({
+                    "status": "error",
+                    "message": user_msg,
+                }))
             except Exception as e:
                 logger.exception("[WS] 작업 실패 (%s %s): %s", cert_date, test_no, e)
-                await self.send(text_data=json.dumps({"status": "error", "message": f"오류: {e}"}))
+                user_msg = f"{test_no}의 ECM 불러오기를 실패하였습니다. 다시 요청해주세요."
+                await self.send(text_data=json.dumps({
+                    "status": "error",
+                    "message": user_msg,
+                }))
             finally:
                 try:
                     await self.close()
