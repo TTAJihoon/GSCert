@@ -19,7 +19,7 @@
         <img src="{% static 'images/logo.png' %}" alt="로고" class="title" onclick="location.href='{% url 'index' %}';">
         <div class="menu-section">
           <div class="menu-item">
-            <img src="{% static 'images/testing.png' %}" class="menu">
+            <img src="{% static 'images/testing.png' %}" class="menu-image">
             <div class="submenu">
               <div class="submenu-item" onclick="location.href='{% url 'history' %}';">시험 이력 조회</div>
               <div class="submenu-item" onclick="location.href='{% url 'similar' %}';">유사 시험 조회</div>
@@ -28,7 +28,7 @@
             </div>
           </div>
           <div class="menu-item">
-            <img src="{% static 'images/certy.png' %}" class="menu">
+            <img src="{% static 'images/certy.png' %}" class="menu-image">
             <div class="submenu">
               <div class="submenu-item" onclick="location.href='{% url 'prdinfo' %}';">제품 정보 요청 자동 작성</div>
               <div class="submenu-item" onclick="location.href='{% url 'index' %}';">인증서 제작 자동화(예정)</div>
@@ -36,7 +36,7 @@
             </div>
           </div>
           <div class="menu-item">
-            <img src="{% static 'images/review.png' %}" class="menu">
+            <img src="{% static 'images/review.png' %}" class="menu-image">
             <div class="submenu">
               <div class="submenu-item" onclick="location.href='{% url 'checkreport' %}';">시험결과서 자동 검토</div>
               <div class="submenu-item" onclick="location.href='{% url 'index' %}';">ECM 산출물 자동 점검(예정)</div>
