@@ -168,10 +168,10 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
     TO = {
         "goto": 60_000,
         "tree_appear": 5_000,
-        "click": 30_000,
-        "doc_list_appear": 15_000,
-        "file_list_appear": 15_000, # ★ 파일 목록 대기용 타임아웃
-        "row_expect": 10_000,
+        "click": 5_000,
+        "doc_list_appear": 5_000,
+        "file_list_appear": 5_000, # ★ 파일 목록 대기용 타임아웃
+        "row_expect": 5_000,
         "copy_wait": 5_000,
     }
 
