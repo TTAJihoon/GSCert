@@ -3,10 +3,10 @@
 
   // 표준화된 키 → CSS 클래스
   const severityMap = {
-    '🟥': '🟥 심각',
-    '🟧': '🟧 중요',
-    '🟨': '🟨 보통',
-    '🟩': '🟩 경미'
+    '심각': { label: '🟥 심각', css: 'severity-critical' },
+    '중요': { label: '🟧 중요', css: 'severity-major' },
+    '보통': { label: '🟨 보통', css: 'severity-medium' },
+    '경미': { label: '🟩 경미', css: 'severity-minor' }
   };
   
   function qs(sel) { return document.querySelector(sel); }
@@ -60,25 +60,18 @@
       items.forEach(row => {
         const tr = document.createElement("tr");
 
-        let sevClass = "";
-        switch (severityMap[row.severity]) {
-          case severityMap[0]: sevClass = "severity-critical";
-            break;
-          case severityMap[1]: sevClass = "severity-major";
-            break;
-          case severityMap[2]: sevClass = "severity-medium";
-            break;
-          case severityMap[3]: sevClass = "severity-minor";
-            break;
-          default:
-            break;
+        // row.severity (예: '심각')를 사용하여 맵에서 정보를 가져옵니다.
+        const severityInfo = severityMap[row.severity];
+      
+        // 유효성 검사 및 CSS 클래스 적용
+        if (severityInfo && severityInfo.css) {
+          tr.classList.add(severityInfo.css);
         }
-        if (sevClass) tr.classList.add(sevClass);
 
         const cells = [
           row.no ?? "",
           row.category ?? "",
-          severityMap[row.severity] ?? "",
+          severityInfo ? severityInfo.label : row.severity ?? "",
           row.location ?? "",
           row.summary ?? "",
           row.evidence ?? "",
