@@ -152,10 +152,10 @@ async def _get_sniffed_text(page: Page, last_seq_before: int, timeout_ms: int = 
 
 
 # ---------- 메인 Playwright 작업 함수 ----------
-async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) -> Dict[str, str]:
+async def run_playwright_task_on_page(page: Page, cert_date: str, test_no: str) -> Dict[str, str]:
     """
-    독립된 브라우저 컨텍스트를 생성하여 ECM 사이트 자동화 작업을 수행하고,
-    결과 URL을 담은 딕셔너리를 반환합니다.
+    이미 생성된 Page(로그인 완료된 ECM 탭)를 사용하여
+    한 번의 ECM 자동화 작업을 수행하고 URL을 반환합니다.
     """
     year, date_str = _get_date_parts(cert_date)
     test_no_pattern = _testno_pat(test_no)
@@ -166,7 +166,7 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
     page = await context.new_page()
 
     TO = {
-        "goto": 60_000,
+        "goto": 10_000,
         "tree_appear": 5_000,
         "click": 5_000,
         "doc_list_appear": 5_000,
@@ -351,6 +351,11 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         logger.warning(f"[TASK] 예외 발생, 스크린샷 저장({screenshot_path})")
         raise e
 
+async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) -> Dict[str, str]:
+    context = await browser.new_context()
+    page = await context.new_page()
+    try:
+        return await run_playwright_task_on_page(page, cert_date, test_no)
     finally:
         try:
             await context.close()
