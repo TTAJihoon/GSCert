@@ -3,9 +3,11 @@ import json
 import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
 from .apps import get_browser_safe  # put_browser_safe는 더 이상 매 작업마다 쓰지 않음
-from .tasks import run_playwright_task_on_page  # ★ 새 헬퍼 (tasks.py에 추가 필요)
+from .tasks import run_playwright_task_on_page  # ★ 이미 생성된 페이지 재사용용 헬퍼
 
-logger = logging.getLogger(__name__)
+# 로거 분리: WebSocket / Worker
+logger_ws = logging.getLogger("playwright_job.ws")
+logger_worker = logging.getLogger("playwright_job.worker")
 
 # ---------------- 전역 작업 큐 + 단일 워커 ----------------
 
@@ -23,11 +25,11 @@ async def _ensure_worker_started():
     async with _worker_lock:
         if _job_queue is None:
             _job_queue = asyncio.Queue()
-            logger.warning("[WORKER] 전역 작업 큐 생성")
+            logger_worker.info("전역 작업 큐 생성")
 
         if _worker_task is None or _worker_task.done():
             _worker_task = asyncio.create_task(_worker_loop())
-            logger.warning("[WORKER] ECM 워커 태스크 시작")
+            logger_worker.info("ECM 워커 태스크 시작")
 
 
 async def enqueue_playwright_job(cert_date: str, test_no: str) -> dict:
@@ -44,8 +46,8 @@ async def enqueue_playwright_job(cert_date: str, test_no: str) -> dict:
         "test_no": test_no,
         "future": fut,
     })
-    logger.warning(
-        "[WORKER] 작업 enqueue: %s %s (queue size=%s)",
+    logger_worker.info(
+        "작업 enqueue: %s %s (queue size=%s)",
         cert_date,
         test_no,
         _job_queue.qsize(),
@@ -64,7 +66,7 @@ async def _worker_loop():
     - run_playwright_task_on_page() 를 호출해 각 작업을 '항상 한 번에 하나씩' 처리
     """
     global _job_queue
-    logger.warning("[WORKER] ECM 워커 루프 시작")
+    logger_worker.info("ECM 워커 루프 시작")
 
     browser = None
     ecm_context = None
@@ -76,33 +78,30 @@ async def _worker_loop():
         test_no = job.get("test_no")
         fut: asyncio.Future = job.get("future")
 
-        logger.warning("[WORKER] 작업 시작: %s %s", cert_date, test_no)
+        logger_worker.info("작업 시작: %s %s", cert_date, test_no)
 
         try:
             # 1) 브라우저 확보 (최초 1회 / 오류 시 재획득)
             if browser is None:
-                logger.warning("[WORKER] get_browser_safe 대기: %s %s", cert_date, test_no)
+                logger_worker.debug("get_browser_safe 대기: %s %s", cert_date, test_no)
                 browser = await asyncio.wait_for(get_browser_safe(), timeout=30)
-                logger.warning("[WORKER] get_browser_safe OK: %s %s", cert_date, test_no)
+                logger_worker.debug("get_browser_safe OK: %s %s", cert_date, test_no)
 
             # 2) ECM 전용 context/page 확보 (로그인 완료된 탭 유지용)
             if ecm_context is None or ecm_page is None:
-                logger.warning("[WORKER] ECM context/page 생성")
+                logger_worker.info("ECM context/page 생성")
                 ecm_context = await browser.new_context()
                 ecm_page = await ecm_context.new_page()
-                # 여기서 필요하다면 ecm_page.goto(ECM_BASE_URL) + 로그인 루틴을
-                # run_playwright_task_on_page 내부에서 처리하거나,
-                # 별도 초기화 루틴으로 분리할 수 있음.
-                logger.warning("[WORKER] ECM context/page 생성 완료")
+                logger_worker.info("ECM context/page 생성 완료")
 
             # 3) 실제 Playwright 작업 실행 (로그인/트리 탐색/URL 복사까지)
-            logger.warning("[WORKER] run_playwright_task_on_page ENTER: %s %s", cert_date, test_no)
+            logger_worker.debug("run_playwright_task_on_page ENTER: %s %s", cert_date, test_no)
             result = await asyncio.wait_for(
                 run_playwright_task_on_page(ecm_page, cert_date, test_no),
                 timeout=120,
             )
-            logger.warning(
-                "[WORKER] run_playwright_task_on_page DONE: %s %s → %s",
+            logger_worker.debug(
+                "run_playwright_task_on_page DONE: %s %s → %s",
                 cert_date,
                 test_no,
                 result,
@@ -112,14 +111,14 @@ async def _worker_loop():
             if fut is not None and not fut.cancelled():
                 fut.set_result(result)
             else:
-                logger.warning(
-                    "[WORKER] Future가 이미 취소/종료됨: %s %s",
+                logger_worker.warning(
+                    "Future가 이미 취소/종료됨: %s %s",
                     cert_date,
                     test_no,
                 )
 
         except asyncio.TimeoutError as e:
-            logger.exception("[WORKER] 작업 타임아웃: %s %s: %s", cert_date, test_no, e)
+            logger_worker.exception("작업 타임아웃: %s %s: %s", cert_date, test_no, e)
             if fut is not None and not fut.cancelled():
                 fut.set_exception(e)
 
@@ -128,12 +127,12 @@ async def _worker_loop():
                 if ecm_context is not None:
                     await ecm_context.close()
             except Exception as ee:
-                logger.exception("[WORKER] ECM context close 실패: %s", ee)
+                logger_worker.exception("ECM context close 실패: %s", ee)
             ecm_context, ecm_page = None, None
-            logger.warning("[WORKER] ECM context/page reset (Timeout)")
+            logger_worker.warning("ECM context/page reset (Timeout)")
 
         except Exception as e:
-            logger.exception("[WORKER] 작업 실패: %s %s: %s", cert_date, test_no, e)
+            logger_worker.exception("작업 실패: %s %s: %s", cert_date, test_no, e)
             if fut is not None and not fut.cancelled():
                 fut.set_exception(e)
 
@@ -142,20 +141,20 @@ async def _worker_loop():
                 if ecm_context is not None:
                     await ecm_context.close()
             except Exception as ee:
-                logger.exception("[WORKER] ECM context close 실패: %s", ee)
+                logger_worker.exception("ECM context close 실패: %s", ee)
             ecm_context, ecm_page = None, None
-            logger.warning("[WORKER] ECM context/page reset (Exception)")
+            logger_worker.warning("ECM context/page reset (Exception)")
 
         finally:
             _job_queue.task_done()
-            logger.warning(
-                "[WORKER] 작업 완료 처리: %s %s (queue size=%s)",
+            logger_worker.info(
+                "작업 완료 처리: %s %s (queue size=%s)",
                 cert_date,
                 test_no,
                 _job_queue.qsize(),
             )
 
-    # 이 루프는 일반적으로 종료되지 않으므로 browser/put_browser_safe는 여기서 다루지 않음.
+    # 이 루프는 일반적으로 종료되지 않으므로 browser/반납은 여기서 다루지 않음.
     # 필요하면 종료 훅에서 browser를 반납/close하도록 확장 가능.
 
 
@@ -163,8 +162,8 @@ async def _worker_loop():
 
 class PlaywrightJobConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        # 헬로 프레임: 라우팅/컨슈머가 진입했는지 즉시 확인용
         await self.accept()
+        logger_ws.info("WebSocket 연결 수립")
         try:
             await self.send(text_data=json.dumps({
                 "status": "hello",
@@ -175,14 +174,14 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
         self._task: asyncio.Task | None = None
 
     async def disconnect(self, code):
-        # 이 컨슈머에서 실행 중인 로컬 태스크만 취소 (전역 워커는 계속 유지)
         if self._task and not self._task.done():
             self._task.cancel()
+        logger_ws.info("WebSocket 연결 종료: code=%s", code)
 
     async def receive(self, text_data=None, bytes_data=None):
-        # 클라이언트가 실제로 프레임을 보낸 시점에 들어오는지 확인용 에코
+        # 클라이언트가 실제로 프레임을 보낸 시점에 들어오는지 확인용 로그
         try:
-            logger.warning("[WS] receive() called. raw=%s", (text_data or "")[:120])
+            logger_ws.info("receive: raw=%s", (text_data or "")[:120])
         except Exception:
             pass
 
@@ -198,7 +197,7 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
             return
 
         cert_date = (payload.get("인증일자") or "").strip()
-        test_no   = (payload.get("시험번호") or "").strip()
+        test_no = (payload.get("시험번호") or "").strip()
         if not cert_date or not test_no:
             await self.send(text_data=json.dumps({
                 "status": "error",
@@ -218,7 +217,6 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
                 pass
 
             try:
-                # 전역 워커 보장 + 큐 enqueue
                 await self.send(text_data=json.dumps({
                     "status": "processing",
                     "message": "ECM 작업 대기/실행 중..."
@@ -235,14 +233,14 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
                 }))
 
             except asyncio.TimeoutError as e:
-                logger.exception("[WS] 작업 타임아웃 (%s %s): %s", cert_date, test_no, e)
+                logger_ws.exception("작업 타임아웃 (%s %s): %s", cert_date, test_no, e)
                 user_msg = f"{test_no}의 ECM 불러오기를 실패하였습니다. 다시 요청해주세요."
                 await self.send(text_data=json.dumps({
                     "status": "error",
                     "message": user_msg,
                 }))
             except Exception as e:
-                logger.exception("[WS] 작업 실패 (%s %s): %s", cert_date, test_no, e)
+                logger_ws.exception("작업 실패 (%s %s): %s", cert_date, test_no, e)
                 user_msg = f"{test_no}의 ECM 불러오기를 실패하였습니다. 다시 요청해주세요."
                 await self.send(text_data=json.dumps({
                     "status": "error",
@@ -254,5 +252,4 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
                 except Exception:
                     pass
 
-        # 이 컨슈머 인스턴스 전용 태스크
         self._task = asyncio.create_task(run_one())
