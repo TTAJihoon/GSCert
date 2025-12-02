@@ -14,10 +14,12 @@ except ImportError:  # pywin32가 없으면 나중에 런타임 에러로 알려
     win32clipboard = None
     win32con = None
 
-logger = logging.getLogger(__name__)
+# 로거 이름 정리
+logger = logging.getLogger("playwright_job.task")
 
 # ★ 대상 웹사이트의 시작 URL
 ECM_BASE_URL = "http://210.104.181.10"
+
 
 def _get_clipboard_text_sync() -> str:
     """
@@ -36,6 +38,7 @@ def _get_clipboard_text_sync() -> str:
         win32clipboard.CloseClipboard()
     return text or ""
 
+
 async def _get_clipboard_text(retries: int = 5, delay_sec: float = 0.05) -> str:
     """
     비동기 코드에서 사용할 클립보드 읽기 함수.
@@ -49,6 +52,7 @@ async def _get_clipboard_text(retries: int = 5, delay_sec: float = 0.05) -> str:
             last_exc = e
             await asyncio.sleep(delay_sec)
     raise RuntimeError(f"클립보드 읽기 실패: {last_exc}")
+
 
 async def _wait_clipboard_change(
     before: str,
@@ -64,7 +68,7 @@ async def _wait_clipboard_change(
         try:
             current = await _get_clipboard_text()
         except Exception as e:
-            logger.warning("[TASK] 클립보드 읽기 중 예외 (무시하고 재시도): %s", e)
+            logger.warning("클립보드 읽기 중 예외 (무시하고 재시도): %s", e)
             current = ""
 
         if current and current != before:
@@ -74,6 +78,7 @@ async def _wait_clipboard_change(
         elapsed += interval_ms
 
     return ""
+
 
 def _get_date_parts(cert_date: str) -> tuple[str, str]:
     """
@@ -85,6 +90,7 @@ def _get_date_parts(cert_date: str) -> tuple[str, str]:
     year, month, day = m.groups()
     return year, f"{year}{month.zfill(2)}{day.zfill(2)}"
 
+
 def _testno_pat(test_no: str) -> Pattern:
     """
     시험번호의 구분자(하이픈/언더스코어)를 동일하게 취급하는 정규식을 생성합니다.
@@ -92,11 +98,12 @@ def _testno_pat(test_no: str) -> Pattern:
     safe_no = re.escape(test_no).replace(r'\-', "[-_]")
     return re.compile(safe_no, re.IGNORECASE)
 
+
 async def _prime_copy_sniffer(page: Page):
     """
     페이지 내에서 클립보드 복사 이벤트를 가로채기 위한 JavaScript를 주입합니다.
+    (현재는 OS 클립보드 방식이 메인이고, 이 스니퍼는 보조용)
     """
-    # ... (이 함수 내용은 변경 없음) ...
     inject_js = r"""
     (() => {
         if (window.__copy_sniffer_installed) return;
@@ -135,11 +142,12 @@ async def _prime_copy_sniffer(page: Page):
     await page.add_init_script(inject_js)
     await page.evaluate(inject_js)
 
+
 async def _get_sniffed_text(page: Page, last_seq_before: int, timeout_ms: int = 5000) -> str:
     """
     JavaScript에 주입된 변수를 폴링하여 복사된 텍스트를 가져옵니다.
+    (현재 메인 로직은 OS 클립보드 방식이므로, 필요 시 보조로 사용)
     """
-    # ... (이 함수 내용은 변경 없음) ...
     interval = 100
     elapsed = 0
     while elapsed < timeout_ms:
@@ -152,6 +160,7 @@ async def _get_sniffed_text(page: Page, last_seq_before: int, timeout_ms: int = 
 
 
 # ---------- 메인 Playwright 작업 함수 ----------
+
 async def run_playwright_task_on_page(page: Page, cert_date: str, test_no: str) -> Dict[str, str]:
     """
     이미 생성된 Page(로그인 완료된 ECM 탭)를 사용하여
@@ -160,129 +169,121 @@ async def run_playwright_task_on_page(page: Page, cert_date: str, test_no: str) 
     year, date_str = _get_date_parts(cert_date)
     test_no_pattern = _testno_pat(test_no)
 
-    logger.warning("[TASK] 시작: cert_date=%s(%s), test_no=%s", cert_date, date_str, test_no)
-
-    context = await browser.new_context()
-    page = await context.new_page()
+    logger.info("ECM 작업 시작: cert_date=%s(%s), test_no=%s", cert_date, date_str, test_no)
 
     TO = {
         "goto": 10_000,
         "tree_appear": 5_000,
         "click": 5_000,
         "doc_list_appear": 5_000,
-        "file_list_appear": 5_000, # ★ 파일 목록 대기용 타임아웃
+        "file_list_appear": 5_000,  # ★ 파일 목록 대기용 타임아웃
         "row_expect": 5_000,
         "copy_wait": 5_000,
     }
 
     try:
-        # Step 0 ~ 2: 페이지 이동 및 트리 메뉴 탐색 (기존과 동일)
-        logger.warning("[TASK] Step0: goto %s", ECM_BASE_URL)
+        # Step 0 ~ 2: 페이지 이동 및 트리 메뉴 탐색
+        logger.debug("Step0: goto %s", ECM_BASE_URL)
         resp = await page.goto(ECM_BASE_URL, timeout=TO["goto"], wait_until="domcontentloaded")
-        logger.warning("[TASK] Step0: 응답 상태 = %s", resp.status if resp else None)
+        logger.debug("Step0: 응답 상태 = %s", resp.status if resp else None)
+
         html = await page.content()
         if "로그인" in html or "password" in html.lower():
             raise RuntimeError("ECM 로그인 페이지로 이동했습니다. 세션/인증이 필요합니다.")
+
         tree_selector = "div.edm-left-panel-menu-sub-item"
-        logger.warning("[TASK] Step1: 트리 로딩 대기 (%s)", tree_selector)
+        logger.debug("Step1: 트리 로딩 대기 (%s)", tree_selector)
         await page.wait_for_selector(tree_selector, timeout=TO["tree_appear"])
         tree = page.locator(tree_selector)
-        logger.warning("[TASK] Step2-1: 연도 클릭 → %s", year)
+
+        logger.debug("Step2-1: 연도 클릭 → %s", year)
         await tree.get_by_text(year).click(timeout=TO["click"])
-        logger.warning("[TASK] Step2-2: 'GS인증심의위원회' 클릭")
+        logger.debug("Step2-2: 'GS인증심의위원회' 클릭")
         await tree.get_by_text("GS인증심의위원회").click(timeout=TO["click"])
-        logger.warning("[TASK] Step2-3: 인증일자 클릭 → %s", date_str)
+        logger.debug("Step2-3: 인증일자 클릭 → %s", date_str)
         await tree.get_by_text(date_str).click(timeout=TO["click"])
-        logger.warning("[TASK] Step2-4: 시험번호 클릭 → %s", test_no)
-        await tree.get_by_text(test_no).click(timeout=TO["click"])        
+        logger.debug("Step2-4: 시험번호 클릭 → %s", test_no)
+        await tree.get_by_text(test_no).click(timeout=TO["click"])
 
-        # Step 3: 문서 목록에서 대상 문서 클릭 (디버깅 로그 추가)
-        # ▶ 스크린샷 기준 실제 DOM 속성명은 events="document-list-viewDocument-click"
+        # Step 3: 문서 목록에서 대상 문서 클릭
         doc_list_selector = 'span[events="document-list-viewDocument-click"]'
-        logger.warning("[TASK] Step3: 문서 목록 셀렉터 = %s", doc_list_selector)
+        logger.debug("Step3: 문서 목록 셀렉터 = %s", doc_list_selector)
 
-        # 문서 목록 로딩 대기
         await page.wait_for_selector(doc_list_selector, timeout=TO["doc_list_appear"])
 
         doc_list = page.locator(doc_list_selector)
         total = await doc_list.count()
-        logger.warning("[TASK] Step3: 전체 문서 span 개수 = %s", total)
+        logger.debug("Step3: 전체 문서 span 개수 = %s", total)
 
-        # 디버깅용: 전체 텍스트 확인
         try:
             texts = await doc_list.all_inner_texts()
-            logger.warning("[TASK] Step3: 전체 span 텍스트 목록 = %s", texts)
+            logger.debug("Step3: 전체 span 텍스트 목록 = %s", texts)
         except Exception as ex:
-            logger.warning("[TASK] Step3: all_inner_texts() 실패: %s", ex)
+            logger.debug("Step3: all_inner_texts() 실패: %s", ex)
 
-        logger.warning("[TASK] Step3: 시험번호 정규식 = %s", test_no_pattern.pattern)
+        logger.debug("Step3: 시험번호 정규식 = %s", test_no_pattern.pattern)
 
         # 1차 필터: 시험번호 포함
         by_testno = doc_list.filter(has_text=test_no_pattern)
         cnt_by_testno = await by_testno.count()
-        logger.warning("[TASK] Step3: 시험번호 포함 span 개수 = %s", cnt_by_testno)
+        logger.debug("Step3: 시험번호 포함 span 개수 = %s", cnt_by_testno)
         try:
             by_testno_texts = await by_testno.all_inner_texts()
-            logger.warning("[TASK] Step3: 시험번호 포함 span 텍스트 = %s", by_testno_texts)
+            logger.debug("Step3: 시험번호 포함 span 텍스트 = %s", by_testno_texts)
         except Exception as ex:
-            logger.warning("[TASK] Step3: by_testno.all_inner_texts() 실패: %s", ex)
+            logger.debug("Step3: by_testno.all_inner_texts() 실패: %s", ex)
 
         # 2차 필터: '시험성적서' 우선
-        logger.warning("[TASK] Step3: 문서 목록 필터링 (시험성적서 우선)")
+        logger.debug("Step3: 문서 목록 필터링 (시험성적서 우선)")
         target_doc = by_testno.filter(has_text="시험성적서")
 
         clicked = False
         cnt_target = await target_doc.count()
-        logger.warning("[TASK] Step3: 시험번호+시험성적서 매칭 개수 = %s", cnt_target)
+        logger.debug("Step3: 시험번호+시험성적서 매칭 개수 = %s", cnt_target)
 
         if cnt_target == 1:
             await target_doc.click(timeout=TO["click"])
             clicked = True
-            logger.warning("[TASK] Step3: '시험성적서' 문서 클릭 완료")
+            logger.debug("Step3: '시험성적서' 문서 클릭 완료")
         else:
-            logger.warning(
-                "[TASK] Step3: '시험성적서'가 정확히 1개가 아님(count=%s) → fallback 시도",
-                cnt_target,
-            )
+            logger.debug("Step3: '시험성적서'가 정확히 1개가 아님(count=%s) → fallback 시도", cnt_target)
 
         # fallback: 시험번호 포함 & '품질평가보고서' 제외
         if not clicked:
-            logger.warning(
-                "[TASK] Step3-fallback: '품질평가보고서' 제외, 시험번호 포함 대상 클릭 시도"
-            )
+            logger.debug("Step3-fallback: '품질평가보고서' 제외, 시험번호 포함 대상 클릭 시도")
             fallback_doc = by_testno.filter(has_not_text="품질평가보고서")
             cnt_fallback = await fallback_doc.count()
-            logger.warning("[TASK] Step3-fallback: 후보 개수 = %s", cnt_fallback)
+            logger.debug("Step3-fallback: 후보 개수 = %s", cnt_fallback)
             try:
                 fb_texts = await fallback_doc.all_inner_texts()
-                logger.warning("[TASK] Step3-fallback: 후보 텍스트 = %s", fb_texts)
+                logger.debug("Step3-fallback: 후보 텍스트 = %s", fb_texts)
             except Exception as ex:
-                logger.warning("[TASK] Step3-fallback: all_inner_texts() 실패: %s", ex)
+                logger.debug("Step3-fallback: all_inner_texts() 실패: %s", ex)
 
             if cnt_fallback == 1:
                 await fallback_doc.click(timeout=TO["click"])
                 clicked = True
-                logger.warning("[TASK] Step3-fallback: 대표 문서 클릭 완료")
+                logger.debug("Step3-fallback: 대표 문서 클릭 완료")
 
         if not clicked:
-            # 이 시점까지 온 경우, 위의 로그(전체 span, 필터 결과)로 왜 못 찾았는지 역추적 가능
             raise RuntimeError(
                 f"문서 목록에서 '{test_no}'에 해당하는 정확한 대상을 찾지 못했습니다."
             )
 
         table_rows = page.locator("tr.prop-view-file-list-item")
         target_row = table_rows.filter(has_text=test_no_pattern).filter(has_text="시험성적서")
-        logger.warning("[TASK] Step4: 파일 행 존재 확인 (시험성적서, 10s)")
+        logger.debug("Step4: 파일 행 존재 확인 (시험성적서, 10s)")
         await expect(target_row).to_have_count(1, timeout=TO["row_expect"])
         checkbox = target_row.locator('input[type="checkbox"]')
-        logger.warning("[TASK] Step4: 체크박스 체크")
+        logger.debug("Step4: 체크박스 체크")
         await checkbox.check(timeout=TO["click"])
+
         await _prime_copy_sniffer(page)
         last_seq_before = await page.evaluate("() => window.__copy_seq|0")
-        
+
         # Step 5: URL 복사 버튼 클릭 (브라우저는 버튼 클릭까지만 ⇒ URL 문자열은 OS 클립보드에서 읽음)
         copy_btn_selector = "div#prop-view-document-btn-url-copy"
-        logger.warning("[TASK] Step5: URL 복사 버튼 클릭 (OS 클립보드 방식) (%s)", copy_btn_selector)
+        logger.debug("Step5: URL 복사 버튼 클릭 (OS 클립보드 방식) (%s)", copy_btn_selector)
 
         if win32clipboard is None or win32con is None:
             raise RuntimeError("pywin32(win32clipboard, win32con)가 설치되어 있지 않아 OS 클립보드를 사용할 수 없습니다.")
@@ -291,19 +292,13 @@ async def run_playwright_task_on_page(page: Page, cert_date: str, test_no: str) 
         before_clip = ""
         try:
             before_clip = await _get_clipboard_text()
-            logger.warning(
-                "[TASK] Step5: 클릭 전 클립보드 텍스트 길이 = %s",
-                len(before_clip or ""),
-            )
+            logger.debug("Step5: 클릭 전 클립보드 텍스트 길이 = %s", len(before_clip or ""))
         except Exception as e:
-            logger.warning(
-                "[TASK] Step5: 클릭 전 클립보드 읽기 실패 (무시하고 진행): %s",
-                e,
-            )
+            logger.warning("Step5: 클릭 전 클립보드 읽기 실패 (무시하고 진행): %s", e)
 
         copy_btn = page.locator(copy_btn_selector)
         btn_count = await copy_btn.count()
-        logger.warning("[TASK] Step5: URL 복사 버튼 개수 = %s", btn_count)
+        logger.debug("Step5: URL 복사 버튼 개수 = %s", btn_count)
 
         if btn_count == 0:
             raise RuntimeError("URL 복사 버튼을 찾지 못했습니다.")
@@ -311,26 +306,19 @@ async def run_playwright_task_on_page(page: Page, cert_date: str, test_no: str) 
         btn = copy_btn.first
         visible = await btn.is_visible()
         enabled = await btn.is_enabled()
-        logger.warning(
-            "[TASK] Step5: 버튼 상태 visible=%s, enabled=%s",
-            visible,
-            enabled,
-        )
+        logger.debug("Step5: 버튼 상태 visible=%s, enabled=%s", visible, enabled)
 
         try:
             await btn.click(timeout=TO["click"])
-            logger.warning("[TASK] Step5: btn.click() 호출 완료 (예외 없음)")
+            logger.debug("Step5: btn.click() 호출 완료 (예외 없음)")
         except Exception as e:
-            logger.exception("[TASK] Step5: btn.click() 중 예외 발생: %s", e)
+            logger.exception("Step5: btn.click() 중 예외 발생: %s", e)
             raise
 
         # Step 6: OS 클립보드 내용이 변경될 때까지 대기
-        logger.warning("[TASK] Step6: 클립보드 변화 대기 (최대 %dms)", TO["copy_wait"])
+        logger.debug("Step6: 클립보드 변화 대기 (최대 %dms)", TO["copy_wait"])
         pasted = await _wait_clipboard_change(before_clip, timeout_ms=TO["copy_wait"])
-        logger.warning(
-            "[TASK] Step6: 클립보드 변화 감지 후 텍스트 길이 = %s",
-            len(pasted or ""),
-        )
+        logger.debug("Step6: 클립보드 변화 감지 후 텍스트 길이 = %s", len(pasted or ""))
 
         if not pasted:
             raise RuntimeError("URL 복사 후 클립보드 텍스트를 확인하지 못했습니다. (타임아웃 또는 빈 값)")
@@ -341,17 +329,24 @@ async def run_playwright_task_on_page(page: Page, cert_date: str, test_no: str) 
         if not m:
             raise ValueError("클립보드 텍스트의 첫 줄에서 URL을 찾을 수 없습니다.")
         url = m.group(1)
-        logger.warning("[TASK] 완료 URL: %s", url)
+        logger.info("ECM 작업 성공: test_no=%s, url=%s", test_no, url)
 
         return {"url": url}
     except Exception as e:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         screenshot_path = f"playwright_error_{timestamp}.png"
         await page.screenshot(path=screenshot_path)
-        logger.warning(f"[TASK] 예외 발생, 스크린샷 저장({screenshot_path})")
+        logger.error("예외 발생, 스크린샷 저장(%s)", screenshot_path)
         raise e
 
+
 async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) -> Dict[str, str]:
+    """
+    기존 시그니처 유지용 래퍼.
+    - 새 context/page를 만들고
+    - run_playwright_task_on_page 를 호출하고
+    - context 를 정리합니다.
+    """
     context = await browser.new_context()
     page = await context.new_page()
     try:
@@ -360,4 +355,4 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
         try:
             await context.close()
         except Exception as e:
-            logger.exception("[TASK] context.close 실패: %s", e)
+            logger.exception("context.close 실패: %s", e)
