@@ -1,34 +1,107 @@
 import asyncio
-import re
 import logging
-from re import Pattern
-from typing import Dict
-from datetime import datetime  # ★ 스크린샷 시간 기록을 위해 추가
+import re
+import time
+from dataclasses import dataclass
+from datetime import datetime
+from typing import Dict, Optional, Pattern
+
 from playwright.async_api import Browser, Page, Locator, expect
 
-# ★ Windows OS 클립보드 사용
+# Windows clipboard
 try:
     import win32clipboard
     import win32con
-except ImportError:  # pywin32가 없으면 나중에 런타임 에러로 알려주기 위함
+except ImportError:
     win32clipboard = None
     win32con = None
 
-# 로거 이름 정리
 logger = logging.getLogger("playwright_job.task")
 
-# ★ 대상 웹사이트의 시작 URL
 ECM_BASE_URL = "http://210.104.181.10"
 
 
+# ----------------------------
+# Config (확정/조정 가능한 값)
+# ----------------------------
+TO_GOTO_MS = 10_000
+TO_TREE_MS = 8_000
+TO_CLICK_MS = 5_000
+TO_DOC_LIST_MS = 8_000
+TO_FILE_LIST_MS = 8_000
+TO_COPY_WAIT_MS = 5_000
+
+# Step2 확정 (네 HTML 기준)
+LEFT_ACTIVE_FOLDER_PANEL_SEL = (
+    'div.edm-left-panel-menu-sub-item[submenu_type="Folder"].ui-accordion-content-active'
+)
+LEFT_TREE_ROOT_SEL = f"{LEFT_ACTIVE_FOLDER_PANEL_SEL} #edm-folder"
+
+# 기존 코드에서 쓰던 selector들(일단 유지)
+DOC_LIST_ITEM_SEL = 'span[events="document-list-viewDocument-click"]'
+FILE_ROW_SEL = "tr.prop-view-file-list-item"
+URL_COPY_BTN_SEL = "div#prop-view-document-btn-url-copy"
+
+
+# ----------------------------
+# Utilities
+# ----------------------------
+@dataclass
+class StepError(RuntimeError):
+    step_no: int
+    step_msg: str
+    debug: str = ""
+
+
+def _now_ms() -> int:
+    return int(time.time() * 1000)
+
+
+def _fmt_kv(**kwargs) -> str:
+    parts = []
+    for k, v in kwargs.items():
+        if v is None:
+            continue
+        s = str(v)
+        if len(s) > 120:
+            s = s[:117] + "..."
+        parts.append(f"{k}={s}")
+    return " ".join(parts)
+
+
+async def _run_step(step_no: int, msg: str, coro, **debug_kv):
+    t0 = _now_ms()
+    logger.info("S%d START | %s | %s", step_no, msg, _fmt_kv(**debug_kv))
+    try:
+        out = await coro
+        dt = _now_ms() - t0
+        logger.info("S%d OK | %s | %s | %dms", step_no, msg, _fmt_kv(**debug_kv), dt)
+        return out
+    except Exception as e:
+        dt = _now_ms() - t0
+        logger.error(
+            "S%d FAIL(%s) | %s | %s | %dms",
+            step_no, type(e).__name__, msg, _fmt_kv(**debug_kv), dt
+        )
+        raise StepError(step_no=step_no, step_msg=msg, debug=_fmt_kv(**debug_kv)) from e
+
+
+def _get_date_parts(cert_date: str) -> tuple[str, str]:
+    m = re.match(r'^\s*(\d{4})[-\.](\d{1,2})[-\.](\d{1,2})\s*$', cert_date or '')
+    if not m:
+        raise ValueError(f"날짜 형식이 'yyyy.mm.dd' 또는 'yyyy-mm-dd'가 아닙니다: {cert_date}")
+    y, mth, d = m.groups()
+    return y, f"{y}{mth.zfill(2)}{d.zfill(2)}"
+
+
+def _testno_pat(test_no: str) -> Pattern:
+    safe_no = re.escape(test_no).replace(r'\-', "[-_]")
+    return re.compile(safe_no, re.IGNORECASE)
+
+
 def _get_clipboard_text_sync() -> str:
-    """
-    동기 방식으로 Windows 클립보드의 유니코드 텍스트를 읽습니다.
-    (async 코드에서 asyncio.to_thread로 감싸서 사용)
-    """
     if win32clipboard is None or win32con is None:
         raise RuntimeError("pywin32(win32clipboard, win32con)가 설치되어 있지 않습니다.")
-
     text = ""
     win32clipboard.OpenClipboard()
     try:
@@ -40,11 +113,7 @@ def _get_clipboard_text_sync() -> str:
 
 
 async def _get_clipboard_text(retries: int = 5, delay_sec: float = 0.05) -> str:
-    """
-    비동기 코드에서 사용할 클립보드 읽기 함수.
-    클립보드가 잠겨 있을 수 있으므로 약간 재시도합니다.
-    """
-    last_exc: Exception | None = None
+    last_exc: Optional[Exception] = None
     for _ in range(retries):
         try:
             return await asyncio.to_thread(_get_clipboard_text_sync)
@@ -54,299 +123,268 @@ async def _get_clipboard_text(retries: int = 5, delay_sec: float = 0.05) -> str:
     raise RuntimeError(f"클립보드 읽기 실패: {last_exc}")
 
 
-async def _wait_clipboard_change(
-    before: str,
-    timeout_ms: int = 5000,
-    interval_ms: int = 100,
-) -> str:
-    """
-    기존 클립보드 내용(before)과 다른 텍스트가 들어올 때까지 대기합니다.
-    timeout_ms 내에 변화가 없으면 빈 문자열을 반환합니다.
-    """
+async def _wait_clipboard_change(before: str, timeout_ms: int, interval_ms: int = 100) -> str:
     elapsed = 0
     while elapsed < timeout_ms:
+        cur = ""
         try:
-            current = await _get_clipboard_text()
-        except Exception as e:
-            logger.warning("클립보드 읽기 중 예외 (무시하고 재시도): %s", e)
-            current = ""
-
-        if current and current != before:
-            return current
-
+            cur = await _get_clipboard_text()
+        except Exception:
+            cur = ""
+        if cur and cur != before:
+            return cur
         await asyncio.sleep(interval_ms / 1000.0)
         elapsed += interval_ms
-
     return ""
 
 
-def _get_date_parts(cert_date: str) -> tuple[str, str]:
-    """
-    'yyyy.mm.dd' 또는 'yyyy-mm-dd' 형식의 날짜를 ('yyyy', 'yyyymmdd')로 분리합니다.
-    """
-    m = re.match(r'^\s*(\d{4})[-\.](\d{1,2})[-\.](\d{1,2})\s*$', cert_date or '')
-    if not m:
-        raise ValueError(f"날짜 형식이 'yyyy.mm.dd' 또는 'yyyy-mm-dd'가 아닙니다. 입력값: {cert_date}")
-    year, month, day = m.groups()
-    return year, f"{year}{month.zfill(2)}{day.zfill(2)}"
+async def _pick_unique(locator: Locator, label: str) -> Locator:
+    cnt = await locator.count()
+    if cnt != 1:
+        raise RuntimeError(f"{label} 후보가 1개가 아닙니다. count={cnt}")
+    return locator.first
 
 
-def _testno_pat(test_no: str) -> Pattern:
-    """
-    시험번호의 구분자(하이픈/언더스코어)를 동일하게 취급하는 정규식을 생성합니다.
-    """
-    safe_no = re.escape(test_no).replace(r'\-', "[-_]")
-    return re.compile(safe_no, re.IGNORECASE)
-
-
-async def _prime_copy_sniffer(page: Page):
-    """
-    페이지 내에서 클립보드 복사 이벤트를 가로채기 위한 JavaScript를 주입합니다.
-    (현재는 OS 클립보드 방식이 메인이고, 이 스니퍼는 보조용)
-    """
-    inject_js = r"""
-    (() => {
-        if (window.__copy_sniffer_installed) return;
-        window.__copy_sniffer_installed = true;
-        window.__last_copied = '';
-        window.__copy_seq = 0;
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            const _origWrite = navigator.clipboard.writeText.bind(navigator.clipboard);
-            navigator.clipboard.writeText = async (t) => {
-                try { window.__last_copied = String(t || ''); window.__copy_seq++; } catch(e) {}
-                return _origWrite(t);
-            };
-        }
-        document.addEventListener('copy', (e) => {
-            try {
-                let txt = '';
-                if (e && e.clipboardData) { txt = e.clipboardData.getData('text/plain') || ''; }
-                if (!txt && window.getSelection) { txt = String(window.getSelection() || ''); }
-                if (txt) { window.__last_copied = String(txt); window.__copy_seq++; }
-            } catch (err) {}
-        }, true);
-        const _origExec = document.execCommand ? document.execCommand.bind(document) : null;
-        if (_origExec) {
-            document.execCommand = function(command, ui, value) {
-                try {
-                    if ((command || '').toLowerCase() === 'copy') {
-                        const txt = String(window.getSelection ? (window.getSelection() || '') : '');
-                        if (txt) { window.__last_copied = txt; window.__copy_seq++; }
-                    }
-                } catch (err) {}
-                return _origExec(command, ui, value);
-            };
-        }
-    })();
-    """
-    await page.add_init_script(inject_js)
-    await page.evaluate(inject_js)
-
-
-async def _get_sniffed_text(page: Page, last_seq_before: int, timeout_ms: int = 5000) -> str:
-    """
-    JavaScript에 주입된 변수를 폴링하여 복사된 텍스트를 가져옵니다.
-    (현재 메인 로직은 OS 클립보드 방식이므로, 필요 시 보조로 사용)
-    """
-    interval = 100
-    elapsed = 0
-    while elapsed < timeout_ms:
-        seq, txt = await page.evaluate("""() => [window.__copy_seq|0, String(window.__last_copied||'')]""")
-        if seq > last_seq_before and txt:
-            return txt
-        await page.wait_for_timeout(interval)
-        elapsed += interval
-    return ""
-
-
-# ---------- 메인 Playwright 작업 함수 ----------
-
+# ----------------------------
+# Main task (Step1~Step10)
+# ----------------------------
 async def run_playwright_task_on_page(page: Page, cert_date: str, test_no: str) -> Dict[str, str]:
-    """
-    이미 생성된 Page(로그인 완료된 ECM 탭)를 사용하여
-    한 번의 ECM 자동화 작업을 수행하고 URL을 반환합니다.
-    """
-    year, date_str = _get_date_parts(cert_date)
-    test_no_pattern = _testno_pat(test_no)
+    year, date_key = _get_date_parts(cert_date)
+    test_pat = _testno_pat(test_no)
 
-    logger.info("ECM 작업 시작: cert_date=%s(%s), test_no=%s", cert_date, date_str, test_no)
-
-    TO = {
-        "goto": 10_000,
-        "tree_appear": 5_000,
-        "click": 5_000,
-        "doc_list_appear": 5_000,
-        "file_list_appear": 5_000,  # ★ 파일 목록 대기용 타임아웃
-        "row_expect": 5_000,
-        "copy_wait": 5_000,
-    }
-
+    screenshot_path = None
     try:
-        # Step 0 ~ 2: 페이지 이동 및 트리 메뉴 탐색
-        logger.debug("Step0: goto %s", ECM_BASE_URL)
-        resp = await page.goto(ECM_BASE_URL, timeout=TO["goto"], wait_until="domcontentloaded")
-        logger.debug("Step0: 응답 상태 = %s", resp.status if resp else None)
+        # Step 1: goto
+        async def _s1():
+            resp = await page.goto(ECM_BASE_URL, timeout=TO_GOTO_MS, wait_until="domcontentloaded")
+            status = resp.status if resp else None
+            url_after = page.url
+            # 이동 성공 기준(초안): 예외 없이 goto 완료 + (status가 있으면 400 미만)
+            if status is not None and status >= 400:
+                raise RuntimeError(f"HTTP status >= 400: {status}")
+            if not url_after.startswith(ECM_BASE_URL):
+                # 리다이렉트가 있을 수 있어 “실패”로 할지 “경고”로 할지 정책 선택 가능.
+                # 일단 실패로 둠.
+                raise RuntimeError(f"Unexpected URL after goto: {url_after}")
+            return {"status": status, "url": url_after}
 
-        html = await page.content()
-        if "로그인" in html or "password" in html.lower():
-            raise RuntimeError("ECM 로그인 페이지로 이동했습니다. 세션/인증이 필요합니다.")
+        s1_out = await _run_step(
+            1,
+            "ECM 페이지 이동",
+            _s1(),
+            base_url=ECM_BASE_URL,
+        )
 
-        tree_selector = "div.edm-left-panel-menu-sub-item"
-        logger.debug("Step1: 트리 로딩 대기 (%s)", tree_selector)
-        await page.wait_for_selector(tree_selector, timeout=TO["tree_appear"])
-        tree = page.locator(tree_selector)
+        # Step 2: wait active folder tree panel
+        async def _s2():
+            panels = page.locator("div.edm-left-panel-menu-sub-item")
+            active_folder = page.locator(LEFT_ACTIVE_FOLDER_PANEL_SEL)
+            tree_root = page.locator(LEFT_TREE_ROOT_SEL)
 
-        logger.debug("Step2-1: 연도 클릭 → %s", year)
-        await tree.get_by_text(year).click(timeout=TO["click"])
-        logger.debug("Step2-2: 'GS인증심의위원회' 클릭")
-        await tree.get_by_text("GS인증심의위원회").click(timeout=TO["click"])
-        logger.debug("Step2-3: 인증일자 클릭 → %s", date_str)
-        await tree.get_by_text(date_str).click(timeout=TO["click"])
-        logger.debug("Step2-4: 시험번호 클릭 → %s", test_no)
-        await tree.get_by_text(test_no).click(timeout=TO["click"])
+            total_panels = await panels.count()
+            active_cnt = await active_folder.count()
 
-        # Step 3: 문서 목록에서 대상 문서 클릭
-        doc_list_selector = 'span[events="document-list-viewDocument-click"]'
-        logger.debug("Step3: 문서 목록 셀렉터 = %s", doc_list_selector)
+            # 핵심: "Folder 활성 패널" + "edm-folder"가 visible 되기까지 대기
+            await active_folder.wait_for(state="visible", timeout=TO_TREE_MS)
+            await tree_root.wait_for(state="visible", timeout=TO_TREE_MS)
 
-        await page.wait_for_selector(doc_list_selector, timeout=TO["doc_list_appear"])
+            # 기다린 후 재확인(로그용)
+            active_cnt2 = await active_folder.count()
+            return {
+                "total_panels": total_panels,
+                "active_folder_cnt": active_cnt2,
+            }
 
-        doc_list = page.locator(doc_list_selector)
-        total = await doc_list.count()
-        logger.debug("Step3: 전체 문서 span 개수 = %s", total)
+        s2_out = await _run_step(
+            2,
+            "좌측 트리(전사 폴더) 패널 로딩 대기",
+            _s2(),
+            selector=LEFT_ACTIVE_FOLDER_PANEL_SEL,
+        )
 
-        try:
-            texts = await doc_list.all_inner_texts()
-            logger.debug("Step3: 전체 span 텍스트 목록 = %s", texts)
-        except Exception as ex:
-            logger.debug("Step3: all_inner_texts() 실패: %s", ex)
+        # Step 3: tree clicks (year -> GS인증심의위원회 -> date_key -> test_no)
+        async def _s3():
+            tree = page.locator(LEFT_TREE_ROOT_SEL)
+            # get_by_text는 기본적으로 부분일치라 "2026"이 "2026 시험서비스"에 매칭 가능
+            await tree.get_by_text(year).click(timeout=TO_CLICK_MS)
+            await tree.get_by_text("GS인증심의위원회").click(timeout=TO_CLICK_MS)
+            await tree.get_by_text(date_key).click(timeout=TO_CLICK_MS)
+            await tree.get_by_text(test_no).click(timeout=TO_CLICK_MS)
 
-        logger.debug("Step3: 시험번호 정규식 = %s", test_no_pattern.pattern)
+        await _run_step(
+            3,
+            "좌측 트리 경로 클릭(연도→위원회→일자→시험번호)",
+            _s3(),
+            year=year,
+            date_key=date_key,
+            test_no=test_no,
+        )
 
-        # 1차 필터: 시험번호 포함
-        by_testno = doc_list.filter(has_text=test_no_pattern)
-        cnt_by_testno = await by_testno.count()
-        logger.debug("Step3: 시험번호 포함 span 개수 = %s", cnt_by_testno)
-        try:
-            by_testno_texts = await by_testno.all_inner_texts()
-            logger.debug("Step3: 시험번호 포함 span 텍스트 = %s", by_testno_texts)
-        except Exception as ex:
-            logger.debug("Step3: by_testno.all_inner_texts() 실패: %s", ex)
+        # Step 4: wait doc list
+        async def _s4():
+            await page.wait_for_selector(DOC_LIST_ITEM_SEL, timeout=TO_DOC_LIST_MS)
+            loc = page.locator(DOC_LIST_ITEM_SEL)
+            return {"doc_items": await loc.count()}
 
-        # 2차 필터: '시험성적서' 우선
-        logger.debug("Step3: 문서 목록 필터링 (시험성적서 우선)")
-        target_doc = by_testno.filter(has_text="시험성적서")
+        s4_out = await _run_step(
+            4,
+            "문서 목록 로딩 대기",
+            _s4(),
+            selector=DOC_LIST_ITEM_SEL,
+        )
 
-        clicked = False
-        cnt_target = await target_doc.count()
-        logger.debug("Step3: 시험번호+시험성적서 매칭 개수 = %s", cnt_target)
+        # Step 5: pick and click target document (시험번호 포함 + 시험성적서 우선)
+        async def _s5():
+            doc_list = page.locator(DOC_LIST_ITEM_SEL)
+            by_test = doc_list.filter(has_text=test_pat)
+            cnt_by_test = await by_test.count()
 
-        if cnt_target == 1:
-            await target_doc.click(timeout=TO["click"])
-            clicked = True
-            logger.debug("Step3: '시험성적서' 문서 클릭 완료")
-        else:
-            logger.debug("Step3: '시험성적서'가 정확히 1개가 아님(count=%s) → fallback 시도", cnt_target)
+            target = by_test.filter(has_text="시험성적서")
+            cnt_target = await target.count()
 
-        # fallback: 시험번호 포함 & '품질평가보고서' 제외
-        if not clicked:
-            logger.debug("Step3-fallback: '품질평가보고서' 제외, 시험번호 포함 대상 클릭 시도")
-            fallback_doc = by_testno.filter(has_not_text="품질평가보고서")
-            cnt_fallback = await fallback_doc.count()
-            logger.debug("Step3-fallback: 후보 개수 = %s", cnt_fallback)
-            try:
-                fb_texts = await fallback_doc.all_inner_texts()
-                logger.debug("Step3-fallback: 후보 텍스트 = %s", fb_texts)
-            except Exception as ex:
-                logger.debug("Step3-fallback: all_inner_texts() 실패: %s", ex)
+            clicked_text = None
 
-            if cnt_fallback == 1:
-                await fallback_doc.click(timeout=TO["click"])
-                clicked = True
-                logger.debug("Step3-fallback: 대표 문서 클릭 완료")
+            if cnt_target == 1:
+                await target.first.click(timeout=TO_CLICK_MS)
+                clicked_text = (await target.first.inner_text()).strip()
+                return {
+                    "cnt_by_test": cnt_by_test,
+                    "cnt_target": cnt_target,
+                    "clicked": "시험성적서",
+                    "clicked_text": clicked_text
+                }
 
-        if not clicked:
+            fallback = by_test.filter(has_not_text="품질평가보고서")
+            cnt_fb = await fallback.count()
+            if cnt_fb == 1:
+                await fallback.first.click(timeout=TO_CLICK_MS)
+                clicked_text = (await fallback.first.inner_text()).strip()
+                return {
+                    "cnt_by_test": cnt_by_test,
+                    "cnt_target": cnt_target,
+                    "cnt_fallback": cnt_fb,
+                    "clicked": "fallback",
+                    "clicked_text": clicked_text
+                }
+
             raise RuntimeError(
-                f"문서 목록에서 '{test_no}'에 해당하는 정확한 대상을 찾지 못했습니다."
+                f"대상 문서 확정 실패: by_test={cnt_by_test}, target(시험성적서)={cnt_target}, fallback={cnt_fb}"
             )
 
-        table_rows = page.locator("tr.prop-view-file-list-item")
-        target_row = table_rows.filter(has_text=test_no_pattern).filter(has_text="시험성적서")
-        logger.debug("Step4: 파일 행 존재 확인 (시험성적서, 10s)")
-        await expect(target_row).to_have_count(1, timeout=TO["row_expect"])
-        checkbox = target_row.locator('input[type="checkbox"]')
-        logger.debug("Step4: 체크박스 체크")
-        await checkbox.check(timeout=TO["click"])
+        s5_out = await _run_step(
+            5,
+            "문서 목록에서 대상 문서 선택/클릭",
+            _s5(),
+            test_no=test_no,
+        )
 
-        await _prime_copy_sniffer(page)
-        last_seq_before = await page.evaluate("() => window.__copy_seq|0")
+        # Step 6: wait file list (파일 목록이 떴는데도 못 봤다고 판단 방지 → attached 기준으로)
+        async def _s6():
+            # 'visible' 말고 'attached'로 기다리면 display/가림 문제로 인한 오판이 줄어듦
+            await page.wait_for_selector(FILE_ROW_SEL, timeout=TO_FILE_LIST_MS, state="attached")
+            rows = page.locator(FILE_ROW_SEL)
+            return {"rows_attached": await rows.count()}
 
-        # Step 5: URL 복사 버튼 클릭 (브라우저는 버튼 클릭까지만 ⇒ URL 문자열은 OS 클립보드에서 읽음)
-        copy_btn_selector = "div#prop-view-document-btn-url-copy"
-        logger.debug("Step5: URL 복사 버튼 클릭 (OS 클립보드 방식) (%s)", copy_btn_selector)
+        s6_out = await _run_step(
+            6,
+            "파일 목록 로딩 대기",
+            _s6(),
+            selector=FILE_ROW_SEL,
+        )
 
+        # Step 7: pick file row + checkbox check
+        async def _s7():
+            rows = page.locator(FILE_ROW_SEL)
+            target_row = rows.filter(has_text=test_pat).filter(has_text="시험성적서")
+            cnt = await target_row.count()
+            if cnt != 1:
+                raise RuntimeError(f"시험성적서 파일 행 확정 실패. count={cnt}")
+            cb = target_row.first.locator('input[type="checkbox"]')
+            await cb.check(timeout=TO_CLICK_MS)
+            return {"target_rows": cnt}
+
+        await _run_step(
+            7,
+            "시험성적서 파일 행 체크박스 선택",
+            _s7(),
+            row_selector=FILE_ROW_SEL,
+        )
+
+        # Step 8: click url copy
+        async def _s8():
+            btn = page.locator(URL_COPY_BTN_SEL)
+            cnt = await btn.count()
+            if cnt < 1:
+                raise RuntimeError("URL 복사 버튼을 찾지 못했습니다.")
+            await btn.first.click(timeout=TO_CLICK_MS)
+            return {"btn_count": cnt}
+
+        # 클릭 전 클립보드 저장(9에서 사용)
         if win32clipboard is None or win32con is None:
-            raise RuntimeError("pywin32(win32clipboard, win32con)가 설치되어 있지 않아 OS 클립보드를 사용할 수 없습니다.")
+            raise RuntimeError("pywin32가 없어 OS 클립보드를 사용할 수 없습니다.")
 
-        # 클릭 전 클립보드 상태를 저장 (변화 감지를 위해)
-        before_clip = ""
-        try:
-            before_clip = await _get_clipboard_text()
-            logger.debug("Step5: 클릭 전 클립보드 텍스트 길이 = %s", len(before_clip or ""))
-        except Exception as e:
-            logger.warning("Step5: 클릭 전 클립보드 읽기 실패 (무시하고 진행): %s", e)
+        before_clip = await _get_clipboard_text()
 
-        copy_btn = page.locator(copy_btn_selector)
-        btn_count = await copy_btn.count()
-        logger.debug("Step5: URL 복사 버튼 개수 = %s", btn_count)
+        s8_out = await _run_step(
+            8,
+            "URL 복사 버튼 클릭",
+            _s8(),
+            selector=URL_COPY_BTN_SEL,
+        )
 
-        if btn_count == 0:
-            raise RuntimeError("URL 복사 버튼을 찾지 못했습니다.")
+        # Step 9: clipboard wait + parse URL
+        async def _s9():
+            pasted = await _wait_clipboard_change(before_clip, timeout_ms=TO_COPY_WAIT_MS)
+            if not pasted:
+                raise RuntimeError("클립보드 변화 없음(타임아웃 또는 빈값)")
+            first_line = pasted.splitlines()[0]
+            m = re.search(r"(https?://\S+)", first_line)
+            if not m:
+                raise RuntimeError("클립보드 첫 줄에서 URL 파싱 실패")
+            return {"url": m.group(1), "clip_len": len(pasted)}
 
-        btn = copy_btn.first
-        visible = await btn.is_visible()
-        enabled = await btn.is_enabled()
-        logger.debug("Step5: 버튼 상태 visible=%s, enabled=%s", visible, enabled)
+        s9_out = await _run_step(
+            9,
+            "클립보드에서 URL 추출",
+            _s9(),
+            timeout_ms=TO_COPY_WAIT_MS,
+        )
 
-        try:
-            await btn.click(timeout=TO["click"])
-            logger.debug("Step5: btn.click() 호출 완료 (예외 없음)")
-        except Exception as e:
-            logger.exception("Step5: btn.click() 중 예외 발생: %s", e)
-            raise
+        # Step 10: return
+        async def _s10():
+            return {"url": s9_out["url"]}
 
-        # Step 6: OS 클립보드 내용이 변경될 때까지 대기
-        logger.debug("Step6: 클립보드 변화 대기 (최대 %dms)", TO["copy_wait"])
-        pasted = await _wait_clipboard_change(before_clip, timeout_ms=TO["copy_wait"])
-        logger.debug("Step6: 클립보드 변화 감지 후 텍스트 길이 = %s", len(pasted or ""))
+        out = await _run_step(
+            10,
+            "결과 반환",
+            _s10(),
+            url=s9_out["url"],
+        )
+        return out
 
-        if not pasted:
-            raise RuntimeError("URL 복사 후 클립보드 텍스트를 확인하지 못했습니다. (타임아웃 또는 빈 값)")
-
-        # 복사된 전체 문장에서 첫 줄만 사용 (메모장에 붙는 포맷 기준)
-        first_line = pasted.splitlines()[0]
-        m = re.search(r"(https?://\S+)", first_line)
-        if not m:
-            raise ValueError("클립보드 텍스트의 첫 줄에서 URL을 찾을 수 없습니다.")
-        url = m.group(1)
-        logger.info("ECM 작업 성공: test_no=%s, url=%s", test_no, url)
-
-        return {"url": url}
     except Exception as e:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        screenshot_path = f"playwright_error_{timestamp}.png"
-        await page.screenshot(path=screenshot_path)
-        logger.error("예외 발생, 스크린샷 저장(%s)", screenshot_path)
-        raise e
+        # 최상위 실패 처리: 스크린샷 + 한 줄 요약
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        screenshot_path = f"playwright_error_{ts}.png"
+        try:
+            await page.screenshot(path=screenshot_path)
+        except Exception:
+            screenshot_path = None
+
+        if isinstance(e, StepError):
+            logger.error(
+                "ECM 작업 실패 | step=%s msg=%s debug=%s screenshot=%s",
+                e.step_no, e.step_msg, e.debug, screenshot_path
+            )
+        else:
+            logger.error(
+                "ECM 작업 실패 | step=? msg=%s screenshot=%s",
+                str(e), screenshot_path
+            )
+        raise
 
 
 async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) -> Dict[str, str]:
-    """
-    기존 시그니처 유지용 래퍼.
-    - 새 context/page를 만들고
-    - run_playwright_task_on_page 를 호출하고
-    - context 를 정리합니다.
-    """
     context = await browser.new_context()
     page = await context.new_page()
     try:
@@ -354,5 +392,5 @@ async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) ->
     finally:
         try:
             await context.close()
-        except Exception as e:
-            logger.exception("context.close 실패: %s", e)
+        except Exception:
+            pass
