@@ -202,16 +202,16 @@ async def _s7_wait_and_click_document(page: Page, test_no: str, timeout_ms: int)
     # 문서 테이블이 보일 때까지
     await page.locator(DOC_TABLE).wait_for(state="visible", timeout=timeout_ms)
 
-    # documentname 속성으로 타겟 row 찾기(가장 안정)
-    target_row_sel = f"{DOC_ROW_ALL}{_css_attr_eq('documentname', test_no)}"
-    target_row = page.locator(target_row_sel).first
+    # 1) 가장 안정: '클릭 스팬(events="document-list-viewDocument-click")' 텍스트에 시험번호가 포함된 것
+    #    예: "자. GS-A-25-0159" -> test_no 포함이므로 매칭됨
+    import re
+    pat = re.compile(re.escape(test_no), re.IGNORECASE)
 
-    await target_row.wait_for(state="visible", timeout=timeout_ms)
+    span = page.locator(DOC_CLICK_SPAN_IN_ROW).filter(has_text=pat).first
 
-    click_span = target_row.locator(DOC_CLICK_SPAN_IN_ROW).first
-    await click_span.wait_for(state="visible", timeout=timeout_ms)
-
-    await click_span.click(timeout=timeout_ms)
+    # 스팬이 뜰 때까지 기다렸다가 클릭
+    await span.wait_for(state="visible", timeout=timeout_ms)
+    await span.click(timeout=timeout_ms)
     return {}
 
 async def _s8_wait_file_list(page: Page, timeout_ms: int) -> Dict:
