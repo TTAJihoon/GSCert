@@ -1,12 +1,11 @@
 import asyncio
 import logging
 import re
-import time
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Dict, Optional, Pattern
 
-from playwright.async_api import Browser, Page, Locator, expect
+from playwright.async_api import Browser, Page
 
 # Windows clipboard
 try:
@@ -20,88 +19,56 @@ logger = logging.getLogger("playwright_job.task")
 
 ECM_BASE_URL = "http://210.104.181.10"
 
+# ======= StepError (traceback 없이 간단히) =======
 
-# ----------------------------
-# Config (확정/조정 가능한 값)
-# ----------------------------
-TO_GOTO_MS = 10_000
-TO_TREE_MS = 8_000
-TO_CLICK_MS = 5_000
-TO_DOC_LIST_MS = 8_000
-TO_FILE_LIST_MS = 8_000
-TO_COPY_WAIT_MS = 5_000
-
-# Step2 확정 (네 HTML 기준)
-LEFT_ACTIVE_FOLDER_PANEL_SEL = (
-    'div.edm-left-panel-menu-sub-item[submenu_type="Folder"].ui-accordion-content-active'
-)
-LEFT_TREE_ROOT_SEL = f"{LEFT_ACTIVE_FOLDER_PANEL_SEL} #edm-folder"
-
-# 기존 코드에서 쓰던 selector들(일단 유지)
-DOC_LIST_ITEM_SEL = 'span[events="document-list-viewDocument-click"]'
-FILE_ROW_SEL = "tr.prop-view-file-list-item"
-URL_COPY_BTN_SEL = "div#prop-view-document-btn-url-copy"
-
-
-# ----------------------------
-# Utilities
-# ----------------------------
 @dataclass
-class StepError(RuntimeError):
+class StepError(Exception):
     step_no: int
-    step_msg: str
-    debug: str = ""
+    error_kind: str         # 한글 요약
+    screenshot: str
+    request_ip: str = "-"
+    def __str__(self) -> str:
+        return f"S{self.step_no} {self.error_kind} screenshot={self.screenshot} ip={self.request_ip}"
 
 
-def _now_ms() -> int:
-    return int(time.time() * 1000)
+# ======= 유틸 =======
 
+def _now_ts() -> str:
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-def _fmt_kv(**kwargs) -> str:
-    parts = []
-    for k, v in kwargs.items():
-        if v is None:
-            continue
-        s = str(v)
-        if len(s) > 120:
-            s = s[:117] + "..."
-        parts.append(f"{k}={s}")
-    return " ".join(parts)
-
-
-async def _run_step(step_no: int, msg: str, coro, **debug_kv):
-    t0 = _now_ms()
-    logger.info("S%d START | %s | %s", step_no, msg, _fmt_kv(**debug_kv))
-    try:
-        out = await coro
-        dt = _now_ms() - t0
-        logger.info("S%d OK | %s | %s | %dms", step_no, msg, _fmt_kv(**debug_kv), dt)
-        return out
-    except Exception as e:
-        dt = _now_ms() - t0
-        logger.error(
-            "S%d FAIL(%s) | %s | %s | %dms",
-            step_no, type(e).__name__, msg, _fmt_kv(**debug_kv), dt
-        )
-        raise StepError(step_no=step_no, step_msg=msg, debug=_fmt_kv(**debug_kv)) from e
-
+def _screenshot_name(prefix: str = "playwright_error") -> str:
+    return f"{prefix}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
 
 def _get_date_parts(cert_date: str) -> tuple[str, str]:
-    m = re.match(r'^\s*(\d{4})[-\.](\d{1,2})[-\.](\d{1,2})\s*$', cert_date or '')
+    """
+    'yyyy.mm.dd' 또는 'yyyy-mm-dd' -> ('yyyy', 'yyyymmdd')
+    """
+    m = re.match(r"^\s*(\d{4})[-\.](\d{1,2})[-\.](\d{1,2})\s*$", cert_date or "")
     if not m:
-        raise ValueError(f"날짜 형식이 'yyyy.mm.dd' 또는 'yyyy-mm-dd'가 아닙니다: {cert_date}")
-    y, mth, d = m.groups()
-    return y, f"{y}{mth.zfill(2)}{d.zfill(2)}"
-
+        raise ValueError(f"날짜 형식 오류: {cert_date}")
+    y, mo, d = m.groups()
+    return y, f"{y}{mo.zfill(2)}{d.zfill(2)}"
 
 def _testno_pat(test_no: str) -> Pattern:
-    safe_no = re.escape(test_no).replace(r'\-', "[-_]")
+    safe_no = re.escape(test_no).replace(r"\-", "[-_]")
     return re.compile(safe_no, re.IGNORECASE)
 
+def _log_start(request_ip: str) -> None:
+    logger.info("%s | %s | START", _now_ts(), request_ip)
+
+def _log_done(request_ip: str) -> None:
+    logger.info("%s | %s | DONE", _now_ts(), request_ip)
+
+def _log_fail(request_ip: str, step_no: int, error_kind: str, screenshot: str) -> None:
+    # 요구사항: 시간, 요청IP, step, 오류종류, 스크린샷만
+    logger.error("%s | %s | S%d | %s | %s", _now_ts(), request_ip, step_no, error_kind, screenshot)
+
+
+# ======= Clipboard =======
 
 def _get_clipboard_text_sync() -> str:
     if win32clipboard is None or win32con is None:
-        raise RuntimeError("pywin32(win32clipboard, win32con)가 설치되어 있지 않습니다.")
+        raise RuntimeError("pywin32 미설치로 클립보드 사용 불가")
     text = ""
     win32clipboard.OpenClipboard()
     try:
@@ -110,7 +77,6 @@ def _get_clipboard_text_sync() -> str:
     finally:
         win32clipboard.CloseClipboard()
     return text or ""
-
 
 async def _get_clipboard_text(retries: int = 5, delay_sec: float = 0.05) -> str:
     last_exc: Optional[Exception] = None
@@ -122,275 +88,252 @@ async def _get_clipboard_text(retries: int = 5, delay_sec: float = 0.05) -> str:
             await asyncio.sleep(delay_sec)
     raise RuntimeError(f"클립보드 읽기 실패: {last_exc}")
 
-
-async def _wait_clipboard_change(before: str, timeout_ms: int, interval_ms: int = 100) -> str:
+async def _wait_clipboard_change(before: str, timeout_ms: int = 5000, interval_ms: int = 100) -> str:
     elapsed = 0
     while elapsed < timeout_ms:
-        cur = ""
         try:
-            cur = await _get_clipboard_text()
+            current = await _get_clipboard_text()
         except Exception:
-            cur = ""
-        if cur and cur != before:
-            return cur
+            current = ""
+        if current and current != before:
+            return current
         await asyncio.sleep(interval_ms / 1000.0)
         elapsed += interval_ms
     return ""
 
 
-async def _pick_unique(locator: Locator, label: str) -> Locator:
-    cnt = await locator.count()
-    if cnt != 1:
-        raise RuntimeError(f"{label} 후보가 1개가 아닙니다. count={cnt}")
-    return locator.first
+# ======= DOM Selectors (네가 준 HTML 기반) =======
+
+DOC_ROOT = "#main-list-document"
+DOC_TABLE = f"{DOC_ROOT} table.document-list-table"
+DOC_ROW_ALL = f"{DOC_ROOT} tr.document-list-item"
+DOC_CLICK_SPAN_IN_ROW = 'span[events="document-list-viewDocument-click"]'
+
+LEFT_PANEL_MENU = "#edm-left-panel-menu"
+FOLDER_PANEL_ACTIVE = (
+    'div.edm-left-panel-menu-sub-item[submenu_type="Folder"].ui-accordion-content-active'
+)
+FOLDER_TREE = "#edm-folder"   # jstree container
+
+FILE_ROW = "tr.prop-view-file-list-item"
+URL_COPY_BTN = "div#prop-view-document-btn-url-copy"
 
 
-# ----------------------------
-# Main task (Step1~Step10)
-# ----------------------------
-async def run_playwright_task_on_page(page: Page, cert_date: str, test_no: str) -> Dict[str, str]:
-    year, date_key = _get_date_parts(cert_date)
-    test_pat = _testno_pat(test_no)
+def _css_attr_eq(attr: str, value: str) -> str:
+    v = (value or "").replace('"', '\\"')
+    return f'[{attr}="{v}"]'
 
-    screenshot_path = None
+
+# ======= Step Runner =======
+
+async def _run_step(
+    page: Page,
+    step_no: int,
+    error_kind: str,
+    request_ip: str,
+    coro,
+) -> Dict:
+    """
+    성공하면 coro 결과 dict 반환.
+    실패하면 screenshot 찍고 StepError로 변환 (traceback 로그 X)
+    """
     try:
-        # Step 1: goto
-        async def _s1():
-            resp = await page.goto(ECM_BASE_URL, timeout=TO_GOTO_MS, wait_until="domcontentloaded")
-            status = resp.status if resp else None
-            url_after = page.url
-            # 이동 성공 기준(초안): 예외 없이 goto 완료 + (status가 있으면 400 미만)
-            if status is not None and status >= 400:
-                raise RuntimeError(f"HTTP status >= 400: {status}")
-            if not url_after.startswith(ECM_BASE_URL):
-                # 리다이렉트가 있을 수 있어 “실패”로 할지 “경고”로 할지 정책 선택 가능.
-                # 일단 실패로 둠.
-                raise RuntimeError(f"Unexpected URL after goto: {url_after}")
-            return {"status": status, "url": url_after}
-
-        s1_out = await _run_step(
-            1,
-            "ECM 페이지 이동",
-            _s1(),
-            base_url=ECM_BASE_URL,
-        )
-
-        # Step 2: wait active folder tree panel
-        async def _s2():
-            panels = page.locator("div.edm-left-panel-menu-sub-item")
-            active_folder = page.locator(LEFT_ACTIVE_FOLDER_PANEL_SEL)
-            tree_root = page.locator(LEFT_TREE_ROOT_SEL)
-
-            total_panels = await panels.count()
-            active_cnt = await active_folder.count()
-
-            # 핵심: "Folder 활성 패널" + "edm-folder"가 visible 되기까지 대기
-            await active_folder.wait_for(state="visible", timeout=TO_TREE_MS)
-            await tree_root.wait_for(state="visible", timeout=TO_TREE_MS)
-
-            # 기다린 후 재확인(로그용)
-            active_cnt2 = await active_folder.count()
-            return {
-                "total_panels": total_panels,
-                "active_folder_cnt": active_cnt2,
-            }
-
-        s2_out = await _run_step(
-            2,
-            "좌측 트리(전사 폴더) 패널 로딩 대기",
-            _s2(),
-            selector=LEFT_ACTIVE_FOLDER_PANEL_SEL,
-        )
-
-        # Step 3: tree clicks (year -> GS인증심의위원회 -> date_key -> test_no)
-        async def _s3():
-            tree = page.locator(LEFT_TREE_ROOT_SEL)
-            # get_by_text는 기본적으로 부분일치라 "2026"이 "2026 시험서비스"에 매칭 가능
-            await tree.get_by_text(year).click(timeout=TO_CLICK_MS)
-            await tree.get_by_text("GS인증심의위원회").click(timeout=TO_CLICK_MS)
-            await tree.get_by_text(date_key).click(timeout=TO_CLICK_MS)
-            await tree.get_by_text(test_no).click(timeout=TO_CLICK_MS)
-
-        await _run_step(
-            3,
-            "좌측 트리 경로 클릭(연도→위원회→일자→시험번호)",
-            _s3(),
-            year=year,
-            date_key=date_key,
-            test_no=test_no,
-        )
-
-        # Step 4: wait doc list
-        async def _s4():
-            await page.wait_for_selector(DOC_LIST_ITEM_SEL, timeout=TO_DOC_LIST_MS)
-            loc = page.locator(DOC_LIST_ITEM_SEL)
-            return {"doc_items": await loc.count()}
-
-        s4_out = await _run_step(
-            4,
-            "문서 목록 로딩 대기",
-            _s4(),
-            selector=DOC_LIST_ITEM_SEL,
-        )
-
-        # Step 5: pick and click target document (시험번호 포함 + 시험성적서 우선)
-        async def _s5():
-            doc_list = page.locator(DOC_LIST_ITEM_SEL)
-            by_test = doc_list.filter(has_text=test_pat)
-            cnt_by_test = await by_test.count()
-
-            target = by_test.filter(has_text="시험성적서")
-            cnt_target = await target.count()
-
-            clicked_text = None
-
-            if cnt_target == 1:
-                await target.first.click(timeout=TO_CLICK_MS)
-                clicked_text = (await target.first.inner_text()).strip()
-                return {
-                    "cnt_by_test": cnt_by_test,
-                    "cnt_target": cnt_target,
-                    "clicked": "시험성적서",
-                    "clicked_text": clicked_text
-                }
-
-            fallback = by_test.filter(has_not_text="품질평가보고서")
-            cnt_fb = await fallback.count()
-            if cnt_fb == 1:
-                await fallback.first.click(timeout=TO_CLICK_MS)
-                clicked_text = (await fallback.first.inner_text()).strip()
-                return {
-                    "cnt_by_test": cnt_by_test,
-                    "cnt_target": cnt_target,
-                    "cnt_fallback": cnt_fb,
-                    "clicked": "fallback",
-                    "clicked_text": clicked_text
-                }
-
-            raise RuntimeError(
-                f"대상 문서 확정 실패: by_test={cnt_by_test}, target(시험성적서)={cnt_target}, fallback={cnt_fb}"
-            )
-
-        s5_out = await _run_step(
-            5,
-            "문서 목록에서 대상 문서 선택/클릭",
-            _s5(),
-            test_no=test_no,
-        )
-
-        # Step 6: wait file list (파일 목록이 떴는데도 못 봤다고 판단 방지 → attached 기준으로)
-        async def _s6():
-            # 'visible' 말고 'attached'로 기다리면 display/가림 문제로 인한 오판이 줄어듦
-            await page.wait_for_selector(FILE_ROW_SEL, timeout=TO_FILE_LIST_MS, state="attached")
-            rows = page.locator(FILE_ROW_SEL)
-            return {"rows_attached": await rows.count()}
-
-        s6_out = await _run_step(
-            6,
-            "파일 목록 로딩 대기",
-            _s6(),
-            selector=FILE_ROW_SEL,
-        )
-
-        # Step 7: pick file row + checkbox check
-        async def _s7():
-            rows = page.locator(FILE_ROW_SEL)
-            target_row = rows.filter(has_text=test_pat).filter(has_text="시험성적서")
-            cnt = await target_row.count()
-            if cnt != 1:
-                raise RuntimeError(f"시험성적서 파일 행 확정 실패. count={cnt}")
-            cb = target_row.first.locator('input[type="checkbox"]')
-            await cb.check(timeout=TO_CLICK_MS)
-            return {"target_rows": cnt}
-
-        await _run_step(
-            7,
-            "시험성적서 파일 행 체크박스 선택",
-            _s7(),
-            row_selector=FILE_ROW_SEL,
-        )
-
-        # Step 8: click url copy
-        async def _s8():
-            btn = page.locator(URL_COPY_BTN_SEL)
-            cnt = await btn.count()
-            if cnt < 1:
-                raise RuntimeError("URL 복사 버튼을 찾지 못했습니다.")
-            await btn.first.click(timeout=TO_CLICK_MS)
-            return {"btn_count": cnt}
-
-        # 클릭 전 클립보드 저장(9에서 사용)
-        if win32clipboard is None or win32con is None:
-            raise RuntimeError("pywin32가 없어 OS 클립보드를 사용할 수 없습니다.")
-
-        before_clip = await _get_clipboard_text()
-
-        s8_out = await _run_step(
-            8,
-            "URL 복사 버튼 클릭",
-            _s8(),
-            selector=URL_COPY_BTN_SEL,
-        )
-
-        # Step 9: clipboard wait + parse URL
-        async def _s9():
-            pasted = await _wait_clipboard_change(before_clip, timeout_ms=TO_COPY_WAIT_MS)
-            if not pasted:
-                raise RuntimeError("클립보드 변화 없음(타임아웃 또는 빈값)")
-            first_line = pasted.splitlines()[0]
-            m = re.search(r"(https?://\S+)", first_line)
-            if not m:
-                raise RuntimeError("클립보드 첫 줄에서 URL 파싱 실패")
-            return {"url": m.group(1), "clip_len": len(pasted)}
-
-        s9_out = await _run_step(
-            9,
-            "클립보드에서 URL 추출",
-            _s9(),
-            timeout_ms=TO_COPY_WAIT_MS,
-        )
-
-        # Step 10: return
-        async def _s10():
-            return {"url": s9_out["url"]}
-
-        out = await _run_step(
-            10,
-            "결과 반환",
-            _s10(),
-            url=s9_out["url"],
-        )
-        return out
-
-    except Exception as e:
-        # 최상위 실패 처리: 스크린샷 + 한 줄 요약
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        screenshot_path = f"playwright_error_{ts}.png"
-        try:
-            await page.screenshot(path=screenshot_path)
-        except Exception:
-            screenshot_path = None
-
-        if isinstance(e, StepError):
-            logger.error(
-                "ECM 작업 실패 | step=%s msg=%s debug=%s screenshot=%s",
-                e.step_no, e.step_msg, e.debug, screenshot_path
-            )
-        else:
-            logger.error(
-                "ECM 작업 실패 | step=? msg=%s screenshot=%s",
-                str(e), screenshot_path
-            )
+        out = await coro
+        return out or {}
+    except StepError:
         raise
+    except Exception:
+        screenshot = _screenshot_name()
+        try:
+            await page.screenshot(path=screenshot)
+        except Exception:
+            # 스크린샷 실패해도 로그 포맷은 유지
+            screenshot = f"{screenshot}(FAILED)"
+        _log_fail(request_ip, step_no, error_kind, screenshot)
+        raise StepError(step_no=step_no, error_kind=error_kind, screenshot=screenshot, request_ip=request_ip)
 
 
-async def run_playwright_task(browser: Browser, cert_date: str, test_no: str) -> Dict[str, str]:
+# ======= Step Implementations =======
+
+async def _s1_goto(page: Page, timeout_ms: int) -> Dict:
+    resp = await page.goto(ECM_BASE_URL, timeout=timeout_ms, wait_until="domcontentloaded")
+    if resp is None:
+        raise RuntimeError("응답 없음")
+    if resp.status >= 400:
+        raise RuntimeError(f"HTTP {resp.status}")
+    return {"status": resp.status}
+
+async def _s2_wait_left_tree(page: Page, timeout_ms: int) -> Dict:
+    # 좌측 패널이 표시되었는지 (display/visibility 기준은 Playwright가 판단)
+    await page.locator(LEFT_PANEL_MENU).wait_for(state="visible", timeout=timeout_ms)
+    # Folder 패널이 active 상태인지(트리 영역)
+    await page.locator(FOLDER_PANEL_ACTIVE).wait_for(state="visible", timeout=timeout_ms)
+    await page.locator(FOLDER_TREE).wait_for(state="visible", timeout=timeout_ms)
+    return {}
+
+async def _click_tree_text(page: Page, text: str, timeout_ms: int) -> None:
+    # 트리 클릭은 #edm-folder 범위로 제한 (오탐 방지)
+    tree = page.locator(FOLDER_TREE)
+    await tree.get_by_text(text).first.click(timeout=timeout_ms)
+
+async def _s3_click_year(page: Page, year: str, timeout_ms: int) -> Dict:
+    # 보통 "2025 시험서비스" 형태이므로 우선 그걸로 시도하고, 실패하면 year만
+    try:
+        await _click_tree_text(page, f"{year} 시험서비스", timeout_ms)
+    except Exception:
+        await _click_tree_text(page, year, timeout_ms)
+    return {}
+
+async def _s4_click_committee(page: Page, timeout_ms: int) -> Dict:
+    await _click_tree_text(page, "GS인증심의위원회", timeout_ms)
+    return {}
+
+async def _s5_click_date(page: Page, date_str: str, timeout_ms: int) -> Dict:
+    # date_str(yyyymmdd)가 포함된 노드를 클릭
+    await _click_tree_text(page, date_str, timeout_ms)
+    return {}
+
+async def _s6_click_testno(page: Page, test_no: str, timeout_ms: int) -> Dict:
+    # "가. GS-A-25-0173" 같은 형태라 test_no 포함 텍스트 클릭
+    await _click_tree_text(page, test_no, timeout_ms)
+    return {}
+
+async def _s7_wait_and_click_document(page: Page, test_no: str, timeout_ms: int) -> Dict:
+    # 문서 테이블이 보일 때까지
+    await page.locator(DOC_TABLE).wait_for(state="visible", timeout=timeout_ms)
+
+    # documentname 속성으로 타겟 row 찾기(가장 안정)
+    target_row_sel = f"{DOC_ROW_ALL}{_css_attr_eq('documentname', test_no)}"
+    target_row = page.locator(target_row_sel).first
+
+    await target_row.wait_for(state="visible", timeout=timeout_ms)
+
+    click_span = target_row.locator(DOC_CLICK_SPAN_IN_ROW).first
+    await click_span.wait_for(state="visible", timeout=timeout_ms)
+
+    await click_span.click(timeout=timeout_ms)
+    return {}
+
+async def _s8_wait_file_list(page: Page, timeout_ms: int) -> Dict:
+    # 파일 목록 row가 "1개 이상"이면 정상(네 조건)
+    rows = page.locator(FILE_ROW)
+    await rows.first.wait_for(state="visible", timeout=timeout_ms)
+    cnt = await rows.count()
+    if cnt < 1:
+        raise RuntimeError("파일 목록 0건")
+    return {"file_count": cnt}
+
+async def _s9_select_target_file_and_copy(page: Page, test_no_pat: Pattern, timeout_ms: int) -> Dict:
+    # 파일 row에서 시험성적서 + 시험번호 매칭 1개를 선택
+    rows = page.locator(FILE_ROW)
+    target = rows.filter(has_text=test_no_pat).filter(has_text="시험성적서")
+
+    cnt = await target.count()
+    if cnt != 1:
+        raise RuntimeError(f"시험성적서 파일 row 확정 실패(count={cnt})")
+
+    checkbox = target.first.locator('input[type="checkbox"]')
+    await checkbox.check(timeout=timeout_ms)
+
+    if win32clipboard is None or win32con is None:
+        raise RuntimeError("pywin32 미설치로 URL 복사 불가")
+
+    before = ""
+    try:
+        before = await _get_clipboard_text()
+    except Exception:
+        before = ""
+
+    btn = page.locator(URL_COPY_BTN).first
+    await btn.wait_for(state="visible", timeout=timeout_ms)
+    await btn.click(timeout=timeout_ms)
+
+    pasted = await _wait_clipboard_change(before, timeout_ms=timeout_ms)
+    if not pasted:
+        raise RuntimeError("클립보드 변화 없음")
+
+    first_line = pasted.splitlines()[0]
+    m = re.search(r"(https?://\S+)", first_line)
+    if not m:
+        raise RuntimeError("URL 파싱 실패")
+    return {"url": m.group(1)}
+
+
+# ======= Main Task =======
+
+async def run_playwright_task_on_page(
+    page: Page,
+    cert_date: str,
+    test_no: str,
+    request_ip: str = "-",
+) -> Dict[str, str]:
+    """
+    요구 로그 정책:
+      - START / DONE 은 최소로
+      - 실패 시: 시간|IP|S#|오류종류(한글)|스크린샷 1줄
+      - traceback 출력 금지 (logger.exception 금지)
+    """
+    _log_start(request_ip)
+
+    year, date_str = _get_date_parts(cert_date)
+    test_no_pat = _testno_pat(test_no)
+
+    # timeouts
+    TO_GOTO = 10_000
+    TO_TREE = 5_000
+    TO_CLICK = 3_000
+    TO_DOC = 3_000     # 너가 합의한 3초
+    TO_FILE = 5_000
+    TO_COPY = 5_000
+
+    try:
+        await _run_step(page, 1, "페이지 이동 실패", request_ip, _s1_goto(page, TO_GOTO))
+        await _run_step(page, 2, "좌측 트리 로딩 실패", request_ip, _s2_wait_left_tree(page, TO_TREE))
+
+        await _run_step(page, 3, "연도 폴더 클릭 실패", request_ip, _s3_click_year(page, year, TO_CLICK))
+        await _run_step(page, 4, "위원회 폴더 클릭 실패", request_ip, _s4_click_committee(page, TO_CLICK))
+        await _run_step(page, 5, "인증일자 폴더 클릭 실패", request_ip, _s5_click_date(page, date_str, TO_CLICK))
+        await _run_step(page, 6, "시험번호 폴더 클릭 실패", request_ip, _s6_click_testno(page, test_no, TO_CLICK))
+
+        await _run_step(page, 7, "문서 목록에서 대상 문서 클릭 실패", request_ip, _s7_wait_and_click_document(page, test_no, TO_DOC))
+
+        await _run_step(page, 8, "파일 목록 로딩 실패", request_ip, _s8_wait_file_list(page, TO_FILE))
+
+        out = await _run_step(page, 9, "URL 복사 실패", request_ip, _s9_select_target_file_and_copy(page, test_no_pat, TO_COPY))
+
+        _log_done(request_ip)
+        return {"url": out["url"]}
+
+    except StepError:
+        # StepError는 이미 한 줄 로그가 남았고, traceback 없이 상위로 전달
+        raise
+    except Exception:
+        # StepError 외 예외도 동일 정책 적용
+        screenshot = _screenshot_name()
+        try:
+            await page.screenshot(path=screenshot)
+        except Exception:
+            screenshot = f"{screenshot}(FAILED)"
+        _log_fail(request_ip, 99, "알 수 없는 오류", screenshot)
+        raise StepError(step_no=99, error_kind="알 수 없는 오류", screenshot=screenshot, request_ip=request_ip)
+
+
+async def run_playwright_task(
+    browser: Browser,
+    cert_date: str,
+    test_no: str,
+    request_ip: str = "-",
+) -> Dict[str, str]:
+    """
+    래퍼: 새 context/page 생성 후 작업 실행
+    """
     context = await browser.new_context()
     page = await context.new_page()
     try:
-        return await run_playwright_task_on_page(page, cert_date, test_no)
+        return await run_playwright_task_on_page(page, cert_date, test_no, request_ip=request_ip)
     finally:
         try:
             await context.close()
         except Exception:
+            # 여기서도 traceback 로그 금지
             pass
