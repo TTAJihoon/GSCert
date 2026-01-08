@@ -1,4 +1,6 @@
 # myproject/playwright_job/consumers.py
+from __future__ import annotations
+
 import asyncio
 import json
 import logging
@@ -7,6 +9,7 @@ from typing import Any, Dict, Optional
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 from .apps import get_browser_safe
+from .common import TIMEOUTS
 from .tasks import run_playwright_task_on_page, StepError
 
 logger_ws = logging.getLogger("playwright_job.ws")
@@ -19,7 +22,6 @@ _worker_lock = asyncio.Lock()
 
 
 async def _ensure_worker_started() -> None:
-    """프로세스 내 전역 큐/워커를 1회만 생성"""
     global _job_queue, _worker_task
     async with _worker_lock:
         if _job_queue is None:
@@ -33,12 +35,10 @@ async def _ensure_worker_started() -> None:
 
 async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) -> Dict[str, Any]:
     """
-    작업을 전역 큐에 넣고 결과를 기다려 반환.
-    반환 dict:
-      - result: 작업 결과(dict)
-      - queue_ahead: enqueue 시점 내 앞 대기 수
-      - queue_position: enqueue 시점 내 순번(대략)
-      - queue_total: enqueue 시점 큐 총량(대략=position)
+    전역 큐에 넣고 결과를 기다림.
+    - queue_ahead: 내 앞 대기 수
+    - queue_position: 내 순번(=ahead+1)
+    - queue_total: enqueue 시점 기준 대략치(=position)
     """
     await _ensure_worker_started()
     assert _job_queue is not None
@@ -59,7 +59,7 @@ async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) 
         }
     )
 
-    result = await fut  # worker가 set_result / set_exception
+    result = await fut
     return {
         "result": result,
         "queue_ahead": queue_ahead,
@@ -69,13 +69,6 @@ async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) 
 
 
 async def _worker_loop() -> None:
-    """
-    단일 워커:
-      - browser 1회 확보 후 재사용
-      - context/page 유지(로그인 탭 유지)
-      - 작업은 항상 1개씩 처리
-      - 실패 시 context/page reset
-    """
     global _job_queue
     assert _job_queue is not None
 
@@ -91,40 +84,28 @@ async def _worker_loop() -> None:
         fut: asyncio.Future = job.get("future")
 
         try:
-            # 1) 브라우저 확보(최초 1회)
             if browser is None:
-                browser = await asyncio.wait_for(get_browser_safe(), timeout=30)
+                browser = await asyncio.wait_for(get_browser_safe(), timeout=TIMEOUTS.GET_BROWSER)
                 logger_worker.info("browser_ready")
 
-            # 2) context/page 확보(최초 1회 또는 reset 후)
             if ecm_context is None or ecm_page is None:
                 ecm_context = await browser.new_context()
                 ecm_page = await ecm_context.new_page()
                 logger_worker.info("context_page_ready")
 
-            # 3) 실제 작업 실행
-            #    - tasks.py에서 step 단위로 스크린샷/간단 로그 남김
-            #    - consumers/worker에서는 traceback 남발 금지
             result = await asyncio.wait_for(
-                run_playwright_task_on_page(
-                    ecm_page,
-                    cert_date,
-                    test_no,
-                    request_ip=request_ip,
-                ),
-                timeout=120,
+                run_playwright_task_on_page(ecm_page, cert_date, test_no, request_ip=request_ip),
+                timeout=TIMEOUTS.JOB_TOTAL,
             )
 
             if fut is not None and not fut.cancelled():
                 fut.set_result(result)
 
         except Exception as e:
-            # consumers.py에서는 traceback를 길게 찍지 않음(요구사항)
-            # StepError면 step/screenshot 정보를 유지해서 그대로 올려보냄
             if fut is not None and not fut.cancelled():
                 fut.set_exception(e)
 
-            # 실패 시 세션/화면 상태가 꼬였을 가능성이 크므로 reset
+            # 실패 시 화면 상태 꼬였을 가능성이 커서 reset
             try:
                 if ecm_context is not None:
                     await ecm_context.close()
@@ -142,10 +123,7 @@ async def _worker_loop() -> None:
 class PlaywrightJobConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.accept()
-        # 연결 로그는 최소만
         logger_ws.info("ws_connect ip=%s", self._client_ip())
-
-        # 프론트 로그에서 hello를 기대하고 있길래 유지(불필요하면 제거 가능)
         await self._safe_send({"status": "hello", "message": "Connected to PlaywrightJobConsumer"})
 
     async def disconnect(self, code):
@@ -199,13 +177,12 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
                 }
             )
         except Exception:
-            # 큐 상태 조회 실패해도 작업은 시도
             await self._safe_send({"status": "wait", "message": "ECM 작업 큐에 등록 중..."})
 
-        # 3) 실행 안내(실제 시작 시점이 아니라 “대기/실행 흐름” 안내용)
+        # 3) 실행 안내
         await self._safe_send({"status": "processing", "message": "ECM 작업 대기/실행 중..."})
 
-        # 4) 작업 수행(완료까지 WS 유지 후 종료)
+        # 4) 완료까지 WS 유지 후 종료
         try:
             pack = await enqueue_playwright_job(cert_date, test_no, request_ip=request_ip)
             result = (pack or {}).get("result") or {}
@@ -217,8 +194,6 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
             await self._safe_send({"status": "success", "url": url})
 
         except StepError as e:
-            # tasks.py가 이미 한 줄 로그를 남김(시간|IP|S#|오류종류|스크린샷)
-            # 프론트에는 간단 메시지 + 디버그 최소 정보만(선택)
             await self._safe_send(
                 {
                     "status": "error",
@@ -230,7 +205,6 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
             )
 
         except Exception:
-            # consumers.py에서는 traceback 로그 남발 금지
             await self._safe_send(
                 {
                     "status": "error",
