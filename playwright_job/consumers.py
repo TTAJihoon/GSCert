@@ -4,7 +4,7 @@ import logging
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 from .apps import get_browser_safe
-from .tasks import run_playwright_task_on_page, StepError
+from .tasks import run_playwright_task_on_page
 
 logger_ws = logging.getLogger("playwright_job.ws")
 logger_worker = logging.getLogger("playwright_job.worker")
@@ -14,53 +14,74 @@ _worker_task: asyncio.Task | None = None
 _worker_lock = asyncio.Lock()
 
 
-def _get_client_ip(scope) -> str:
-    client = scope.get("client")
-    if isinstance(client, (list, tuple)) and client:
-        return client[0]
-    return "-"
-
-
 async def _ensure_worker_started():
     global _job_queue, _worker_task
     async with _worker_lock:
         if _job_queue is None:
             _job_queue = asyncio.Queue()
-            logger_worker.info("ECM worker queue created")
 
         if _worker_task is None or _worker_task.done():
             _worker_task = asyncio.create_task(_worker_loop())
-            logger_worker.info("ECM worker started")
 
 
 async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) -> dict:
+    """
+    결과 future + 시작 알림 future 를 같이 만들어서 반환
+    queue_position은 enqueue 시점의 qsize+1 스냅샷(대략치)
+    """
     await _ensure_worker_started()
+    assert _job_queue is not None
 
-    fut = asyncio.get_running_loop().create_future()
+    loop = asyncio.get_running_loop()
+    result_fut: asyncio.Future = loop.create_future()
+    started_fut: asyncio.Future = loop.create_future()
+
+    queue_size_now = _job_queue.qsize()
+    queue_position = queue_size_now + 1
+    queue_total = queue_size_now + 1  # "대기열 총량"을 같은 의미로 쓰고 싶으면 이렇게(대략)
+
     await _job_queue.put({
         "cert_date": cert_date,
         "test_no": test_no,
         "request_ip": request_ip,
-        "future": fut,
+        "started_future": started_fut,
+        "result_future": result_fut,
     })
-    return await fut
+
+    return {
+        "queue_position": queue_position,
+        "queue_total": queue_total,
+        "started_future": started_fut,
+        "result_future": result_fut,
+    }
 
 
 async def _worker_loop():
     global _job_queue
+    logger_worker.info("ECM worker loop started")
 
     browser = None
     ecm_context = None
     ecm_page = None
 
+    assert _job_queue is not None
+
     while True:
         job = await _job_queue.get()
+
         cert_date = job["cert_date"]
         test_no = job["test_no"]
         request_ip = job.get("request_ip", "-")
-        fut: asyncio.Future = job["future"]
+
+        started_fut: asyncio.Future = job["started_future"]
+        result_fut: asyncio.Future = job["result_future"]
 
         try:
+            # 워커가 실제로 이 job을 잡았음을 알림 (processing 타이밍)
+            if not started_fut.done():
+                started_fut.set_result(True)
+
+            # 브라우저/세션 준비
             if browser is None:
                 browser = await asyncio.wait_for(get_browser_safe(), timeout=30)
 
@@ -68,54 +89,24 @@ async def _worker_loop():
                 ecm_context = await browser.new_context()
                 ecm_page = await ecm_context.new_page()
 
-            # ✅ step 로그/스크린샷/실패 한줄 로그는 tasks.py가 담당
+            # 실제 작업
             result = await asyncio.wait_for(
-                run_playwright_task_on_page(
-                    ecm_page,
-                    cert_date,
-                    test_no,
-                    request_ip=request_ip,
-                ),
+                run_playwright_task_on_page(ecm_page, cert_date, test_no, request_ip=request_ip),
                 timeout=120,
             )
-            if not fut.cancelled():
-                fut.set_result(result)
 
-        except StepError as e:
-            # ✅ traceback 금지 / tasks.py에서 이미 한줄 로그 남김
-            if not fut.cancelled():
-                fut.set_exception(e)
+            if not result_fut.cancelled():
+                result_fut.set_result(result)
 
-            # 세션/DOM 꼬였을 수 있으니 reset
+        except Exception as e:
+            # tasks.py 쪽에서 StepError로 이미 “한 줄 로그 + 스샷” 찍는 정책이므로
+            # 여기서는 traceback 굳이 안 찍고 결과만 error로 넘기는 편이 깔끔함
+            if not result_fut.cancelled():
+                result_fut.set_exception(e)
+
+            # 세션 꼬였을 가능성 → context reset
             try:
-                if ecm_context:
-                    await ecm_context.close()
-            except Exception:
-                pass
-            ecm_context, ecm_page = None, None
-
-        except asyncio.TimeoutError:
-            # ✅ timeout도 StepError로 통일해서 올리는 편이 WS가 더 단순해짐
-            # (tasks.py에서 99로 처리해도 되고, 여기서 만들어도 됨)
-            e = StepError(step_no=98, error_kind="작업 타임아웃", screenshot="-", request_ip=request_ip)
-            if not fut.cancelled():
-                fut.set_exception(e)
-
-            try:
-                if ecm_context:
-                    await ecm_context.close()
-            except Exception:
-                pass
-            ecm_context, ecm_page = None, None
-
-        except Exception:
-            # ✅ 예상 밖 오류도 StepError로 통일
-            e = StepError(step_no=99, error_kind="워커 오류", screenshot="-", request_ip=request_ip)
-            if not fut.cancelled():
-                fut.set_exception(e)
-
-            try:
-                if ecm_context:
+                if ecm_context is not None:
                     await ecm_context.close()
             except Exception:
                 pass
@@ -128,50 +119,84 @@ async def _worker_loop():
 class PlaywrightJobConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         await self.accept()
-        # 꼭 필요하면 한 줄만
-        logger_ws.info("WS connected")
+        # hello는 유지해도 되고(디버깅용), 싫으면 제거해도 됨
+        await self.send(text_data=json.dumps({
+            "status": "hello",
+            "message": "Connected to PlaywrightJobConsumer"
+        }))
 
     async def disconnect(self, code):
-        logger_ws.info("WS disconnected code=%s", code)
+        logger_ws.info("WebSocket disconnected: code=%s", code)
 
     async def receive(self, text_data=None, bytes_data=None):
-        # 1) JSON 파싱
+        # 요청 IP
+        request_ip = "-"
+        try:
+            request_ip = (self.scope.get("client") or ["-"])[0] or "-"
+        except Exception:
+            request_ip = "-"
+
+        # JSON 파싱
         try:
             payload = json.loads(text_data or "{}")
         except Exception:
-            await self.send(text_data=json.dumps({"status": "error", "message": "JSON 형식 오류"}, ensure_ascii=False))
+            await self.send(text_data=json.dumps({
+                "status": "error",
+                "message": "잘못된 요청 데이터(JSON)"
+            }))
             await self.close()
             return
 
         cert_date = (payload.get("인증일자") or "").strip()
         test_no = (payload.get("시험번호") or "").strip()
         if not cert_date or not test_no:
-            await self.send(text_data=json.dumps({"status": "error", "message": "인증일자/시험번호 누락"}, ensure_ascii=False))
+            await self.send(text_data=json.dumps({
+                "status": "error",
+                "message": "인증일자/시험번호가 누락되었습니다."
+            }))
             await self.close()
             return
 
-        request_ip = _get_client_ip(self.scope)
-
-        # 2) 실행
         try:
-            await self.send(text_data=json.dumps({"status": "processing"}, ensure_ascii=False))
+            # 1) enqueue + 대기순번(대략) 반환
+            enq = await enqueue_playwright_job(cert_date, test_no, request_ip=request_ip)
 
-            result = await enqueue_playwright_job(cert_date, test_no, request_ip=request_ip)
+            await self.send(text_data=json.dumps({
+                "status": "wait",
+                "message": "ECM 작업 큐에 등록 중...",
+                "queue_position": enq["queue_position"],
+                "queue_total": enq["queue_total"],
+            }))
+
+            # 2) 워커가 실제로 내 작업을 꺼낸 순간에 processing
+            await enq["started_future"]
+            await self.send(text_data=json.dumps({
+                "status": "processing",
+                "message": "ECM 작업 실행 중...",
+                "queue_position": enq["queue_position"],
+                "queue_total": enq["queue_total"],
+            }))
+
+            # 3) 결과 대기
+            result = await enq["result_future"]
             url = (result or {}).get("url")
             if not url:
-                raise StepError(step_no=99, error_kind="URL 생성 실패", screenshot="-", request_ip=request_ip)
+                raise RuntimeError("URL 생성 실패")
 
-            await self.send(text_data=json.dumps({"status": "success", "url": url}, ensure_ascii=False))
+            await self.send(text_data=json.dumps({
+                "status": "success",
+                "url": url
+            }))
 
-        except StepError as e:
-            # ✅ traceback 금지 / 필요한 정보만 클라이언트에게
+        except Exception:
+            # 사용자 메시지는 단순하게
             await self.send(text_data=json.dumps({
                 "status": "error",
-                "step": e.step_no,
-                "error_kind": e.error_kind,
-                "screenshot": e.screenshot,
-                "message": f"{test_no} ECM 불러오기 실패. 스크린샷을 확인하세요.",
-            }, ensure_ascii=False))
-
+                "message": f"{test_no}의 ECM 불러오기를 실패하였습니다. 다시 요청해주세요."
+            }))
         finally:
-            await self.close()
+            # 너가 원한 정책: 요청 끝나면 close 유지
+            try:
+                await self.close()
+            except Exception:
+                pass
