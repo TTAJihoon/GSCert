@@ -1,3 +1,5 @@
+# myproject/playwright_job/selectors.py
+
 def css_attr_eq(attr: str, value: str) -> str:
     v = (value or "").replace('"', '\\"')
     return f'[{attr}="{v}"]'
