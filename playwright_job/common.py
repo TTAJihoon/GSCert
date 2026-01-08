@@ -1,3 +1,6 @@
+# myproject/playwright_job/common.py
+from __future__ import annotations
+
 import logging
 import re
 from dataclasses import dataclass
@@ -6,20 +9,35 @@ from typing import Pattern
 
 logger = logging.getLogger("playwright_job")
 
+
 # =========================
 # Config / Timeouts
 # =========================
 
 ECM_BASE_URL = "http://210.104.181.10"
 
-TIMEOUTS = {
-    "GOTO_MS": 10_000,
-    "TREE_WAIT_MS": 5_000,
-    "CLICK_MS": 3_000,
-    "DOC_CLICK_MS": 3_000,   # 네가 합의한 3초
-    "FILE_WAIT_MS": 5_000,
-    "COPY_MS": 6_000,        # 복사/클립보드 반영은 조금 더 여유
-}
+
+@dataclass(frozen=True)
+class Timeouts:
+    # page
+    GOTO: int = 10_000
+
+    # left tree
+    LEFT_TREE: int = 5_000
+    CLICK_TREE: int = 3_000
+
+    # document/file
+    DOC_CLICK: int = 3_000          # 합의: 3초
+    FILE_LIST: int = 5_000
+    COPY_URL: int = 6_000           # 클립보드 반영 여유
+
+    # worker wrapper
+    GET_BROWSER: int = 30
+    JOB_TOTAL: int = 120
+
+
+TIMEOUTS = Timeouts()
+
 
 # =========================
 # Errors / Logging policy
@@ -28,7 +46,7 @@ TIMEOUTS = {
 @dataclass
 class StepError(Exception):
     step_no: int
-    error_kind: str         # 한글 요약
+    error_kind: str     # 한글 요약
     screenshot: str
     request_ip: str = "-"
 
@@ -61,7 +79,7 @@ def log_fail(ip: str, step_no: int, error_kind: str, screenshot: str) -> None:
 # Parsing utils
 # =========================
 
-def get_date_parts(cert_date: str) -> tuple[str, str]:
+def parse_cert_date(cert_date: str) -> tuple[str, str]:
     """
     'yyyy.mm.dd' 또는 'yyyy-mm-dd' -> ('yyyy', 'yyyymmdd')
     """
@@ -72,6 +90,6 @@ def get_date_parts(cert_date: str) -> tuple[str, str]:
     return y, f"{y}{mo.zfill(2)}{d.zfill(2)}"
 
 
-def testno_pat(test_no: str) -> Pattern:
-    safe_no = re.escape(test_no).replace(r"\-", "[-_]")
-    return re.compile(safe_no, re.IGNORECASE)
+def compile_testno_pat(test_no: str) -> Pattern[str]:
+    # 임의 폴백(하이픈/언더스코어 혼용 등) 추가하지 않음.
+    return re.compile(re.escape(test_no), re.IGNORECASE)
