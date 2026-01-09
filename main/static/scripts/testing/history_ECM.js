@@ -33,9 +33,6 @@
     );
   }
 
-  // 중복 새 탭 오픈 방지
-  const openedOnce = new Set();
-
   function findColumnIndexByHeader(tableEl, headerText) {
     const ths = tableEl.querySelectorAll("thead th");
     for (let i = 0; i < ths.length; i++) {
@@ -70,10 +67,6 @@
   }
 
   function buildQueueText(msg) {
-    // 서버가 아래 필드를 보내면 최대한 활용
-    // - queue_ahead: 내 앞 대기 수
-    // - queue_position: 내 순번(대략)
-    // - queue_total: (있으면) 대기열 총 크기(대략)
     const ahead = Number.isFinite(msg.queue_ahead) ? msg.queue_ahead : null;
     const pos = Number.isFinite(msg.queue_position) ? msg.queue_position : (ahead != null ? ahead + 1 : null);
     const total = Number.isFinite(msg.queue_total) ? msg.queue_total : null;
@@ -119,7 +112,6 @@
         const raw = String(e.data || "");
         console.log("[WS] recv:", raw.slice(0, 300));
 
-        // HTML 오류 페이지 방지
         if (raw.startsWith("<!DOCTYPE") || raw.startsWith("<html")) {
           return done(reject, new Error("서버가 HTML(오류 페이지)을 보냈습니다."));
         }
@@ -131,7 +123,6 @@
           return done(reject, new Error("서버 응답(JSON) 파싱 실패"));
         }
 
-        // hello는 UI에 굳이 반영하지 않음
         if (msg.status === "hello") return;
 
         if (msg.status === "wait") {
@@ -160,8 +151,6 @@
         if (msg.status === "error") {
           return done(reject, new Error(msg.message || "작업 실패"));
         }
-
-        // 그 외 메시지는 무시하고 계속 대기
       };
 
       ws.onerror = () => done(reject, new Error("웹소켓 오류"));
@@ -187,17 +176,15 @@
 
     runJobOnce(payload)
       .then((url) => {
-        const key = `url:${url}`;
-        if (openedOnce.has(key)) return;
-        openedOnce.add(key);
-
+        // ✅ 무조건 새 탭 오픈 (중복방지 제거)
         try {
-          window.open(url, "_blank");
+          window.open(url, "_blank", "noopener,noreferrer");
         } catch (err) {
           console.error("새 탭 열기 실패:", err);
           const a = document.createElement("a");
           a.href = url;
           a.target = "_blank";
+          a.rel = "noopener noreferrer";
           document.body.appendChild(a);
           a.click();
           a.remove();
