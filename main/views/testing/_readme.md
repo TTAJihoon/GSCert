@@ -1,9 +1,8 @@
 # testing 모듈(History / Security / Similar) 코드 구성 요약
 
-이 문서는 `views/testing/` 계열의 **새로운 파이썬 코드들**을 대상으로,
+이 문서는 `views/testing/` 계열의 코드들을 대상으로,
 각 파일의 역할과 **서로 어떤 파일(함수)이 어떤 파일을 호출하는지**를 정리합니다.
 
-요청하신 분류:
 - **history**: 시험 이력 조회
 - **security**: 보안성 결함리포트(Invicti HTML 파싱 + GPT 권고)
 - **similar**: 유사 제품 조회(문서 요약 + 벡터 검색 + 결과 반환)
