@@ -1,6 +1,3 @@
-# myproject/playwright_job/consumers.py
-from __future__ import annotations
-
 import asyncio
 import json
 import logging
@@ -9,7 +6,6 @@ from typing import Any, Dict, Optional
 from channels.generic.websocket import AsyncWebsocketConsumer
 
 from .apps import get_browser_safe
-from .common import TIMEOUTS
 from .tasks import run_playwright_task_on_page, StepError
 
 logger_ws = logging.getLogger("playwright_job.ws")
@@ -27,19 +23,12 @@ async def _ensure_worker_started() -> None:
         if _job_queue is None:
             _job_queue = asyncio.Queue()
             logger_worker.info("queue_init")
-
         if _worker_task is None or _worker_task.done():
             _worker_task = asyncio.create_task(_worker_loop())
             logger_worker.info("worker_started")
 
 
 async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) -> Dict[str, Any]:
-    """
-    전역 큐에 넣고 결과를 기다림.
-    - queue_ahead: 내 앞 대기 수
-    - queue_position: 내 순번(=ahead+1)
-    - queue_total: enqueue 시점 기준 대략치(=position)
-    """
     await _ensure_worker_started()
     assert _job_queue is not None
 
@@ -48,7 +37,7 @@ async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) 
 
     queue_ahead = _job_queue.qsize()
     queue_position = queue_ahead + 1
-    queue_total = queue_position  # enqueue 시점 기준(대략)
+    queue_total = queue_position  # enqueue 순간 기준(대략)
 
     await _job_queue.put(
         {
@@ -85,7 +74,7 @@ async def _worker_loop() -> None:
 
         try:
             if browser is None:
-                browser = await asyncio.wait_for(get_browser_safe(), timeout=TIMEOUTS.GET_BROWSER)
+                browser = await asyncio.wait_for(get_browser_safe(), timeout=30)
                 logger_worker.info("browser_ready")
 
             if ecm_context is None or ecm_page is None:
@@ -94,8 +83,13 @@ async def _worker_loop() -> None:
                 logger_worker.info("context_page_ready")
 
             result = await asyncio.wait_for(
-                run_playwright_task_on_page(ecm_page, cert_date, test_no, request_ip=request_ip),
-                timeout=TIMEOUTS.JOB_TOTAL,
+                run_playwright_task_on_page(
+                    ecm_page,
+                    cert_date,
+                    test_no,
+                    request_ip=request_ip,
+                ),
+                timeout=120,
             )
 
             if fut is not None and not fut.cancelled():
@@ -105,7 +99,7 @@ async def _worker_loop() -> None:
             if fut is not None and not fut.cancelled():
                 fut.set_exception(e)
 
-            # 실패 시 화면 상태 꼬였을 가능성이 커서 reset
+            # 실패 시 reset
             try:
                 if ecm_context is not None:
                     await ecm_context.close()
@@ -144,7 +138,7 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
     async def receive(self, text_data=None, bytes_data=None):
         request_ip = self._client_ip()
 
-        # 1) JSON 파싱
+        # JSON 파싱
         try:
             payload = json.loads(text_data or "{}")
         except Exception:
@@ -159,14 +153,13 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
             await self.close()
             return
 
-        # 2) enqueue 시점 큐 정보(대략)
+        # queue info(대략)
         try:
             await _ensure_worker_started()
             assert _job_queue is not None
             queue_ahead = _job_queue.qsize()
             queue_position = queue_ahead + 1
             queue_total = queue_position
-
             await self._safe_send(
                 {
                     "status": "wait",
@@ -179,18 +172,14 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
         except Exception:
             await self._safe_send({"status": "wait", "message": "ECM 작업 큐에 등록 중..."})
 
-        # 3) 실행 안내
         await self._safe_send({"status": "processing", "message": "ECM 작업 대기/실행 중..."})
 
-        # 4) 완료까지 WS 유지 후 종료
         try:
             pack = await enqueue_playwright_job(cert_date, test_no, request_ip=request_ip)
             result = (pack or {}).get("result") or {}
             url = result.get("url")
-
             if not url:
                 raise RuntimeError("URL 생성 실패")
-
             await self._safe_send({"status": "success", "url": url})
 
         except StepError as e:
