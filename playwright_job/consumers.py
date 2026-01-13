@@ -7,6 +7,7 @@ from channels.generic.websocket import AsyncWebsocketConsumer
 
 from .apps import get_browser_safe
 from .tasks import run_playwright_task_on_page, StepError
+from .url_cache import get_cached_url, save_cached_url
 
 logger_ws = logging.getLogger("playwright_job.ws")
 logger_worker = logging.getLogger("playwright_job.worker")
@@ -18,6 +19,7 @@ _worker_lock = asyncio.Lock()
 
 
 async def _ensure_worker_started() -> None:
+    """프로세스 내 전역 큐/워커를 1회만 생성"""
     global _job_queue, _worker_task
     async with _worker_lock:
         if _job_queue is None:
@@ -29,6 +31,14 @@ async def _ensure_worker_started() -> None:
 
 
 async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) -> Dict[str, Any]:
+    """
+    작업을 전역 큐에 넣고 결과를 기다려 반환.
+    반환 dict:
+      - result: 작업 결과(dict)
+      - queue_ahead: enqueue 시점 내 앞 대기 수
+      - queue_position: enqueue 시점 내 순번(대략)
+      - queue_total: enqueue 시점 큐 총량(대략=position)
+    """
     await _ensure_worker_started()
     assert _job_queue is not None
 
@@ -37,7 +47,7 @@ async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) 
 
     queue_ahead = _job_queue.qsize()
     queue_position = queue_ahead + 1
-    queue_total = queue_position  # enqueue 순간 기준(대략)
+    queue_total = queue_position  # enqueue 시점 기준(대략)
 
     await _job_queue.put(
         {
@@ -48,7 +58,7 @@ async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) 
         }
     )
 
-    result = await fut
+    result = await fut  # worker가 set_result / set_exception
     return {
         "result": result,
         "queue_ahead": queue_ahead,
@@ -58,6 +68,13 @@ async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) 
 
 
 async def _worker_loop() -> None:
+    """
+    단일 워커:
+      - browser 1회 확보 후 재사용
+      - context/page 유지(로그인 탭 유지)
+      - 작업은 항상 1개씩 처리
+      - 실패 시 context/page reset
+    """
     global _job_queue
     assert _job_queue is not None
 
@@ -138,7 +155,7 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
     async def receive(self, text_data=None, bytes_data=None):
         request_ip = self._client_ip()
 
-        # JSON 파싱
+        # 1) JSON 파싱
         try:
             payload = json.loads(text_data or "{}")
         except Exception:
@@ -148,18 +165,51 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
 
         cert_date = (payload.get("인증일자") or "").strip()
         test_no = (payload.get("시험번호") or "").strip()
-        if not cert_date or not test_no:
-            await self._safe_send({"status": "error", "message": "인증일자/시험번호가 누락되었습니다."})
+
+        if not test_no:
+            await self._safe_send({"status": "error", "message": "시험번호가 누락되었습니다."})
             await self.close()
             return
 
-        # queue info(대략)
+        # 2) ✅ 캐시(DB) 먼저 조회: hit면 ECM 자동화 없이 즉시 반환
+        try:
+            cached = await get_cached_url(test_no)
+        except Exception:
+            cached = None
+
+        if cached:
+            await self._safe_send(
+                {
+                    "status": "success",
+                    "url": cached,
+                    "cache_hit": True,
+                }
+            )
+            try:
+                await self.close()
+            except Exception:
+                pass
+            return
+
+        # 캐시 miss면 cert_date 필요
+        if not cert_date:
+            await self._safe_send(
+                {
+                    "status": "error",
+                    "message": "캐시에 URL이 없어 ECM 조회가 필요합니다. 인증일자가 누락되었습니다.",
+                }
+            )
+            await self.close()
+            return
+
+        # 3) queue info(대략) + 진행 표시
         try:
             await _ensure_worker_started()
             assert _job_queue is not None
             queue_ahead = _job_queue.qsize()
             queue_position = queue_ahead + 1
             queue_total = queue_position
+
             await self._safe_send(
                 {
                     "status": "wait",
@@ -174,13 +224,21 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
 
         await self._safe_send({"status": "processing", "message": "ECM 작업 대기/실행 중..."})
 
+        # 4) ECM 자동화 수행
         try:
             pack = await enqueue_playwright_job(cert_date, test_no, request_ip=request_ip)
             result = (pack or {}).get("result") or {}
             url = result.get("url")
             if not url:
                 raise RuntimeError("URL 생성 실패")
-            await self._safe_send({"status": "success", "url": url})
+
+            # ✅ 성공 시 DB에 저장
+            try:
+                await save_cached_url(test_no, url)
+            except Exception:
+                pass
+
+            await self._safe_send({"status": "success", "url": url, "cache_hit": False})
 
         except StepError as e:
             await self._safe_send(
