@@ -29,7 +29,7 @@ class Config:
     master_tsv: Path = Path(r"C:\GSCert\myproject\main\data\reference.xlsx")
 
     # 다운로드 폴더
-    download_folder: Path = Path(r"C:\report")
+    download_folder: Path = Path(r"C:\Users\Administrator")
 
     # 시작 URL
     start_url: str = "http://210.104.181.10"
@@ -490,4 +490,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
