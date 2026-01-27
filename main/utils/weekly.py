@@ -115,10 +115,8 @@ def read_last_serial_from_master_tsv(tsv_path: Path) -> int:
 
     TARGET_SHEET = "인증획득제품리스트"
 
-    wb = load_workbook(xlsx_path, data_only=True)
-    if TARGET_SHEET not in wb.sheetnames:
-        raise ValueError(f"시트 '{TARGET_SHEET}' 를 찾지 못했습니다. 현재 시트: {wb.sheetnames}")
-    ws = wb[TARGET_SHEET]
+    wb = load_workbook(tsv_path, data_only=True)
+    ws = wb.active
 
     for r in range(ws.max_row, 0, -1):
         v = ws.cell(row=r, column=1).value
@@ -171,8 +169,11 @@ def extract_a_to_n_rows_after_serial(xlsx_path: Path, start_serial: int, sheet_n
     if not xlsx_path.exists():
         raise FileNotFoundError(f"xlsx not found: {xlsx_path}")
 
+    TARGET_SHEET = "인증획득제품리스트"
     wb = load_workbook(xlsx_path, data_only=True)
-    ws = wb[sheet_name] if sheet_name else wb.active
+    if TARGET_SHEET not in wb.sheetnames:
+        raise ValueError(f"시트 '{TARGET_SHEET}' 를 찾지 못했습니다. 현재 시트: {wb.sheetnames}")
+    ws = wb[TARGET_SHEET]
 
     found_row = None
     for r in range(1, ws.max_row + 1):
@@ -524,5 +525,6 @@ if __name__ == "__main__":
     except Exception:
         logging.exception("UNHANDLED ERROR")
         raise
+
 
 
