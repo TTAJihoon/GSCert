@@ -68,11 +68,11 @@ def _is_blank(v) -> bool:
 
 
 # =========================
-# 날짜
+# 날짜(전 주 월요일)
 # =========================
 def this_week_monday_yyyymmdd(tz: str = "Asia/Seoul") -> str:
     now = datetime.now(ZoneInfo(tz))
-    monday = now - timedelta(days=now.weekday())
+    monday = now - timedelta(days=now.weekday()) - timedelta(days=7)
     return monday.strftime("%Y%m%d")
 
 
@@ -490,3 +490,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
