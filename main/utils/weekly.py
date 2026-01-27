@@ -59,6 +59,32 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("weekly_gs_sync.log", encoding="utf-8")],
 )
 
+class _StreamToLogger:
+    def __init__(self, logger, level):
+        self.logger = logger
+        self.level = level
+        self._buf = ""
+
+    def write(self, message):
+        if not message:
+            return
+        self._buf += message
+        while "\n" in self._buf:
+            line, self._buf = self._buf.split("\n", 1)
+            line = line.rstrip()
+            if line:
+                self.logger.log(self.level, line)
+
+    def flush(self):
+        if self._buf.strip():
+            self.logger.log(self.level, self._buf.strip())
+        self._buf = ""
+
+# stdout/stderr를 logging으로 흡수 (print/traceback 포함)
+_root = logging.getLogger()
+sys.stdout = _StreamToLogger(_root, logging.INFO)
+sys.stderr = _StreamToLogger(_root, logging.ERROR)
+    
 
 # =========================
 # 공통 유틸
@@ -489,6 +515,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
-
-
+    try:
+        main()
+    except Exception:
+        logging.exception("UNHANDLED ERROR")
+        raise
