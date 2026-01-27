@@ -113,8 +113,12 @@ def read_last_serial_from_master_tsv(tsv_path: Path) -> int:
     if not tsv_path.exists():
         raise FileNotFoundError(f"master file not found: {tsv_path}")
 
-    wb = load_workbook(tsv_path, data_only=True)
-    ws = wb.active
+    TARGET_SHEET = "인증획득제품리스트"
+
+    wb = load_workbook(xlsx_path, data_only=True)
+    if TARGET_SHEET not in wb.sheetnames:
+        raise ValueError(f"시트 '{TARGET_SHEET}' 를 찾지 못했습니다. 현재 시트: {wb.sheetnames}")
+    ws = wb[TARGET_SHEET]
 
     for r in range(ws.max_row, 0, -1):
         v = ws.cell(row=r, column=1).value
@@ -520,3 +524,4 @@ if __name__ == "__main__":
     except Exception:
         logging.exception("UNHANDLED ERROR")
         raise
+
