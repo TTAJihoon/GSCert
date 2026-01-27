@@ -47,9 +47,9 @@ class Config:
     zero_folder_prefix_re: re.Pattern = re.compile(r"^00\s")
     doc_prefix: str = "인증획득제품"
 
-    # 후처리 bat (없으면 None)
-    final_bat: Path | None = Path(r"C:\Users\Administrator\Desktop\db.bat")
-
+    exit_bat: Path | None = Path(r"C:\Users\Administrator\Desktop\exit.bat")
+    db_bat: Path | None = Path(r"C:\Users\Administrator\Desktop\db.bat")
+    run_bat: Path | None = Path(r"C:\Users\Administrator\Desktop\run.bat")
 
 CFG = Config()
 
@@ -432,23 +432,16 @@ def trigger_save_icon_for_attachment(page, monday: str):
 # =========================
 # bat 실행
 # =========================
-def run_bat_if_needed(bat: Path | None):
-    if not bat:
-        return
-    if not bat.exists():
-        logging.warning("bat 파일이 지정되어 있지만 존재하지 않습니다: %s", bat)
-        return
-
+def run_bats_in_order(bats: list[Path | None]):
     import subprocess
-
-    logging.info("bat 실행(완료까지 대기): %s", bat)
-    try:
-        # /c : 실행 후 cmd 종료 (bat 완료되면 반환)
-        subprocess.run(["cmd.exe", "/c", str(bat)], check=True)
-        logging.info("bat 실행 완료: %s", bat)
-    except subprocess.CalledProcessError as e:
-        logging.error("bat 실행 실패(리턴코드=%s): %s", e.returncode, bat)
-        raise
+    for bat in bats:
+        if not bat:
+            continue
+        if not bat.exists():
+            logging.warning("bat 파일이 지정되어 있지만 존재하지 않습니다: %s", bat)
+            continue
+        logging.info("bat 실행(완료까지 대기): %s", bat)
+        subprocess.run([str(bat)], check=False, shell=True)
 
 
 # =========================
@@ -514,7 +507,7 @@ def main():
         logging.info("추가할 데이터가 없습니다. master 변경 없음.")
 
     # 5) bat 실행
-    run_bat_if_needed(CFG.final_bat)
+    run_bats_in_order([CFG.exit_bat, CFG.db_bat, CFG.run_bat])
 
     logging.info("DONE")
 
@@ -525,6 +518,3 @@ if __name__ == "__main__":
     except Exception:
         logging.exception("UNHANDLED ERROR")
         raise
-
-
-
