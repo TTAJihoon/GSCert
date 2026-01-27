@@ -497,7 +497,7 @@ def main():
             browser.close()
 
     # 4) xlsx에서 last_serial 아래부터 A~N 추출 -> 정규화 -> master.xlsx append
-    rows = extract_a_to_n_rows_after_serial(downloaded, start_serial=last_serial)
+    rows = extract_a_to_n_rows_after_serial(downloaded, start_serial=last_serial, sheet_name="인증획득제품리스트")
     logging.info("추출된 행 수(A~N, 정규화 전): %d", len(rows))
 
     if rows:
@@ -524,4 +524,5 @@ if __name__ == "__main__":
     except Exception:
         logging.exception("UNHANDLED ERROR")
         raise
+
 
