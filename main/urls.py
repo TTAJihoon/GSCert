@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path, include
 from django.views.generic import RedirectView
-from main.views.init import index, similar, security, prdinfo, checkreport, test
+from main.views.init import index, similar, security, prdinfo, checkreport, test, download_review
 
 from main.views.testing.history import history
 from main.views.testing.similar_summary import summarize_document
@@ -35,4 +35,5 @@ urlpatterns = [
     
     path('checkreport/', checkreport, name='checkreport'),
     path("parse/", parse_view, name="parse_view"),
+    path('download-review/', download_review, name='download_review'),
 ]

@@ -31,3 +31,6 @@ def checkreport(request):
     
 def test(request):
     return render(request, 'test.html')
+
+def download_review(request):
+    return render(request, 'download_review.html')
