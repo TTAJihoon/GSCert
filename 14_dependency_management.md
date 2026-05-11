@@ -11,6 +11,7 @@
 - Python: 3.12.10
 - 가상환경: `.venv`
 - 패키지 기준: 2026-05-10 현재 `pip freeze`
+- 설치 재현 파일: `requirements.txt`
 
 ## 설치/갱신 원칙
 
@@ -248,6 +249,6 @@ zstandard==0.25.0
 ## 추후 정리할 항목
 
 - 운영 서버와 개발 PC의 패키지 버전 일치 여부
-- `requirements.txt` 또는 `requirements.lock.txt` 생성 여부
+- 개발용/운영용 requirements 분리 여부
 - Django 버전을 기존 생성 버전인 5.2 계열로 맞출지, 현재 설치된 6.0.5로 유지할지
 - uvicorn 설치 여부 확인
