@@ -5,6 +5,7 @@
 ## 현재 테스트
 
 - `test_reference_repository.py`: 임시 SQLite 파일을 만들어 `reference_repository.py`의 스키마 검증, 프로젝트번호 단건 조회, 목록 검색, 누락 DB 오류 처리를 확인한다.
+- `test_workflow_repository.py`: 임시 SQLite 파일을 만들어 `workflow_repository.py`의 작업 생성, 상태 변경, 진행 건수 갱신, 전역 락 동작을 확인한다.
 
 ## 작성 기준
 
