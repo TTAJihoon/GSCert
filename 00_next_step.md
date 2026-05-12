@@ -39,11 +39,13 @@
 
 다른 PC에서 병합된 최신 `codex-job-runner-persistence`를 로컬로 pull했다.
 
-- 현재 커밋: `916f1e1 merge: integrate stages 4-9 automation`
+- pull 직후 기준 커밋: `916f1e1 merge: integrate stages 4-9 automation`
 - pull 방식: fast-forward
-- 작업트리: clean
+- 문서 갱신 후 최신 HEAD는 `git log --oneline -1`로 확인한다.
+- 작업트리: clean 상태에서 검증 시작
 - 로컬 서버: `http://127.0.0.1:8000/download-review/`
-- 서버 PID: `28472`
+- 서버 PID는 실행 시점마다 달라지므로 문서에 고정하지 않는다.
+- 현재 수동 실행한 mock 서버는 `run/django_runserver.pid`를 만들지 않으므로 `status.ps1`에는 서버 PID가 표시되지 않을 수 있다. HTTP 200 응답으로 별도 확인했다.
 
 로컬 자동화 실행 준비:
 
