@@ -9,6 +9,8 @@ from typing import Any, Dict, Optional, Tuple
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.conf import settings
 
+from main.utils.ecm_agent_lock import async_ecm_agent_lock
+
 from .apps import get_browser_safe
 from .tasks import run_playwright_task_on_page, StepError
 
@@ -217,15 +219,17 @@ async def _worker_loop() -> None:
                 logger_worker.info("context_page_ready")
 
             # 3) 실제 작업 실행
-            result = await asyncio.wait_for(
-                run_playwright_task_on_page(
-                    ecm_page,
-                    cert_date,
-                    test_no,
-                    request_ip=request_ip,
-                ),
-                timeout=120,
-            )
+            lock_timeout = getattr(settings, "ECM_AGENT_LOCK_TIMEOUT_SECONDS", 600)
+            async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
+                result = await asyncio.wait_for(
+                    run_playwright_task_on_page(
+                        ecm_page,
+                        cert_date,
+                        test_no,
+                        request_ip=request_ip,
+                    ),
+                    timeout=120,
+                )
 
             if fut is not None and not fut.cancelled():
                 fut.set_result(result)

@@ -1,5 +1,6 @@
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
+from django.views.decorators.csrf import ensure_csrf_cookie
 
 @login_required
 def welcome(request):
@@ -32,5 +33,6 @@ def checkreport(request):
 def test(request):
     return render(request, 'test.html')
 
+@ensure_csrf_cookie
 def download_review(request):
     return render(request, 'download_review.html')
