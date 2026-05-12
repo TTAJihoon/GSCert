@@ -22,6 +22,7 @@ from main.services.reference_db import (
     write_project_review_result,
 )
 from main.services.download_review_worker import run_worker_once
+from main.services.download_verify import verify_downloaded_files
 from main.views.download_review_api import (
     active_job,
     job_detail,
@@ -30,6 +31,29 @@ from main.views.download_review_api import (
     jobs,
     projects,
 )
+
+
+class DownloadVerifyTests(SimpleTestCase):
+    def test_zero_byte_file_fails_verification(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = Path(temp_dir) / "TTA-26-00010_empty.pdf"
+            file_path.write_bytes(b"")
+
+            result = verify_downloaded_files(temp_dir, "TTA-26-00010")
+
+        self.assertFalse(result.success)
+        self.assertIn("0 byte", result.error_message)
+
+    def test_missing_project_number_is_warning_not_failure(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            file_path = Path(temp_dir) / "downloaded-report.pdf"
+            file_path.write_bytes(b"content")
+
+            result = verify_downloaded_files(temp_dir, "TTA-26-00010")
+
+        self.assertTrue(result.success)
+        self.assertFalse(result.has_project_number_files)
+        self.assertTrue(result.warnings)
 
 
 class DownloadReviewProjectsApiTests(SimpleTestCase):

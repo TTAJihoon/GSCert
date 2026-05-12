@@ -117,7 +117,7 @@
 | ecm_row_json | TEXT | 처리 당시 ecm 행 데이터 스냅샷 |
 | status | TEXT | pending, running, downloaded, inspecting, completed, failed, skipped |
 | download_dir | TEXT | 프로젝트별 다운로드 폴더 |
-| zip_path | TEXT | 다운로드된 zip 경로 |
+| zip_path | TEXT | (미사용, 개별 파일 다운로드 방식으로 변경됨. download_dir 참조) |
 | current_step | TEXT | 현재 단계 |
 | error_message | TEXT | 실패 메시지 |
 | retry_count | TEXT | 다운로드 재시도 횟수 |

@@ -26,13 +26,14 @@ codex-job-runner-persistence
 - 결과 조회 탭 API 연동
 - 폴더별 `readme.md` 작성 정책 정리
 - dependency 관리 문서 추가
+- 4단계 운영 스크립트 구현: `start_server.ps1`, `stop_server.ps1`, `start_worker.ps1`, `stop_worker.ps1`, `start_all.ps1`, `stop_all.ps1`, `status.ps1`
+- 5단계 웹페이지1 자동화 구현: `ecm_download.py`, `ecm_selectors.py` 생성, worker에 실제 ECM 자동화 연결, `--no-headless` 옵션 추가
+- 6+7+8단계 통합 구현: ECM 트리 구조 반영, `agent_popup.py` 생성(새 폴더 만들기/전송현황/시스템알림), worker 파이프라인 연결
+- 9단계 구현: `download_verify.py` 생성(다운로드 파일 존재/개수/크기 확인)
 
 아직 실제 구현 전/검증 전:
 
-- 실제 ECM 다운로드 worker 구현
-- 웹페이지1 실제 자동화
-- Windows 에이전트 팝업 자동화
-- zip 다운로드 확인
+- 5~9단계 실제 서버에서의 통합 검증 (ECM 접속 → 다운로드 → 팝업 처리 → 파일 확인)
 - zip 내부 검사 규칙
 - 실제 규칙 결과와 `ecmlist.db` 산출물 컬럼 간 매핑
 
@@ -106,6 +107,13 @@ codex-job-runner-persistence
 
 별도 worker 프로세스 방식은 확정했고, `run_download_worker` command 골격과 dry-run을 구현했다.
 
+4단계에서 구현 완료:
+
+- `start_server.ps1`, `stop_server.ps1`: Uvicorn PID/포트 관리
+- `start_worker.ps1`, `stop_worker.ps1`: worker PID 관리, `-DryRun`/`-Once` 스위치 지원
+- `start_all.ps1`, `stop_all.ps1`: 통합 시작/중지
+- `status.ps1`: PID/포트/workflow.db 활성작업/heartbeat 표시
+
 확정/검증 필요:
 
 - 개발/검증 단계에서 worker 창을 보이게 실행할지
@@ -126,6 +134,17 @@ codex-job-runner-persistence
 ```text
 http://210.96.71.85
 ```
+
+실제 ECM 트리 구조 (확정):
+
+```text
+전사 폴더 > 상암AX센터 (초기 펼침)
+  > {연도}년 시험서비스 (예: 2026년 시험서비스)
+    > 01 GS인증시험(1등급)
+      > 프로젝트 폴더 (예: 00009 TTA-26-00009(완료) 회사명(제품명))
+```
+
+시험 유형 폴더: `01 GS인증시험(1등급)`, `02 V&V 시험`, `03 KPaaS 시험` (01번만 사용)
 
 현재 확인된 selector:
 
@@ -208,20 +227,21 @@ DestinyECMAgent(32비트)
 - `04_agent_download.md`
 - `06_recovery_and_lock.md`
 
-### 8. zip 파일 확인
+### 8. 다운로드 파일 확인
 
-현재 정보:
+확정 사항:
 
-- zip 파일명은 프로젝트 폴더명과 동일하다.
-- zip 파일명과 내부 파일명에는 대부분 프로젝트번호가 포함된다.
+- 다운로드는 zip이 아니라 개별 파일들이 각각 다운로드된다.
+- 파일명에 프로젝트번호가 포함되는 경우가 대부분이나 예외도 있다.
+- 폴더 찾아보기에서 '새 폴더 만들기' 후 프로젝트번호를 입력하여 폴더를 생성한다.
 
-확정/검증 필요:
+구현 완료:
 
-- 실제 zip 파일명 예시 수집
-- 프로젝트번호가 없는 예외 파일명이 있는지
-- zip 내부 최상위 폴더 구조
-- zip 파일 손상 여부 판단 방식
-- 다운로드 성공 후 DB에 저장할 zip 메타데이터
+- `download_verify.py`: 폴더 존재, 파일 개수, 0바이트 확인, 프로젝트번호 포함 여부
+
+검증 필요:
+
+- 실서버에서 실제 다운로드 파일 확인
 
 관련 문서:
 
@@ -270,11 +290,10 @@ DestinyECMAgent(32비트)
 
 ## 다음 작업 후보
 
-1. 결과 조회 탭 API 연동
-2. 점검 결과를 `ecmlist.db`에 반영하는 write-back 서비스 구현
-3. `requirements.txt` 정리
-4. 실제 ECM 다운로드 worker 구현
-5. 운영 start_worker.ps1/stop_worker.ps1 구현
+1. 5~9단계 통합 검증: 실제 ECM 서버에서 전체 다운로드 파이프라인 테스트
+3. 10단계: 결과 조회 화면 보강
+4. `requirements.txt` 정리
+5. skill 산출물 작성
 
 ## 대화 재개 시 추천 질문
 

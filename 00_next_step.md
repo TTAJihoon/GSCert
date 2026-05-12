@@ -17,6 +17,24 @@
 - Stage 6-8: Windows agent 폴더 선택, 전송상황, 중복 알림 처리 골격
 - Stage 9: 다운로드 파일 검증 골격
 
+## 2026-05-12 병합 반영 메모
+
+현재 브랜치(`codex-backend-foundation`)에는 `origin/codex-job-runner-persistence`와
+`origin/feature/stages-4-9-automation`의 변경을 순서대로 병합했다.
+
+병합하면서 아래 항목은 코드에 반영했다.
+
+- Playwright import를 live worker 실행 시점으로 늦춰 UI/API/dry-run 테스트가 자동화 의존성 없이 import될 수 있게 했다.
+- `run_download_worker`와 `start_worker.ps1`의 기본 실행을 dry-run으로 바꾸고, 실제 자동화는 `--live`/`-Live`를 명시해야 실행되게 했다.
+- live worker의 ECM 다운로드와 Windows agent 팝업 구간을 `async_ecm_agent_lock()`으로 감쌌다.
+- live 실패 시 프로젝트 `review_status`를 `held`로 저장하고 `ecmlist.db`에는 `점검결과=보류` write-back을 시도하게 했다.
+- 다운로드 성공만으로 `완료`를 쓰지 않고 `downloaded`/`unreviewed` 상태로 남기게 했다.
+- 0 byte 다운로드 파일은 실패로 처리하고, 프로젝트 번호 미포함 파일은 경고로만 기록하게 했다.
+- Django runserver 운영 스크립트 명칭과 PID 파일을 Uvicorn 표현에서 개발/검증용 runserver 표현으로 정리했다.
+- Django 5.2 기준 공통 의존성과 Windows 자동화 의존성을 `requirements.txt`/`requirements-automation.txt`로 분리했다.
+
+남은 실제 확인 항목은 ECM/Windows agent가 있는 PC에서 `-Live -NoHeadless`로 visible 테스트를 실행해 팝업 발생 순서와 실제 다운로드 산출물 형태(zip 단일 파일인지 개별 파일인지)를 확인하는 것이다.
+
 ## 다른 PC에서 바로 이어갈 때
 
 ```powershell

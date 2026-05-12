@@ -160,7 +160,9 @@ def get_jobs_payload(query_params):
         qs = qs.filter(status__in=statuses)
 
     total = qs.count()
-    jobs = qs.order_by("-requested_at", "-id")[query["offset"]:query["offset"] + query["limit"]]
+    jobs = qs.order_by("-requested_at", "-created_at", "-id")[
+        query["offset"]:query["offset"] + query["limit"]
+    ]
     return {
         "success": True,
         "items": [serialize_job(job) for job in jobs],
