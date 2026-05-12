@@ -237,6 +237,47 @@ GET /api/jobs/active/
 }
 ```
 
+### 작업 목록 조회
+
+```text
+GET /api/jobs/
+```
+
+쿼리:
+
+- `status`: `all`, `finished`, `scheduled`, `queued`, `running`, `completed`, `failed`, `canceled`
+- `limit`
+- `offset`
+
+응답:
+
+```json
+{
+  "success": true,
+  "items": [
+    {
+      "id": "...",
+      "status": "completed",
+      "status_label": "완료",
+      "requested_at": "2026-05-12T20:00:00+09:00",
+      "completed_at": "2026-05-12T20:30:00+09:00",
+      "requested_project_count": 3,
+      "completed_project_count": 2,
+      "failed_project_count": 1
+    }
+  ],
+  "pagination": {
+    "total": 1,
+    "limit": 20,
+    "offset": 0,
+    "has_more": false
+  },
+  "status": "all"
+}
+```
+
+결과 조회 탭은 이 API로 작업 목록을 표시하고, 선택된 작업의 프로젝트 결과는 `GET /api/jobs/{job_id}/projects/`로 조회한다.
+
 ### 작업 상세 조회
 
 ```text

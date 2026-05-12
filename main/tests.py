@@ -219,6 +219,56 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(detail_response.status_code, 200)
         self.assertEqual(detail_data["job"]["selected_project_numbers"], ["TTA-26-00010"])
 
+    def test_jobs_list_endpoint_returns_recent_jobs_and_filters_status(self):
+        completed = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=2,
+            completed_project_count=1,
+            failed_project_count=1,
+            selected_projects_json=["TTA-26-00010", "TTA-26-00011"],
+        )
+        DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.SCHEDULED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00012"],
+        )
+
+        all_response = jobs(self.factory.get("/api/jobs/", {"status": "all", "limit": "10"}))
+        all_data = json.loads(all_response.content.decode("utf-8"))
+        finished_response = jobs(self.factory.get("/api/jobs/", {"status": "finished"}))
+        finished_data = json.loads(finished_response.content.decode("utf-8"))
+        completed_response = jobs(self.factory.get("/api/jobs/", {"status": "completed"}))
+        completed_data = json.loads(completed_response.content.decode("utf-8"))
+
+        self.assertEqual(all_response.status_code, 200)
+        self.assertEqual(all_data["pagination"]["total"], 2)
+        self.assertEqual(all_data["items"][0]["status"], DownloadReviewJobStatus.SCHEDULED)
+        self.assertEqual(finished_response.status_code, 200)
+        self.assertEqual(finished_data["pagination"]["total"], 1)
+        self.assertEqual(finished_data["items"][0]["id"], str(completed.id))
+        self.assertEqual(completed_response.status_code, 200)
+        self.assertEqual(completed_data["pagination"]["total"], 1)
+        self.assertEqual(completed_data["items"][0]["id"], str(completed.id))
+        self.assertEqual(completed_data["items"][0]["completed_project_count"], 1)
+        self.assertEqual(completed_data["items"][0]["failed_project_count"], 1)
+
+    def test_jobs_list_endpoint_rejects_unknown_filters(self):
+        cases = [
+            {"raw_sql": "SELECT * FROM automation_job"},
+            {"status": "unknown"},
+            {"limit": "101"},
+            {"offset": "-1"},
+        ]
+
+        for params in cases:
+            with self.subTest(params=params):
+                response = jobs(self.factory.get("/api/jobs/", params))
+                data = json.loads(response.content.decode("utf-8"))
+
+                self.assertEqual(response.status_code, 400)
+                self.assertFalse(data["success"])
+                self.assertEqual(data["error_code"], "invalid_job_request")
+
     def test_job_projects_and_results_endpoints_return_project_data(self):
         created = json.loads(self._post_job(["TTA-26-00010"]).content.decode("utf-8"))
         project = DownloadReviewProject.objects.get(project_number="TTA-26-00010")

@@ -1,5 +1,5 @@
 from django.http import JsonResponse
-from django.views.decorators.http import require_GET, require_POST
+from django.views.decorators.http import require_GET, require_http_methods
 
 from main.services.download_review_jobs import (
     DownloadReviewJobRequestError,
@@ -8,6 +8,7 @@ from main.services.download_review_jobs import (
     get_active_job_payload,
     get_job_detail_payload,
     get_job_projects_payload,
+    get_jobs_payload,
     get_project_results_payload,
     parse_json_body,
 )
@@ -43,8 +44,27 @@ def projects(request):
     return response
 
 
-@require_POST
+@require_http_methods(["GET", "POST"])
 def jobs(request):
+    if request.method == "GET":
+        return _jobs_list(request)
+    return _jobs_create(request)
+
+
+def _jobs_list(request):
+    try:
+        payload = get_jobs_payload(request.GET)
+        status = 200
+    except DownloadReviewJobRequestError as exc:
+        payload = _error_payload(exc, str(exc), details=exc.details)
+        status = exc.status_code
+
+    response = JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+def _jobs_create(request):
     try:
         payload = parse_json_body(request)
         response_payload = create_download_review_job(

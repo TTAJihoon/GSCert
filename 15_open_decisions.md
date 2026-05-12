@@ -23,6 +23,7 @@ codex-job-runner-persistence
 - `workflow.db` 작업/락/상태 저장 모델과 dry-run worker command 구현
 - 기존 ECM WebSocket 자동화와 download-review worker 사이의 공통 lock 구현
 - 점검 결과를 `ecmlist.db`의 점검 컬럼에 반영하는 write-back 서비스 구현
+- 결과 조회 탭 API 연동
 - 폴더별 `readme.md` 작성 정책 정리
 - dependency 관리 문서 추가
 
@@ -39,7 +40,7 @@ codex-job-runner-persistence
 
 ### 1. UI 목업 검토
 
-현재 `/download-review/`는 `ecmlist.db` 프로젝트 목록과 작업 요청/진행 API를 사용하고, 결과 조회 탭은 아직 mock 데이터 기반이다.
+현재 `/download-review/`는 `ecmlist.db` 프로젝트 목록, 작업 요청/진행 API, 결과 조회 API를 사용한다.
 
 확정 필요:
 

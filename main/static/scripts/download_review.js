@@ -369,14 +369,18 @@ const mockJobs = [
 const state = {
   selected: new Set(),
   focusedProject: mockProjects[0],
-  resultJobId: mockJobs[0].id,
+  resultJobId: null,
   resultFilter: "all",
   heartbeatWarning: false,
   emptyJob: false,
   selectionMessage: "",
   projectLoadError: "",
   activeJob: null,
-  activeProjects: []
+  activeProjects: [],
+  resultJobs: [],
+  resultProjects: [],
+  resultLoadError: "",
+  resultProjectLoadError: ""
 };
 
 const statusLabel = {
@@ -394,7 +398,10 @@ const statusLabel = {
   "미점검": ["미점검", "badge-muted"],
   "X": ["미점검", "badge-muted"],
   "부적합": ["부적합", "badge-danger"],
-  "작업실패": ["작업실패", "badge-danger"]
+  "작업실패": ["작업실패", "badge-danger"],
+  "정상": ["정상", "badge-success"],
+  "경고": ["경고", "badge-warn"],
+  "오류": ["오류", "badge-danger"]
 };
 
 function qs(id) {
@@ -472,10 +479,14 @@ function normalizeApiProject(item) {
 
 function normalizeApiJobProject(item) {
   return {
+    id: item.id,
+    jobId: item.job_id,
     number: item.project_number,
     company: item.company || "",
     product: item.product || "",
     status: item.status,
+    statusLabel: item.status_label || item.status,
+    review: item.review_status_label || item.review_status || "-",
     step: item.current_step || item.status_label || "-",
     retry: item.retry_count || 0,
     zip: item.zip_file_name || "-",
@@ -485,9 +496,35 @@ function normalizeApiJobProject(item) {
   };
 }
 
+function normalizeApiJob(item) {
+  return {
+    id: item.id,
+    requestedAt: formatDateTime(item.requested_at),
+    completedAt: formatDateTime(item.completed_at || item.canceled_at || item.started_at || item.available_after),
+    total: item.requested_project_count || 0,
+    success: item.completed_project_count || 0,
+    failed: item.failed_project_count || 0,
+    status: item.status,
+    statusLabel: item.status_label || item.status
+  };
+}
+
+function formatDateTime(value) {
+  if (!value) return "-";
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return parsed.toLocaleString("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
 function badge(status) {
   const config = statusLabel[status] || [status, "badge-muted"];
-  return `<span class="badge ${config[1]}">${config[0]}</span>`;
+  return `<span class="badge ${config[1]}">${escapeHtml(config[0])}</span>`;
 }
 
 function isProjectLocked(item) {
@@ -716,6 +753,56 @@ async function refreshActiveJob() {
   renderProgress();
 }
 
+async function loadResultJobs(preferredJobId = null) {
+  state.resultLoadError = "";
+  qs("jobList").innerHTML = `<p class="muted">작업 목록을 불러오는 중입니다.</p>`;
+  qs("resultRows").innerHTML = `
+    <tr><td colspan="9" class="empty-cell">작업을 불러오는 중입니다.</td></tr>
+  `;
+
+  try {
+    const payload = await requestJson(`${apiEndpoints.jobs}?status=all&limit=50`);
+    state.resultJobs = payload.items.map(normalizeApiJob);
+    state.resultJobId = preferredJobId
+      || (state.resultJobs.some((job) => job.id === state.resultJobId) ? state.resultJobId : null)
+      || state.resultJobs[0]?.id
+      || null;
+    renderJobs();
+    await loadResultProjects();
+  } catch (error) {
+    state.resultJobs = [];
+    state.resultProjects = [];
+    state.resultJobId = null;
+    state.resultLoadError = error.message;
+    state.resultProjectLoadError = "";
+    renderJobs();
+    renderResults();
+  }
+}
+
+async function loadResultProjects() {
+  if (!state.resultJobId) {
+    state.resultProjects = [];
+    renderResults();
+    return;
+  }
+
+  qs("resultRows").innerHTML = `
+    <tr><td colspan="9" class="empty-cell">프로젝트별 결과를 불러오는 중입니다.</td></tr>
+  `;
+
+  try {
+    const payload = await requestJson(`/api/jobs/${state.resultJobId}/projects/`);
+    state.resultProjects = payload.items.map(normalizeApiJobProject);
+    state.resultProjectLoadError = "";
+    renderResults();
+  } catch (error) {
+    state.resultProjects = [];
+    state.resultProjectLoadError = error.message;
+    renderResults();
+  }
+}
+
 function renderProgress() {
   qs("activeProgressView").hidden = state.emptyJob;
   qs("emptyProgressView").hidden = !state.emptyJob;
@@ -770,14 +857,14 @@ function renderProgress() {
   qs("progressRows").innerHTML = activeProjects.map((item, index) => `
     <tr>
       <td>${index + 1}</td>
-      <td><strong>${item.number}</strong></td>
-      <td>${item.company}</td>
-      <td>${item.product}</td>
+      <td><strong>${escapeHtml(item.number)}</strong></td>
+      <td>${escapeHtml(item.company)}</td>
+      <td>${escapeHtml(item.product)}</td>
       <td>${badge(item.status)}</td>
-      <td>${item.step}</td>
+      <td>${escapeHtml(item.step)}</td>
       <td>${item.retry} / ${maxRetryCount}</td>
-      <td>${item.zip || "-"}</td>
-      <td>${item.error ? `<button class="link-button" type="button" data-error-detail="progress:${item.number}">${item.error}</button>` : "-"}</td>
+      <td>${escapeHtml(item.zip || "-")}</td>
+      <td>${item.error ? `<button class="link-button" type="button" data-error-detail="progress:${escapeHtml(item.id || item.number)}">${escapeHtml(item.error)}</button>` : "-"}</td>
     </tr>
   `).join("");
 
@@ -785,52 +872,91 @@ function renderProgress() {
 }
 
 function renderJobs() {
-  qs("jobList").innerHTML = mockJobs.map((job) => `
-    <button class="job-card ${state.resultJobId === job.id ? "active" : ""}" type="button" data-job-id="${job.id}">
+  if (state.resultLoadError && state.resultJobs.length === 0) {
+    qs("jobList").innerHTML = `<p class="muted">${escapeHtml(state.resultLoadError)}</p>`;
+    return;
+  }
+
+  if (state.resultJobs.length === 0) {
+    qs("jobList").innerHTML = `<p class="muted">조회된 작업이 없습니다.</p>`;
+    return;
+  }
+
+  qs("jobList").innerHTML = state.resultJobs.map((job) => `
+    <button class="job-card ${state.resultJobId === job.id ? "active" : ""}" type="button" data-job-id="${escapeHtml(job.id)}">
       <div class="job-title">
-        <span>${job.id}</span>
-        ${badge(job.status)}
+        <span>${escapeHtml(job.id)}</span>
+        ${badge(job.statusLabel || job.status)}
       </div>
       <div class="job-meta">
-        <span>요청 ${job.requestedAt}</span>
-        <span>완료 ${job.completedAt}</span>
+        <span>요청 ${escapeHtml(job.requestedAt)}</span>
+        <span>기준시각 ${escapeHtml(job.completedAt)}</span>
         <span>전체 ${job.total}</span>
-        <span>성공 ${job.success} / 실패 ${job.failed}</span>
+        <span>완료 ${job.success} / 실패 ${job.failed}</span>
       </div>
     </button>
   `).join("");
 
   document.querySelectorAll("[data-job-id]").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
       state.resultJobId = button.dataset.jobId;
       renderJobs();
-      renderResults();
+      await loadResultProjects();
     });
   });
 }
 
 function renderResults() {
-  const job = mockJobs.find((item) => item.id === state.resultJobId);
-  qs("resultCaption").textContent = `${job.id} · 성공 ${job.success}건 · 실패 ${job.failed}건`;
+  const job = state.resultJobs.find((item) => item.id === state.resultJobId);
+  if (!job) {
+    qs("resultCaption").textContent = "작업을 선택하면 프로젝트별 결과를 표시합니다.";
+    qs("resultRows").innerHTML = `
+      <tr><td colspan="9" class="empty-cell">${state.resultLoadError ? escapeHtml(state.resultLoadError) : "조회된 작업이 없습니다."}</td></tr>
+    `;
+    return;
+  }
 
-  const rows = job.projects.filter((item) => (
+  qs("resultCaption").textContent = `${job.id} · 완료 ${job.success}건 · 실패 ${job.failed}건`;
+
+  if (state.resultProjectLoadError) {
+    qs("resultRows").innerHTML = `
+      <tr><td colspan="9" class="empty-cell">${escapeHtml(state.resultProjectLoadError)}</td></tr>
+    `;
+    return;
+  }
+
+  const rows = state.resultProjects.filter((item) => (
     state.resultFilter === "all" ||
-    (state.resultFilter === "success" && item.status === "success") ||
+    (state.resultFilter === "success" && (item.status === "success" || item.status === "completed")) ||
     (state.resultFilter === "failed" && item.status === "failed")
   ));
 
+  if (rows.length === 0) {
+    qs("resultRows").innerHTML = `
+      <tr><td colspan="9" class="empty-cell">표시할 프로젝트 결과가 없습니다.</td></tr>
+    `;
+    return;
+  }
+
   qs("resultRows").innerHTML = rows.map((item) => `
     <tr>
-      <td><strong>${item.number}</strong></td>
-      <td>${item.company}</td>
-      <td>${item.product}</td>
-      <td>${badge(item.status)}</td>
-      <td>${item.zip || "-"}</td>
-      <td>${item.failStep || "-"}</td>
-      <td>${item.error ? `<button class="link-button" type="button" data-error-detail="result:${item.number}">${item.error}</button>` : "-"}</td>
+      <td><strong>${escapeHtml(item.number)}</strong></td>
+      <td>${escapeHtml(item.company)}</td>
+      <td>${escapeHtml(item.product)}</td>
+      <td>${badge(item.statusLabel || item.status)}</td>
+      <td>${badge(item.review)}</td>
+      <td>
+        <button class="mini-button" type="button" data-rule-result="${escapeHtml(item.id)}">
+          상세
+        </button>
+      </td>
+      <td>${escapeHtml(item.zip || "-")}</td>
+      <td>${escapeHtml(item.failStep || "-")}</td>
+      <td>${item.error ? `<button class="link-button" type="button" data-error-detail="result:${escapeHtml(item.id)}">${escapeHtml(item.error)}</button>` : "-"}</td>
     </tr>
   `).join("");
 
+  bindRuleResultButtons();
   bindErrorButtons();
 }
 
@@ -875,7 +1001,7 @@ function openInspectionModal(projectNumber) {
   openModal({
     eyebrow: "점검 결과",
     title: `${project.number} 규칙별 점검 결과`,
-    body: `
+    body: project.rules.length ? `
       <p class="modal-lead">약 30개 점검 규칙을 표로 확인하는 화면입니다. 실제 규칙 정의 후 컬럼은 확장할 수 있습니다.</p>
       <div class="table-wrap modal-table">
         <table class="data-table">
@@ -890,18 +1016,89 @@ function openInspectionModal(projectNumber) {
           <tbody>${rows}</tbody>
         </table>
       </div>
+    ` : `
+      <div class="modal-message warning">
+        <strong>이 프로젝트의 규칙 결과는 결과 조회 탭에서 확인해야 합니다.</strong>
+        <p>작업 이력과 연결된 실제 규칙 결과는 결과 조회 탭의 프로젝트 상세 버튼으로 조회합니다.</p>
+      </div>
     `
   });
 }
 
 function findErrorItem(source, number) {
   if (source === "progress") {
-    return state.activeProjects.find((item) => item.number === number)
-      || mockActiveJob.projects.find((item) => item.number === number);
+    return state.activeProjects.find((item) => item.id === number || item.number === number)
+      || mockActiveJob.projects.find((item) => item.id === number || item.number === number);
   }
 
-  const job = mockJobs.find((item) => item.id === state.resultJobId);
-  return job?.projects.find((item) => item.number === number);
+  return state.resultProjects.find((item) => item.id === number);
+}
+
+async function openResultRulesModal(jobProjectId) {
+  const project = state.resultProjects.find((item) => item.id === jobProjectId);
+  if (!project) return;
+
+  openModal({
+    eyebrow: "점검 결과",
+    title: `${project.number} 규칙별 점검 결과`,
+    body: `<p class="modal-lead">점검 결과를 불러오는 중입니다.</p>`
+  });
+
+  try {
+    const payload = await requestJson(`/api/job-projects/${jobProjectId}/results/`);
+    const rows = payload.items.map((rule) => `
+      <tr>
+        <td>${rule.sequence}</td>
+        <td>${escapeHtml(rule.rule_name)}</td>
+        <td>${badge(rule.status_label || rule.status)}</td>
+        <td>${escapeHtml(rule.file_name || "-")}</td>
+        <td>${escapeHtml(rule.expected || "-")}</td>
+        <td>${escapeHtml(rule.actual || "-")}</td>
+        <td>${escapeHtml(rule.message || "-")}</td>
+      </tr>
+    `).join("");
+
+    qs("modalBody").innerHTML = payload.items.length
+      ? `
+        <div class="table-wrap modal-table">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>번호</th>
+                <th>점검항목</th>
+                <th>결과</th>
+                <th>파일명</th>
+                <th>기대값</th>
+                <th>실제값</th>
+                <th>상세</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `
+      : `
+        <div class="modal-message warning">
+          <strong>생성된 규칙 결과가 없습니다.</strong>
+          <p>작업 자체가 실패했거나 아직 규칙 검사가 실행되지 않은 프로젝트입니다.</p>
+        </div>
+      `;
+  } catch (error) {
+    qs("modalBody").innerHTML = `
+      <div class="modal-message warning">
+        <strong>${escapeHtml(error.message)}</strong>
+        <p>규칙 결과를 다시 조회해 주세요.</p>
+      </div>
+    `;
+  }
+}
+
+function bindRuleResultButtons() {
+  document.querySelectorAll("[data-rule-result]").forEach((button) => {
+    button.addEventListener("click", () => {
+      openResultRulesModal(button.dataset.ruleResult);
+    });
+  });
 }
 
 function bindErrorButtons() {
@@ -985,6 +1182,7 @@ function bindControls() {
       state.resultJobId = payload.job_id || state.resultJobId;
       state.selected.clear();
       await refreshActiveJob();
+      await loadResultJobs(payload.job_id);
       renderProjects();
     } catch (error) {
       state.selectionMessage = error.message;
@@ -1028,8 +1226,7 @@ async function init() {
   renderProjects();
   await loadProjects();
   await refreshActiveJob();
-  renderJobs();
-  renderResults();
+  await loadResultJobs();
   setInterval(updateClock, 1000);
 }
 

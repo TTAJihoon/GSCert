@@ -98,7 +98,8 @@
 - 이미 예약됨/대기중/진행중인 프로젝트가 포함된 새 작업 요청은 전체 실패 처리한다.
 - `완료` 프로젝트가 포함된 작업 요청은 버그/우회 요청으로 보고 전체 실패 처리한다.
 - active job은 최대 5개까지 허용한다.
-- polling 기반 조회 API를 구현했다: `GET /api/jobs/active/`, `GET /api/jobs/{job_id}/`, `GET /api/jobs/{job_id}/projects/`, `GET /api/job-projects/{job_project_id}/results/`
+- polling/결과 조회 API를 구현했다: `GET /api/jobs/`, `GET /api/jobs/active/`, `GET /api/jobs/{job_id}/`, `GET /api/jobs/{job_id}/projects/`, `GET /api/job-projects/{job_project_id}/results/`
+- 결과 조회 탭은 mock 데이터 대신 `GET /api/jobs/`, `GET /api/jobs/{job_id}/projects/`, `GET /api/job-projects/{job_project_id}/results/`를 사용한다.
 - 진행/예약/대기 작업이 없으면 API가 `polling.should_poll=false`를 반환한다.
 - 권장 polling 주기는 진행중/대기중 3초다.
 - 예약됨 상태는 반복 polling하지 않고 `polling.wake_at` 시각에 한 번 다시 조회한다.
@@ -108,5 +109,5 @@
 
 ## 다음 구현 순서 추천
 
-1. 결과 조회 탭 API 연동
-2. 실제 ECM 다운로드 worker 구현
+1. 실제 ECM 다운로드 worker 구현
+2. 결과 조회 탭의 완료 작업 필터/검색 보강

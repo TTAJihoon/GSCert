@@ -204,8 +204,8 @@
       <section class="panel">
         <div class="panel-header">
           <div>
-            <h2>완료 작업</h2>
-            <p>작업 요청 단위로 성공/실패 결과를 확인합니다.</p>
+            <h2>작업 목록</h2>
+            <p>작업 요청 단위로 진행/완료/실패 결과를 확인합니다.</p>
           </div>
         </div>
         <div class="job-list" id="jobList"></div>
@@ -219,7 +219,7 @@
           </div>
           <div class="segmented" aria-label="결과 필터">
             <button class="segment active" type="button" data-result-filter="all">전체</button>
-            <button class="segment" type="button" data-result-filter="success">성공</button>
+            <button class="segment" type="button" data-result-filter="success">처리 완료</button>
             <button class="segment" type="button" data-result-filter="failed">실패</button>
           </div>
         </div>
@@ -231,6 +231,8 @@
               <th>회사명</th>
               <th>제품명</th>
               <th>상태</th>
+              <th>점검결과</th>
+              <th>상세</th>
               <th>zip 파일명</th>
               <th>실패 단계</th>
               <th>오류</th>

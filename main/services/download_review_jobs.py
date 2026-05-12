@@ -26,6 +26,23 @@ ACTIVE_JOB_STATUSES = (
     DownloadReviewJobStatus.QUEUED,
     DownloadReviewJobStatus.RUNNING,
 )
+JOB_LIST_PARAM_NAMES = {"status", "limit", "offset"}
+JOB_LIST_STATUS_FILTERS = {
+    "all": None,
+    "finished": (
+        DownloadReviewJobStatus.COMPLETED,
+        DownloadReviewJobStatus.FAILED,
+        DownloadReviewJobStatus.CANCELED,
+    ),
+    DownloadReviewJobStatus.SCHEDULED: (DownloadReviewJobStatus.SCHEDULED,),
+    DownloadReviewJobStatus.QUEUED: (DownloadReviewJobStatus.QUEUED,),
+    DownloadReviewJobStatus.RUNNING: (DownloadReviewJobStatus.RUNNING,),
+    DownloadReviewJobStatus.COMPLETED: (DownloadReviewJobStatus.COMPLETED,),
+    DownloadReviewJobStatus.FAILED: (DownloadReviewJobStatus.FAILED,),
+    DownloadReviewJobStatus.CANCELED: (DownloadReviewJobStatus.CANCELED,),
+}
+DEFAULT_JOB_LIST_LIMIT = 20
+MAX_JOB_LIST_LIMIT = 100
 
 
 class DownloadReviewJobRequestError(ValueError):
@@ -135,6 +152,28 @@ def get_active_job_payload():
     }
 
 
+def get_jobs_payload(query_params):
+    query = parse_job_list_query(query_params)
+    qs = DownloadReviewJob.objects.all()
+    statuses = JOB_LIST_STATUS_FILTERS[query["status"]]
+    if statuses:
+        qs = qs.filter(status__in=statuses)
+
+    total = qs.count()
+    jobs = qs.order_by("-requested_at", "-id")[query["offset"]:query["offset"] + query["limit"]]
+    return {
+        "success": True,
+        "items": [serialize_job(job) for job in jobs],
+        "pagination": {
+            "total": total,
+            "limit": query["limit"],
+            "offset": query["offset"],
+            "has_more": query["offset"] + len(jobs) < total,
+        },
+        "status": query["status"],
+    }
+
+
 def get_job_detail_payload(job_id):
     job = get_job_or_raise(job_id)
     return {
@@ -210,6 +249,30 @@ def parse_json_body(request):
     if not isinstance(payload, dict):
         raise DownloadReviewJobRequestError("JSON 요청 본문은 객체여야 합니다.")
     return payload
+
+
+def parse_job_list_query(query_params):
+    unknown = set(query_params.keys()) - JOB_LIST_PARAM_NAMES
+    if unknown:
+        names = ", ".join(sorted(unknown))
+        raise DownloadReviewJobRequestError(f"지원하지 않는 작업 조회 조건입니다: {names}")
+
+    status = str(query_params.get("status") or "all").strip()
+    if status not in JOB_LIST_STATUS_FILTERS:
+        raise DownloadReviewJobRequestError(f"지원하지 않는 작업 상태 필터입니다: {status}")
+
+    limit = _parse_int(query_params.get("limit"), DEFAULT_JOB_LIST_LIMIT, "limit")
+    offset = _parse_int(query_params.get("offset"), 0, "offset")
+    if limit < 1 or limit > MAX_JOB_LIST_LIMIT:
+        raise DownloadReviewJobRequestError(f"limit은 1부터 {MAX_JOB_LIST_LIMIT} 사이여야 합니다.")
+    if offset < 0:
+        raise DownloadReviewJobRequestError("offset은 0 이상이어야 합니다.")
+
+    return {
+        "status": status,
+        "limit": limit,
+        "offset": offset,
+    }
 
 
 def parse_project_numbers(payload):
@@ -520,3 +583,12 @@ def _display_path(path, project_number):
     if index >= 0:
         return normalized[index:]
     return ""
+
+
+def _parse_int(value, default, name):
+    if value in (None, ""):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise DownloadReviewJobRequestError(f"{name}은 숫자여야 합니다.") from exc
