@@ -22,9 +22,9 @@ Uvicorn 프로세스
 download_worker 프로세스
 └─ workflow.db에서 pending 작업 확인
 └─ 작업 락 획득
-└─ 웹페이지1 자동화
-└─ 에이전트 다운로드 팝업 처리
-└─ zip 파일 확인
+└─ 웹페이지1 자동화 (ecm_download.py, ecm_selectors.py)
+└─ 에이전트 다운로드 팝업 처리 (agent_popup.py)
+└─ 다운로드 파일 확인 (download_verify.py)
 └─ 검사 실행
 └─ 작업 상태 저장
 ```
@@ -55,7 +55,8 @@ C:\GSCert
 worker는 Django management command로 실행한다.
 
 ```powershell
-C:\GSCert\venv\Scripts\python.exe manage.py run_download_worker
+C:\GSCert\.venv\Scripts\python.exe manage.py run_download_worker
+# (운영 서버에서는 start_worker.ps1이 .venv/venv 자동 폴백 처리)
 ```
 
 예상 파일 위치:

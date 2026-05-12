@@ -9,7 +9,8 @@ Uvicorn 웹서버와 download_worker를 Windows 서버에서 안정적으로 시
 ```powershell
 $RootDir    = "C:\GSCert"
 $AppRootDir = "C:\GSCert\myproject"
-$VenvPython = "C:\GSCert\venv\Scripts\python.exe"
+$VenvPython = "C:\GSCert\.venv\Scripts\python.exe"
+# (없으면 venv\Scripts\python.exe로 폴백)
 ```
 
 `manage.py`는 `$AppRootDir` 아래에 있는 것으로 전제한다.

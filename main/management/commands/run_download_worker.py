@@ -1,12 +1,12 @@
 import time
 
-from django.core.management.base import BaseCommand, CommandError
+from django.core.management.base import BaseCommand
 
 from main.services.download_review_worker import run_worker_once
 
 
 class Command(BaseCommand):
-    help = "Run the download-review worker. Use --dry-run until real ECM download is implemented."
+    help = "Run the download-review worker. Use --dry-run for simulated processing."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -18,6 +18,11 @@ class Command(BaseCommand):
             "--dry-run",
             action="store_true",
             help="Simulate project processing without ECM, Playwright, or zip downloads.",
+        )
+        parser.add_argument(
+            "--no-headless",
+            action="store_true",
+            help="Show the browser window (for development/debugging).",
         )
         parser.add_argument(
             "--poll-interval",
@@ -33,15 +38,18 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        if not options["dry_run"]:
-            raise CommandError("실제 다운로드 worker는 아직 구현되지 않았습니다. --dry-run을 사용하세요.")
-
         once = options["once"]
+        dry_run = options["dry_run"]
+        headless = not options["no_headless"]
         poll_interval = max(options["poll_interval"], 0.1)
         step_sleep = max(options["step_sleep"], 0.0)
 
         while True:
-            result = run_worker_once(dry_run=True, sleep_seconds=step_sleep)
+            result = run_worker_once(
+                dry_run=dry_run,
+                sleep_seconds=step_sleep,
+                headless=headless,
+            )
             if result.processed:
                 self.stdout.write(
                     self.style.SUCCESS(f"{result.status}: {result.job_id} - {result.message}")
