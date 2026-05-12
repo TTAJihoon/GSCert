@@ -35,6 +35,73 @@
 
 남은 실제 확인 항목은 ECM/Windows agent가 있는 PC에서 `-Live -NoHeadless`로 visible 테스트를 실행해 팝업 발생 순서와 실제 다운로드 산출물 형태(zip 단일 파일인지 개별 파일인지)를 확인하는 것이다.
 
+## 2026-05-13 로컬 동기화 및 실행 준비
+
+다른 PC에서 병합된 최신 `codex-job-runner-persistence`를 로컬로 pull했다.
+
+- 현재 커밋: `916f1e1 merge: integrate stages 4-9 automation`
+- pull 방식: fast-forward
+- 작업트리: clean
+- 로컬 서버: `http://127.0.0.1:8000/download-review/`
+- 서버 PID: `28472`
+
+로컬 자동화 실행 준비:
+
+- `requirements-automation.txt` 설치 완료
+- Playwright Chromium 설치 완료
+- `playwright`, `pywinauto`, `win32gui` import 확인 완료
+- Playwright headless Chromium smoke test 완료
+- live automation import 확인 완료
+
+실행한 검증:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py check --settings=myproject.ui_mock_settings
+.\.venv\Scripts\python.exe manage.py test main.tests --settings=myproject.ui_mock_settings
+.\.venv\Scripts\python.exe -m unittest discover playwright_job/tests
+.\.venv\Scripts\python.exe manage.py run_download_worker --once --dry-run --settings=myproject.ui_mock_settings
+.\.venv\Scripts\python.exe manage.py run_download_worker --once --live --no-headless --settings=myproject.ui_mock_settings
+powershell -ExecutionPolicy Bypass -File .\status.ps1
+```
+
+결과:
+
+- Django system check: 통과
+- `main.tests`: 18개 통과
+- `playwright_job/tests`: 10개 통과
+- dry-run worker: 시작 가능한 작업 없음으로 idle 정상 종료
+- live worker: 시작 가능한 작업 없음으로 idle 정상 종료
+- `status.ps1`: PowerShell 기본 실행 정책에서는 차단되며, `ExecutionPolicy Bypass`로 실행 시 정상 출력
+
+현재 시간 확인:
+
+```text
+2026-05-13 08:31:07 +09:00
+```
+
+따라서 실제 ECM 다운로드 live 테스트는 시작 가능 시간인 20:00-07:00 구간에 진행해야 한다. 지금 단계에서 다음 실제 검증은 테스트 프로젝트 1건을 대기열에 넣은 뒤 아래 명령으로 visible 실행하는 것이다.
+
+```powershell
+.\.venv\Scripts\python.exe manage.py run_download_worker --once --live --no-headless --settings=myproject.ui_mock_settings
+```
+
+운영 스크립트로 실행할 때는 다음 명령을 사용한다.
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start_worker.ps1 -Live -Once -NoHeadless
+```
+
+실제 live 테스트에서 반드시 확인할 항목:
+
+- ECM 페이지가 정상 열리는지
+- 프로젝트 폴더 탐색이 실제 폴더 구조와 맞는지
+- 전체 선택 체크박스와 고급 메뉴 selector가 맞는지
+- Windows 폴더 찾아보기 팝업이 기본 다운로드 경로에서 시작하는지
+- 새 폴더 생성 방식이 실제 팝업에서 동작하는지
+- 전송현황 창과 시스템 알림 창의 발생 순서
+- 다운로드 산출물이 zip 단일 파일인지 개별 파일 묶음인지
+- 실패 시 `workflow.db` 상세 오류와 `ecmlist.db` `점검결과=보류` write-back이 맞는지
+
 ## 다른 PC에서 바로 이어갈 때
 
 ```powershell
