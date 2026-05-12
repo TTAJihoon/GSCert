@@ -4,6 +4,7 @@ __pycache__/
 *.sqlite3
 
 # Virtual Envs
+.venv/
 venv/
 env/
 django/
@@ -29,3 +30,10 @@ main/data/
 
 # Static files
 /staticfiles/
+
+# Local tooling
+.tmp/
+
+# Local Google OAuth credentials
+main/utils/ecmList/credentials.json
+main/utils/ecmList/token.json
