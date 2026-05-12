@@ -1,3 +1,361 @@
-from django.test import TestCase
+import json
+import sqlite3
+import tempfile
+from pathlib import Path
 
-# Create your tests here.
+from django.test import RequestFactory, SimpleTestCase, TestCase
+
+from main.models import (
+    DownloadReviewJob,
+    DownloadReviewJobStatus,
+    DownloadReviewProject,
+    DownloadReviewProjectReviewStatus,
+    DownloadReviewProjectStatus,
+    DownloadReviewRuleResult,
+    DownloadReviewRuleStatus,
+)
+from main.services.download_review_worker import run_worker_once
+from main.views.download_review_api import (
+    active_job,
+    job_detail,
+    job_project_results,
+    job_projects,
+    jobs,
+    projects,
+)
+
+
+class DownloadReviewProjectsApiTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.reference_db_path = Path(self.temp_dir.name) / "ecmlist.db"
+        self._create_reference_db()
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_projects_are_sorted_by_cert_date_desc_by_default(self):
+        data = self._get_projects()
+
+        self.assertEqual(data["pagination"]["total"], 3)
+        self.assertEqual(
+            [item["project_number"] for item in data["items"]],
+            ["TTA-26-00010", "TTA-26-00009", "TTA-26-00008"],
+        )
+        self.assertTrue(data["items"][0]["selectable"])
+        self.assertFalse(data["items"][1]["selectable"])
+
+    def test_projects_filter_uses_allowlisted_query_params(self):
+        data = self._get_projects({"company": "우리", "limit": "1"})
+
+        self.assertEqual(data["pagination"]["total"], 1)
+        self.assertEqual(data["items"][0]["company"], "우리데이터 주식회사")
+
+    def test_projects_reject_unknown_query_params(self):
+        response = self._request({"raw_sql": "SELECT * FROM ecm_list"})
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(data["success"])
+        self.assertEqual(data["error_code"], "invalid_query")
+
+    def _get_projects(self, params=None):
+        response = self._request(params or {})
+        self.assertEqual(response.status_code, 200)
+        return json.loads(response.content.decode("utf-8"))
+
+    def _request(self, params):
+        request = self.factory.get("/api/projects/", params)
+        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
+            return projects(request)
+
+    def _create_reference_db(self):
+        conn = sqlite3.connect(self.reference_db_path)
+        try:
+            conn.execute(
+                """
+                CREATE TABLE ecm_list (
+                    "프로젝트번호" TEXT,
+                    "인증일자" TEXT,
+                    "회사명" TEXT,
+                    "제품명" TEXT,
+                    "시험PL" TEXT,
+                    "점검결과" TEXT,
+                    "점검날짜" TEXT
+                )
+                """
+            )
+            conn.executemany(
+                """
+                INSERT INTO ecm_list (
+                    "프로젝트번호",
+                    "인증일자",
+                    "회사명",
+                    "제품명",
+                    "시험PL",
+                    "점검결과",
+                    "점검날짜"
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        "TTA-26-00009",
+                        "05/12",
+                        "우리데이터 주식회사",
+                        "우리데이터클리닝 V1.0",
+                        "박지훈",
+                        "완료",
+                        "2026.05.12 20:30",
+                    ),
+                    (
+                        "TTA-26-00010",
+                        "05/13",
+                        "에이치소프트",
+                        "SecureFlow 2.1",
+                        "김준호",
+                        "미점검",
+                        "",
+                    ),
+                    (
+                        "TTA-26-00008",
+                        "05/11",
+                        "넥스트랩",
+                        "NextLab QA Suite",
+                        "최유진",
+                        "수정 필요",
+                        "2026.05.11 21:00",
+                    ),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+
+class DownloadReviewJobsApiTests(TestCase):
+    databases = {"default", "workflow"}
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.reference_db_path = Path(self.temp_dir.name) / "ecmlist.db"
+        self._create_reference_db()
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_job_request_creates_job_and_projects(self):
+        response = self._post_job(["TTA-26-00010"])
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 201)
+        self.assertTrue(data["success"])
+        self.assertEqual(data["requested_project_count"], 1)
+        self.assertIn(data["status"], {"scheduled", "queued"})
+        self.assertEqual(DownloadReviewJob.objects.count(), 1)
+        self.assertEqual(DownloadReviewProject.objects.count(), 1)
+
+    def test_job_request_rejects_completed_projects(self):
+        response = self._post_job(["TTA-26-00009"])
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(data["success"])
+        self.assertEqual(data["error_code"], "completed_project_not_allowed")
+        self.assertEqual(data["details"]["completed_project_numbers"], ["TTA-26-00009"])
+        self.assertEqual(DownloadReviewJob.objects.count(), 0)
+
+    def test_job_request_rejects_active_duplicate_projects(self):
+        first_response = self._post_job(["TTA-26-00010"])
+        self.assertEqual(first_response.status_code, 201)
+
+        response = self._post_job(["TTA-26-00010"])
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(data["success"])
+        self.assertEqual(data["error_code"], "active_project_conflict")
+        self.assertEqual(data["details"]["conflicts"][0]["project_number"], "TTA-26-00010")
+        self.assertEqual(DownloadReviewJob.objects.count(), 1)
+
+    def test_active_job_returns_no_polling_when_empty(self):
+        response = active_job(self.factory.get("/api/jobs/active/"))
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNone(data["active_job"])
+        self.assertFalse(data["polling"]["should_poll"])
+        self.assertIsNone(data["polling"]["recommended_interval_ms"])
+        self.assertIsNone(data["polling"]["wake_at"])
+
+    def test_active_job_and_detail_endpoints_return_created_job(self):
+        created = json.loads(self._post_job(["TTA-26-00010"]).content.decode("utf-8"))
+
+        active_response = active_job(self.factory.get("/api/jobs/active/"))
+        active_data = json.loads(active_response.content.decode("utf-8"))
+        detail_response = job_detail(
+            self.factory.get(f"/api/jobs/{created['job_id']}/"),
+            created["job_id"],
+        )
+        detail_data = json.loads(detail_response.content.decode("utf-8"))
+
+        self.assertEqual(active_response.status_code, 200)
+        self.assertEqual(active_data["active_job"]["id"], created["job_id"])
+        if active_data["active_job"]["status"] == "scheduled":
+            self.assertFalse(active_data["polling"]["should_poll"])
+            self.assertIsNone(active_data["polling"]["recommended_interval_ms"])
+            self.assertIsNotNone(active_data["polling"]["wake_at"])
+        else:
+            self.assertTrue(active_data["polling"]["should_poll"])
+            self.assertEqual(active_data["polling"]["recommended_interval_ms"], 3000)
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_data["job"]["selected_project_numbers"], ["TTA-26-00010"])
+
+    def test_job_projects_and_results_endpoints_return_project_data(self):
+        created = json.loads(self._post_job(["TTA-26-00010"]).content.decode("utf-8"))
+        project = DownloadReviewProject.objects.get(project_number="TTA-26-00010")
+        project.status = DownloadReviewProjectStatus.INSPECTING
+        project.current_step = "zip 검사 중"
+        project.save(update_fields=["status", "current_step"])
+        DownloadReviewRuleResult.objects.create(
+            job_project=project,
+            rule_code="required-report",
+            rule_name="시험성적서 PDF 존재",
+            sequence=1,
+            file_path="TTA-26-00010/시험성적서.pdf",
+            file_name="시험성적서.pdf",
+            status=DownloadReviewRuleStatus.PASS,
+            expected="파일 존재",
+            actual="파일 존재",
+            message="정상 확인",
+        )
+
+        projects_response = job_projects(
+            self.factory.get(f"/api/jobs/{created['job_id']}/projects/"),
+            created["job_id"],
+        )
+        projects_data = json.loads(projects_response.content.decode("utf-8"))
+        results_response = job_project_results(
+            self.factory.get(f"/api/job-projects/{project.id}/results/"),
+            project.id,
+        )
+        results_data = json.loads(results_response.content.decode("utf-8"))
+
+        self.assertEqual(projects_response.status_code, 200)
+        self.assertEqual(projects_data["items"][0]["project_number"], "TTA-26-00010")
+        self.assertEqual(projects_data["items"][0]["status_label"], "검사중")
+        self.assertEqual(results_response.status_code, 200)
+        self.assertEqual(results_data["items"][0]["status_label"], "정상")
+
+    def test_dry_run_worker_completes_job_with_mixed_project_results(self):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.QUEUED,
+            requested_project_count=3,
+            selected_projects_json=["TTA-26-00010", "TTA-26-00011", "TTA-26-00012"],
+            progress_message="대기열 등록 완료",
+        )
+        DownloadReviewProject.objects.bulk_create(
+            [
+                DownloadReviewProject(
+                    job=job,
+                    project_number="TTA-26-00010",
+                    ecm_row_json={"project_number": "TTA-26-00010", "company": "에이치소프트"},
+                ),
+                DownloadReviewProject(
+                    job=job,
+                    project_number="TTA-26-00011",
+                    ecm_row_json={"project_number": "TTA-26-00011", "company": "브릿지웨어"},
+                ),
+                DownloadReviewProject(
+                    job=job,
+                    project_number="TTA-26-00012",
+                    ecm_row_json={"project_number": "TTA-26-00012", "company": "넥스트랩"},
+                ),
+            ]
+        )
+
+        result = run_worker_once(dry_run=True)
+        job.refresh_from_db()
+        projects = list(job.projects.order_by("project_number"))
+
+        self.assertTrue(result.processed)
+        self.assertEqual(result.status, "completed")
+        self.assertEqual(job.status, DownloadReviewJobStatus.COMPLETED)
+        self.assertEqual(job.completed_project_count, 2)
+        self.assertEqual(job.failed_project_count, 1)
+        self.assertEqual(projects[0].review_status, DownloadReviewProjectReviewStatus.COMPLETED)
+        self.assertEqual(projects[1].review_status, DownloadReviewProjectReviewStatus.NEEDS_FIX)
+        self.assertEqual(projects[2].review_status, DownloadReviewProjectReviewStatus.HELD)
+        self.assertEqual(DownloadReviewRuleResult.objects.filter(job_project=projects[0]).count(), 30)
+        self.assertEqual(
+            DownloadReviewRuleResult.objects.filter(
+                job_project=projects[1],
+                status=DownloadReviewRuleStatus.FAIL,
+            ).count(),
+            1,
+        )
+        self.assertEqual(DownloadReviewRuleResult.objects.filter(job_project=projects[2]).count(), 0)
+
+    def _post_job(self, project_numbers):
+        request = self.factory.post(
+            "/api/jobs/",
+            data=json.dumps({"project_numbers": project_numbers}),
+            content_type="application/json",
+            REMOTE_ADDR="127.0.0.1",
+        )
+        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
+            return jobs(request)
+
+    def _create_reference_db(self):
+        conn = sqlite3.connect(self.reference_db_path)
+        try:
+            conn.execute(
+                """
+                CREATE TABLE ecm_list (
+                    "프로젝트번호" TEXT,
+                    "인증일자" TEXT,
+                    "회사명" TEXT,
+                    "제품명" TEXT,
+                    "시험PL" TEXT,
+                    "점검결과" TEXT,
+                    "점검날짜" TEXT
+                )
+                """
+            )
+            conn.executemany(
+                """
+                INSERT INTO ecm_list (
+                    "프로젝트번호",
+                    "인증일자",
+                    "회사명",
+                    "제품명",
+                    "시험PL",
+                    "점검결과",
+                    "점검날짜"
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                [
+                    (
+                        "TTA-26-00009",
+                        "05/12",
+                        "우리데이터 주식회사",
+                        "우리데이터클리닝 V1.0",
+                        "박지훈",
+                        "완료",
+                        "2026.05.12 20:30",
+                    ),
+                    (
+                        "TTA-26-00010",
+                        "05/13",
+                        "에이치소프트",
+                        "SecureFlow 2.1",
+                        "김준호",
+                        "미점검",
+                        "",
+                    ),
+                ],
+            )
+            conn.commit()
+        finally:
+            conn.close()

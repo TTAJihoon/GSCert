@@ -1,238 +1,261 @@
+{% extends 'header.html' %}
 {% load static %}
-<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ECM 제출물 자동 검사</title>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
-  <link rel="stylesheet" href="{% static 'css/download_review.css' %}">
-  <link rel="icon" href="{% static 'images/favicon.ico' %}">
-  <script src="{% static 'scripts/download_review.js' %}" defer></script>
-</head>
-<body>
-  <div class="app-shell">
-    <header class="topbar">
+
+{% block title %}ECM 제출물 자동 점검{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% static 'css/download_review.css' %}">
+<script src="{% static 'scripts/download_review.js' %}" defer></script>
+{% endblock %}
+
+{% block content %}
+<main class="content-area download-review-page">
+  <section class="review-status-bar" aria-label="시스템 상태">
+    <div>
+      <p class="eyebrow">ECM download review</p>
+      <h1>ECM 제출물 자동 점검</h1>
+    </div>
+    <div class="status-strip">
+      <div class="status-item" id="workerState">
+        <span class="dot dot-ok"></span>
+        <div>
+          <span class="label">Worker</span>
+          <strong>실행 중</strong>
+        </div>
+      </div>
+      <div class="status-item" id="activeJobState">
+        <span class="dot dot-run"></span>
+        <div>
+          <span class="label">현재 작업</span>
+          <strong>진행 중</strong>
+        </div>
+      </div>
+      <div class="status-item">
+        <span class="dot dot-muted"></span>
+        <div>
+          <span class="label">마지막 갱신</span>
+          <strong id="lastUpdated">-</strong>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <nav class="tabs" aria-label="화면 탭">
+    <button class="tab-button active" type="button" data-tab="projects">
+      <i class="fa-solid fa-list-check"></i>
+      프로젝트 선택
+    </button>
+    <button class="tab-button" type="button" data-tab="progress">
+      <i class="fa-solid fa-bars-progress"></i>
+      진행상황
+    </button>
+    <button class="tab-button" type="button" data-tab="results">
+      <i class="fa-solid fa-table-list"></i>
+      결과 조회
+    </button>
+  </nav>
+
+  <section class="tab-panel active" id="tab-projects">
+    <div class="workspace-grid">
+      <section class="panel panel-main">
+        <div class="panel-header">
+          <div>
+            <h2>프로젝트 목록</h2>
+            <p>새로고침은 ecmlist.db의 ecm_list 테이블을 다시 조회합니다.</p>
+          </div>
+          <button class="secondary-button compact-action" type="button" id="refreshProjects">
+            <i class="fa-solid fa-rotate-right"></i>
+            DB 새로고침
+          </button>
+        </div>
+
+        <div class="filters" aria-label="프로젝트 필터">
+          <label>
+            <span>프로젝트번호</span>
+            <input id="filterProject" type="search" placeholder="TTA-26-00009">
+          </label>
+          <label>
+            <span>회사명</span>
+            <input id="filterCompany" type="search" placeholder="회사명 검색">
+          </label>
+          <label>
+            <span>제품명</span>
+            <input id="filterProduct" type="search" placeholder="제품명 검색">
+          </label>
+          <label>
+            <span>시험PL</span>
+            <select id="filterPl"></select>
+          </label>
+          <label>
+            <span>점검결과</span>
+            <select id="filterStatus"></select>
+          </label>
+        </div>
+
+        <div class="table-wrap">
+          <table class="data-table" aria-label="프로젝트 목록">
+            <thead>
+            <tr>
+              <th class="check-col"><input id="selectVisible" type="checkbox" aria-label="현재 목록 전체 선택"></th>
+              <th>프로젝트번호</th>
+              <th>인증일자</th>
+              <th>회사명</th>
+              <th>제품명</th>
+              <th>시험PL</th>
+              <th>점검결과</th>
+              <th>상세</th>
+            </tr>
+            </thead>
+            <tbody id="projectRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="panel side-panel">
+        <div class="panel-header compact">
+          <div>
+            <h2>선택 요약</h2>
+            <p id="selectionCount">0개 선택됨</p>
+          </div>
+        </div>
+        <div class="selection-list" id="selectionList"></div>
+        <div class="lock-message" id="lockMessage"></div>
+        <div class="button-row">
+          <button class="secondary-button" type="button" id="clearSelection">선택 초기화</button>
+          <button class="primary-button" type="button" id="requestJob">작업 요청</button>
+        </div>
+
+        <div class="detail-card" id="projectDetail">
+          <h3>프로젝트 정보</h3>
+          <p class="muted">목록에서 행을 선택하면 프로젝트 정보를 표시합니다.</p>
+        </div>
+      </aside>
+    </div>
+  </section>
+
+  <section class="tab-panel" id="tab-progress">
+    <div class="progress-toolbar">
+      <button class="secondary-button compact-action" type="button" id="toggleHeartbeat">heartbeat 지연 상태 보기</button>
+      <button class="secondary-button compact-action" type="button" id="toggleEmptyJob">작업 없음 상태 보기</button>
+    </div>
+
+    <div id="activeProgressView">
+      <div class="summary-grid">
+        <article class="metric-card">
+          <span>작업 ID</span>
+          <strong id="jobId">-</strong>
+        </article>
+        <article class="metric-card">
+          <span>진행률</span>
+          <strong id="jobProgress">-</strong>
+        </article>
+        <article class="metric-card">
+          <span>현재 프로젝트</span>
+          <strong id="currentProject">-</strong>
+        </article>
+        <article class="metric-card warning">
+          <span>실패</span>
+          <strong id="failedCount">-</strong>
+        </article>
+      </div>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>현재 진행상황</h2>
+            <p id="currentStep">-</p>
+          </div>
+          <span class="subtle-note">재시도 정책: 프로젝트당 최대 2회</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+        <div class="worker-box" id="workerBox"></div>
+        <div class="table-wrap">
+          <table class="data-table" aria-label="프로젝트별 진행상황">
+            <thead>
+            <tr>
+              <th>순번</th>
+              <th>프로젝트번호</th>
+              <th>회사명</th>
+              <th>제품명</th>
+              <th>상태</th>
+              <th>현재 단계</th>
+              <th>재시도</th>
+              <th>zip 파일명</th>
+              <th>오류</th>
+            </tr>
+            </thead>
+            <tbody id="progressRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel empty-job-panel" id="emptyProgressView" hidden>
+      <i class="fa-solid fa-circle-info"></i>
+      <h2>진행 중인 작업이 없습니다.</h2>
+      <p>이 상태에서는 최근 완료 작업으로 이동하거나 프로젝트 선택 탭에서 새 작업을 요청하도록 안내합니다.</p>
+    </section>
+  </section>
+
+  <section class="tab-panel" id="tab-results">
+    <div class="results-grid">
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>완료 작업</h2>
+            <p>작업 요청 단위로 성공/실패 결과를 확인합니다.</p>
+          </div>
+        </div>
+        <div class="job-list" id="jobList"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <h2>작업 상세 결과</h2>
+            <p id="resultCaption">작업을 선택하면 프로젝트별 결과를 표시합니다.</p>
+          </div>
+          <div class="segmented" aria-label="결과 필터">
+            <button class="segment active" type="button" data-result-filter="all">전체</button>
+            <button class="segment" type="button" data-result-filter="success">성공</button>
+            <button class="segment" type="button" data-result-filter="failed">실패</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table class="data-table" aria-label="작업 상세 결과">
+            <thead>
+            <tr>
+              <th>프로젝트번호</th>
+              <th>회사명</th>
+              <th>제품명</th>
+              <th>상태</th>
+              <th>zip 파일명</th>
+              <th>실패 단계</th>
+              <th>오류</th>
+            </tr>
+            </thead>
+            <tbody id="resultRows"></tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </section>
+</main>
+
+<div class="modal-backdrop" id="detailModal" hidden>
+  <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-header">
       <div>
-        <p class="eyebrow">Mock review</p>
-        <h1>ECM 제출물 자동 검사</h1>
+        <p class="eyebrow" id="modalEyebrow">상세</p>
+        <h2 id="modalTitle">상세 정보</h2>
       </div>
-      <div class="status-strip" aria-label="시스템 상태">
-        <div class="status-item" id="workerState">
-          <span class="dot dot-ok"></span>
-          <div>
-            <span class="label">Worker</span>
-            <strong>실행 중</strong>
-          </div>
-        </div>
-        <div class="status-item" id="activeJobState">
-          <span class="dot dot-run"></span>
-          <div>
-            <span class="label">현재 작업</span>
-            <strong>진행 중</strong>
-          </div>
-        </div>
-        <div class="status-item">
-          <span class="dot dot-muted"></span>
-          <div>
-            <span class="label">마지막 갱신</span>
-            <strong id="lastUpdated">-</strong>
-          </div>
-        </div>
-      </div>
-    </header>
-
-    <main>
-      <nav class="tabs" aria-label="화면 탭">
-        <button class="tab-button active" type="button" data-tab="projects">
-          <i class="fa-solid fa-list-check"></i>
-          프로젝트 선택
-        </button>
-        <button class="tab-button" type="button" data-tab="progress">
-          <i class="fa-solid fa-bars-progress"></i>
-          진행상황
-        </button>
-        <button class="tab-button" type="button" data-tab="results">
-          <i class="fa-solid fa-table-list"></i>
-          결과 조회
-        </button>
-      </nav>
-
-      <section class="tab-panel active" id="tab-projects">
-        <div class="workspace-grid">
-          <section class="panel panel-main">
-            <div class="panel-header">
-              <div>
-                <h2>프로젝트 목록</h2>
-                <p>reference.db의 ecm 테이블을 연결하기 전 mock 데이터로 표시합니다.</p>
-              </div>
-              <div class="view-actions">
-                <button class="icon-button" type="button" id="clearFilters" title="필터 초기화">
-                  <i class="fa-solid fa-rotate-left"></i>
-                </button>
-              </div>
-            </div>
-
-            <div class="filters" aria-label="프로젝트 필터">
-              <label>
-                <span>프로젝트번호</span>
-                <input id="filterProject" type="search" placeholder="TTA-26-00009">
-              </label>
-              <label>
-                <span>회사명</span>
-                <input id="filterCompany" type="search" placeholder="회사명 검색">
-              </label>
-              <label>
-                <span>제품명</span>
-                <input id="filterProduct" type="search" placeholder="제품명 검색">
-              </label>
-              <label>
-                <span>시험PL</span>
-                <select id="filterPl"></select>
-              </label>
-              <label>
-                <span>점검결과</span>
-                <select id="filterStatus"></select>
-              </label>
-            </div>
-
-            <div class="table-wrap">
-              <table class="data-table" aria-label="프로젝트 목록">
-                <thead>
-                <tr>
-                  <th class="check-col"><input id="selectVisible" type="checkbox" aria-label="현재 목록 전체 선택"></th>
-                  <th>프로젝트번호</th>
-                  <th>인증일자</th>
-                  <th>회사명</th>
-                  <th>제품명</th>
-                  <th>시험PL</th>
-                  <th>점검결과</th>
-                </tr>
-                </thead>
-                <tbody id="projectRows"></tbody>
-              </table>
-            </div>
-          </section>
-
-          <aside class="panel side-panel">
-            <div class="panel-header compact">
-              <div>
-                <h2>선택 요약</h2>
-                <p id="selectionCount">0개 선택됨</p>
-              </div>
-            </div>
-            <div class="selection-list" id="selectionList"></div>
-            <div class="lock-message" id="lockMessage"></div>
-            <div class="button-row">
-              <button class="secondary-button" type="button" id="clearSelection">선택 초기화</button>
-              <button class="primary-button" type="button" id="requestJob">작업 요청</button>
-            </div>
-
-            <div class="detail-card" id="projectDetail">
-              <h3>프로젝트 상세</h3>
-              <p class="muted">목록에서 행을 선택하면 ecm 컬럼 요약을 표시합니다.</p>
-            </div>
-          </aside>
-        </div>
-      </section>
-
-      <section class="tab-panel" id="tab-progress">
-        <div class="summary-grid">
-          <article class="metric-card">
-            <span>작업 ID</span>
-            <strong id="jobId">-</strong>
-          </article>
-          <article class="metric-card">
-            <span>진행률</span>
-            <strong id="jobProgress">-</strong>
-          </article>
-          <article class="metric-card">
-            <span>현재 프로젝트</span>
-            <strong id="currentProject">-</strong>
-          </article>
-          <article class="metric-card warning">
-            <span>실패</span>
-            <strong id="failedCount">-</strong>
-          </article>
-        </div>
-
-        <section class="panel">
-          <div class="panel-header">
-            <div>
-              <h2>현재 진행상황</h2>
-              <p id="currentStep">-</p>
-            </div>
-            <button class="secondary-button" type="button" id="toggleHeartbeat">heartbeat 지연 보기</button>
-          </div>
-          <div class="progress-track">
-            <div class="progress-bar" id="progressBar"></div>
-          </div>
-          <div class="worker-box" id="workerBox"></div>
-          <div class="table-wrap">
-            <table class="data-table" aria-label="프로젝트별 진행상황">
-              <thead>
-              <tr>
-                <th>순번</th>
-                <th>프로젝트번호</th>
-                <th>회사명</th>
-                <th>제품명</th>
-                <th>상태</th>
-                <th>현재 단계</th>
-                <th>재시도</th>
-                <th>zip 파일명</th>
-                <th>오류 메시지</th>
-              </tr>
-              </thead>
-              <tbody id="progressRows"></tbody>
-            </table>
-          </div>
-        </section>
-      </section>
-
-      <section class="tab-panel" id="tab-results">
-        <div class="results-grid">
-          <section class="panel">
-            <div class="panel-header">
-              <div>
-                <h2>완료 작업</h2>
-                <p>완료된 작업 목록과 성공/실패 수를 확인합니다.</p>
-              </div>
-            </div>
-            <div class="job-list" id="jobList"></div>
-          </section>
-
-          <section class="panel">
-            <div class="panel-header">
-              <div>
-                <h2>작업 상세 결과</h2>
-                <p id="resultCaption">작업을 선택하면 프로젝트별 결과를 표시합니다.</p>
-              </div>
-              <div class="segmented" aria-label="결과 필터">
-                <button class="segment active" type="button" data-result-filter="all">전체</button>
-                <button class="segment" type="button" data-result-filter="success">성공</button>
-                <button class="segment" type="button" data-result-filter="failed">실패</button>
-              </div>
-            </div>
-            <div class="table-wrap">
-              <table class="data-table" aria-label="작업 상세 결과">
-                <thead>
-                <tr>
-                  <th>프로젝트번호</th>
-                  <th>회사명</th>
-                  <th>제품명</th>
-                  <th>상태</th>
-                  <th>zip 파일명</th>
-                  <th>실패 단계</th>
-                  <th>오류 메시지</th>
-                </tr>
-                </thead>
-                <tbody id="resultRows"></tbody>
-              </table>
-            </div>
-          </section>
-        </div>
-      </section>
-    </main>
-  </div>
-</body>
-</html>
+      <button class="icon-button" type="button" id="closeModal" aria-label="닫기">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </section>
+</div>
+{% endblock %}

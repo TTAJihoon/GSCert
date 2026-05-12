@@ -9,6 +9,7 @@ HTTP 요청을 처리하는 Django view 함수와 문서 파싱, GPT 연동 등 
 | 파일 | 설명 |
 | --- | --- |
 | `init.py` | 주요 HTML 템플릿을 렌더링하는 기본 view 함수들을 모아 둔다. `/download-review/` 목업 화면도 이 파일에서 렌더링한다. |
+| `download_review_api.py` | download-review 화면에서 사용할 프로젝트 목록 API와 이후 작업/결과 API를 보관한다. |
 
 ## 하위 폴더
 

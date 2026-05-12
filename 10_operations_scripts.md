@@ -98,6 +98,17 @@ $ArgumentList = @(
 )
 ```
 
+초기 검증 단계에서는 아래처럼 dry-run으로 실행한다.
+
+```powershell
+$ArgumentList = @(
+  "manage.py",
+  "run_download_worker",
+  "--once",
+  "--dry-run"
+)
+```
+
 Start-Process 예:
 
 ```powershell

@@ -4,11 +4,11 @@
 
 프로젝트 목록은 별도 SQLite 파일에서 관리한다.
 
-- 위치: `main/data/reference.db`
-- 테이블명: `ecm`
+- 위치: `main/data/ecmlist.db`
+- 테이블명: `ecm_list`
 - 컬럼 타입: 모두 문자열
 
-## ecm 테이블 컬럼
+## ecm_list 테이블 컬럼
 
 - 번호
 - 인증일자
@@ -46,7 +46,7 @@
 
 확정 방향:
 
-- `reference.db`: 프로젝트 기준 데이터
+- `ecmlist.db`: 프로젝트 기준 데이터
 - `workflow.db`: 작업, 락, 다운로드, 검사 결과 데이터
 - Django 인증/관리 기본 테이블은 기존 `db.sqlite3` 사용 가능
 

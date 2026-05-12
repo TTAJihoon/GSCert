@@ -19,31 +19,33 @@ codex-job-runner-persistence
 - 자동화 전체 흐름 설계 문서화
 - DB, worker, 운영 스크립트, UI/API 설계 문서화
 - mock 데이터 기반 `/download-review/` UI 구현
+- `ecmlist.db`/`ecm_list` 기준 프로젝트 목록 API 연동
+- `workflow.db` 작업/락/상태 저장 모델과 dry-run worker command 구현
+- 기존 ECM WebSocket 자동화와 download-review worker 사이의 공통 lock 구현
 - 폴더별 `readme.md` 작성 정책 정리
 - dependency 관리 문서 추가
 
 아직 실제 구현 전/검증 전:
 
-- `reference.db` 실제 연동
-- `workflow.db` 작업/락/상태 저장
-- 별도 worker 구현
+- 실제 ECM 다운로드 worker 구현
 - 웹페이지1 실제 자동화
 - Windows 에이전트 팝업 자동화
 - zip 다운로드 확인
 - zip 내부 검사 규칙
+- 점검 결과를 `ecmlist.db`의 점검 컬럼에 반영하는 write-back 로직
 
 ## 우선순위 높은 미확정 항목
 
 ### 1. UI 목업 검토
 
-현재 `/download-review/`는 mock 데이터 기반 화면이다.
+현재 `/download-review/`는 `ecmlist.db` 프로젝트 목록과 작업 요청/진행 API를 사용하고, 결과 조회 탭은 아직 mock 데이터 기반이다.
 
 확정 필요:
 
 - 프로젝트 목록 컬럼이 충분한지
 - 검색/필터 조건이 적절한지
 - 선택 요약 위치와 표시 방식이 편한지
-- active job으로 작업 요청이 막히는 상태가 이해되는지
+- 예약/대기/진행 중에도 작업 요청이 등록되는 흐름이 이해되는지
 - 진행상황 메시지가 실제 업무자가 이해하기 쉬운지
 - 결과 조회 화면에서 실패 프로젝트를 찾기 쉬운지
 - 화면 밀도, 크기, 색상, 버튼 위치가 적절한지
@@ -53,18 +55,23 @@ codex-job-runner-persistence
 - `13_ui_mockup_design.md`
 - `08_ui_api_design.md`
 
-### 2. reference.db 생성 방식
+### 2. ecmlist.db 생성 방식
 
 프로젝트 기준 DB는 사용자가 따로 생성한다.
 
-확정 필요:
+현재 반영:
 
-- `main/data/reference.db` 파일 생성 주체
-- `ecm` 테이블 생성 SQL
-- 모든 컬럼 타입을 TEXT로 둘지 최종 확인
-- 컬럼명에 괄호와 슬래시가 포함된 항목을 그대로 사용할지 확인
-- 프로젝트 목록 갱신 주기
-- 기존 CSV/Excel에서 reference.db로 변환하는 도구가 필요한지
+- 기준 DB 위치는 `main/data/ecmlist.db`다.
+- 기준 테이블은 `ecm_list`다.
+- `번호`부터 `시험PL`까지는 기준정보로 보고 수정하지 않는다.
+- 점검 결과에 따라 `점검결과`부터 `홍보이미지`까지의 점검 컬럼만 수정 대상으로 본다.
+- `main/utils/ecmList/sync_sheets.py`를 Google Sheets에서 기준 프로젝트를 추가하는 수동 실행 유틸로 둔다.
+- `credentials.json`, `token.json`은 로컬 인증 파일이므로 Git에 올리지 않는다.
+
+추가 확정 필요:
+
+- 프로젝트 목록 갱신을 수동 실행만 유지할지, 추후 관리자 버튼/스케줄러로 연결할지
+- 점검 완료 후 `ecmlist.db` write-back 시점을 프로젝트별 즉시 반영으로 할지, job 완료 후 일괄 반영으로 할지
 
 관련 문서:
 
@@ -73,15 +80,19 @@ codex-job-runner-persistence
 
 ### 3. workflow.db 세부 스키마
 
-실행 이력 DB는 `reference.db`와 분리한다.
+실행 이력 DB는 `ecmlist.db`와 분리한다.
 
-확정 필요:
+현재 반영:
 
-- 파일명: `workflow.db`로 확정할지
-- Django ORM 모델로 관리할지, 별도 sqlite3 접근 계층으로 관리할지
-- 작업/프로젝트/락/heartbeat 테이블의 최종 컬럼
-- 상태값 이름 확정
+- 파일명은 `main/data/workflow.db`로 확정했다.
+- Django ORM 모델과 별도 DB alias 방식으로 관리한다.
+- download-review 전용 모델은 `main` 앱에 두고, database router로 `workflow.db`에만 저장한다.
+- 작업/프로젝트/점검규칙/점검결과/로그/락 테이블의 1차 스키마를 구현했다.
+
+추가 검증 필요:
+
 - stale running 작업 복구 기준
+- 실제 worker 구현 중 필요한 컬럼 보강 여부
 
 관련 문서:
 
@@ -91,7 +102,7 @@ codex-job-runner-persistence
 
 ### 4. worker 운영 방식
 
-별도 worker 프로세스 방식은 확정했다.
+별도 worker 프로세스 방식은 확정했고, `run_download_worker` command 골격과 dry-run을 구현했다.
 
 확정/검증 필요:
 
@@ -257,12 +268,11 @@ DestinyECMAgent(32비트)
 
 ## 다음 작업 후보
 
-1. `/download-review/` UI 목업 검토 의견 반영
-2. `reference.db` 샘플 연결 없이도 UI mock 개선
+1. 결과 조회 탭 API 연동
+2. 점검 결과를 `ecmlist.db`에 반영하는 write-back 서비스 구현
 3. `requirements.txt` 정리
-4. `reference.db` 조회 계층 설계
-5. `workflow.db` 스키마 확정
-6. worker dry-run 구현
+4. 실제 ECM 다운로드 worker 구현
+5. 운영 start_worker.ps1/stop_worker.ps1 구현
 
 ## 대화 재개 시 추천 질문
 

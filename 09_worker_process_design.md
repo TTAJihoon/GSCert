@@ -61,8 +61,16 @@ C:\GSCert\venv\Scripts\python.exe manage.py run_download_worker
 예상 파일 위치:
 
 ```text
-playwright_job/management/commands/run_download_worker.py
+main/management/commands/run_download_worker.py
 ```
+
+초기 구현은 dry-run을 먼저 제공한다.
+
+```powershell
+python manage.py run_download_worker --once --dry-run
+```
+
+dry-run은 ECM 접속, Playwright, zip 다운로드 없이 `workflow.db` 상태 전이와 점검결과 저장만 검증한다.
 
 ## worker 시작 스크립트
 
