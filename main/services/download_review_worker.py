@@ -19,6 +19,7 @@ from main.models import (
     DownloadReviewRuleResult,
     DownloadReviewRuleStatus,
 )
+from main.services.reference_db import ARTIFACT_REVIEW_COLUMNS, write_project_review_result
 
 
 DRY_RUN_RULES = [
@@ -265,6 +266,7 @@ def _write_dry_run_rule_results(project, *, needs_fix):
 
 
 def _finish_project_as_completed(project, *, needs_fix):
+    completed_at = timezone.now()
     project.status = DownloadReviewProjectStatus.COMPLETED
     project.review_status = (
         DownloadReviewProjectReviewStatus.NEEDS_FIX
@@ -276,7 +278,7 @@ def _finish_project_as_completed(project, *, needs_fix):
     project.error_detail = ""
     project.zip_file_name = f"{project.project_number}_dry_run.zip"
     project.download_dir = f"C:/GSCert/downloads/{project.project_number}"
-    project.completed_at = timezone.now()
+    project.completed_at = completed_at
     project.save(
         update_fields=[
             "status",
@@ -290,9 +292,16 @@ def _finish_project_as_completed(project, *, needs_fix):
             "updated_at",
         ]
     )
+    write_project_review_result(
+        project.project_number,
+        "수정 필요" if needs_fix else "완료",
+        artifact_results=_dry_run_artifact_results(needs_fix=needs_fix),
+        inspected_at=completed_at,
+    )
 
 
 def _finish_project_as_failed(project):
+    completed_at = timezone.now()
     project.status = DownloadReviewProjectStatus.FAILED
     project.review_status = DownloadReviewProjectReviewStatus.HELD
     project.current_step = "dry-run 전송현황 대기"
@@ -301,7 +310,7 @@ def _finish_project_as_failed(project):
         "전송현황 창은 종료되었지만 프로젝트 zip 파일이 확인되지 않은 상황을 가정한 샘플 오류입니다."
     )
     project.zip_file_name = ""
-    project.completed_at = timezone.now()
+    project.completed_at = completed_at
     project.save(
         update_fields=[
             "status",
@@ -313,6 +322,12 @@ def _finish_project_as_failed(project):
             "completed_at",
             "updated_at",
         ]
+    )
+    write_project_review_result(
+        project.project_number,
+        "보류",
+        artifact_results=_dry_run_artifact_results(held=True),
+        inspected_at=completed_at,
     )
     DownloadReviewLog.objects.create(
         job=project.job,
@@ -358,6 +373,16 @@ def _touch_job(job, message):
 def _maybe_sleep(seconds):
     if seconds:
         time.sleep(seconds)
+
+
+def _dry_run_artifact_results(*, needs_fix=False, held=False):
+    if held:
+        return {column: "X" for column in ARTIFACT_REVIEW_COLUMNS}
+
+    results = {column: "정상" for column in ARTIFACT_REVIEW_COLUMNS}
+    if needs_fix:
+        results["시험성적서(PDF)"] = "부적합"
+    return results
 
 
 def _worker_owner():

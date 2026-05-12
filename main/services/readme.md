@@ -8,7 +8,7 @@ view에서 직접 처리하기에는 커지는 DB 조회, 검증, 작업 생성 
 
 | 파일 | 설명 |
 | --- | --- |
-| `reference_db.py` | `main/data/ecmlist.db`의 `ecm_list` 테이블을 read-only로 조회하고 `/api/projects/` 응답 형태로 정규화한다. |
+| `reference_db.py` | `main/data/ecmlist.db`의 `ecm_list` 테이블을 조회하고, allowlist 기반으로 점검 결과 컬럼만 갱신한다. |
 | `download_review_jobs.py` | 작업 요청 JSON 검증, 완료/중복 프로젝트 차단, 예약/대기열 상태 결정, `workflow.db` 작업 생성과 polling API 응답 직렬화를 담당한다. |
 | `download_review_worker.py` | worker가 시작 가능한 작업을 claim하고 dry-run 상태 전이와 샘플 점검결과 저장을 수행한다. |
 
@@ -16,3 +16,5 @@ view에서 직접 처리하기에는 커지는 DB 조회, 검증, 작업 생성 
 
 - 외부 입력으로 SQL 식별자나 정렬식을 직접 만들지 말고 allowlist를 사용한다.
 - `ecmlist.db`는 자동 생성하지 않는다. 파일이 없으면 오류로 처리한다.
+- `번호`부터 `시험PL`까지의 기준정보 컬럼은 갱신하지 않는다.
+- write-back은 `점검결과`와 산출물 점검 컬럼만 허용한다.

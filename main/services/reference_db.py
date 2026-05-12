@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from django.conf import settings
+from django.utils import timezone
 
 
 DEFAULT_ECM_TABLE = "ecm_list"
@@ -18,6 +19,27 @@ REQUIRED_COLUMNS = (
 OPTIONAL_COLUMNS = (
     "점검날짜",
 )
+ARTIFACT_REVIEW_COLUMNS = (
+    "계약서",
+    "합의서(PDF)",
+    "수수료산정표",
+    "시험환경구성도",
+    "품질특성별제품정보기재사항",
+    "기능리스트",
+    "시험계획서(PDF)",
+    "점검표(PDF)",
+    "최초/최종형상RawData",
+    "테스트케이스",
+    "결함리포트",
+    "1차/2차/성능/보안RawData",
+    "시험성적서(PDF)",
+    "시험기록서",
+    "품질평가보고서",
+    "품질검사표",
+    "SW저작권확인서",
+    "홍보이미지",
+)
+MUTABLE_REVIEW_COLUMNS = ("점검결과", *ARTIFACT_REVIEW_COLUMNS)
 QUERY_PARAM_NAMES = {
     "project_number",
     "company",
@@ -120,6 +142,48 @@ def get_projects_by_numbers(project_numbers):
     return [rows_by_number.get(number) for number in project_numbers]
 
 
+def write_project_review_result(project_number, review, artifact_results=None, inspected_at=None):
+    number = _clean(project_number)
+    if not number:
+        raise ReferenceQueryError("프로젝트번호가 필요합니다.")
+
+    review_value = _clean(review)
+    if not review_value:
+        raise ReferenceQueryError("점검결과 값이 필요합니다.")
+
+    artifact_results = artifact_results or {}
+    if not isinstance(artifact_results, dict):
+        raise ReferenceQueryError("artifact_results는 객체여야 합니다.")
+
+    unknown_columns = sorted(set(artifact_results) - set(ARTIFACT_REVIEW_COLUMNS))
+    if unknown_columns:
+        raise ReferenceQueryError(
+            "수정할 수 없는 점검 컬럼이 포함되어 있습니다: " + ", ".join(unknown_columns)
+        )
+
+    db_path = Path(getattr(settings, "REFERENCE_DB_PATH"))
+    if not db_path.exists():
+        raise ReferenceDbMissing("기준 DB 파일이 없습니다.")
+
+    table_name = _table_name()
+    try:
+        with closing(_connect_writable(db_path)) as conn:
+            columns = _get_columns(conn, table_name)
+            _validate_write_columns(columns, artifact_results)
+            updates = _build_review_updates(review_value, artifact_results, columns, inspected_at)
+            updated = _update_project_review_row(conn, table_name, number, updates)
+    except ReferenceDbError:
+        raise
+    except sqlite3.Error as exc:
+        raise ReferenceDbError("기준 DB 갱신 중 오류가 발생했습니다.") from exc
+
+    return {
+        "success": True,
+        "project_number": number,
+        "updated_columns": updated,
+    }
+
+
 def parse_project_query(query_params):
     unknown = set(query_params.keys()) - QUERY_PARAM_NAMES
     if unknown:
@@ -161,6 +225,16 @@ def _connect_readonly(db_path):
     return conn
 
 
+def _connect_writable(db_path):
+    timeout = getattr(settings, "REFERENCE_DB_WRITE_TIMEOUT_SECONDS", 10)
+    busy_timeout_ms = getattr(settings, "REFERENCE_DB_BUSY_TIMEOUT_MS", 10000)
+    uri = f"{db_path.resolve().as_uri()}?mode=rw"
+    conn = sqlite3.connect(uri, uri=True, timeout=timeout)
+    conn.row_factory = sqlite3.Row
+    conn.execute(f"PRAGMA busy_timeout = {int(busy_timeout_ms)}")
+    return conn
+
+
 def _table_name():
     return getattr(settings, "REFERENCE_DB_TABLE", DEFAULT_ECM_TABLE)
 
@@ -181,6 +255,18 @@ def _validate_columns(columns):
     if missing:
         raise ReferenceDbSchemaError(
             "기준 DB 테이블에 필수 컬럼이 없습니다: " + ", ".join(missing)
+        )
+
+
+def _validate_write_columns(columns, artifact_results):
+    missing = [
+        column
+        for column in ("프로젝트번호", "점검결과", *artifact_results.keys())
+        if column not in columns
+    ]
+    if missing:
+        raise ReferenceDbSchemaError(
+            "기준 DB 테이블에 갱신할 점검 컬럼이 없습니다: " + ", ".join(missing)
         )
 
 
@@ -264,6 +350,33 @@ def _fetch_projects_by_numbers(conn, table_name, columns, project_numbers):
     }
 
 
+def _build_review_updates(review, artifact_results, columns, inspected_at):
+    updates = {"점검결과": review}
+    for column in ARTIFACT_REVIEW_COLUMNS:
+        if column in artifact_results:
+            updates[column] = _clean(artifact_results[column])
+    if inspected_at and "점검날짜" in columns:
+        updates["점검날짜"] = _format_inspection_date(inspected_at)
+    return updates
+
+
+def _update_project_review_row(conn, table_name, project_number, updates):
+    set_sql = ", ".join(f"{_quote_identifier(column)} = ?" for column in updates)
+    sql = (
+        f"UPDATE {_quote_identifier(table_name)}"
+        f" SET {set_sql}"
+        f" WHERE {_quote_identifier('프로젝트번호')} = ?"
+    )
+    params = [*updates.values(), project_number]
+    with conn:
+        cursor = conn.execute(sql, params)
+        if cursor.rowcount != 1:
+            raise ReferenceDbError(
+                "ecmlist.db 프로젝트번호가 고유하지 않거나 찾을 수 없습니다."
+            )
+    return list(updates.keys())
+
+
 def _serialize_project(row, columns):
     review = _row_value(row, "점검결과")
     return {
@@ -326,6 +439,14 @@ def _row_value(row, column_name):
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _format_inspection_date(value):
+    if hasattr(value, "astimezone"):
+        value = timezone.localtime(value)
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y.%m.%d %H:%M")
+    return str(value)
 
 
 def _quote_identifier(identifier):

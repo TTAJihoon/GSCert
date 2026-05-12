@@ -22,6 +22,7 @@ codex-job-runner-persistence
 - `ecmlist.db`/`ecm_list` 기준 프로젝트 목록 API 연동
 - `workflow.db` 작업/락/상태 저장 모델과 dry-run worker command 구현
 - 기존 ECM WebSocket 자동화와 download-review worker 사이의 공통 lock 구현
+- 점검 결과를 `ecmlist.db`의 점검 컬럼에 반영하는 write-back 서비스 구현
 - 폴더별 `readme.md` 작성 정책 정리
 - dependency 관리 문서 추가
 
@@ -32,7 +33,7 @@ codex-job-runner-persistence
 - Windows 에이전트 팝업 자동화
 - zip 다운로드 확인
 - zip 내부 검사 규칙
-- 점검 결과를 `ecmlist.db`의 점검 컬럼에 반영하는 write-back 로직
+- 실제 규칙 결과와 `ecmlist.db` 산출물 컬럼 간 매핑
 
 ## 우선순위 높은 미확정 항목
 
@@ -71,7 +72,7 @@ codex-job-runner-persistence
 추가 확정 필요:
 
 - 프로젝트 목록 갱신을 수동 실행만 유지할지, 추후 관리자 버튼/스케줄러로 연결할지
-- 점검 완료 후 `ecmlist.db` write-back 시점을 프로젝트별 즉시 반영으로 할지, job 완료 후 일괄 반영으로 할지
+- 실제 규칙 구현 시 각 점검규칙을 어느 산출물 컬럼에 매핑할지
 
 관련 문서:
 

@@ -14,6 +14,13 @@ from main.models import (
     DownloadReviewRuleResult,
     DownloadReviewRuleStatus,
 )
+from main.services.reference_db import (
+    ARTIFACT_REVIEW_COLUMNS,
+    ReferenceDbError,
+    ReferenceDbMissing,
+    ReferenceQueryError,
+    write_project_review_result,
+)
 from main.services.download_review_worker import run_worker_once
 from main.views.download_review_api import (
     active_job,
@@ -275,27 +282,131 @@ class DownloadReviewJobsApiTests(TestCase):
             ]
         )
 
-        result = run_worker_once(dry_run=True)
+        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
+            result = run_worker_once(dry_run=True)
         job.refresh_from_db()
-        projects = list(job.projects.order_by("project_number"))
+        job_projects = list(job.projects.order_by("project_number"))
+        reference_rows = self._reference_rows(
+            ["TTA-26-00010", "TTA-26-00011", "TTA-26-00012"],
+            ["점검결과", "점검날짜", "회사명", "계약서", "시험성적서(PDF)"],
+        )
+        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
+            projects_response = projects(
+                self.factory.get("/api/projects/", {"project_number": "TTA-26-00010"}),
+            )
+        projects_data = json.loads(projects_response.content.decode("utf-8"))
 
         self.assertTrue(result.processed)
         self.assertEqual(result.status, "completed")
         self.assertEqual(job.status, DownloadReviewJobStatus.COMPLETED)
         self.assertEqual(job.completed_project_count, 2)
         self.assertEqual(job.failed_project_count, 1)
-        self.assertEqual(projects[0].review_status, DownloadReviewProjectReviewStatus.COMPLETED)
-        self.assertEqual(projects[1].review_status, DownloadReviewProjectReviewStatus.NEEDS_FIX)
-        self.assertEqual(projects[2].review_status, DownloadReviewProjectReviewStatus.HELD)
-        self.assertEqual(DownloadReviewRuleResult.objects.filter(job_project=projects[0]).count(), 30)
+        self.assertEqual(job_projects[0].review_status, DownloadReviewProjectReviewStatus.COMPLETED)
+        self.assertEqual(job_projects[1].review_status, DownloadReviewProjectReviewStatus.NEEDS_FIX)
+        self.assertEqual(job_projects[2].review_status, DownloadReviewProjectReviewStatus.HELD)
+        self.assertEqual(DownloadReviewRuleResult.objects.filter(job_project=job_projects[0]).count(), 30)
         self.assertEqual(
             DownloadReviewRuleResult.objects.filter(
-                job_project=projects[1],
+                job_project=job_projects[1],
                 status=DownloadReviewRuleStatus.FAIL,
             ).count(),
             1,
         )
-        self.assertEqual(DownloadReviewRuleResult.objects.filter(job_project=projects[2]).count(), 0)
+        self.assertEqual(DownloadReviewRuleResult.objects.filter(job_project=job_projects[2]).count(), 0)
+        self.assertEqual(reference_rows["TTA-26-00010"]["점검결과"], "완료")
+        self.assertEqual(reference_rows["TTA-26-00010"]["회사명"], "에이치소프트")
+        self.assertEqual(reference_rows["TTA-26-00010"]["계약서"], "정상")
+        self.assertEqual(reference_rows["TTA-26-00010"]["시험성적서(PDF)"], "정상")
+        self.assertNotEqual(reference_rows["TTA-26-00010"]["점검날짜"], "")
+        self.assertFalse(projects_data["items"][0]["selectable"])
+        self.assertEqual(reference_rows["TTA-26-00011"]["점검결과"], "수정 필요")
+        self.assertEqual(reference_rows["TTA-26-00011"]["시험성적서(PDF)"], "부적합")
+        self.assertEqual(reference_rows["TTA-26-00012"]["점검결과"], "보류")
+        self.assertEqual(reference_rows["TTA-26-00012"]["계약서"], "X")
+
+    def test_write_back_rejects_non_review_columns(self):
+        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
+            with self.assertRaises(ReferenceQueryError):
+                write_project_review_result(
+                    "TTA-26-00010",
+                    "완료",
+                    artifact_results={"회사명": "변조된 회사명"},
+                )
+
+        row = self._reference_rows(["TTA-26-00010"], ["점검결과", "회사명"])["TTA-26-00010"]
+        self.assertEqual(row["점검결과"], "미점검")
+        self.assertEqual(row["회사명"], "에이치소프트")
+
+    def test_write_back_rejects_missing_db_without_creating_file(self):
+        missing_db_path = Path(self.temp_dir.name) / "missing.db"
+
+        with self.settings(REFERENCE_DB_PATH=missing_db_path, REFERENCE_DB_TABLE="ecm_list"):
+            with self.assertRaises(ReferenceDbMissing):
+                write_project_review_result("TTA-26-00010", "완료")
+
+        self.assertFalse(missing_db_path.exists())
+
+    def test_write_back_rejects_duplicate_project_numbers_and_rolls_back(self):
+        conn = sqlite3.connect(self.reference_db_path)
+        try:
+            conn.execute(
+                """
+                INSERT INTO ecm_list (
+                    "프로젝트번호",
+                    "인증일자",
+                    "회사명",
+                    "제품명",
+                    "시험PL",
+                    "점검결과",
+                    "점검날짜"
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    "TTA-26-00010",
+                    "05/13",
+                    "에이치소프트 복제",
+                    "SecureFlow 2.1",
+                    "김준호",
+                    "미점검",
+                    "",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
+            with self.assertRaises(ReferenceDbError):
+                write_project_review_result("TTA-26-00010", "완료")
+
+        rows = self._reference_rows_by_number("TTA-26-00010", ["점검결과"])
+        self.assertEqual([row["점검결과"] for row in rows], ["미점검", "미점검"])
+
+    def test_write_back_succeeds_without_optional_inspection_date_column(self):
+        no_date_db_path = Path(self.temp_dir.name) / "no_date.db"
+        self._create_reference_db_without_inspection_date(no_date_db_path)
+
+        with self.settings(REFERENCE_DB_PATH=no_date_db_path, REFERENCE_DB_TABLE="ecm_list"):
+            result = write_project_review_result(
+                "TTA-26-09999",
+                "완료",
+                artifact_results={"계약서": "정상"},
+                inspected_at="2026.05.12 20:00",
+            )
+
+        conn = sqlite3.connect(no_date_db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            row = conn.execute(
+                'SELECT "점검결과", "계약서" FROM ecm_list WHERE "프로젝트번호" = ?',
+                ["TTA-26-09999"],
+            ).fetchone()
+        finally:
+            conn.close()
+
+        self.assertEqual(result["updated_columns"], ["점검결과", "계약서"])
+        self.assertEqual(row["점검결과"], "완료")
+        self.assertEqual(row["계약서"], "정상")
 
     def _post_job(self, project_numbers):
         request = self.factory.post(
@@ -310,8 +421,12 @@ class DownloadReviewJobsApiTests(TestCase):
     def _create_reference_db(self):
         conn = sqlite3.connect(self.reference_db_path)
         try:
+            artifact_columns_sql = ",\n".join(
+                f'"{column}" TEXT DEFAULT \'X\''
+                for column in ARTIFACT_REVIEW_COLUMNS
+            )
             conn.execute(
-                """
+                f"""
                 CREATE TABLE ecm_list (
                     "프로젝트번호" TEXT,
                     "인증일자" TEXT,
@@ -319,7 +434,8 @@ class DownloadReviewJobsApiTests(TestCase):
                     "제품명" TEXT,
                     "시험PL" TEXT,
                     "점검결과" TEXT,
-                    "점검날짜" TEXT
+                    "점검날짜" TEXT,
+                    {artifact_columns_sql}
                 )
                 """
             )
@@ -354,7 +470,98 @@ class DownloadReviewJobsApiTests(TestCase):
                         "미점검",
                         "",
                     ),
+                    (
+                        "TTA-26-00011",
+                        "05/14",
+                        "브릿지웨어",
+                        "BridgeHub",
+                        "박지훈",
+                        "미점검",
+                        "",
+                    ),
+                    (
+                        "TTA-26-00012",
+                        "05/15",
+                        "넥스트랩",
+                        "NextLab QA Suite",
+                        "최유진",
+                        "미점검",
+                        "",
+                    ),
                 ],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+    def _reference_rows(self, project_numbers, columns):
+        conn = sqlite3.connect(self.reference_db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            select_columns = ["프로젝트번호", *columns]
+            placeholders = ", ".join("?" for _ in project_numbers)
+            sql = (
+                "SELECT "
+                + ", ".join(f'"{column}"' for column in select_columns)
+                + f' FROM ecm_list WHERE "프로젝트번호" IN ({placeholders})'
+            )
+            rows = conn.execute(sql, project_numbers).fetchall()
+            return {
+                row["프로젝트번호"]: {column: row[column] for column in columns}
+                for row in rows
+            }
+        finally:
+            conn.close()
+
+    def _reference_rows_by_number(self, project_number, columns):
+        conn = sqlite3.connect(self.reference_db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            select_columns = ["프로젝트번호", *columns]
+            sql = (
+                "SELECT "
+                + ", ".join(f'"{column}"' for column in select_columns)
+                + ' FROM ecm_list WHERE "프로젝트번호" = ? ORDER BY rowid'
+            )
+            return [
+                {column: row[column] for column in columns}
+                for row in conn.execute(sql, [project_number]).fetchall()
+            ]
+        finally:
+            conn.close()
+
+    def _create_reference_db_without_inspection_date(self, db_path):
+        conn = sqlite3.connect(db_path)
+        try:
+            artifact_columns_sql = ",\n".join(
+                f'"{column}" TEXT DEFAULT \'X\''
+                for column in ARTIFACT_REVIEW_COLUMNS
+            )
+            conn.execute(
+                f"""
+                CREATE TABLE ecm_list (
+                    "프로젝트번호" TEXT,
+                    "인증일자" TEXT,
+                    "회사명" TEXT,
+                    "제품명" TEXT,
+                    "시험PL" TEXT,
+                    "점검결과" TEXT,
+                    {artifact_columns_sql}
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO ecm_list (
+                    "프로젝트번호",
+                    "인증일자",
+                    "회사명",
+                    "제품명",
+                    "시험PL",
+                    "점검결과"
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                ("TTA-26-09999", "05/12", "옵션테스트", "NoDate", "박지훈", "미점검"),
             )
             conn.commit()
         finally:
