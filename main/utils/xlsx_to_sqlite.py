@@ -107,7 +107,7 @@ def convert_xlsx_to_sqlite(xlsx_path: str, db_path: str, table_name: str = "sw_d
         conn.execute(f'ALTER TABLE "{tmp}" RENAME TO "{table_name}"')
         conn.commit()
         conn.close()
-        print(f"✅ XLSX({xlsx_path}) → SQLite({db_path}) 저장 완료 (일련번호 없음)")
+        print(f"[OK] XLSX({xlsx_path}) -> SQLite({db_path}) 저장 완료 (일련번호 없음)")
         return
 
     columns_definition = ", ".join([f'"{c}" TEXT' for c in cols if c != "일련번호"])
@@ -128,4 +128,4 @@ def convert_xlsx_to_sqlite(xlsx_path: str, db_path: str, table_name: str = "sw_d
     conn.commit()
     conn.close()
 
-    print(f"✅ XLSX({xlsx_path}) → SQLite({db_path}) 변환 및 저장 완료")
+    print(f"[OK] XLSX({xlsx_path}) -> SQLite({db_path}) 변환 및 저장 완료")

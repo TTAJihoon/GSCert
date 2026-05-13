@@ -198,10 +198,9 @@ Git 포함:
 
 - `main/data/ecmlist.db`
 - `main/data/reference.db`
-- `main/data/reference.csv`
+- `main/data/reference.xlsx`
 - `main/data/prdinfo.xlsx`
 - `main/data/security.xlsx`
-- `main/data/csv`
 - `main/data/README.md`
 
 Git 제외:
@@ -216,11 +215,27 @@ Git 제외:
 - `main/utils/ecmList/credentials.json`
 - `main/utils/ecmList/token.json`
 
-`reference.db`는 기존 history/prdinfo 조회 화면이 직접 참조하므로 `reference.csv`에서 생성해 Git에 포함했다. 재생성 명령:
+`reference.db`는 기존 history/prdinfo 조회 화면이 직접 참조하므로 `reference.xlsx`에서 생성해 Git에 포함한다.
+`reference.csv`와 `main/data/csv`는 삭제했다.
+
+재생성 및 Git 반영 명령:
 
 ```powershell
-.\.venv\Scripts\python.exe main\utils\build_reference_db.py
+.\.venv\Scripts\python.exe manage.py sqlite
 ```
+
+검증만 할 때는 `--no-git-sync`를 붙인다.
+
+## 2026-05-13 reference.xlsx -> reference.db 자동 반영
+
+운영 흐름은 아래와 같다.
+
+1. `main/utils/weekly.py`가 ECM 원천 데이터를 다운로드한다.
+2. weekly가 파싱한 신규 행을 `main/data/reference.xlsx`에 append한다.
+3. `manage.py sqlite`가 `main/utils/xlsx_to_sqlite.py`를 사용해 `main/data/reference.db`를 갱신한다.
+4. `manage.py sqlite`는 기본적으로 `reference.xlsx`, `reference.db`를 Git add/commit/push 한다.
+
+자동 Git 반영은 기준 데이터 파일만 대상으로 하며, 다른 staged 변경이 있으면 중단한다.
 
 ## 다른 PC에서 바로 이어갈 때
 

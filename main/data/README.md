@@ -6,15 +6,21 @@
 
 - `ecmlist.db`: download-review 프로젝트 목록과 점검 결과 기준 DB
 - `reference.db`: 기존 이력/제품정보 조회 화면에서 사용하는 SQLite DB
-- `reference.csv`: `reference.db` 재생성 원본 데이터
+- `reference.xlsx`: ECM에서 내려받아 누적 관리하는 기준 원본 데이터
 - `prdinfo.xlsx`: 제품정보 양식 원본
 - `security.xlsx`: 보안 취약점 매핑 데이터
-- `csv`: 기존 호환용 데이터 파일
 
-`reference.db`는 아래 명령으로 `reference.csv`에서 재생성할 수 있다.
+`reference.db`는 아래 명령으로 `reference.xlsx`에서 재생성할 수 있다. 기본 실행은 DB 생성 후
+`reference.xlsx`와 `reference.db` 변경분을 Git commit/push까지 수행한다.
 
 ```powershell
-.\.venv\Scripts\python.exe main\utils\build_reference_db.py
+.\.venv\Scripts\python.exe manage.py sqlite
+```
+
+로컬 검증만 하고 Git 반영을 생략하려면 아래처럼 실행한다.
+
+```powershell
+.\.venv\Scripts\python.exe manage.py sqlite --no-git-sync
 ```
 
 ## Git 제외

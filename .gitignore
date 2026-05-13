@@ -27,11 +27,10 @@ Thumbs.db
 
 # 임베딩 캐시
 main/data/*
-!main/data/csv
 !main/data/README.md
 !main/data/prdinfo.xlsx
-!main/data/reference.csv
 !main/data/reference.db
+!main/data/reference.xlsx
 !main/data/security.xlsx
 !main/data/ecmlist.db
 main/data/workflow.db
