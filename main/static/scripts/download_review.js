@@ -373,6 +373,7 @@ const state = {
   resultFilter: "all",
   heartbeatWarning: false,
   emptyJob: false,
+  forceEmptyPreview: false,
   selectionMessage: "",
   projectLoadError: "",
   activeJob: null,
@@ -773,6 +774,7 @@ async function refreshActiveJob() {
     state.emptyJob = true;
   }
   renderProgress();
+  renderSelection();
 }
 
 async function loadResultJobs(preferredJobId = null) {
@@ -826,7 +828,7 @@ async function loadResultProjects() {
 }
 
 function renderProgress() {
-  const showEmpty = !state.activeJob && state.emptyJob;
+  const showEmpty = state.forceEmptyPreview || (!state.activeJob && state.emptyJob);
   qs("activeProgressView").hidden = showEmpty;
   qs("emptyProgressView").hidden = !showEmpty;
 
@@ -1061,9 +1063,6 @@ async function cancelJob(jobId) {
 
   try {
     const payload = await requestJson(`/api/jobs/${jobId}/cancel/`, { method: "POST" });
-    await refreshActiveJob();
-    await loadProjects();
-    await loadResultJobs(jobId);
     openModal({
       eyebrow: "예약 취소",
       title: "작업 취소 완료",
@@ -1074,6 +1073,11 @@ async function cancelJob(jobId) {
         </div>
       `
     });
+    await Promise.allSettled([
+      refreshActiveJob(),
+      loadProjects(),
+      loadResultJobs(jobId)
+    ]);
   } catch (error) {
     openModal({
       eyebrow: "예약 취소",
@@ -1314,8 +1318,8 @@ function bindControls() {
   });
 
   qs("toggleEmptyJob").addEventListener("click", () => {
-    state.emptyJob = !state.emptyJob;
-    qs("toggleEmptyJob").textContent = state.emptyJob ? "진행 작업 상태 보기" : "작업 없음 상태 보기";
+    state.forceEmptyPreview = !state.forceEmptyPreview;
+    qs("toggleEmptyJob").textContent = state.forceEmptyPreview ? "진행 작업 상태 보기" : "작업 없음 상태 보기";
     renderProgress();
   });
 
