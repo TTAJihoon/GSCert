@@ -552,6 +552,12 @@ function isProjectSelectable(item) {
   return !isProjectLocked(item);
 }
 
+function projectWorkStatusLabel(item) {
+  if (item.activeStateLabel) return item.activeStateLabel;
+  if (item.review === "완료") return "완료";
+  return "요청 가능";
+}
+
 function updateClock() {
   const now = new Date();
   qs("lastUpdated").textContent = now.toLocaleTimeString("ko-KR", {
@@ -646,9 +652,9 @@ function renderProjects() {
     const selected = state.focusedProject?.number === item.number ? "selected" : "";
     const lockedClass = locked ? "completed-locked" : "";
     const hasDetail = item.review === "완료" || item.review === "수정 필요" || item.review === "보류";
-    const activeLabel = item.activeStateLabel || "요청 가능";
-    const checkboxLabel = item.activeStateLabel
-      ? `${item.number} ${item.activeStateLabel} 상태`
+    const activeLabel = projectWorkStatusLabel(item);
+    const checkboxLabel = activeLabel !== "요청 가능"
+      ? `${item.number} ${activeLabel} 상태`
       : `${item.number} 선택`;
     return `
       <tr class="${selected} ${lockedClass}" data-project-row="${item.number}">
@@ -751,7 +757,7 @@ function renderDetail() {
       <dt>제품명</dt><dd>${item.product}</dd>
       <dt>시험PL</dt><dd>${item.pl}</dd>
       <dt>점검결과</dt><dd>${badge(item.review)}</dd>
-      <dt>작업상태</dt><dd>${badge(item.activeStateLabel || "요청 가능")}</dd>
+      <dt>작업상태</dt><dd>${badge(projectWorkStatusLabel(item))}</dd>
       <dt>점검날짜</dt><dd>${item.inspectionDate || "-"}</dd>
     </dl>
   `;
@@ -892,7 +898,7 @@ function renderProgress() {
       <td>${item.error ? `<button class="link-button" type="button" data-error-detail="progress:${escapeHtml(item.id || item.number)}">${escapeHtml(item.error)}</button>` : "-"}</td>
     </tr>
   `).join("") : `
-    <tr><td colspan="9" class="empty-cell">작업은 있지만 프로젝트별 진행 정보가 아직 없습니다.</td></tr>
+    <tr><td colspan="9" class="empty-cell">작업은 있지만 현재 작업의 프로젝트 정보가 아직 없습니다.</td></tr>
   `;
 
   bindErrorButtons();
@@ -1092,37 +1098,46 @@ async function cancelJob(jobId) {
   }
 }
 
-function openInspectionModal(projectNumber) {
+async function openInspectionModal(projectNumber) {
   const project = mockProjects.find((item) => item.number === projectNumber);
   if (!project) return;
-
-  if (project.review === "보류") {
-    openModal({
-      eyebrow: "작업 실패",
-      title: `${project.number} 작업 보류`,
-      body: `
-        <div class="modal-message warning">
-          <strong>${escapeHtml(project.holdReason)}</strong>
-          <p>작업 자체가 실패했기 때문에 점검 규칙 결과는 생성되지 않았습니다. 원인을 확인한 뒤 다시 작업을 요청해야 합니다.</p>
-        </div>
-      `
-    });
-    return;
-  }
-
-  const rows = project.rules.map((rule) => `
-    <tr>
-      <td>${rule.no}</td>
-      <td>${escapeHtml(rule.name)}</td>
-      <td>${badge(rule.status)}</td>
-      <td>${escapeHtml(rule.detail)}</td>
-    </tr>
-  `).join("");
 
   openModal({
     eyebrow: "점검 결과",
     title: `${project.number} 규칙별 점검 결과`,
-    body: project.rules.length ? `
+    body: `<p class="modal-lead">최근 점검 결과를 불러오는 중입니다.</p>`
+  });
+
+  try {
+    const payload = await requestJson(`/api/projects/${encodeURIComponent(projectNumber)}/latest-results/`);
+    renderLatestInspectionResult(payload);
+  } catch (error) {
+    renderLocalInspectionFallback(project, error);
+  }
+}
+
+function renderLocalInspectionFallback(project, error) {
+  if (project.review === "보류") {
+    qs("modalBody").innerHTML = `
+      <div class="modal-message warning">
+        <strong>${escapeHtml(project.holdReason || "작업 자체가 실패하여 보류되었습니다.")}</strong>
+        <p>작업 자체가 실패했기 때문에 점검 규칙 결과는 생성되지 않았습니다. 원인을 확인한 뒤 다시 작업을 요청해야 합니다.</p>
+      </div>
+    `;
+    return;
+  }
+
+  if (project.rules.length) {
+    const rows = project.rules.map((rule) => `
+      <tr>
+        <td>${rule.no}</td>
+        <td>${escapeHtml(rule.name)}</td>
+        <td>${badge(rule.status)}</td>
+        <td>${escapeHtml(rule.detail)}</td>
+      </tr>
+    `).join("");
+
+    qs("modalBody").innerHTML = `
       <p class="modal-lead">약 30개 점검 규칙을 표로 확인하는 화면입니다. 실제 규칙 정의 후 컬럼은 확장할 수 있습니다.</p>
       <div class="table-wrap modal-table">
         <table class="data-table">
@@ -1137,13 +1152,68 @@ function openInspectionModal(projectNumber) {
           <tbody>${rows}</tbody>
         </table>
       </div>
-    ` : `
+    `;
+    return;
+  }
+
+  qs("modalBody").innerHTML = `
+    <div class="modal-message warning">
+      <strong>${escapeHtml(error.message || "점검 이력을 찾을 수 없습니다.")}</strong>
+      <p>이 프로젝트에 연결된 완료/실패 작업 이력이 아직 없거나 규칙 결과가 생성되지 않았습니다.</p>
+    </div>
+  `;
+}
+
+function renderLatestInspectionResult(payload) {
+  const project = normalizeApiJobProject(payload.project);
+  if (!payload.items.length) {
+    qs("modalBody").innerHTML = `
       <div class="modal-message warning">
-        <strong>이 프로젝트의 규칙 결과는 결과 조회 탭에서 확인해야 합니다.</strong>
-        <p>작업 이력과 연결된 실제 규칙 결과는 결과 조회 탭의 프로젝트 상세 버튼으로 조회합니다.</p>
+        <strong>생성된 규칙 결과가 없습니다.</strong>
+        <p>${escapeHtml(project.error || "작업 자체가 실패했거나 아직 규칙 검사가 실행되지 않은 프로젝트입니다.")}</p>
+        <dl class="error-detail-list">
+          <dt>최근 작업</dt><dd>${escapeHtml(payload.job?.id || "-")}</dd>
+          <dt>상태</dt><dd>${badge(project.statusLabel || project.status)}</dd>
+          <dt>점검결과</dt><dd>${badge(project.review)}</dd>
+          <dt>현재 단계</dt><dd>${escapeHtml(project.step || "-")}</dd>
+          <dt>상세 내용</dt><dd>${escapeHtml(project.errorDetail || "-")}</dd>
+        </dl>
       </div>
-    `
-  });
+    `;
+    return;
+  }
+
+  const rows = payload.items.map((rule) => `
+    <tr>
+      <td>${rule.sequence}</td>
+      <td>${escapeHtml(rule.rule_name)}</td>
+      <td>${badge(rule.status_label || rule.status)}</td>
+      <td>${escapeHtml(rule.file_name || "-")}</td>
+      <td>${escapeHtml(rule.expected || "-")}</td>
+      <td>${escapeHtml(rule.actual || "-")}</td>
+      <td>${escapeHtml(rule.message || "-")}</td>
+    </tr>
+  `).join("");
+
+  qs("modalBody").innerHTML = `
+    <p class="modal-lead">최근 작업 ${escapeHtml(payload.job?.id || "-")}의 규칙 결과입니다.</p>
+    <div class="table-wrap modal-table">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>번호</th>
+            <th>점검항목</th>
+            <th>결과</th>
+            <th>파일명</th>
+            <th>기대값</th>
+            <th>실제값</th>
+            <th>상세</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 function findErrorItem(source, number) {

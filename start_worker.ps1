@@ -32,6 +32,15 @@ New-Item -ItemType Directory -Path $RunDir  -Force | Out-Null
 
 $PidFile = Join-Path $RunDir "download_worker.pid"
 
+$ProcessPath = [Environment]::GetEnvironmentVariable("Path", "Process")
+if (-not $ProcessPath) {
+    $ProcessPath = [Environment]::GetEnvironmentVariable("PATH", "Process")
+}
+if ($ProcessPath) {
+    [Environment]::SetEnvironmentVariable("Path", $ProcessPath, "Process")
+    [Environment]::SetEnvironmentVariable("PATH", $null, "Process")
+}
+
 if (Test-Path $PidFile) {
     $existingPid = [int](Get-Content $PidFile -Raw).Trim()
     $proc = Get-Process -Id $existingPid -ErrorAction SilentlyContinue

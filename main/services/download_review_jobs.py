@@ -206,6 +206,7 @@ def attach_active_project_states(projects_payload):
     for item in items:
         active_project = active_by_number.get(item.get("project_number"))
         if not active_project:
+            completed = item.get("review") == "완료"
             item.update(
                 {
                     "active_job_id": None,
@@ -213,7 +214,7 @@ def attach_active_project_states(projects_payload):
                     "active_job_status_label": "",
                     "active_project_status": "",
                     "active_project_status_label": "",
-                    "active_state_label": "",
+                    "active_state_label": "완료" if completed else "",
                 }
             )
             continue
@@ -232,6 +233,32 @@ def attach_active_project_states(projects_payload):
         )
 
     return projects_payload
+
+
+def get_latest_project_results_payload(project_number):
+    project_number = str(project_number or "").strip()
+    if not PROJECT_NUMBER_RE.match(project_number):
+        raise DownloadReviewNotFoundError("작업 프로젝트를 찾을 수 없습니다.")
+
+    project = (
+        DownloadReviewProject.objects
+        .select_related("job")
+        .exclude(job__status__in=ACTIVE_JOB_STATUSES)
+        .exclude(job__status=DownloadReviewJobStatus.CANCELED)
+        .filter(project_number=project_number)
+        .order_by("-completed_at", "-updated_at", "-created_at", "-id")
+        .first()
+    )
+    if project is None:
+        raise DownloadReviewNotFoundError("점검 이력을 찾을 수 없습니다.")
+
+    results = project.rule_results.order_by("sequence", "id")
+    return {
+        "success": True,
+        "job": serialize_job(project.job),
+        "project": serialize_project(project),
+        "items": [serialize_rule_result(result) for result in results],
+    }
 
 
 def cancel_download_review_job(job_id):

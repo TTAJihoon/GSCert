@@ -11,6 +11,7 @@ from main.services.download_review_jobs import (
     get_job_detail_payload,
     get_job_projects_payload,
     get_jobs_payload,
+    get_latest_project_results_payload,
     get_project_results_payload,
     parse_json_body,
 )
@@ -130,6 +131,11 @@ def job_cancel(request, job_id):
 @require_GET
 def job_project_results(request, job_project_id):
     return _json_or_not_found(lambda: get_project_results_payload(job_project_id))
+
+
+@require_GET
+def latest_project_results(request, project_number):
+    return _json_or_not_found(lambda: get_latest_project_results_payload(project_number))
 
 
 def _error_payload(exc, message, details=None):

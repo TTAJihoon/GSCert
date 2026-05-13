@@ -30,6 +30,7 @@ from main.views.download_review_api import (
     job_project_results,
     job_projects,
     jobs,
+    latest_project_results,
     projects,
 )
 
@@ -79,6 +80,7 @@ class DownloadReviewProjectsApiTests(TestCase):
         )
         self.assertTrue(data["items"][0]["selectable"])
         self.assertFalse(data["items"][1]["selectable"])
+        self.assertEqual(data["items"][1]["active_state_label"], "완료")
 
     def test_projects_filter_uses_allowlisted_query_params(self):
         data = self._get_projects({"company": "우리", "limit": "1"})
@@ -394,6 +396,48 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(projects_data["items"][0]["status_label"], "검사중")
         self.assertEqual(results_response.status_code, 200)
         self.assertEqual(results_data["items"][0]["status_label"], "정상")
+
+    def test_latest_project_results_endpoint_returns_most_recent_finished_project(self):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            completed_project_count=1,
+            selected_projects_json=["TTA-26-00009"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00009",
+            status=DownloadReviewProjectStatus.COMPLETED,
+            review_status=DownloadReviewProjectReviewStatus.COMPLETED,
+            ecm_row_json={
+                "project_number": "TTA-26-00009",
+                "company": "우리데이터 주식회사",
+                "product": "우리데이터클리닝 V1.0",
+            },
+        )
+        DownloadReviewRuleResult.objects.create(
+            job_project=project,
+            rule_code="required-report",
+            rule_name="시험성적서 PDF 존재",
+            sequence=1,
+            file_path="TTA-26-00009/시험성적서.pdf",
+            file_name="시험성적서.pdf",
+            status=DownloadReviewRuleStatus.PASS,
+            expected="파일 존재",
+            actual="파일 존재",
+            message="정상 확인",
+        )
+
+        response = latest_project_results(
+            self.factory.get("/api/projects/TTA-26-00009/latest-results/"),
+            "TTA-26-00009",
+        )
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["project"]["project_number"], "TTA-26-00009")
+        self.assertEqual(data["items"][0]["rule_name"], "시험성적서 PDF 존재")
+        self.assertEqual(data["items"][0]["status_label"], "정상")
 
     def test_dry_run_worker_completes_job_with_mixed_project_results(self):
         job = DownloadReviewJob.objects.create(

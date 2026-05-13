@@ -26,13 +26,21 @@ Thumbs.db
 */migrations/*.py[cod]
 
 # 임베딩 캐시
-main/data/
+main/data/*
+!main/data/csv
+!main/data/prdinfo.xlsx
+!main/data/reference.csv
+!main/data/security.xlsx
+!main/data/ecmlist.db
+main/data/workflow.db
+main/data/ecm_agent.lock
 
 # Static files
 /staticfiles/
 
 # Local tooling
 .tmp/
+run/
 
 # Local Google OAuth credentials
 main/utils/ecmList/credentials.json

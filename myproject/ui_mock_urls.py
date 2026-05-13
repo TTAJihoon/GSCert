@@ -9,6 +9,7 @@ from main.views.download_review_api import (
     job_project_results as download_review_job_project_results,
     job_projects as download_review_job_projects,
     jobs as download_review_jobs,
+    latest_project_results as download_review_latest_project_results,
     projects as download_review_projects,
 )
 
@@ -33,4 +34,5 @@ urlpatterns = [
     path("api/jobs/<uuid:job_id>/", download_review_job_detail, name="download_review_job_detail"),
     path("api/jobs/<uuid:job_id>/projects/", download_review_job_projects, name="download_review_job_projects"),
     path("api/job-projects/<uuid:job_project_id>/results/", download_review_job_project_results, name="download_review_job_project_results"),
+    path("api/projects/<str:project_number>/latest-results/", download_review_latest_project_results, name="download_review_latest_project_results"),
 ]
