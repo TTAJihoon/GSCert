@@ -14,7 +14,8 @@
 `reference.xlsx`와 `reference.db` 변경분을 Git commit/push까지 수행한다.
 
 이 명령은 실행될 때만 동작한다. 별도 스케줄러를 만들지 않았으며, 운영에서는 기존처럼
-`weekly.py` 또는 배치 파일이 이 명령을 호출하는 흐름을 따른다.
+`weekly.py` 또는 배치 파일이 이 흐름을 시작한다. 현재 `weekly.py`는 ECM 원천 데이터를
+`reference.xlsx`에 반영한 뒤 `manage.py sqlite`를 직접 호출한다.
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py sqlite

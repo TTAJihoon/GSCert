@@ -32,13 +32,13 @@ codex-job-runner-persistence
 - 9단계 구현: `download_verify.py` 생성(다운로드 파일 존재/개수/크기 확인)
 - 기준 데이터 흐름 정리: `reference.xlsx`를 원본으로 보고 `manage.py sqlite`가 `reference.db`를 생성하도록 정리
 - 기준 데이터 Git 반영: `manage.py sqlite` 기본 실행 시 `reference.xlsx`와 `reference.db` 변경분만 commit/push하도록 구현
+- `weekly.py`에서 외부 `db.bat` 대신 저장소 안의 `manage.py sqlite`를 직접 호출하도록 정리
 
 아직 실제 구현 전/검증 전:
 
 - 5~9단계 실제 서버에서의 통합 검증 (ECM 접속 → 다운로드 → 팝업 처리 → 파일 확인)
 - zip 내부 검사 규칙
 - 실제 규칙 결과와 `ecmlist.db` 산출물 컬럼 간 매핑
-- 운영 서버의 기존 `weekly.py`/배치 호출 방식 확인
 
 ## 우선순위 높은 미확정 항목
 
@@ -95,12 +95,14 @@ codex-job-runner-persistence
 - `main/management/commands/sqlite.py`는 기본 입력/출력을 `reference.xlsx`/`reference.db`로 사용한다.
 - `manage.py sqlite` 기본 실행은 DB 생성 후 기준 데이터 변경분을 Git commit/push한다.
 - `manage.py sqlite --no-git-sync`는 Git 반영 없이 DB 생성만 수행한다.
-- 새 스케줄러는 추가하지 않았고, 기존 `weekly.py` 또는 배치 파일이 명령을 호출할 때만 실행된다.
+- `weekly.py`는 ECM 원천 파일 append 후 `manage.py sqlite`를 직접 호출한다.
+- 새 스케줄러는 추가하지 않았고, 기존 Windows 작업 스케줄러 또는 배치 파일이 `weekly.py`를 실행할 때만 동작한다.
+- `GSCERT_SQLITE_NO_GIT_SYNC=1`을 설정하면 weekly 흐름에서도 Git 반영을 생략할 수 있다.
 
 추가 확정 필요:
 
-- 운영 배치에서 Git push까지 자동 수행할지, DB 생성만 수행하고 Git 반영은 수동으로 할지
-- 운영 서버에서 `weekly.py` 이후 실제 호출하는 명령이 `manage.py sqlite`인지, 별도 `db.bat` 래퍼인지
+- 운영 weekly 실행에서 Git push까지 기본 수행할지, 운영 서버에만 `GSCERT_SQLITE_NO_GIT_SYNC=1`을 둘지
+- 운영 서버에서 `GSCERT_PYTHON`, `GSCERT_DJANGO_SETTINGS` 환경변수 지정이 필요한지
 
 관련 문서:
 
@@ -322,10 +324,9 @@ DestinyECMAgent(32비트)
 ## 다음 작업 후보
 
 1. 5~9단계 통합 검증: 실제 ECM 서버에서 전체 다운로드 파이프라인 테스트
-2. 운영 서버의 기존 `weekly.py`/배치가 `manage.py sqlite`를 어떻게 호출하는지 확인
-3. 실제 다운로드 산출물 기준으로 점검 규칙과 `ecmlist.db` 점검 컬럼 매핑 정의
-4. 결과 조회 화면에 실제 점검 규칙 결과와 상세 오류를 연결
-5. 테스트가 끝나면 download-review 시작 가능 시간을 `20:00-07:00`으로 복구
+2. 실제 다운로드 산출물 기준으로 점검 규칙과 `ecmlist.db` 점검 컬럼 매핑 정의
+3. 결과 조회 화면에 실제 점검 규칙 결과와 상세 오류를 연결
+4. 테스트가 끝나면 download-review 시작 가능 시간을 `20:00-07:00`으로 복구
 
 ## 대화 재개 시 추천 질문
 

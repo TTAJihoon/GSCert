@@ -15,6 +15,15 @@ from playwright.sync_api import sync_playwright
 from pywinauto import Desktop
 from pywinauto.keyboard import send_keys
 
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+DATA_DIR = PROJECT_ROOT / "main" / "data"
+REFERENCE_SHEET_NAME = "인증획득제품리스트"
+
+
+def _env_path(name: str, default: Path) -> Path:
+    value = os.environ.get(name)
+    return Path(value) if value else default
+
 
 # =========================
 # 설정
@@ -24,17 +33,25 @@ class Config:
     # ===== 테스트용 (끝나면 False로 바꾸거나 지우면 됨) =====
     test_click_doc_enabled = False
 
+    project_root: Path = PROJECT_ROOT
+
     # 기준 파일(이제 xlsx로 관리)
-    master_tsv: Path = Path(r"C:\GSCert\myproject\main\data\reference.xlsx")
+    master_xlsx: Path = _env_path("GSCERT_REFERENCE_XLSX", DATA_DIR / "reference.xlsx")
 
     # 다운로드 폴더
-    download_folder: Path = Path(r"C:\Users\Administrator")
+    download_folder: Path = _env_path("GSCERT_WEEKLY_DOWNLOAD_DIR", Path(r"C:\Users\Administrator"))
 
     # 시작 URL
-    start_url: str = "http://210.104.181.10"
+    start_url: str = os.environ.get("GSCERT_WEEKLY_START_URL", "http://210.104.181.10")
 
     # 로그인 세션 저장(최초 1회 로그인 후 자동 재사용)
-    storage_state: Path = Path(r"C:\GSCert\myproject\main\data\edm_storage_state.json")
+    storage_state: Path = _env_path("GSCERT_EDM_STORAGE_STATE", DATA_DIR / "edm_storage_state.json")
+
+    # reference.xlsx -> reference.db 적재
+    python_executable: Path = _env_path("GSCERT_PYTHON", Path(sys.executable))
+    manage_py: Path = _env_path("GSCERT_MANAGE_PY", PROJECT_ROOT / "manage.py")
+    django_settings: str = os.environ.get("GSCERT_DJANGO_SETTINGS", "myproject.settings")
+    sqlite_no_git_sync: bool = os.environ.get("GSCERT_SQLITE_NO_GIT_SYNC", "").lower() in {"1", "true", "yes", "y"}
 
     # 타임아웃/대기
     pw_timeout_ms: int = 30_000
@@ -47,7 +64,6 @@ class Config:
     doc_prefix: str = "인증획득제품"
 
     exit_bat: Path | None = Path(r"C:\Users\Administrator\Desktop\exit.bat")
-    db_bat: Path | None = Path(r"C:\Users\Administrator\Desktop\db.bat")
     run_bat: Path | None = Path(r"C:\Users\Administrator\Desktop\run.bat")
 
 CFG = Config()
@@ -92,6 +108,12 @@ def _is_blank(v) -> bool:
     return v is None or (isinstance(v, str) and v.strip() == "")
 
 
+def _reference_sheet(wb):
+    if REFERENCE_SHEET_NAME in wb.sheetnames:
+        return wb[REFERENCE_SHEET_NAME]
+    return wb.active
+
+
 # =========================
 # 날짜(전 주 월요일)
 # =========================
@@ -104,18 +126,16 @@ def this_week_monday_yyyymmdd(tz: str = "Asia/Seoul") -> str:
 # =========================
 # 기준 파일(xlsx) 처리
 # =========================
-def read_last_serial_from_master_tsv(tsv_path: Path) -> int:
+def read_last_serial_from_master_xlsx(xlsx_path: Path) -> int:
     """
     reference.xlsx에서 A열(일련번호) 마지막 숫자를 robust하게 찾는다.
     - A열을 아래에서 위로 훑으며 가장 마지막 숫자(정수)를 반환
     """
-    if not tsv_path.exists():
-        raise FileNotFoundError(f"master file not found: {tsv_path}")
+    if not xlsx_path.exists():
+        raise FileNotFoundError(f"master file not found: {xlsx_path}")
 
-    TARGET_SHEET = "인증획득제품리스트"
-
-    wb = load_workbook(tsv_path, data_only=True)
-    ws = wb.active
+    wb = load_workbook(xlsx_path, data_only=True)
+    ws = _reference_sheet(wb)
 
     for r in range(ws.max_row, 0, -1):
         v = ws.cell(row=r, column=1).value
@@ -141,7 +161,7 @@ def append_rows_to_master_xlsx(master_xlsx: Path, rows: list[list], ensure_14_co
     else:
         wb = Workbook()
 
-    ws = wb.active
+    ws = _reference_sheet(wb)
 
     # 마지막 "의미 있는" 행 찾기: A열이 비어있지 않은 마지막 행 기준
     last = ws.max_row
@@ -168,11 +188,11 @@ def extract_a_to_n_rows_after_serial(xlsx_path: Path, start_serial: int, sheet_n
     if not xlsx_path.exists():
         raise FileNotFoundError(f"xlsx not found: {xlsx_path}")
 
-    TARGET_SHEET = "인증획득제품리스트"
+    target_sheet = sheet_name or REFERENCE_SHEET_NAME
     wb = load_workbook(xlsx_path, data_only=True)
-    if TARGET_SHEET not in wb.sheetnames:
-        raise ValueError(f"시트 '{TARGET_SHEET}' 를 찾지 못했습니다. 현재 시트: {wb.sheetnames}")
-    ws = wb[TARGET_SHEET]
+    if target_sheet not in wb.sheetnames:
+        raise ValueError(f"시트 '{target_sheet}' 를 찾지 못했습니다. 현재 시트: {wb.sheetnames}")
+    ws = wb[target_sheet]
 
     found_row = None
     for r in range(1, ws.max_row + 1):
@@ -443,6 +463,26 @@ def run_bats_in_order(bats: list[Path | None]):
         subprocess.run([str(bat)], check=False, shell=True)
 
 
+def sync_reference_db():
+    import subprocess
+
+    if not CFG.manage_py.exists():
+        raise FileNotFoundError(f"manage.py 파일을 찾을 수 없습니다: {CFG.manage_py}")
+
+    cmd = [
+        str(CFG.python_executable),
+        str(CFG.manage_py),
+        "sqlite",
+        "--settings",
+        CFG.django_settings,
+    ]
+    if CFG.sqlite_no_git_sync:
+        cmd.append("--no-git-sync")
+
+    logging.info("reference DB 적재 실행: %s", " ".join(cmd))
+    subprocess.run(cmd, cwd=str(CFG.project_root), check=True)
+
+
 # =========================
 # main
 # =========================
@@ -450,13 +490,13 @@ def main():
     CFG.download_folder.mkdir(parents=True, exist_ok=True)
 
     # 1) 기준 파일 A열 마지막 숫자
-    last_serial = read_last_serial_from_master_tsv(CFG.master_tsv)
+    last_serial = read_last_serial_from_master_xlsx(CFG.master_xlsx)
     logging.info("master 마지막 일련번호(A열): %s", last_serial)
 
     # 2) 이번주 월요일 파일명 결정
     monday = this_week_monday_yyyymmdd()
     if getattr(CFG, "test_click_doc_enabled", False):
-        monday = "20260105"  # ✅ 테스트 끝나면 이 블록 삭제하거나 False로
+        monday = "20260105"  # 테스트 끝나면 이 블록 삭제하거나 False로
         logging.info("[TEST] monday 강제 설정: %s", monday)
 
     xlsx_name = f"{CFG.doc_prefix}({monday}).xlsx"
@@ -498,15 +538,17 @@ def main():
         logging.info("정규화 후 행 수(A~N): %d", len(rows2))
 
         if rows2:
-            append_rows_to_master_xlsx(CFG.master_tsv, rows2, ensure_14_cols=True)
-            logging.info("master append 완료(xlsx): %s", CFG.master_tsv)
+            append_rows_to_master_xlsx(CFG.master_xlsx, rows2, ensure_14_cols=True)
+            logging.info("master append 완료(xlsx): %s", CFG.master_xlsx)
         else:
             logging.info("정규화 결과 추가할 데이터가 없습니다. master 변경 없음.")
     else:
         logging.info("추가할 데이터가 없습니다. master 변경 없음.")
 
-    # 5) bat 실행
-    run_bats_in_order([CFG.exit_bat, CFG.db_bat, CFG.run_bat])
+    # 5) 기존 보조 bat 흐름 유지 + 저장소 기준 DB 적재
+    run_bats_in_order([CFG.exit_bat])
+    sync_reference_db()
+    run_bats_in_order([CFG.run_bat])
 
     logging.info("DONE")
 

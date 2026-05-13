@@ -205,6 +205,8 @@ worker가 Windows 에이전트 팝업을 제어할 수 있으므로 worker를 �
 2. `manage.py sqlite`가 `reference.xlsx`를 `main/data/reference.db`로 적재한다.
 3. 기준 데이터가 바뀐 경우 `manage.py sqlite`가 `reference.xlsx`와 `reference.db`만 Git commit/push한다.
 
+`weekly.py`는 이 명령을 직접 호출하므로 외부 `db.bat`가 없어도 기준 DB를 갱신할 수 있다. 기존 `exit.bat`, `run.bat` 보조 실행 흐름은 유지한다.
+
 수동 실행:
 
 ```powershell
@@ -218,6 +220,18 @@ worker가 Windows 에이전트 팝업을 제어할 수 있으므로 worker를 �
 ```
 
 이 흐름은 새 자동화 스케줄을 추가하지 않는다. 스케줄 여부는 기존 운영 배치나 Windows 작업 스케줄러 설정에서 관리한다.
+
+운영 환경별 경로는 아래 환경변수로 조정할 수 있다.
+
+```text
+GSCERT_REFERENCE_XLSX
+GSCERT_WEEKLY_DOWNLOAD_DIR
+GSCERT_EDM_STORAGE_STATE
+GSCERT_PYTHON
+GSCERT_MANAGE_PY
+GSCERT_DJANGO_SETTINGS
+GSCERT_SQLITE_NO_GIT_SYNC
+```
 
 ## 위험요소
 
