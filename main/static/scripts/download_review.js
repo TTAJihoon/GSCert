@@ -392,6 +392,15 @@ const statusLabel = {
   failed: ["실패", "badge-danger"],
   skipped: ["건너뜀", "badge-warn"],
   success: ["성공", "badge-success"],
+  scheduled: ["예약중", "badge-warn"],
+  queued: ["대기중", "badge-run"],
+  canceled: ["취소", "badge-muted"],
+  "예약됨": ["예약중", "badge-warn"],
+  "예약중": ["예약중", "badge-warn"],
+  "대기중": ["대기중", "badge-run"],
+  "진행중": ["진행중", "badge-run"],
+  "취소": ["취소", "badge-muted"],
+  "요청 가능": ["요청 가능", "badge-muted"],
   "완료": ["완료", "badge-success"],
   "수정 필요": ["수정 필요", "badge-warn"],
   "보류": ["보류", "badge-danger"],
@@ -470,6 +479,12 @@ function normalizeApiProject(item) {
     pl: item.pl || "",
     review: normalizeReview(item.review),
     inspectionDate: item.inspection_date || "-",
+    activeJobId: item.active_job_id || "",
+    activeJobStatus: item.active_job_status || "",
+    activeJobStatusLabel: item.active_job_status_label || "",
+    activeProjectStatus: item.active_project_status || "",
+    activeProjectStatusLabel: item.active_project_status_label || "",
+    activeStateLabel: item.active_state_label || "",
     contract: "",
     reportPdf: "",
     copyright: "",
@@ -505,7 +520,8 @@ function normalizeApiJob(item) {
     success: item.completed_project_count || 0,
     failed: item.failed_project_count || 0,
     status: item.status,
-    statusLabel: item.status_label || item.status
+    statusLabel: item.status_label || item.status,
+    cancelable: item.status === "scheduled" || item.status === "queued"
   };
 }
 
@@ -528,7 +544,7 @@ function badge(status) {
 }
 
 function isProjectLocked(item) {
-  return item.review === "완료";
+  return item.review === "완료" || Boolean(item.activeJobId);
 }
 
 function isProjectSelectable(item) {
@@ -554,7 +570,7 @@ function populateFilters() {
 async function loadProjects() {
   state.projectLoadError = "";
   qs("projectRows").innerHTML = `
-    <tr><td colspan="8" class="empty-cell">프로젝트 목록을 불러오는 중입니다.</td></tr>
+    <tr><td colspan="9" class="empty-cell">프로젝트 목록을 불러오는 중입니다.</td></tr>
   `;
 
   try {
@@ -602,7 +618,7 @@ function renderProjects() {
 
   if (state.projectLoadError) {
     qs("projectRows").innerHTML = `
-      <tr><td colspan="8" class="empty-cell">${escapeHtml(state.projectLoadError)}</td></tr>
+      <tr><td colspan="9" class="empty-cell">${escapeHtml(state.projectLoadError)}</td></tr>
     `;
     qs("selectVisible").disabled = true;
     qs("selectVisible").checked = false;
@@ -613,7 +629,7 @@ function renderProjects() {
 
   if (rows.length === 0) {
     qs("projectRows").innerHTML = `
-      <tr><td colspan="8" class="empty-cell">조회된 프로젝트가 없습니다.</td></tr>
+      <tr><td colspan="9" class="empty-cell">조회된 프로젝트가 없습니다.</td></tr>
     `;
     qs("selectVisible").disabled = true;
     qs("selectVisible").checked = false;
@@ -629,10 +645,14 @@ function renderProjects() {
     const selected = state.focusedProject?.number === item.number ? "selected" : "";
     const lockedClass = locked ? "completed-locked" : "";
     const hasDetail = item.review === "완료" || item.review === "수정 필요" || item.review === "보류";
+    const activeLabel = item.activeStateLabel || "요청 가능";
+    const checkboxLabel = item.activeStateLabel
+      ? `${item.number} ${item.activeStateLabel} 상태`
+      : `${item.number} 선택`;
     return `
       <tr class="${selected} ${lockedClass}" data-project-row="${item.number}">
         <td class="check-col">
-          <input type="checkbox" data-project-check="${item.number}" ${checked} ${disabled} aria-label="${item.number} 선택">
+          <input type="checkbox" data-project-check="${item.number}" ${checked} ${disabled} aria-label="${checkboxLabel}" title="${checkboxLabel}">
         </td>
         <td><strong>${item.number}</strong></td>
         <td>${item.certDate}</td>
@@ -640,6 +660,7 @@ function renderProjects() {
         <td>${item.product}</td>
         <td>${item.pl}</td>
         <td>${badge(item.review)}</td>
+        <td>${badge(activeLabel)}</td>
         <td>
           <button class="mini-button" type="button" data-inspection-detail="${item.number}" ${hasDetail ? "" : "disabled"}>
             상세
@@ -729,6 +750,7 @@ function renderDetail() {
       <dt>제품명</dt><dd>${item.product}</dd>
       <dt>시험PL</dt><dd>${item.pl}</dd>
       <dt>점검결과</dt><dd>${badge(item.review)}</dd>
+      <dt>작업상태</dt><dd>${badge(item.activeStateLabel || "요청 가능")}</dd>
       <dt>점검날짜</dt><dd>${item.inspectionDate || "-"}</dd>
     </dl>
   `;
@@ -804,10 +826,11 @@ async function loadResultProjects() {
 }
 
 function renderProgress() {
-  qs("activeProgressView").hidden = state.emptyJob;
-  qs("emptyProgressView").hidden = !state.emptyJob;
+  const showEmpty = !state.activeJob && state.emptyJob;
+  qs("activeProgressView").hidden = showEmpty;
+  qs("emptyProgressView").hidden = !showEmpty;
 
-  if (state.emptyJob) {
+  if (showEmpty) {
     qs("activeJobState").innerHTML = `
       <span class="dot dot-muted"></span>
       <div><span class="label">현재 작업</span><strong>작업 없음</strong></div>
@@ -816,7 +839,7 @@ function renderProgress() {
   }
 
   const activeJob = state.activeJob || mockActiveJob;
-  const activeProjects = state.activeProjects.length ? state.activeProjects : mockActiveJob.projects;
+  const activeProjects = state.activeJob ? state.activeProjects : mockActiveJob.projects;
   const currentProject = activeProjects.find((item) => item.status === "running") || activeProjects[0];
   const total = activeJob.requested_project_count ?? activeJob.total;
   const completed = activeJob.completed_project_count ?? activeJob.completed;
@@ -854,7 +877,7 @@ function renderProgress() {
     <div><span class="label">Worker</span><strong>${worker.stale ? "지연" : "실행 중"}</strong></div>
   `;
 
-  qs("progressRows").innerHTML = activeProjects.map((item, index) => `
+  qs("progressRows").innerHTML = activeProjects.length ? activeProjects.map((item, index) => `
     <tr>
       <td>${index + 1}</td>
       <td><strong>${escapeHtml(item.number)}</strong></td>
@@ -866,7 +889,9 @@ function renderProgress() {
       <td>${escapeHtml(item.zip || "-")}</td>
       <td>${item.error ? `<button class="link-button" type="button" data-error-detail="progress:${escapeHtml(item.id || item.number)}">${escapeHtml(item.error)}</button>` : "-"}</td>
     </tr>
-  `).join("");
+  `).join("") : `
+    <tr><td colspan="9" class="empty-cell">작업은 있지만 프로젝트별 진행 정보가 아직 없습니다.</td></tr>
+  `;
 
   bindErrorButtons();
 }
@@ -883,7 +908,7 @@ function renderJobs() {
   }
 
   qs("jobList").innerHTML = state.resultJobs.map((job) => `
-    <button class="job-card ${state.resultJobId === job.id ? "active" : ""}" type="button" data-job-id="${escapeHtml(job.id)}">
+    <article class="job-card ${state.resultJobId === job.id ? "active" : ""}" role="button" tabindex="0" data-job-id="${escapeHtml(job.id)}">
       <div class="job-title">
         <span>${escapeHtml(job.id)}</span>
         ${badge(job.statusLabel || job.status)}
@@ -894,14 +919,35 @@ function renderJobs() {
         <span>전체 ${job.total}</span>
         <span>완료 ${job.success} / 실패 ${job.failed}</span>
       </div>
-    </button>
+      ${job.cancelable ? `
+        <div class="job-card-actions">
+          <button class="mini-button danger-action" type="button" data-cancel-job="${escapeHtml(job.id)}">
+            예약 취소
+          </button>
+        </div>
+      ` : ""}
+    </article>
   `).join("");
 
-  document.querySelectorAll("[data-job-id]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      state.resultJobId = button.dataset.jobId;
+  document.querySelectorAll("[data-job-id]").forEach((card) => {
+    const selectJob = async () => {
+      state.resultJobId = card.dataset.jobId;
       renderJobs();
       await loadResultProjects();
+    };
+    card.addEventListener("click", selectJob);
+    card.addEventListener("keydown", async (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      event.preventDefault();
+      await selectJob();
+    });
+  });
+
+  document.querySelectorAll("[data-cancel-job]").forEach((button) => {
+    button.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const job = state.resultJobs.find((item) => item.id === button.dataset.cancelJob);
+      if (job) openCancelJobModal(job);
     });
   });
 }
@@ -969,6 +1015,77 @@ function openModal({ eyebrow, title, body }) {
 
 function closeModal() {
   qs("detailModal").hidden = true;
+}
+
+function openRequestCompleteModal(payload, requestedCount) {
+  openModal({
+    eyebrow: "작업 요청",
+    title: "작업 요청 완료",
+    body: `
+      <div class="modal-message success">
+        <strong>${escapeHtml(payload.message || "작업 요청이 등록되었습니다.")}</strong>
+        <p>요청 프로젝트 ${requestedCount}건 · 작업 ID ${escapeHtml(payload.job_id || "-")}</p>
+        <p>현재 상태: ${escapeHtml(payload.status_label || payload.status || "-")}</p>
+      </div>
+    `
+  });
+}
+
+function openCancelJobModal(job) {
+  openModal({
+    eyebrow: "예약 취소",
+    title: `${job.id} 작업 취소`,
+    body: `
+      <div class="modal-message warning">
+        <strong>예약됨 또는 대기중인 작업을 취소합니다.</strong>
+        <p>취소된 작업은 다시 실행되지 않으며, 같은 프로젝트는 필요할 때 다시 작업 요청할 수 있습니다.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary-button" type="button" data-close-cancel-modal>닫기</button>
+        <button class="primary-button danger-action" type="button" data-confirm-cancel-job="${escapeHtml(job.id)}">취소 실행</button>
+      </div>
+    `
+  });
+  qs("modalBody").querySelector("[data-close-cancel-modal]").addEventListener("click", closeModal);
+  qs("modalBody").querySelector("[data-confirm-cancel-job]").addEventListener("click", async (event) => {
+    await cancelJob(event.currentTarget.dataset.confirmCancelJob);
+  });
+}
+
+async function cancelJob(jobId) {
+  const button = qs("modalBody").querySelector("[data-confirm-cancel-job]");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "취소 중";
+  }
+
+  try {
+    const payload = await requestJson(`/api/jobs/${jobId}/cancel/`, { method: "POST" });
+    await refreshActiveJob();
+    await loadProjects();
+    await loadResultJobs(jobId);
+    openModal({
+      eyebrow: "예약 취소",
+      title: "작업 취소 완료",
+      body: `
+        <div class="modal-message success">
+          <strong>${escapeHtml(payload.message || "예약된 작업을 취소했습니다.")}</strong>
+          <p>취소된 프로젝트는 프로젝트 선택 탭에서 다시 요청할 수 있습니다.</p>
+        </div>
+      `
+    });
+  } catch (error) {
+    openModal({
+      eyebrow: "예약 취소",
+      title: "작업 취소 실패",
+      body: `
+        <div class="modal-message warning">
+          <strong>${escapeHtml(error.message)}</strong>
+          <p>이미 실행 중이거나 완료된 작업은 취소할 수 없습니다.</p>
+        </div>
+      `
+    });
+  }
 }
 
 function openInspectionModal(projectNumber) {
@@ -1182,8 +1299,9 @@ function bindControls() {
       state.resultJobId = payload.job_id || state.resultJobId;
       state.selected.clear();
       await refreshActiveJob();
+      await loadProjects();
       await loadResultJobs(payload.job_id);
-      renderProjects();
+      openRequestCompleteModal(payload, count);
     } catch (error) {
       state.selectionMessage = error.message;
       renderSelection();

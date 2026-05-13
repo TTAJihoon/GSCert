@@ -25,6 +25,7 @@ from main.services.download_review_worker import run_worker_once
 from main.services.download_verify import verify_downloaded_files
 from main.views.download_review_api import (
     active_job,
+    job_cancel,
     job_detail,
     job_project_results,
     job_projects,
@@ -56,7 +57,9 @@ class DownloadVerifyTests(SimpleTestCase):
         self.assertTrue(result.warnings)
 
 
-class DownloadReviewProjectsApiTests(SimpleTestCase):
+class DownloadReviewProjectsApiTests(TestCase):
+    databases = {"default", "workflow"}
+
     def setUp(self):
         self.factory = RequestFactory()
         self.temp_dir = tempfile.TemporaryDirectory()
@@ -243,6 +246,29 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(detail_response.status_code, 200)
         self.assertEqual(detail_data["job"]["selected_project_numbers"], ["TTA-26-00010"])
 
+    def test_projects_api_marks_active_project_as_not_selectable(self):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.SCHEDULED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            ecm_row_json={"project_number": "TTA-26-00010", "company": "에이치소프트"},
+        )
+
+        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
+            response = projects(
+                self.factory.get("/api/projects/", {"project_number": "TTA-26-00010"}),
+            )
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["items"][0]["active_job_id"], str(job.id))
+        self.assertEqual(data["items"][0]["active_state_label"], "예약중")
+        self.assertFalse(data["items"][0]["selectable"])
+
     def test_jobs_list_endpoint_returns_recent_jobs_and_filters_status(self):
         completed = DownloadReviewJob.objects.create(
             status=DownloadReviewJobStatus.COMPLETED,
@@ -275,6 +301,46 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(completed_data["items"][0]["id"], str(completed.id))
         self.assertEqual(completed_data["items"][0]["completed_project_count"], 1)
         self.assertEqual(completed_data["items"][0]["failed_project_count"], 1)
+
+    def test_cancel_scheduled_job_marks_projects_skipped(self):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.SCHEDULED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            ecm_row_json={"project_number": "TTA-26-00010", "company": "에이치소프트"},
+        )
+
+        response = job_cancel(self.factory.post(f"/api/jobs/{job.id}/cancel/"), job.id)
+        data = json.loads(response.content.decode("utf-8"))
+        job.refresh_from_db()
+        project.refresh_from_db()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(data["success"])
+        self.assertEqual(job.status, DownloadReviewJobStatus.CANCELED)
+        self.assertIsNotNone(job.canceled_at)
+        self.assertEqual(project.status, DownloadReviewProjectStatus.SKIPPED)
+        self.assertEqual(project.current_step, "사용자 취소")
+
+    def test_cancel_running_job_is_rejected(self):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+
+        response = job_cancel(self.factory.post(f"/api/jobs/{job.id}/cancel/"), job.id)
+        data = json.loads(response.content.decode("utf-8"))
+        job.refresh_from_db()
+
+        self.assertEqual(response.status_code, 409)
+        self.assertFalse(data["success"])
+        self.assertEqual(data["error_code"], "job_cancel_not_allowed")
+        self.assertEqual(job.status, DownloadReviewJobStatus.RUNNING)
 
     def test_jobs_list_endpoint_rejects_unknown_filters(self):
         cases = [

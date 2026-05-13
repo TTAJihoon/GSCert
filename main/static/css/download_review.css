@@ -452,6 +452,16 @@
   font-size: 12px;
 }
 
+.danger-action {
+  border-color: var(--review-danger);
+  color: var(--review-danger);
+}
+
+.primary-button.danger-action {
+  background: var(--review-danger);
+  color: #fff;
+}
+
 .link-button {
   border: 0;
   background: transparent;
@@ -619,6 +629,11 @@
   background: var(--review-primary-soft);
 }
 
+.job-card-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .job-title {
   display: flex;
   align-items: center;
@@ -720,8 +735,25 @@
   color: var(--review-warning);
 }
 
+.modal-message.success {
+  background: var(--review-success-soft);
+  color: var(--review-success);
+}
+
 .modal-message p {
   margin: 8px 0 0;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+#activeProgressView[hidden],
+.empty-job-panel[hidden] {
+  display: none !important;
 }
 
 .modal-table .data-table td:nth-child(4) {

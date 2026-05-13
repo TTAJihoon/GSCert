@@ -1,9 +1,11 @@
 from django.http import JsonResponse
-from django.views.decorators.http import require_GET, require_http_methods
+from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from main.services.download_review_jobs import (
     DownloadReviewJobRequestError,
     DownloadReviewNotFoundError,
+    attach_active_project_states,
+    cancel_download_review_job,
     create_download_review_job,
     get_active_job_payload,
     get_job_detail_payload,
@@ -25,6 +27,7 @@ from main.services.reference_db import (
 def projects(request):
     try:
         payload = list_projects(request.GET)
+        payload = attach_active_project_states(payload)
         status = 200
     except ReferenceQueryError as exc:
         payload = _error_payload(exc, str(exc))
@@ -105,6 +108,23 @@ def job_detail(request, job_id):
 @require_GET
 def job_projects(request, job_id):
     return _json_or_not_found(lambda: get_job_projects_payload(job_id))
+
+
+@require_POST
+def job_cancel(request, job_id):
+    try:
+        payload = cancel_download_review_job(job_id)
+        status = 200
+    except DownloadReviewNotFoundError as exc:
+        payload = _error_payload(exc, str(exc))
+        status = exc.status_code
+    except DownloadReviewJobRequestError as exc:
+        payload = _error_payload(exc, str(exc), details=exc.details)
+        status = exc.status_code
+
+    response = JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False})
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @require_GET

@@ -16,6 +16,7 @@ from main.views.certy.prdinfo_db import lookup_cert_info
 from main.views.review.checkreport import parse_view
 from main.views.download_review_api import (
     active_job as download_review_active_job,
+    job_cancel as download_review_job_cancel,
     job_detail as download_review_job_detail,
     job_project_results as download_review_job_project_results,
     job_projects as download_review_job_projects,
@@ -47,6 +48,7 @@ urlpatterns = [
     path('api/projects/', download_review_projects, name='download_review_projects'),
     path('api/jobs/', download_review_jobs, name='download_review_jobs'),
     path('api/jobs/active/', download_review_active_job, name='download_review_active_job'),
+    path('api/jobs/<uuid:job_id>/cancel/', download_review_job_cancel, name='download_review_job_cancel'),
     path('api/jobs/<uuid:job_id>/', download_review_job_detail, name='download_review_job_detail'),
     path('api/jobs/<uuid:job_id>/projects/', download_review_job_projects, name='download_review_job_projects'),
     path('api/job-projects/<uuid:job_project_id>/results/', download_review_job_project_results, name='download_review_job_project_results'),

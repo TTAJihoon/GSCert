@@ -11,6 +11,8 @@ from django.utils import timezone
 from main.models import (
     DownloadReviewJob,
     DownloadReviewJobStatus,
+    DownloadReviewLog,
+    DownloadReviewLogLevel,
     DownloadReviewProject,
     DownloadReviewProjectStatus,
     DownloadReviewProjectReviewStatus,
@@ -25,6 +27,10 @@ ACTIVE_JOB_STATUSES = (
     DownloadReviewJobStatus.SCHEDULED,
     DownloadReviewJobStatus.QUEUED,
     DownloadReviewJobStatus.RUNNING,
+)
+CANCELABLE_JOB_STATUSES = (
+    DownloadReviewJobStatus.SCHEDULED,
+    DownloadReviewJobStatus.QUEUED,
 )
 JOB_LIST_PARAM_NAMES = {"status", "limit", "offset"}
 JOB_LIST_STATUS_FILTERS = {
@@ -61,6 +67,11 @@ class DownloadReviewDuplicateProjectError(DownloadReviewJobRequestError):
 
 class DownloadReviewQueueFullError(DownloadReviewJobRequestError):
     error_code = "queue_full"
+    status_code = 409
+
+
+class DownloadReviewJobCancelError(DownloadReviewJobRequestError):
+    error_code = "job_cancel_not_allowed"
     status_code = 409
 
 
@@ -173,6 +184,102 @@ def get_jobs_payload(query_params):
             "has_more": query["offset"] + len(jobs) < total,
         },
         "status": query["status"],
+    }
+
+
+def attach_active_project_states(projects_payload):
+    items = projects_payload.get("items") or []
+    project_numbers = [item.get("project_number") for item in items if item.get("project_number")]
+    if not project_numbers:
+        return projects_payload
+
+    active_by_number = {}
+    active_projects = (
+        DownloadReviewProject.objects
+        .select_related("job")
+        .filter(project_number__in=project_numbers, job__status__in=ACTIVE_JOB_STATUSES)
+        .order_by("job__requested_at", "job__created_at", "created_at", "id")
+    )
+    for project in active_projects:
+        active_by_number.setdefault(project.project_number, project)
+
+    for item in items:
+        active_project = active_by_number.get(item.get("project_number"))
+        if not active_project:
+            item.update(
+                {
+                    "active_job_id": None,
+                    "active_job_status": "",
+                    "active_job_status_label": "",
+                    "active_project_status": "",
+                    "active_project_status_label": "",
+                    "active_state_label": "",
+                }
+            )
+            continue
+
+        job_status = active_project.job.status
+        item.update(
+            {
+                "active_job_id": str(active_project.job_id),
+                "active_job_status": job_status,
+                "active_job_status_label": job_status_label(job_status),
+                "active_project_status": active_project.status,
+                "active_project_status_label": project_status_label(active_project.status),
+                "active_state_label": active_project_state_label(job_status, active_project.status),
+                "selectable": False,
+            }
+        )
+
+    return projects_payload
+
+
+def cancel_download_review_job(job_id):
+    workflow_alias = getattr(settings, "WORKFLOW_DATABASE_ALIAS", "workflow")
+    with transaction.atomic(using=workflow_alias):
+        try:
+            job = DownloadReviewJob.objects.select_for_update().get(id=job_id)
+        except DownloadReviewJob.DoesNotExist as exc:
+            raise DownloadReviewNotFoundError("작업을 찾을 수 없습니다.") from exc
+
+        if job.status not in CANCELABLE_JOB_STATUSES:
+            raise DownloadReviewJobCancelError(
+                "예약됨 또는 대기중인 작업만 취소할 수 있습니다.",
+                details={
+                    "job_id": str(job.id),
+                    "status": job.status,
+                    "status_label": job_status_label(job.status),
+                },
+            )
+
+        current = timezone.now()
+        job.status = DownloadReviewJobStatus.CANCELED
+        job.canceled_at = current
+        job.progress_message = "사용자가 작업을 취소했습니다."
+        job.save(update_fields=["status", "canceled_at", "progress_message", "updated_at"])
+
+        job.projects.exclude(
+            status__in=(
+                DownloadReviewProjectStatus.COMPLETED,
+                DownloadReviewProjectStatus.FAILED,
+                DownloadReviewProjectStatus.SKIPPED,
+            )
+        ).update(
+            status=DownloadReviewProjectStatus.SKIPPED,
+            current_step="사용자 취소",
+            completed_at=current,
+        )
+        DownloadReviewLog.objects.create(
+            job=job,
+            level=DownloadReviewLogLevel.INFO,
+            event_code="job_canceled",
+            message="사용자가 예약/대기 작업을 취소했습니다.",
+        )
+
+    return {
+        "success": True,
+        "job": serialize_job(job),
+        "message": "예약된 작업을 취소했습니다.",
     }
 
 
@@ -339,6 +446,9 @@ def build_job_schedule(now=None):
 
 
 def is_start_window(local_time):
+    if getattr(settings, "DOWNLOAD_REVIEW_IGNORE_TIME_WINDOW", False):
+        return True
+
     start_hour = getattr(settings, "DOWNLOAD_REVIEW_START_HOUR", 20)
     end_hour = getattr(settings, "DOWNLOAD_REVIEW_END_HOUR", 7)
     hour = local_time.hour
@@ -370,6 +480,16 @@ def project_status_label(status):
         DownloadReviewProjectStatus.SKIPPED: "건너뜀",
     }
     return labels.get(status, status)
+
+
+def active_project_state_label(job_status, project_status):
+    if job_status == DownloadReviewJobStatus.SCHEDULED:
+        return "예약중"
+    if job_status == DownloadReviewJobStatus.QUEUED:
+        return "대기중"
+    if job_status == DownloadReviewJobStatus.RUNNING:
+        return project_status_label(project_status)
+    return job_status_label(job_status)
 
 
 def review_status_label(status):

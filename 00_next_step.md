@@ -104,6 +104,55 @@ powershell -ExecutionPolicy Bypass -File .\start_worker.ps1 -Live -Once -NoHeadl
 - 다운로드 산출물이 zip 단일 파일인지 개별 파일 묶음인지
 - 실패 시 `workflow.db` 상세 오류와 `ecmlist.db` `점검결과=보류` write-back이 맞는지
 
+## 2026-05-13 UI 예약/취소 보강
+
+프로젝트 선택/진행상황/결과 조회 UI를 보강했다.
+
+- `/api/projects/` 응답에 active 작업 상태를 붙인다.
+- 예약됨/대기중/진행중인 프로젝트는 프로젝트 선택 탭에서 체크박스를 비활성화하고 `작업상태` 컬럼에 `예약중` 또는 `대기중`을 표시한다.
+- 작업 요청 성공 시 선택 요약 메시지뿐 아니라 `작업 요청 완료` 모달을 표시한다.
+- 진행상황 탭에서 active 작업이 있는 경우 `진행 중인 작업이 없습니다.` 패널이 함께 보이지 않도록 고쳤다.
+- 결과 조회 탭의 예약됨/대기중 작업 카드에 `예약 취소` 버튼을 추가했다.
+- `POST /api/jobs/<job_id>/cancel/` API를 추가했고, 예약됨/대기중 작업만 취소할 수 있다.
+- 취소된 작업의 프로젝트는 `건너뜀` 상태로 바뀌며, 같은 프로젝트는 다시 요청할 수 있다.
+
+테스트 편의를 위해 작업 시작 가능 시간을 임시로 전체 시간으로 열어두었다.
+
+```python
+DOWNLOAD_REVIEW_IGNORE_TIME_WINDOW = False
+DOWNLOAD_REVIEW_START_HOUR = 0
+DOWNLOAD_REVIEW_END_HOUR = 24
+```
+
+테스트 종료 후 운영 정책으로 되돌릴 때는 아래 값으로 복구한다.
+
+```python
+DOWNLOAD_REVIEW_IGNORE_TIME_WINDOW = False
+DOWNLOAD_REVIEW_START_HOUR = 20
+DOWNLOAD_REVIEW_END_HOUR = 7
+```
+
+로컬 테스트 데이터:
+
+- `main/data/ecmlist.db`는 git 추적 대상이 아니며, 로컬 테스트를 위해 `TTA-26-00200` 행을 추가했다.
+- 현재 로컬 `workflow.db`에는 `TTA-26-00200` 대기중 작업이 1건 있다.
+
+검증:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py check --settings=myproject.ui_mock_settings
+.\.venv\Scripts\python.exe manage.py test main.tests --settings=myproject.ui_mock_settings
+.\.venv\Scripts\python.exe -m unittest discover playwright_job/tests
+```
+
+브라우저 확인:
+
+- 프로젝트 선택 탭에서 `TTA-26-00200` 조회 후 작업 요청
+- `작업 요청 완료` 모달 표시 확인
+- 요청 후 `TTA-26-00200` 체크박스 비활성화 및 `대기중` 표시 확인
+- 진행상황 탭에서 active 작업이 있는 동안 빈 작업 패널이 보이지 않음 확인
+- 결과 조회 탭에서 기존 예약 작업 취소 플로우 확인
+
 ## 다른 PC에서 바로 이어갈 때
 
 ```powershell
