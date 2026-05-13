@@ -133,4 +133,4 @@ def sync_reference_data_to_git(repo_dir, paths, commit_message, remote, branch, 
     _run_git(repo_dir, ["commit", "-m", commit_message, "--", *rel_paths])
     target_branch = branch or _current_branch(repo_dir)
     _run_git(repo_dir, ["push", remote, f"HEAD:{target_branch}"])
-    stdout.write(f"✅ Git push 완료: {remote}/{target_branch}")
+    stdout.write(f"[OK] Git push 완료: {remote}/{target_branch}")

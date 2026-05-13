@@ -60,12 +60,11 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def convert_xlsx_to_sqlite(xlsx_path: str, db_path: str, table_name: str = "sw_data"):
-    xlsx_path = str(Path(xlsx_path))
-    db_path = str(Path(db_path))
+    xlsx_path = Path(xlsx_path)
+    db_path = Path(db_path)
 
-    # ✅ 무조건 첫 시트(0) 사용
     df = pd.read_excel(
-        xlsx_path,
+        str(xlsx_path),
         sheet_name=0,
         engine="openpyxl",
         dtype=object,          # 줄바꿈 포함 원본 최대 유지
@@ -94,7 +93,28 @@ def convert_xlsx_to_sqlite(xlsx_path: str, db_path: str, table_name: str = "sw_d
         df["시작일자"] = ""
         df["종료일자"] = ""
 
-    conn = sqlite3.connect(db_path)
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = db_path.with_name(f".{db_path.name}.tmp")
+    if temp_path.exists():
+        temp_path.unlink()
+
+    try:
+        _write_dataframe_to_sqlite(df, temp_path, table_name)
+        if db_path.exists() and _same_sqlite_table(db_path, temp_path, table_name):
+            temp_path.unlink()
+            print(f"[OK] XLSX({xlsx_path}) -> SQLite({db_path}) 변경 없음")
+            return False
+
+        temp_path.replace(db_path)
+        print(f"[OK] XLSX({xlsx_path}) -> SQLite({db_path}) 변환 및 저장 완료")
+        return True
+    finally:
+        if temp_path.exists():
+            temp_path.unlink()
+
+
+def _write_dataframe_to_sqlite(df: pd.DataFrame, db_path: Path, table_name: str):
+    conn = sqlite3.connect(str(db_path))
 
     tmp = f"{table_name}__tmp"
     conn.execute(f'DROP TABLE IF EXISTS "{tmp}"')
@@ -107,7 +127,6 @@ def convert_xlsx_to_sqlite(xlsx_path: str, db_path: str, table_name: str = "sw_d
         conn.execute(f'ALTER TABLE "{tmp}" RENAME TO "{table_name}"')
         conn.commit()
         conn.close()
-        print(f"[OK] XLSX({xlsx_path}) -> SQLite({db_path}) 저장 완료 (일련번호 없음)")
         return
 
     columns_definition = ", ".join([f'"{c}" TEXT' for c in cols if c != "일련번호"])
@@ -128,4 +147,29 @@ def convert_xlsx_to_sqlite(xlsx_path: str, db_path: str, table_name: str = "sw_d
     conn.commit()
     conn.close()
 
-    print(f"[OK] XLSX({xlsx_path}) -> SQLite({db_path}) 변환 및 저장 완료")
+
+def _same_sqlite_table(left_path: Path, right_path: Path, table_name: str) -> bool:
+    try:
+        return _table_snapshot(left_path, table_name) == _table_snapshot(right_path, table_name)
+    except sqlite3.Error:
+        return False
+
+
+def _table_snapshot(db_path: Path, table_name: str):
+    conn = sqlite3.connect(str(db_path))
+    try:
+        table_info = conn.execute(f'PRAGMA table_info("{table_name}")').fetchall()
+        columns = [(row[1], row[2], row[5]) for row in table_info]
+        if not columns:
+            return (), ()
+
+        column_names = [row[0] for row in columns]
+        quoted_columns = ", ".join(f'"{column}"' for column in column_names)
+        if "일련번호" in column_names:
+            order_sql = ' ORDER BY "일련번호"'
+        else:
+            order_sql = " ORDER BY rowid"
+        rows = conn.execute(f'SELECT {quoted_columns} FROM "{table_name}"{order_sql}').fetchall()
+        return tuple(columns), tuple(tuple(row) for row in rows)
+    finally:
+        conn.close()
