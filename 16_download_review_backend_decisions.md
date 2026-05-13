@@ -49,6 +49,17 @@
 - 기존 `main.Job` 모델은 의미가 다르므로 download-review 작업 이력에는 재사용하지 않는다.
 - 30개 내외 점검규칙 결과는 프로젝트별 별도 결과 테이블에 저장한다.
 
+## 기준 데이터 동기화 정책
+
+- 기존 이력/제품정보 조회용 기준 원본은 `main/data/reference.xlsx`다.
+- SQLite 조회용 DB는 `main/data/reference.db`이며 `reference.xlsx`에서 재생성한다.
+- `main/utils/weekly.py`가 ECM 원천 데이터를 내려받아 `reference.xlsx`를 갱신하고, 이후 `manage.py sqlite`로 DB에 적재하는 기존 운영 흐름을 유지한다.
+- 별도 자동화 스케줄러는 추가하지 않는다. 실행 주기는 기존 배치나 Windows 작업 스케줄러에서 관리한다.
+- `manage.py sqlite` 기본 실행은 기준 데이터 변경 시 `reference.xlsx`와 `reference.db`만 Git commit/push한다.
+- 자동 커밋 메시지 기본값은 `data: update reference database`이며 `--commit-message`로 바꿀 수 있다.
+- 로컬 검증이나 Git 반영이 필요 없는 경우 `--no-git-sync`를 사용한다.
+- `reference.xlsx` 내용이 같아 SQLite 논리 데이터가 바뀌지 않으면 `reference.db`를 교체하지 않고 Git 커밋도 만들지 않는다.
+
 ## 상태 정책
 
 - DB에는 영문 code를 저장하고 UI에는 한글 label을 표시한다.

@@ -197,6 +197,28 @@ worker가 Windows 에이전트 팝업을 제어할 수 있으므로 worker를 �
 - 로그 파일로 상태 확인
 - `status.ps1`로 PID/포트/heartbeat 확인
 
+## 기준 데이터 갱신 흐름
+
+기존 운영 흐름은 유지한다.
+
+1. `main/utils/weekly.py`가 ECM 원천 데이터를 내려받아 `main/data/reference.xlsx`를 갱신한다.
+2. `manage.py sqlite`가 `reference.xlsx`를 `main/data/reference.db`로 적재한다.
+3. 기준 데이터가 바뀐 경우 `manage.py sqlite`가 `reference.xlsx`와 `reference.db`만 Git commit/push한다.
+
+수동 실행:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py sqlite
+```
+
+로컬 검증처럼 Git 반영 없이 DB 생성만 확인할 때:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py sqlite --no-git-sync
+```
+
+이 흐름은 새 자동화 스케줄을 추가하지 않는다. 스케줄 여부는 기존 운영 배치나 Windows 작업 스케줄러 설정에서 관리한다.
+
 ## 위험요소
 
 - worker를 강제 종료하면 현재 처리 중 프로젝트가 중간 상태로 남을 수 있다.

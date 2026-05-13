@@ -13,6 +13,9 @@
 `reference.db`는 아래 명령으로 `reference.xlsx`에서 재생성할 수 있다. 기본 실행은 DB 생성 후
 `reference.xlsx`와 `reference.db` 변경분을 Git commit/push까지 수행한다.
 
+이 명령은 실행될 때만 동작한다. 별도 스케줄러를 만들지 않았으며, 운영에서는 기존처럼
+`weekly.py` 또는 배치 파일이 이 명령을 호출하는 흐름을 따른다.
+
 ```powershell
 .\.venv\Scripts\python.exe manage.py sqlite
 ```

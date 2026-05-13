@@ -30,12 +30,15 @@ codex-job-runner-persistence
 - 5단계 웹페이지1 자동화 구현: `ecm_download.py`, `ecm_selectors.py` 생성, worker에 실제 ECM 자동화 연결, `--no-headless` 옵션 추가
 - 6+7+8단계 통합 구현: ECM 트리 구조 반영, `agent_popup.py` 생성(새 폴더 만들기/전송현황/시스템알림), worker 파이프라인 연결
 - 9단계 구현: `download_verify.py` 생성(다운로드 파일 존재/개수/크기 확인)
+- 기준 데이터 흐름 정리: `reference.xlsx`를 원본으로 보고 `manage.py sqlite`가 `reference.db`를 생성하도록 정리
+- 기준 데이터 Git 반영: `manage.py sqlite` 기본 실행 시 `reference.xlsx`와 `reference.db` 변경분만 commit/push하도록 구현
 
 아직 실제 구현 전/검증 전:
 
 - 5~9단계 실제 서버에서의 통합 검증 (ECM 접속 → 다운로드 → 팝업 처리 → 파일 확인)
 - zip 내부 검사 규칙
 - 실제 규칙 결과와 `ecmlist.db` 산출물 컬럼 간 매핑
+- 운영 서버의 기존 `weekly.py`/배치 호출 방식 확인
 
 ## 우선순위 높은 미확정 항목
 
@@ -81,7 +84,31 @@ codex-job-runner-persistence
 - `02_database_design.md`
 - `12_implementation_roadmap.md`
 
-### 3. workflow.db 세부 스키마
+### 3. reference.xlsx 운영 반영 방식
+
+기존 운영 흐름은 유지한다.
+
+현재 반영:
+
+- `main/data/reference.xlsx`는 ECM 원천 데이터를 누적 관리하는 기준 원본이다.
+- `main/data/reference.db`는 `reference.xlsx`에서 생성되는 조회용 SQLite DB다.
+- `main/management/commands/sqlite.py`는 기본 입력/출력을 `reference.xlsx`/`reference.db`로 사용한다.
+- `manage.py sqlite` 기본 실행은 DB 생성 후 기준 데이터 변경분을 Git commit/push한다.
+- `manage.py sqlite --no-git-sync`는 Git 반영 없이 DB 생성만 수행한다.
+- 새 스케줄러는 추가하지 않았고, 기존 `weekly.py` 또는 배치 파일이 명령을 호출할 때만 실행된다.
+
+추가 확정 필요:
+
+- 운영 배치에서 Git push까지 자동 수행할지, DB 생성만 수행하고 Git 반영은 수동으로 할지
+- 운영 서버에서 `weekly.py` 이후 실제 호출하는 명령이 `manage.py sqlite`인지, 별도 `db.bat` 래퍼인지
+
+관련 문서:
+
+- `main/data/README.md`
+- `10_operations_scripts.md`
+- `16_download_review_backend_decisions.md`
+
+### 4. workflow.db 세부 스키마
 
 실행 이력 DB는 `ecmlist.db`와 분리한다.
 
@@ -103,7 +130,7 @@ codex-job-runner-persistence
 - `06_recovery_and_lock.md`
 - `09_worker_process_design.md`
 
-### 4. worker 운영 방식
+### 5. worker 운영 방식
 
 별도 worker 프로세스 방식은 확정했고, `run_download_worker` command 골격과 dry-run을 구현했다.
 
@@ -127,7 +154,7 @@ codex-job-runner-persistence
 - `09_worker_process_design.md`
 - `10_operations_scripts.md`
 
-### 5. 웹페이지1 자동화 실제 검증
+### 6. 웹페이지1 자동화 실제 검증
 
 웹페이지1 주소:
 
@@ -167,7 +194,7 @@ http://210.96.71.85
 
 - `03_webpage1_automation.md`
 
-### 6. Windows 폴더 선택 팝업 자동화
+### 7. Windows 폴더 선택 팝업 자동화
 
 개발 PC 다운로드 경로:
 
@@ -193,7 +220,7 @@ AGENT_DOWNLOAD_BASE_DIR
 
 - `04_agent_download.md`
 
-### 7. 전송현황/시스템 알림 처리
+### 8. 전송현황/시스템 알림 처리
 
 작업 관리자에서 확인된 에이전트:
 
@@ -227,7 +254,7 @@ DestinyECMAgent(32비트)
 - `04_agent_download.md`
 - `06_recovery_and_lock.md`
 
-### 8. 다운로드 파일 확인
+### 9. 다운로드 파일 확인
 
 확정 사항:
 
@@ -248,7 +275,7 @@ DestinyECMAgent(32비트)
 - `04_agent_download.md`
 - `05_zip_inspection.md`
 
-### 9. 검사 규칙 설계
+### 10. 검사 규칙 설계
 
 검사 규칙 상세 설계는 마지막 단계로 보류했다.
 
@@ -273,16 +300,20 @@ DestinyECMAgent(32비트)
 - `05_zip_inspection.md`
 - `07_skill_strategy.md`
 
-### 10. dependency와 requirements 정리
+### 11. dependency와 requirements 정리
 
 현재 의존성은 `14_dependency_management.md`에 기록했다.
 
-확정 필요:
+현재 반영:
 
-- `requirements.txt`를 생성할지
-- 개발용/운영용 requirements를 분리할지
-- Django 6.0.5를 유지할지, 기존 생성 버전인 Django 5.2 계열로 맞출지
-- 운영 서버에 uvicorn 설치 여부 확인
+- `requirements.txt`는 Django 5.2 계열 기준으로 정리했다.
+- Windows 자동화 의존성은 `requirements-automation.txt`로 분리했다.
+- UI 목업/로컬 실행 의존성은 `requirements-ui.txt`를 유지한다.
+
+추가 확인 필요:
+
+- 운영 서버에서 실제 서버 실행에 사용하는 패키지 목록과 `requirements.txt`의 차이
+- 운영 서버 시작 방식이 Uvicorn인지 Django runserver 래퍼인지
 
 관련 문서:
 
@@ -291,9 +322,10 @@ DestinyECMAgent(32비트)
 ## 다음 작업 후보
 
 1. 5~9단계 통합 검증: 실제 ECM 서버에서 전체 다운로드 파이프라인 테스트
-3. 10단계: 결과 조회 화면 보강
-4. `requirements.txt` 정리
-5. skill 산출물 작성
+2. 운영 서버의 기존 `weekly.py`/배치가 `manage.py sqlite`를 어떻게 호출하는지 확인
+3. 실제 다운로드 산출물 기준으로 점검 규칙과 `ecmlist.db` 점검 컬럼 매핑 정의
+4. 결과 조회 화면에 실제 점검 규칙 결과와 상세 오류를 연결
+5. 테스트가 끝나면 download-review 시작 가능 시간을 `20:00-07:00`으로 복구
 
 ## 대화 재개 시 추천 질문
 
