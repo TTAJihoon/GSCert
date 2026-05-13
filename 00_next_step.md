@@ -190,6 +190,38 @@ DOWNLOAD_REVIEW_END_HOUR = 7
 - `main/data/ecmlist.db`는 git 추적 대상으로 열어두고, `workflow.db`와 `ecm_agent.lock`은 로컬 런타임 파일로 계속 제외한다.
 - 로컬 목업 확인용 dry-run worker는 PID `34740`으로 실행 중이며, `run/download_worker.pid`는 git 제외 대상이다.
 
+## 2026-05-13 데이터 파일 Git 기준 재정리
+
+기준은 `서버 실행에 필요한 기준 데이터는 Git 포함`, `실행 중 생성/변경되는 상태 파일은 Git 제외`로 정했다.
+
+Git 포함:
+
+- `main/data/ecmlist.db`
+- `main/data/reference.db`
+- `main/data/reference.csv`
+- `main/data/prdinfo.xlsx`
+- `main/data/security.xlsx`
+- `main/data/csv`
+- `main/data/README.md`
+
+Git 제외:
+
+- `main/data/workflow.db`
+- `main/data/ecm_agent.lock`
+- `main/data/faiss_bge_m3_ko.idmap.index`
+- `main/data/ngram_table.npz`
+- `run/`
+- `logs/`
+- `db.sqlite3`
+- `main/utils/ecmList/credentials.json`
+- `main/utils/ecmList/token.json`
+
+`reference.db`는 기존 history/prdinfo 조회 화면이 직접 참조하므로 `reference.csv`에서 생성해 Git에 포함했다. 재생성 명령:
+
+```powershell
+.\.venv\Scripts\python.exe main\utils\build_reference_db.py
+```
+
 ## 다른 PC에서 바로 이어갈 때
 
 ```powershell

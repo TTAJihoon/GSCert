@@ -28,12 +28,16 @@ Thumbs.db
 # 임베딩 캐시
 main/data/*
 !main/data/csv
+!main/data/README.md
 !main/data/prdinfo.xlsx
 !main/data/reference.csv
+!main/data/reference.db
 !main/data/security.xlsx
 !main/data/ecmlist.db
 main/data/workflow.db
 main/data/ecm_agent.lock
+main/data/faiss_bge_m3_ko.idmap.index
+main/data/ngram_table.npz
 
 # Static files
 /staticfiles/

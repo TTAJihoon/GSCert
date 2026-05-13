@@ -25,7 +25,7 @@ Django 프로젝트의 주요 웹 화면, URL, 정적 파일, 데이터 변환 �
 | `services` | 화면/API에서 함께 쓰는 DB 조회와 비즈니스 로직을 보관한다. |
 | `utils` | CSV, Excel, FAISS 등 데이터 변환 유틸리티를 보관한다. |
 | `management` | Django management command를 보관한다. |
-| `data` | `ecmlist.db`, `workflow.db` 등 로컬 DB 파일을 둘 위치다. Git 추적은 제외된다. |
+| `data` | 서버 실행에 필요한 기준 데이터와 실행 중 생성되는 로컬 상태 파일을 둔다. Git 포함/제외 기준은 `data/README.md`를 따른다. |
 
 ## 주의사항
 
