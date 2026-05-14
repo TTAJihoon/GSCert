@@ -96,10 +96,7 @@ def _jobs_create(request):
 
 @require_GET
 def active_job(request):
-    response = JsonResponse(
-        get_active_job_payload(request.GET.get("center")),
-        json_dumps_params={"ensure_ascii": False},
-    )
+    response = JsonResponse(get_active_job_payload(), json_dumps_params={"ensure_ascii": False})
     response["Cache-Control"] = "no-store"
     return response
 

@@ -131,9 +131,11 @@
 - dry-run은 프로젝트 결과를 `완료`, `수정 필요`, `보류`가 섞이도록 저장하되 `ecmlist.db`에는 규칙 판정이 가능한 프로젝트만 `O/X`로 write-back한다.
 - `main/management/commands/seed_download_review_rules.py`에 산출물 컬럼 기준 draft 규칙 seed 명령을 구현했다.
 - seed 명령은 기본적으로 비활성 규칙을 생성하고, 실제 파일명 매핑 확정 후 `--enable`을 명시했을 때만 활성화한다.
+- draft 규칙은 실제 규칙이 없는 동안 테스트용으로 유지한다.
+- 실제 규칙이 만들어지면 매핑되는 draft 규칙을 삭제하고 실제 규칙으로 테스트한다.
 
 ## 다음 구현 순서 추천
 
-1. 실제 파일명 기준을 확인한 뒤 draft 규칙의 `contains` 값을 운영 기준으로 보정
-2. 보정된 규칙을 `seed_download_review_rules --enable --update-existing`로 활성화할지 결정
+1. 실제 파일명 기준을 확인한 뒤 draft 규칙의 `contains` 값을 테스트 기준으로 보정
+2. 실제 규칙이 만들어지는 컬럼부터 매핑되는 draft 규칙을 제거하고 실제 규칙으로 전환
 3. Word/Excel/PDF 내부 값 검사 규칙 추가

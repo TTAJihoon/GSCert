@@ -146,23 +146,14 @@ def create_download_review_job(payload, request_ip=None, now=None):
     }
 
 
-def get_active_job_payload(center_code=None):
-    selected_center = parse_center_code(center_code) if center_code else None
-    job = find_active_job(selected_center)
+def get_active_job_payload():
+    job = find_active_job()
     active_count = DownloadReviewJob.objects.filter(status__in=ACTIVE_JOB_STATUSES).count()
-    center_active_count = (
-        DownloadReviewJob.objects
-        .filter(status__in=ACTIVE_JOB_STATUSES, center_code=selected_center)
-        .count()
-        if selected_center
-        else active_count
-    )
     if job is None:
         return {
             "success": True,
             "active_job": None,
             "active_job_count": active_count,
-            "center_active_job_count": center_active_count,
             "polling": {
                 "should_poll": False,
                 "recommended_interval_ms": None,
@@ -174,7 +165,6 @@ def get_active_job_payload(center_code=None):
         "success": True,
         "active_job": serialize_job(job),
         "active_job_count": active_count,
-        "center_active_job_count": center_active_count,
         "polling": polling_hint(job),
     }
 
@@ -374,13 +364,9 @@ def get_project_results_payload(job_project_id):
     }
 
 
-def find_active_job(center_code=None):
-    base_qs = DownloadReviewJob.objects.all()
-    if center_code:
-        base_qs = base_qs.filter(center_code=center_code)
-
+def find_active_job():
     running = (
-        base_qs
+        DownloadReviewJob.objects
         .filter(status=DownloadReviewJobStatus.RUNNING)
         .order_by("started_at", "requested_at", "id")
         .first()
@@ -389,7 +375,7 @@ def find_active_job(center_code=None):
         return running
 
     queued = (
-        base_qs
+        DownloadReviewJob.objects
         .filter(status=DownloadReviewJobStatus.QUEUED)
         .order_by("queued_at", "requested_at", "id")
         .first()
@@ -398,7 +384,7 @@ def find_active_job(center_code=None):
         return queued
 
     return (
-        base_qs
+        DownloadReviewJob.objects
         .filter(status=DownloadReviewJobStatus.SCHEDULED)
         .order_by("available_after", "requested_at", "id")
         .first()

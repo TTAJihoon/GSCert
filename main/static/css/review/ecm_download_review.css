@@ -44,9 +44,17 @@
 .review-status-bar {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 24px;
   margin-bottom: 14px;
+}
+
+.status-side {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-left: 8px;
 }
 
 .eyebrow {
@@ -129,9 +137,11 @@
 
 .center-tabs {
   display: flex;
-  gap: 6px;
-  margin-bottom: 10px;
-  padding: 4px;
+  flex: 0 0 auto;
+  width: max-content;
+  gap: 3px;
+  margin: 0 4px 0 0;
+  padding: 3px;
   border: 1px solid var(--review-line);
   border-radius: 8px;
   background: var(--review-surface);
@@ -141,10 +151,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  min-height: 42px;
-  min-width: 118px;
-  padding: 0 18px;
+  gap: 6px;
+  min-height: 36px;
+  min-width: 74px;
+  padding: 0 10px;
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -799,9 +809,14 @@
 
 @media (max-width: 1100px) {
   .review-status-bar,
+  .status-side,
   .status-strip {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .center-tabs {
+    margin-right: 0;
   }
 
   .progress-toolbar {

@@ -15,41 +15,42 @@
       <p class="eyebrow">ECM download review</p>
       <h1>ECM 제출물 자동 점검</h1>
     </div>
-    <div class="status-strip">
-      <div class="status-item" id="workerState">
-        <span class="dot dot-ok"></span>
-        <div>
-          <span class="label">Worker</span>
-          <strong>실행 중</strong>
+    <div class="status-side">
+      <nav class="center-tabs" aria-label="센터 선택">
+        <button class="center-tab-button active" type="button" data-center-tab="sangam">
+          <i class="fa-solid fa-building"></i>
+          상암
+        </button>
+        <button class="center-tab-button" type="button" data-center-tab="yeongnam">
+          <i class="fa-solid fa-building-user"></i>
+          영남
+        </button>
+      </nav>
+      <div class="status-strip">
+        <div class="status-item" id="workerState">
+          <span class="dot dot-ok"></span>
+          <div>
+            <span class="label">Worker</span>
+            <strong>실행 중</strong>
+          </div>
         </div>
-      </div>
-      <div class="status-item" id="activeJobState">
-        <span class="dot dot-run"></span>
-        <div>
-          <span class="label">현재 작업</span>
-          <strong>진행 중</strong>
+        <div class="status-item" id="activeJobState">
+          <span class="dot dot-run"></span>
+          <div>
+            <span class="label">현재 작업</span>
+            <strong>진행 중</strong>
+          </div>
         </div>
-      </div>
-      <div class="status-item">
-        <span class="dot dot-muted"></span>
-        <div>
-          <span class="label">마지막 갱신</span>
-          <strong id="lastUpdated">-</strong>
+        <div class="status-item">
+          <span class="dot dot-muted"></span>
+          <div>
+            <span class="label">마지막 갱신</span>
+            <strong id="lastUpdated">-</strong>
+          </div>
         </div>
       </div>
     </div>
   </section>
-
-  <nav class="center-tabs" aria-label="센터 선택">
-    <button class="center-tab-button active" type="button" data-center-tab="sangam">
-      <i class="fa-solid fa-building"></i>
-      상암
-    </button>
-    <button class="center-tab-button" type="button" data-center-tab="yeongnam">
-      <i class="fa-solid fa-building-user"></i>
-      영남
-    </button>
-  </nav>
 
   <nav class="tabs" aria-label="화면 탭">
     <button class="tab-button active" type="button" data-tab="projects">

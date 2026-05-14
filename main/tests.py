@@ -353,7 +353,7 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(detail_response.status_code, 200)
         self.assertEqual(detail_data["job"]["selected_project_numbers"], ["TTA-26-00010"])
 
-    def test_active_job_endpoint_can_filter_by_center(self):
+    def test_active_job_endpoint_uses_global_worker_queue_even_with_center_query(self):
         sangam = DownloadReviewJob.objects.create(
             center_code="sangam",
             status=DownloadReviewJobStatus.RUNNING,
@@ -371,10 +371,10 @@ class DownloadReviewJobsApiTests(TestCase):
         data = json.loads(response.content.decode("utf-8"))
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(data["active_job"]["id"], str(yeongnam.id))
-        self.assertNotEqual(data["active_job"]["id"], str(sangam.id))
+        self.assertEqual(data["active_job"]["id"], str(sangam.id))
+        self.assertNotEqual(data["active_job"]["id"], str(yeongnam.id))
         self.assertEqual(data["active_job_count"], 2)
-        self.assertEqual(data["center_active_job_count"], 1)
+        self.assertNotIn("center_active_job_count", data)
 
     def test_projects_api_marks_active_project_as_not_selectable(self):
         job = DownloadReviewJob.objects.create(

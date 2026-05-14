@@ -454,11 +454,6 @@ function projectsUrl() {
   return `${apiEndpoints.projects}?${params.toString()}`;
 }
 
-function activeJobUrl() {
-  const params = new URLSearchParams({ center: state.center });
-  return `${apiEndpoints.activeJob}?${params.toString()}`;
-}
-
 function jobsUrl() {
   const params = new URLSearchParams({
     status: "all",
@@ -772,11 +767,12 @@ function renderSelection() {
     }).join("")
     : `<p class="muted">선택된 프로젝트가 없습니다.</p>`;
 
+  const activeCenter = state.activeJob?.center_code || state.activeJob?.centerCode || "";
   qs("lockMessage").textContent = state.selectionMessage || (!state.hasAnyActiveJob
     ? "선택한 프로젝트는 요청 순서대로 대기열에 등록됩니다."
-    : state.emptyJob
+    : activeCenter && activeCenter !== state.center
       ? "다른 센터 작업이 진행 중입니다. 요청하면 예약됨 상태로 등록됩니다."
-      : "현재 이 센터의 작업이 진행 중입니다. 요청하면 예약됨 상태로 등록됩니다.");
+      : "현재 작업이 진행 중입니다. 요청하면 예약됨 상태로 등록됩니다.");
   qs("requestJob").disabled = !hasSelection;
 }
 
@@ -807,7 +803,7 @@ function renderDetail() {
 
 async function refreshActiveJob() {
   try {
-    const payload = await requestJson(activeJobUrl());
+    const payload = await requestJson(apiEndpoints.activeJob);
     state.activeJob = payload.active_job;
     state.hasAnyActiveJob = (payload.active_job_count || 0) > 0;
     state.emptyJob = !payload.active_job;
