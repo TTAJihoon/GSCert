@@ -182,7 +182,8 @@ Response:
       "company": "회사명",
       "product": "제품명",
       "pl": "시험PL",
-      "review": "",
+      "review": "미점검",
+      "review_raw": "",
       "inspection_date": "",
       "selectable": true,
       "active_job_id": null,
@@ -199,7 +200,7 @@ Response:
 }
 ```
 
-`review=O`인 프로젝트는 작업 요청 대상에서 제외한다.
+`review_raw=O`인 프로젝트는 작업 요청 대상에서 제외한다. API는 기존 한글 값도 읽어 해석하지만, 새로 쓰는 값은 `O/X`를 기준으로 한다.
 
 ## POST /api/jobs/
 

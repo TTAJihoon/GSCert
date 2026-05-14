@@ -406,7 +406,8 @@ const statusLabel = {
   "수정 필요": ["수정 필요", "badge-warn"],
   "보류": ["보류", "badge-danger"],
   "미점검": ["미점검", "badge-muted"],
-  "X": ["미점검", "badge-muted"],
+  "O": ["완료", "badge-success"],
+  "X": ["수정 필요", "badge-warn"],
   "부적합": ["부적합", "badge-danger"],
   "작업실패": ["작업실패", "badge-danger"],
   "정상": ["정상", "badge-success"],
@@ -467,7 +468,9 @@ async function requestJson(url, options = {}) {
 
 function normalizeReview(value) {
   const review = String(value || "").trim();
-  if (!review || review === "X") return "미점검";
+  if (!review || review === "미점검") return "미점검";
+  if (review === "O") return "완료";
+  if (review === "X") return "수정 필요";
   return review;
 }
 
@@ -479,6 +482,7 @@ function normalizeApiProject(item) {
     product: item.product || "",
     pl: item.pl || "",
     review: normalizeReview(item.review),
+    reviewRaw: item.review_raw || item.review || "",
     inspectionDate: item.inspection_date || "-",
     activeJobId: item.active_job_id || "",
     activeJobStatus: item.active_job_status || "",

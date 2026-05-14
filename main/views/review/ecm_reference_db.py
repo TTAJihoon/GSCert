@@ -61,6 +61,10 @@ SORT_NAMES = {
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
 MAX_QUERY_LENGTH = 100
+COMPLETED_REVIEW_VALUES = {"O", "완료"}
+NEEDS_FIX_REVIEW_VALUES = {"X", "수정 필요"}
+HELD_REVIEW_VALUES = {"보류"}
+UNREVIEWED_REVIEW_VALUES = {"", "미점검"}
 
 
 class ReferenceDbError(Exception):
@@ -147,7 +151,7 @@ def write_project_review_result(project_number, review, artifact_results=None, i
     if not number:
         raise ReferenceQueryError("프로젝트번호가 필요합니다.")
 
-    review_value = _clean(review)
+    review_value = _normalize_review_write_value(review)
     if not review_value:
         raise ReferenceQueryError("점검결과 값이 필요합니다.")
 
@@ -287,8 +291,14 @@ def _build_where(filters):
             params.append(_like_param(value))
 
     if filters.get("review"):
-        clauses.append(f"{_quote_identifier('점검결과')} = ?")
-        params.append(filters["review"])
+        review_values = _review_filter_values(filters["review"])
+        if review_values:
+            placeholders = ", ".join("?" for _ in review_values)
+            clauses.append(f"COALESCE({_quote_identifier('점검결과')}, '') IN ({placeholders})")
+            params.extend(review_values)
+        else:
+            clauses.append(f"{_quote_identifier('점검결과')} = ?")
+            params.append(filters["review"])
 
     if filters.get("cert_date"):
         clauses.append(f"{_quote_identifier('인증일자')} = ?")
@@ -354,7 +364,7 @@ def _build_review_updates(review, artifact_results, columns, inspected_at):
     updates = {"점검결과": review}
     for column in ARTIFACT_REVIEW_COLUMNS:
         if column in artifact_results:
-            updates[column] = _clean(artifact_results[column])
+            updates[column] = _normalize_artifact_write_value(artifact_results[column], column)
     if inspected_at and "점검날짜" in columns:
         updates["점검날짜"] = _format_inspection_date(inspected_at)
     return updates
@@ -378,7 +388,8 @@ def _update_project_review_row(conn, table_name, project_number, updates):
 
 
 def _serialize_project(row, columns):
-    review = _row_value(row, "점검결과")
+    review_raw = _row_value(row, "점검결과")
+    review = review_label(review_raw)
     return {
         "project_number": _row_value(row, "프로젝트번호"),
         "cert_date": _row_value(row, "인증일자"),
@@ -386,9 +397,58 @@ def _serialize_project(row, columns):
         "product": _row_value(row, "제품명"),
         "pl": _row_value(row, "시험PL"),
         "review": review,
+        "review_raw": review_raw,
         "inspection_date": _row_value(row, "점검날짜") if "점검날짜" in columns else "",
-        "selectable": review != "완료",
+        "selectable": not is_completed_review_value(review_raw),
     }
+
+
+def review_label(value):
+    cleaned = _clean(value)
+    if cleaned in COMPLETED_REVIEW_VALUES:
+        return "완료"
+    if cleaned in NEEDS_FIX_REVIEW_VALUES:
+        return "수정 필요"
+    if cleaned in HELD_REVIEW_VALUES:
+        return "보류"
+    return "미점검"
+
+
+def is_completed_review_value(value):
+    return _clean(value) in COMPLETED_REVIEW_VALUES
+
+
+def _review_filter_values(value):
+    cleaned = _clean(value)
+    if cleaned in COMPLETED_REVIEW_VALUES:
+        return sorted(COMPLETED_REVIEW_VALUES)
+    if cleaned in NEEDS_FIX_REVIEW_VALUES:
+        return sorted(NEEDS_FIX_REVIEW_VALUES)
+    if cleaned in HELD_REVIEW_VALUES:
+        return sorted(HELD_REVIEW_VALUES)
+    if cleaned in UNREVIEWED_REVIEW_VALUES:
+        return sorted(UNREVIEWED_REVIEW_VALUES)
+    return None
+
+
+def _normalize_review_write_value(value):
+    cleaned = _clean(value)
+    if cleaned in COMPLETED_REVIEW_VALUES or cleaned in {"정상", "pass", "PASS"}:
+        return "O"
+    if cleaned in NEEDS_FIX_REVIEW_VALUES or cleaned in {"부적합", "fail", "FAIL"}:
+        return "X"
+    raise ReferenceQueryError("점검결과는 O 또는 X만 기록할 수 있습니다.")
+
+
+def _normalize_artifact_write_value(value, column):
+    cleaned = _clean(value)
+    if cleaned in {"", "O", "X"}:
+        return cleaned
+    if cleaned in {"정상", "완료", "pass", "PASS"}:
+        return "O"
+    if cleaned in {"부적합", "오류", "fail", "FAIL", "error", "ERROR"}:
+        return "X"
+    raise ReferenceQueryError(f"{column} 점검 컬럼은 O 또는 X만 기록할 수 있습니다.")
 
 
 def _order_by_sql(sort):

@@ -23,6 +23,12 @@ from main.models import (
     DownloadReviewRuleStatus,
 )
 from main.views.review.ecm_reference_db import ARTIFACT_REVIEW_COLUMNS, write_project_review_result
+from main.views.review.ecm_download_review_inspection import (
+    DownloadReviewCleanupSafetyError,
+    DownloadReviewInspectionError,
+    cleanup_download_dir,
+    run_download_inspection,
+)
 from main.utils.ecm_agent_lock import async_ecm_agent_lock
 
 
@@ -220,7 +226,40 @@ async def _run_live_job(job, *, headless=True):
                         verify_result.file_count,
                         file_summary,
                     )
-                    completed += 1
+                    await _run_sync(
+                        _mark_project,
+                        project,
+                        DownloadReviewProjectStatus.INSPECTING,
+                        "점검규칙 검사 중",
+                    )
+                    try:
+                        inspection_outcome = await _run_sync(
+                            run_download_inspection,
+                            project,
+                            verify_result,
+                            file_summary,
+                        )
+                    except DownloadReviewInspectionError as exc:
+                        await _run_sync(
+                            _fail_project,
+                            job, project, "점검규칙 검사", str(exc),
+                            event_code="inspection_failed",
+                            detail_json=file_summary,
+                            download_dir=popup_result.download_dir,
+                        )
+                        failed += 1
+                    else:
+                        await _run_sync(
+                            _finish_project_after_inspection,
+                            job,
+                            project,
+                            inspection_outcome,
+                            verify_result.file_count,
+                            file_summary,
+                        )
+                        completed += 1
+                    finally:
+                        await _run_sync(_cleanup_download_dir_safely, job, project)
                 else:
                     await _run_sync(
                         _fail_project,
@@ -228,14 +267,20 @@ async def _run_live_job(job, *, headless=True):
                         "다운로드 파일 확인",
                         verify_result.error_message,
                         event_code="download_verify_failed",
+                        detail_json=file_summary,
+                        download_dir=popup_result.download_dir,
                     )
+                    await _run_sync(_cleanup_download_dir_safely, job, project)
                     failed += 1
             else:
                 await _run_sync(
                     _fail_project,
                     job, project, popup_result.error_step, popup_result.error_message,
                     event_code="agent_popup_failed",
+                    download_dir=popup_result.download_dir,
                 )
+                if popup_result.download_dir:
+                    await _run_sync(_cleanup_download_dir_safely, job, project)
                 failed += 1
 
             await _run_sync(_update_job_counts, job, completed=completed, failed=failed, total=total)
@@ -245,29 +290,61 @@ async def _run_live_job(job, *, headless=True):
         await close_browser(browser)
 
 
-def _fail_project(job, project, error_step, error_message, event_code="project_failed"):
+def _fail_project(
+    job,
+    project,
+    error_step,
+    error_message,
+    event_code="project_failed",
+    *,
+    detail_json=None,
+    download_dir="",
+):
     """프로젝트를 실패 처리하고 로그를 남긴다."""
     completed_at = timezone.now()
     project.status = DownloadReviewProjectStatus.FAILED
     project.review_status = DownloadReviewProjectReviewStatus.HELD
     project.current_step = error_step
     project.error_message = error_message
+    if detail_json:
+        project.error_detail = _user_error_detail(detail_json)
+    if download_dir:
+        project.download_dir = download_dir
     project.completed_at = completed_at
+    update_fields = [
+        "status", "review_status", "current_step", "error_message",
+        "completed_at", "updated_at",
+    ]
+    if detail_json:
+        update_fields.append("error_detail")
+    if download_dir:
+        update_fields.append("download_dir")
     project.save(
-        update_fields=[
-            "status", "review_status", "current_step", "error_message",
-            "completed_at", "updated_at",
-        ]
+        update_fields=update_fields
     )
-    _write_reference_result_safely(project, "보류", inspected_at=completed_at)
     DownloadReviewLog.objects.create(
         job=job,
         job_project=project,
         level=DownloadReviewLogLevel.WARNING,
         event_code=event_code,
         message=f"{project.project_number} 실패: {error_message}",
-        detail_json={"step": error_step, "error": error_message},
+        detail_json={"step": error_step, "error": error_message, **(detail_json or {})},
     )
+
+
+def _user_error_detail(detail_json):
+    if not detail_json:
+        return ""
+    file_names = detail_json.get("file_names") or []
+    warnings = detail_json.get("warnings") or []
+    parts = []
+    if file_names:
+        parts.append("확인된 파일: " + ", ".join(str(name) for name in file_names[:10]))
+    if warnings:
+        parts.append("경고: " + " / ".join(str(message) for message in warnings[:5]))
+    if detail_json.get("file_count") is not None:
+        parts.append(f"파일 수: {detail_json.get('file_count')}")
+    return "\n".join(parts)
 
 
 def _record_download_verified(job, project, download_dir, file_count, file_summary):
@@ -290,6 +367,93 @@ def _record_download_verified(job, project, download_dir, file_count, file_summa
         event_code="download_verified",
         message=f"{project.project_number} 다운로드 확인 완료: {file_count}개 파일",
         detail_json=file_summary,
+    )
+
+
+def _finish_project_after_inspection(job, project, outcome, file_count, file_summary):
+    completed_at = timezone.now()
+    project.status = DownloadReviewProjectStatus.COMPLETED
+    project.review_status = outcome.project_review_status
+    project.current_step = (
+        f"점검 완료: 정상 {outcome.passed_count}건, "
+        f"부적합 {outcome.failed_count}건"
+    )
+    project.error_message = ""
+    project.error_detail = ""
+    project.completed_at = completed_at
+    project.save(
+        update_fields=[
+            "status",
+            "review_status",
+            "current_step",
+            "error_message",
+            "error_detail",
+            "completed_at",
+            "updated_at",
+        ]
+    )
+    _write_reference_result_safely(
+        project,
+        outcome.reference_review,
+        artifact_results=outcome.artifact_results,
+        inspected_at=completed_at,
+    )
+    DownloadReviewLog.objects.create(
+        job=job,
+        job_project=project,
+        level=DownloadReviewLogLevel.INFO,
+        event_code="inspection_completed",
+        message=(
+            f"{project.project_number} 점검 완료: "
+            f"정상 {outcome.passed_count}건, 부적합 {outcome.failed_count}건"
+        ),
+        detail_json={
+            "file_count": file_count,
+            "rule_result_count": outcome.result_count,
+            "reference_review": outcome.reference_review,
+            "artifact_results": outcome.artifact_results,
+            "files": file_summary,
+        },
+    )
+
+
+def _cleanup_download_dir_safely(job, project):
+    try:
+        outcome = cleanup_download_dir(project)
+    except DownloadReviewCleanupSafetyError as exc:
+        DownloadReviewLog.objects.create(
+            job=job,
+            job_project=project,
+            level=DownloadReviewLogLevel.WARNING,
+            event_code="download_cleanup_skipped",
+            message=f"{project.project_number} 다운로드 폴더 삭제 생략: {exc}",
+            detail_json={"download_dir": project.download_dir, "error": str(exc)},
+            admin_only=True,
+        )
+        return
+    except Exception as exc:
+        DownloadReviewLog.objects.create(
+            job=job,
+            job_project=project,
+            level=DownloadReviewLogLevel.WARNING,
+            event_code="download_cleanup_failed",
+            message=f"{project.project_number} 다운로드 폴더 삭제 실패: {exc}",
+            detail_json={"download_dir": project.download_dir, "error": str(exc)},
+            admin_only=True,
+        )
+        return
+
+    DownloadReviewLog.objects.create(
+        job=job,
+        job_project=project,
+        level=DownloadReviewLogLevel.INFO,
+        event_code="download_cleanup_completed" if outcome.deleted else "download_cleanup_skipped",
+        message=f"{project.project_number} {outcome.message}",
+        detail_json={
+            "download_dir": project.download_dir,
+            "deleted": outcome.deleted,
+            "file_count": outcome.file_count,
+        },
     )
 
 
@@ -571,7 +735,7 @@ def _finish_project_as_completed(project, *, needs_fix):
     )
     write_project_review_result(
         project.project_number,
-        "수정 필요" if needs_fix else "완료",
+        "X" if needs_fix else "O",
         artifact_results=_dry_run_artifact_results(needs_fix=needs_fix),
         inspected_at=completed_at,
     )
@@ -599,12 +763,6 @@ def _finish_project_as_failed(project):
             "completed_at",
             "updated_at",
         ]
-    )
-    write_project_review_result(
-        project.project_number,
-        "보류",
-        artifact_results=_dry_run_artifact_results(held=True),
-        inspected_at=completed_at,
     )
     DownloadReviewLog.objects.create(
         job=project.job,
@@ -652,13 +810,10 @@ def _maybe_sleep(seconds):
         time.sleep(seconds)
 
 
-def _dry_run_artifact_results(*, needs_fix=False, held=False):
-    if held:
-        return {column: "X" for column in ARTIFACT_REVIEW_COLUMNS}
-
-    results = {column: "정상" for column in ARTIFACT_REVIEW_COLUMNS}
+def _dry_run_artifact_results(*, needs_fix=False):
+    results = {column: "O" for column in ARTIFACT_REVIEW_COLUMNS}
     if needs_fix:
-        results["시험성적서(PDF)"] = "부적합"
+        results["시험성적서(PDF)"] = "X"
     return results
 
 

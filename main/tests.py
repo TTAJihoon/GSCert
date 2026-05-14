@@ -11,6 +11,7 @@ from main.models import (
     DownloadReviewProject,
     DownloadReviewProjectReviewStatus,
     DownloadReviewProjectStatus,
+    DownloadReviewRule,
     DownloadReviewRuleResult,
     DownloadReviewRuleStatus,
 )
@@ -22,6 +23,10 @@ from main.views.review.ecm_reference_db import (
     write_project_review_result,
 )
 from main.views.review.ecm_download_review_worker import run_worker_once
+from main.views.review.ecm_download_review_inspection import (
+    cleanup_download_dir,
+    run_download_inspection,
+)
 from main.views.review.ecm_download_verify import verify_downloaded_files
 from main.views.review.ecm_download_review_api import (
     active_job,
@@ -141,7 +146,7 @@ class DownloadReviewProjectsApiTests(TestCase):
                         "우리데이터 주식회사",
                         "우리데이터클리닝 V1.0",
                         "박지훈",
-                        "완료",
+                        "O",
                         "2026.05.12 20:30",
                     ),
                     (
@@ -150,7 +155,7 @@ class DownloadReviewProjectsApiTests(TestCase):
                         "에이치소프트",
                         "SecureFlow 2.1",
                         "김준호",
-                        "미점검",
+                        "",
                         "",
                     ),
                     (
@@ -159,7 +164,7 @@ class DownloadReviewProjectsApiTests(TestCase):
                         "넥스트랩",
                         "NextLab QA Suite",
                         "최유진",
-                        "수정 필요",
+                        "X",
                         "2026.05.11 21:00",
                     ),
                 ],
@@ -439,6 +444,72 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(data["items"][0]["rule_name"], "시험성적서 PDF 존재")
         self.assertEqual(data["items"][0]["status_label"], "정상")
 
+    def test_download_inspection_records_results_and_cleanup_deletes_download_dir(self):
+        download_root = Path(self.temp_dir.name) / "downloads"
+        project_dir = download_root / "TTA-26-00010_1"
+        project_dir.mkdir(parents=True)
+        (project_dir / "계약서_TTA-26-00010.pdf").write_bytes(b"contract")
+        (project_dir / "readme.txt").write_bytes(b"readme")
+        DownloadReviewRule.objects.create(
+            code="계약서",
+            name="계약서",
+            rule_type="required_file_name_contains",
+            config_json={"contains": "계약서", "artifact_column": "계약서"},
+            sort_order=1,
+        )
+        DownloadReviewRule.objects.create(
+            code="시험성적서(PDF)",
+            name="시험성적서(PDF)",
+            rule_type="required_file_name_contains",
+            config_json={"contains": "시험성적서", "artifact_column": "시험성적서(PDF)"},
+            sort_order=2,
+        )
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={"project_number": "TTA-26-00010", "company": "에이치소프트"},
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+        file_summary = {
+            "file_count": verify_result.file_count,
+            "file_names": [file_info.name for file_info in verify_result.files],
+        }
+
+        with self.settings(
+            AGENT_DOWNLOAD_BASE_DIR=download_root,
+            REFERENCE_DB_PATH=self.reference_db_path,
+            REFERENCE_DB_TABLE="ecm_list",
+        ):
+            outcome = run_download_inspection(project, verify_result, file_summary)
+            write_project_review_result(
+                project.project_number,
+                outcome.reference_review,
+                artifact_results=outcome.artifact_results,
+            )
+            cleanup = cleanup_download_dir(project)
+
+        rows = self._reference_rows(
+            ["TTA-26-00010"],
+            ["점검결과", "계약서", "시험성적서(PDF)"],
+        )
+        project.refresh_from_db()
+
+        self.assertEqual(outcome.reference_review, "X")
+        self.assertEqual(outcome.failed_count, 1)
+        self.assertEqual(DownloadReviewRuleResult.objects.filter(job_project=project).count(), 2)
+        self.assertEqual(rows["TTA-26-00010"]["점검결과"], "X")
+        self.assertEqual(rows["TTA-26-00010"]["계약서"], "O")
+        self.assertEqual(rows["TTA-26-00010"]["시험성적서(PDF)"], "X")
+        self.assertTrue(cleanup.deleted)
+        self.assertFalse(project_dir.exists())
+        self.assertIsNotNone(project.zip_deleted_at)
+
     def test_dry_run_worker_completes_job_with_mixed_project_results(self):
         job = DownloadReviewJob.objects.create(
             status=DownloadReviewJobStatus.QUEUED,
@@ -497,16 +568,16 @@ class DownloadReviewJobsApiTests(TestCase):
             1,
         )
         self.assertEqual(DownloadReviewRuleResult.objects.filter(job_project=job_projects[2]).count(), 0)
-        self.assertEqual(reference_rows["TTA-26-00010"]["점검결과"], "완료")
+        self.assertEqual(reference_rows["TTA-26-00010"]["점검결과"], "O")
         self.assertEqual(reference_rows["TTA-26-00010"]["회사명"], "에이치소프트")
-        self.assertEqual(reference_rows["TTA-26-00010"]["계약서"], "정상")
-        self.assertEqual(reference_rows["TTA-26-00010"]["시험성적서(PDF)"], "정상")
+        self.assertEqual(reference_rows["TTA-26-00010"]["계약서"], "O")
+        self.assertEqual(reference_rows["TTA-26-00010"]["시험성적서(PDF)"], "O")
         self.assertNotEqual(reference_rows["TTA-26-00010"]["점검날짜"], "")
         self.assertFalse(projects_data["items"][0]["selectable"])
-        self.assertEqual(reference_rows["TTA-26-00011"]["점검결과"], "수정 필요")
-        self.assertEqual(reference_rows["TTA-26-00011"]["시험성적서(PDF)"], "부적합")
-        self.assertEqual(reference_rows["TTA-26-00012"]["점검결과"], "보류")
-        self.assertEqual(reference_rows["TTA-26-00012"]["계약서"], "X")
+        self.assertEqual(reference_rows["TTA-26-00011"]["점검결과"], "X")
+        self.assertEqual(reference_rows["TTA-26-00011"]["시험성적서(PDF)"], "X")
+        self.assertEqual(reference_rows["TTA-26-00012"]["점검결과"], "")
+        self.assertEqual(reference_rows["TTA-26-00012"]["계약서"], "")
 
     def test_write_back_rejects_non_review_columns(self):
         with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
@@ -518,7 +589,7 @@ class DownloadReviewJobsApiTests(TestCase):
                 )
 
         row = self._reference_rows(["TTA-26-00010"], ["점검결과", "회사명"])["TTA-26-00010"]
-        self.assertEqual(row["점검결과"], "미점검")
+        self.assertEqual(row["점검결과"], "")
         self.assertEqual(row["회사명"], "에이치소프트")
 
     def test_write_back_rejects_missing_db_without_creating_file(self):
@@ -551,7 +622,7 @@ class DownloadReviewJobsApiTests(TestCase):
                     "에이치소프트 복제",
                     "SecureFlow 2.1",
                     "김준호",
-                    "미점검",
+                    "",
                     "",
                 ),
             )
@@ -564,7 +635,7 @@ class DownloadReviewJobsApiTests(TestCase):
                 write_project_review_result("TTA-26-00010", "완료")
 
         rows = self._reference_rows_by_number("TTA-26-00010", ["점검결과"])
-        self.assertEqual([row["점검결과"] for row in rows], ["미점검", "미점검"])
+        self.assertEqual([row["점검결과"] for row in rows], ["", ""])
 
     def test_write_back_succeeds_without_optional_inspection_date_column(self):
         no_date_db_path = Path(self.temp_dir.name) / "no_date.db"
@@ -589,8 +660,8 @@ class DownloadReviewJobsApiTests(TestCase):
             conn.close()
 
         self.assertEqual(result["updated_columns"], ["점검결과", "계약서"])
-        self.assertEqual(row["점검결과"], "완료")
-        self.assertEqual(row["계약서"], "정상")
+        self.assertEqual(row["점검결과"], "O")
+        self.assertEqual(row["계약서"], "O")
 
     def _post_job(self, project_numbers):
         request = self.factory.post(
@@ -606,7 +677,7 @@ class DownloadReviewJobsApiTests(TestCase):
         conn = sqlite3.connect(self.reference_db_path)
         try:
             artifact_columns_sql = ",\n".join(
-                f'"{column}" TEXT DEFAULT \'X\''
+                f'"{column}" TEXT DEFAULT \'\''
                 for column in ARTIFACT_REVIEW_COLUMNS
             )
             conn.execute(
@@ -642,7 +713,7 @@ class DownloadReviewJobsApiTests(TestCase):
                         "우리데이터 주식회사",
                         "우리데이터클리닝 V1.0",
                         "박지훈",
-                        "완료",
+                        "O",
                         "2026.05.12 20:30",
                     ),
                     (
@@ -651,7 +722,7 @@ class DownloadReviewJobsApiTests(TestCase):
                         "에이치소프트",
                         "SecureFlow 2.1",
                         "김준호",
-                        "미점검",
+                        "",
                         "",
                     ),
                     (
@@ -660,7 +731,7 @@ class DownloadReviewJobsApiTests(TestCase):
                         "브릿지웨어",
                         "BridgeHub",
                         "박지훈",
-                        "미점검",
+                        "",
                         "",
                     ),
                     (
@@ -669,7 +740,7 @@ class DownloadReviewJobsApiTests(TestCase):
                         "넥스트랩",
                         "NextLab QA Suite",
                         "최유진",
-                        "미점검",
+                        "",
                         "",
                     ),
                 ],
@@ -718,7 +789,7 @@ class DownloadReviewJobsApiTests(TestCase):
         conn = sqlite3.connect(db_path)
         try:
             artifact_columns_sql = ",\n".join(
-                f'"{column}" TEXT DEFAULT \'X\''
+                f'"{column}" TEXT DEFAULT \'\''
                 for column in ARTIFACT_REVIEW_COLUMNS
             )
             conn.execute(
@@ -745,7 +816,7 @@ class DownloadReviewJobsApiTests(TestCase):
                     "점검결과"
                 ) VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                ("TTA-26-09999", "05/12", "옵션테스트", "NoDate", "박지훈", "미점검"),
+                ("TTA-26-09999", "05/12", "옵션테스트", "NoDate", "박지훈", ""),
             )
             conn.commit()
         finally:

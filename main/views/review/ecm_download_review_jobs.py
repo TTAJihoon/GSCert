@@ -19,7 +19,7 @@ from main.models import (
     DownloadReviewRuleResult,
     DownloadReviewRuleStatus,
 )
-from main.views.review.ecm_reference_db import get_projects_by_numbers
+from main.views.review.ecm_reference_db import get_projects_by_numbers, is_completed_review_value
 
 
 PROJECT_NUMBER_RE = re.compile(r"^TTA-\d{2}-\d{5}$")
@@ -206,7 +206,7 @@ def attach_active_project_states(projects_payload):
     for item in items:
         active_project = active_by_number.get(item.get("project_number"))
         if not active_project:
-            completed = item.get("review") == "완료"
+            completed = is_completed_review_value(item.get("review_raw") or item.get("review"))
             item.update(
                 {
                     "active_job_id": None,
@@ -629,6 +629,7 @@ def serialize_project(project):
 
 
 def serialize_rule_result(result):
+    project_number = result.job_project.project_number
     return {
         "id": str(result.id),
         "job_project_id": str(result.job_project_id),
@@ -636,7 +637,7 @@ def serialize_rule_result(result):
         "rule_code": result.rule_code,
         "rule_name": result.rule_name,
         "sequence": result.sequence,
-        "file_path": result.file_path,
+        "file_path": _display_path(result.file_path, project_number),
         "file_name": result.file_name,
         "status": result.status,
         "status_label": rule_status_label(result.status),
@@ -665,7 +666,7 @@ def _validate_not_completed(projects):
     completed = [
         project["project_number"]
         for project in projects
-        if project.get("review") == "완료"
+        if is_completed_review_value(project.get("review_raw") or project.get("review"))
     ]
     if completed:
         raise DownloadReviewCompletedProjectError(

@@ -98,11 +98,15 @@
 - `main/utils/ecmList/sync_sheets.py`는 Google Sheets 기준정보를 `main/data/ecmlist.db`의 `ecm_list` 테이블에 추가 동기화하는 수동 실행 유틸이다.
 - `main/utils/ecmList/credentials.json`, `main/utils/ecmList/token.json`은 로컬 인증 파일이므로 Git에 올리지 않는다.
 - `번호`부터 `시험PL`까지는 기준정보로 취급하고, 점검 후에는 `점검결과`부터 `홍보이미지`까지의 점검 컬럼만 갱신 대상으로 본다.
-- `main.services.reference_db.write_project_review_result()`는 allowlist에 있는 점검 컬럼만 갱신하며, `회사명` 같은 기준정보 컬럼 갱신 요청은 거부한다.
+- `main.views.review.ecm_reference_db.write_project_review_result()`는 allowlist에 있는 점검 컬럼만 갱신하며, `회사명` 같은 기준정보 컬럼 갱신 요청은 거부한다.
 - write-back 연결은 SQLite `mode=rw`를 사용해 DB가 없을 때 새 파일을 만들지 않는다.
 - write-back은 `프로젝트번호` 갱신 rowcount가 정확히 1건일 때만 성공으로 처리한다. 0건 또는 중복 행은 rollback 후 오류로 처리한다.
-- dry-run worker는 프로젝트 처리 완료 시 `ecmlist.db`에 `점검결과`를 반영한다: 모든 규칙 통과는 `완료`, 부적합 규칙 존재는 `수정 필요`, 작업 자체 실패는 `보류`.
-- dry-run worker의 산출물 점검 컬럼은 샘플 값으로 갱신한다: 통과는 `정상`, 부적합 샘플은 `부적합`, 보류 프로젝트는 `X`.
+- dry-run worker는 프로젝트 처리 완료 시 `ecmlist.db`에 `점검결과`를 반영한다: 모든 규칙 통과는 `O`, 부적합 규칙 존재는 `X`.
+- 작업 자체 실패/보류는 workflow DB에만 남기고 `ecmlist.db`의 규칙 판정 `O/X`와 섞지 않는다.
+- dry-run worker의 산출물 점검 컬럼은 샘플 값으로 갱신한다: 통과는 `O`, 부적합 샘플은 `X`.
+- live worker는 다운로드 파일 확인 후 `inspection_rule`의 활성 규칙을 실행해 `inspection_result`에 통과/실패 결과를 모두 저장한다.
+- 활성 규칙이 없거나 지원하지 않는 규칙 유형이면 프로젝트를 보류/실패로 남기고 `ecmlist.db`는 갱신하지 않는다.
+- 분석 완료 또는 다운로드 후 실패 처리 시 다운로드 폴더 cleanup을 시도한다. 삭제 대상은 `AGENT_DOWNLOAD_BASE_DIR` 아래에 있고 폴더명에 프로젝트번호가 포함된 디렉터리로 제한한다.
 - `GET /api/projects/`를 구현했다.
 - 프로젝트 목록 기본 정렬은 `인증일자` 최신순, 같은 날짜는 `프로젝트번호` 내림차순이다.
 - 프로젝트 목록 API는 allowlist query parameter만 허용한다.
@@ -117,9 +121,10 @@
 - 예약됨 상태는 반복 polling하지 않고 `polling.wake_at` 시각에 한 번 다시 조회한다.
 - `main/management/commands/run_download_worker.py`에 worker command 골격을 구현했다.
 - `python manage.py run_download_worker --once --dry-run`으로 시작 가능한 작업 1개를 dry-run 처리할 수 있다.
-- dry-run은 프로젝트 결과를 `완료`, `수정 필요`, `보류`가 섞이도록 저장하고 `ecmlist.db` 점검 컬럼에 write-back한다.
+- dry-run은 프로젝트 결과를 `완료`, `수정 필요`, `보류`가 섞이도록 저장하되 `ecmlist.db`에는 규칙 판정이 가능한 프로젝트만 `O/X`로 write-back한다.
 
 ## 다음 구현 순서 추천
 
-1. 실제 ECM 다운로드 worker 구현
-2. 결과 조회 탭의 완료 작업 필터/검색 보강
+1. 실제 규칙 목록을 `inspection_rule`에 seed하는 관리 명령 추가
+2. 파일 존재/확장자/파일명 포함 규칙부터 실제 산출물 컬럼과 1:1 매핑
+3. Word/Excel/PDF 내부 값 검사 규칙 추가
