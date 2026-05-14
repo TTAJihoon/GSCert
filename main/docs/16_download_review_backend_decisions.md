@@ -99,7 +99,7 @@
 - `main.db_routers.WorkflowDatabaseRouter`로 download-review 전용 모델만 `workflow.db`에 저장한다.
 - `automation_job`, `automation_job_project`, `inspection_rule`, `inspection_result`, `automation_log`, `automation_lock` 테이블을 Django 모델로 정의했다.
 - 기존 WebSocket ECM 작업은 캐시 miss 후 실제 ECM/clipboard 접근 직전에 `ecm_agent.lock` 파일 lock을 획득한다.
-- `ecmlist.db` 조회는 `main.services.reference_db`에서 read-only SQLite 연결로 처리한다.
+- `ecmlist.db` 조회는 `main.views.review.ecm_reference_db`에서 read-only SQLite 연결로 처리한다.
 - `main/utils/ecmList/sync_sheets.py`는 Google Sheets 기준정보를 `main/data/ecmlist.db`의 `ecm_list` 테이블에 추가 동기화하는 수동 실행 유틸이다.
 - `main/utils/ecmList/credentials.json`, `main/utils/ecmList/token.json`은 로컬 인증 파일이므로 Git에 올리지 않는다.
 - `번호`부터 `시험PL`까지는 기준정보로 취급하고, 점검 후에는 `점검결과`부터 `홍보이미지`까지의 점검 컬럼만 갱신 대상으로 본다.
@@ -129,9 +129,11 @@
 - `main/management/commands/run_download_worker.py`에 worker command 골격을 구현했다.
 - `python manage.py run_download_worker --once --dry-run`으로 시작 가능한 작업 1개를 dry-run 처리할 수 있다.
 - dry-run은 프로젝트 결과를 `완료`, `수정 필요`, `보류`가 섞이도록 저장하되 `ecmlist.db`에는 규칙 판정이 가능한 프로젝트만 `O/X`로 write-back한다.
+- `main/management/commands/seed_download_review_rules.py`에 산출물 컬럼 기준 draft 규칙 seed 명령을 구현했다.
+- seed 명령은 기본적으로 비활성 규칙을 생성하고, 실제 파일명 매핑 확정 후 `--enable`을 명시했을 때만 활성화한다.
 
 ## 다음 구현 순서 추천
 
-1. 실제 규칙 목록을 `inspection_rule`에 seed하는 관리 명령 추가
-2. 파일 존재/확장자/파일명 포함 규칙부터 실제 산출물 컬럼과 1:1 매핑
+1. 실제 파일명 기준을 확인한 뒤 draft 규칙의 `contains` 값을 운영 기준으로 보정
+2. 보정된 규칙을 `seed_download_review_rules --enable --update-existing`로 활성화할지 결정
 3. Word/Excel/PDF 내부 값 검사 규칙 추가

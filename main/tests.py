@@ -1,8 +1,10 @@
 import json
 import sqlite3
 import tempfile
+from io import StringIO
 from pathlib import Path
 
+from django.core.management import call_command
 from django.test import RequestFactory, SimpleTestCase, TestCase
 
 from main.models import (
@@ -61,6 +63,33 @@ class DownloadVerifyTests(SimpleTestCase):
         self.assertTrue(result.success)
         self.assertFalse(result.has_project_number_files)
         self.assertTrue(result.warnings)
+
+
+class DownloadReviewRuleSeedCommandTests(TestCase):
+    databases = {"default", "workflow"}
+
+    def test_seed_creates_disabled_rules_by_default(self):
+        out = StringIO()
+
+        call_command("seed_download_review_rules", stdout=out)
+
+        self.assertEqual(DownloadReviewRule.objects.count(), len(ARTIFACT_REVIEW_COLUMNS))
+        first_rule = DownloadReviewRule.objects.order_by("sort_order").first()
+        self.assertEqual(first_rule.code, "artifact_01")
+        self.assertEqual(first_rule.config_json["artifact_column"], ARTIFACT_REVIEW_COLUMNS[0])
+        self.assertFalse(first_rule.enabled)
+        self.assertIn("created=", out.getvalue())
+
+    def test_seed_can_enable_and_update_existing_rules(self):
+        DownloadReviewRule.objects.create(code="artifact_01", name="old", enabled=False)
+        out = StringIO()
+
+        call_command("seed_download_review_rules", "--enable", "--update-existing", stdout=out)
+
+        rule = DownloadReviewRule.objects.get(code="artifact_01")
+        self.assertEqual(rule.name, ARTIFACT_REVIEW_COLUMNS[0])
+        self.assertTrue(rule.enabled)
+        self.assertIn("updated=", out.getvalue())
 
 
 class DownloadReviewProjectsApiTests(TestCase):
