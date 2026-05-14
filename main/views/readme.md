@@ -28,5 +28,5 @@ HTTP 요청을 처리하는 Django view 함수와 문서 파싱, GPT 연동 등 
 
 ## 관련 문서
 
-- `08_ui_api_design.md`
-- `13_ui_mockup_design.md`
+- `main/docs/08_ui_api_design.md`
+- `main/docs/13_ui_mockup_design.md`

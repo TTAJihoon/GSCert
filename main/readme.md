@@ -26,6 +26,7 @@ Django 프로젝트의 주요 웹 화면, URL, 정적 파일, 데이터 변환 �
 | `utils` | CSV, Excel, FAISS 등 데이터 변환 유틸리티를 보관한다. |
 | `management` | Django management command를 보관한다. |
 | `data` | 서버 실행에 필요한 기준 데이터와 실행 중 생성되는 로컬 상태 파일을 둔다. Git 포함/제외 기준은 `data/README.md`를 따른다. |
+| `docs` | 숫자 prefix 설계 문서(`00_*.md` 등)를 보관한다. |
 
 ## 주의사항
 
@@ -34,6 +35,6 @@ Django 프로젝트의 주요 웹 화면, URL, 정적 파일, 데이터 변환 �
 
 ## 관련 문서
 
-- `08_ui_api_design.md`
-- `11_readme_policy.md`
-- `13_ui_mockup_design.md`
+- `main/docs/08_ui_api_design.md`
+- `main/docs/11_readme_policy.md`
+- `main/docs/13_ui_mockup_design.md`

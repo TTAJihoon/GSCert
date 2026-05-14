@@ -93,12 +93,16 @@ Word 표 검사 예:
 - 규칙별 상세 결과: `DownloadReviewRuleResult`
 - 사용자 표시용 파일 정보: 규칙 결과의 `file_name`, `file_path`, `message`, `expected`, `actual`
 - 관리자 확인용 원문 상세: `raw_detail_json` 또는 `DownloadReviewLog`
+- 저장 범위: 작업에 포함되어 실제 점검한 프로젝트마다 규칙 개수만큼 저장한다.
+- 저장 대상: 통과한 규칙과 실패한 규칙을 모두 저장한다.
 
 판정 기준:
 
 - 모든 규칙 통과: `review_status=completed`, `ecmlist.db` 점검결과 `O`
 - 하나라도 부적합: `review_status=needs_fix`, `ecmlist.db` 점검결과 `X`
-- 다운로드/agent/분석 실행 실패: workflow DB에서는 실패/보류로 표시한다. `ecmlist.db` 점검결과는 `O/X`만 기록하는 방향을 우선 추천한다.
+- `ecmlist.db`의 산출물별 점검 컬럼은 실제 점검규칙과 1:1로 대응하므로 해당 컬럼에 최신 `O/X`를 기록한다.
+- 미실행/대상 없음 기본값은 빈 값으로 둔다.
+- 다운로드/agent/분석 실행 실패: workflow DB에서는 실패/보류로 표시한다. `ecmlist.db` 점검결과와 산출물별 컬럼에는 규칙 판정 `O/X`만 기록한다.
 
 사용자 화면에는 서버 절대경로를 표시하지 않는다. 프로젝트 폴더 기준 상대 경로 또는 파일명만 표시한다.
 

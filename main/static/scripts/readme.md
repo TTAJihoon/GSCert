@@ -26,5 +26,5 @@
 
 ## 관련 문서
 
-- `08_ui_api_design.md`
-- `13_ui_mockup_design.md`
+- `main/docs/08_ui_api_design.md`
+- `main/docs/13_ui_mockup_design.md`

@@ -29,4 +29,4 @@ Django가 렌더링하는 HTML 템플릿을 보관한다.
 
 ## 관련 문서
 
-- `13_ui_mockup_design.md`
+- `main/docs/13_ui_mockup_design.md`

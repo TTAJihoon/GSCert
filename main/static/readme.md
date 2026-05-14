@@ -19,5 +19,5 @@
 
 ## 관련 문서
 
-- `11_readme_policy.md`
-- `13_ui_mockup_design.md`
+- `main/docs/11_readme_policy.md`
+- `main/docs/13_ui_mockup_design.md`
