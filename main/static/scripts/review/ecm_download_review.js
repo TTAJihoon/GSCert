@@ -1,8 +1,13 @@
 const maxRetryCount = 2;
 const apiEndpoints = {
-  projects: "/api/projects/?limit=500",
+  projects: "/api/projects/",
   jobs: "/api/jobs/",
   activeJob: "/api/jobs/active/"
+};
+
+const centerLabels = {
+  sangam: "상암",
+  yeongnam: "영남"
 };
 
 const ruleNames = [
@@ -367,6 +372,7 @@ const mockJobs = [
 ];
 
 const state = {
+  center: "sangam",
   selected: new Set(),
   focusedProject: mockProjects[0],
   resultJobId: null,
@@ -439,6 +445,14 @@ function getCookie(name) {
     .join("=") || "";
 }
 
+function projectsUrl() {
+  const params = new URLSearchParams({
+    limit: "500",
+    center: state.center
+  });
+  return `${apiEndpoints.projects}?${params.toString()}`;
+}
+
 async function requestJson(url, options = {}) {
   const headers = {
     "Accept": "application/json",
@@ -481,6 +495,8 @@ function normalizeApiProject(item) {
     company: item.company || "",
     product: item.product || "",
     pl: item.pl || "",
+    centerCode: item.center_code || state.center,
+    centerLabel: item.center_label || centerLabels[item.center_code || state.center] || "",
     review: normalizeReview(item.review),
     reviewRaw: item.review_raw || item.review || "",
     inspectionDate: item.inspection_date || "-",
@@ -504,6 +520,8 @@ function normalizeApiJobProject(item) {
     number: item.project_number,
     company: item.company || "",
     product: item.product || "",
+    centerCode: item.center_code || "",
+    centerLabel: item.center_label || "",
     status: item.status,
     statusLabel: item.status_label || item.status,
     review: item.review_status_label || item.review_status || "-",
@@ -519,6 +537,8 @@ function normalizeApiJobProject(item) {
 function normalizeApiJob(item) {
   return {
     id: item.id,
+    centerCode: item.center_code || "",
+    centerLabel: item.center_label || "",
     requestedAt: formatDateTime(item.requested_at),
     completedAt: formatDateTime(item.completed_at || item.canceled_at || item.started_at || item.available_after),
     total: item.requested_project_count || 0,
@@ -585,7 +605,7 @@ async function loadProjects() {
   `;
 
   try {
-    const payload = await requestJson(apiEndpoints.projects);
+    const payload = await requestJson(projectsUrl());
     mockProjects = payload.items.map(normalizeApiProject);
     state.selected.clear();
     state.focusedProject = mockProjects[0] || null;
@@ -757,6 +777,7 @@ function renderDetail() {
     <h3>${item.number}</h3>
     <dl class="detail-list">
       <dt>인증일자</dt><dd>${item.certDate}</dd>
+      <dt>센터</dt><dd>${escapeHtml(item.centerLabel || centerLabels[item.centerCode] || "-")}</dd>
       <dt>회사명</dt><dd>${item.company}</dd>
       <dt>제품명</dt><dd>${item.product}</dd>
       <dt>시험PL</dt><dd>${item.pl}</dd>
@@ -923,7 +944,7 @@ function renderJobs() {
     <article class="job-card ${state.resultJobId === job.id ? "active" : ""}" role="button" tabindex="0" data-job-id="${escapeHtml(job.id)}">
       <div class="job-title">
         <span>${escapeHtml(job.id)}</span>
-        ${badge(job.statusLabel || job.status)}
+        <span>${badge(job.centerLabel || centerLabels[job.centerCode] || "-")} ${badge(job.statusLabel || job.status)}</span>
       </div>
       <div class="job-meta">
         <span>요청 ${escapeHtml(job.requestedAt)}</span>
@@ -1113,7 +1134,8 @@ async function openInspectionModal(projectNumber) {
   });
 
   try {
-    const payload = await requestJson(`/api/projects/${encodeURIComponent(projectNumber)}/latest-results/`);
+    const params = new URLSearchParams({ center: state.center });
+    const payload = await requestJson(`/api/projects/${encodeURIComponent(projectNumber)}/latest-results/?${params.toString()}`);
     renderLatestInspectionResult(payload);
   } catch (error) {
     renderLocalInspectionFallback(project, error);
@@ -1341,6 +1363,13 @@ function bindControls() {
     }, 1200);
   });
 
+  qs("centerSelect").addEventListener("change", async () => {
+    state.center = qs("centerSelect").value;
+    state.selectionMessage = "";
+    state.selected.clear();
+    await loadProjects();
+  });
+
   qs("selectVisible").addEventListener("change", () => {
     state.selectionMessage = "";
     filteredProjects().forEach((item) => {
@@ -1371,7 +1400,7 @@ function bindControls() {
     try {
       const payload = await requestJson(apiEndpoints.jobs, {
         method: "POST",
-        body: JSON.stringify({ project_numbers: [...state.selected] })
+        body: JSON.stringify({ center: state.center, project_numbers: [...state.selected] })
       });
       state.selectionMessage = payload.message || `${count}개 프로젝트가 등록되었습니다.`;
       state.resultJobId = payload.job_id || state.resultJobId;
@@ -1418,6 +1447,7 @@ function bindControls() {
 async function init() {
   updateClock();
   bindControls();
+  qs("centerSelect").value = state.center;
   populateFilters();
   renderProjects();
   await loadProjects();

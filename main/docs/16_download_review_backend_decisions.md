@@ -35,14 +35,19 @@
 
 ## DB 정책
 
-- 기준 DB 위치는 `main/data/ecmlist.db`다.
+- 기준 DB 위치는 센터별로 분리한다.
+  - 상암: `main/data/ecmlist.db`
+  - 영남: `main/data/ecmlist2.db`
 - 기준 DB 테이블명은 `ecm_list`다.
-- `ecmlist.db`는 반드시 존재해야 하며 없으면 오류다.
+- 선택한 센터의 `ecmlist*.db`는 반드시 존재해야 하며 없으면 오류다.
 - 프로젝트번호 컬럼은 `프로젝트번호`이고 유일값이다.
 - 인증일자 컬럼은 `인증일자`이며 날짜 포맷은 `05/12` 형태다.
 - 괄호나 슬래시가 포함된 SQLite 컬럼명은 사용할 수 있지만 SQL에서 반드시 식별자 quoting 또는 alias map으로 접근한다.
 - 서버 실행 중 `ecmlist.db`를 덮어쓰지 않는 운영을 기본으로 한다.
 - 작업 생성 시점의 ecm row는 `ecm_row_json` snapshot으로 `workflow.db`에 저장한다.
+- 작업과 프로젝트에는 `center_code`를 저장한다.
+- 상암 선택 시 ECM 트리는 `상암AX센터 > 01 GS인증시험(1등급) > 프로젝트폴더` 흐름을 사용한다.
+- 영남 선택 시 ECM 트리는 `영남AX센터 > 01 GS인증시험(1등급) > 프로젝트폴더` 흐름을 사용한다.
 - `workflow.db` 위치는 `main/data/workflow.db`다.
 - `workflow.db`는 Django ORM과 별도 DB alias 방식으로 관리한다.
 - download-review 전용 모델은 `main` 앱에 두고, database router로 `workflow.db`에만 migrate한다.
@@ -108,9 +113,11 @@
 - 활성 규칙이 없거나 지원하지 않는 규칙 유형이면 프로젝트를 보류/실패로 남기고 `ecmlist.db`는 갱신하지 않는다.
 - 분석 완료 또는 다운로드 후 실패 처리 시 다운로드 폴더 cleanup을 시도한다. 삭제 대상은 `AGENT_DOWNLOAD_BASE_DIR` 아래에 있고 폴더명에 프로젝트번호가 포함된 디렉터리로 제한한다.
 - `GET /api/projects/`를 구현했다.
+- `GET /api/projects/?center=sangam|yeongnam`으로 센터별 DB를 조회한다.
 - 프로젝트 목록 기본 정렬은 `인증일자` 최신순, 같은 날짜는 `프로젝트번호` 내림차순이다.
 - 프로젝트 목록 API는 allowlist query parameter만 허용한다.
 - `POST /api/jobs/`를 구현했다.
+- `POST /api/jobs/`는 `center` 값을 받아 해당 센터 DB 기준으로 프로젝트를 검증하고 작업에 저장한다.
 - 이미 예약됨/대기중/진행중인 프로젝트가 포함된 새 작업 요청은 전체 실패 처리한다.
 - `완료` 프로젝트가 포함된 작업 요청은 버그/우회 요청으로 보고 전체 실패 처리한다.
 - active job은 최대 5개까지 허용한다.

@@ -33,6 +33,7 @@ main/data/*
 !main/data/reference.xlsx
 !main/data/security.xlsx
 !main/data/ecmlist.db
+!main/data/ecmlist2.db
 main/data/workflow.db
 main/data/ecm_agent.lock
 main/data/faiss_bge_m3_ko.idmap.index

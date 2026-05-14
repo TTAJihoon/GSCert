@@ -173,7 +173,11 @@ async def _run_live_job(job, *, headless=True):
             lock_timeout = getattr(settings, "ECM_AGENT_LOCK_TIMEOUT_SECONDS", 600)
             async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
                 # --- 5~6단계: ECM 웹페이지 자동화 ---
-                ecm_result = await run_ecm_automation(browser, project.project_number)
+                ecm_result = await run_ecm_automation(
+                    browser,
+                    project.project_number,
+                    center_code=project.center_code,
+                )
 
                 if not ecm_result.success:
                     await _run_sync(
@@ -489,6 +493,7 @@ def _write_reference_result_safely(project, review, *, inspected_at, artifact_re
             review,
             artifact_results=artifact_results,
             inspected_at=inspected_at,
+            center_code=project.center_code,
         )
     except Exception as exc:
         logger.warning(
@@ -738,6 +743,7 @@ def _finish_project_as_completed(project, *, needs_fix):
         "X" if needs_fix else "O",
         artifact_results=_dry_run_artifact_results(needs_fix=needs_fix),
         inspected_at=completed_at,
+        center_code=project.center_code,
     )
 
 

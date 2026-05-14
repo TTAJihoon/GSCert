@@ -4,7 +4,8 @@
 
 ## Git 포함
 
-- `ecmlist.db`: download-review 프로젝트 목록과 점검 결과 기준 DB
+- `ecmlist.db`: download-review 상암 프로젝트 목록과 점검 결과 기준 DB
+- `ecmlist2.db`: download-review 영남 프로젝트 목록과 점검 결과 기준 DB
 - `reference.db`: 기존 이력/제품정보 조회 화면에서 사용하는 SQLite DB
 - `reference.xlsx`: ECM에서 내려받아 누적 관리하는 기준 원본 데이터
 - `prdinfo.xlsx`: 제품정보 양식 원본

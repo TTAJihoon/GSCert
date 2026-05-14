@@ -6,6 +6,13 @@ from pathlib import Path
 from django.conf import settings
 from django.utils import timezone
 
+from main.views.review.ecm_download_review_centers import (
+    DownloadReviewCenterError,
+    center_label,
+    normalize_center_code,
+    reference_db_path,
+)
+
 
 DEFAULT_ECM_TABLE = "ecm_list"
 REQUIRED_COLUMNS = (
@@ -48,6 +55,7 @@ QUERY_PARAM_NAMES = {
     "review",
     "cert_date",
     "q",
+    "center",
     "limit",
     "offset",
     "sort",
@@ -85,6 +93,7 @@ class ReferenceQueryError(ValueError):
 
 @dataclass(frozen=True)
 class ProjectQuery:
+    center_code: str
     filters: dict
     limit: int
     offset: int
@@ -93,7 +102,7 @@ class ProjectQuery:
 
 def list_projects(query_params):
     query = parse_project_query(query_params)
-    db_path = Path(getattr(settings, "REFERENCE_DB_PATH"))
+    db_path = Path(reference_db_path(query.center_code))
 
     if not db_path.exists():
         raise ReferenceDbMissing("기준 DB 파일이 없습니다.")
@@ -125,8 +134,9 @@ def list_projects(query_params):
     }
 
 
-def get_projects_by_numbers(project_numbers):
-    db_path = Path(getattr(settings, "REFERENCE_DB_PATH"))
+def get_projects_by_numbers(project_numbers, center_code=None):
+    center_code = normalize_center_code(center_code)
+    db_path = Path(reference_db_path(center_code))
 
     if not db_path.exists():
         raise ReferenceDbMissing("기준 DB 파일이 없습니다.")
@@ -137,7 +147,7 @@ def get_projects_by_numbers(project_numbers):
         with closing(_connect_readonly(db_path)) as conn:
             columns = _get_columns(conn, table_name)
             _validate_columns(columns)
-            rows_by_number = _fetch_projects_by_numbers(conn, table_name, columns, project_numbers)
+            rows_by_number = _fetch_projects_by_numbers(conn, table_name, columns, project_numbers, center_code)
     except ReferenceDbError:
         raise
     except sqlite3.Error as exc:
@@ -146,7 +156,8 @@ def get_projects_by_numbers(project_numbers):
     return [rows_by_number.get(number) for number in project_numbers]
 
 
-def write_project_review_result(project_number, review, artifact_results=None, inspected_at=None):
+def write_project_review_result(project_number, review, artifact_results=None, inspected_at=None, center_code=None):
+    center_code = normalize_center_code(center_code)
     number = _clean(project_number)
     if not number:
         raise ReferenceQueryError("프로젝트번호가 필요합니다.")
@@ -165,7 +176,7 @@ def write_project_review_result(project_number, review, artifact_results=None, i
             "수정할 수 없는 점검 컬럼이 포함되어 있습니다: " + ", ".join(unknown_columns)
         )
 
-    db_path = Path(getattr(settings, "REFERENCE_DB_PATH"))
+    db_path = Path(reference_db_path(center_code))
     if not db_path.exists():
         raise ReferenceDbMissing("기준 DB 파일이 없습니다.")
 
@@ -194,6 +205,10 @@ def parse_project_query(query_params):
         names = ", ".join(sorted(unknown))
         raise ReferenceQueryError(f"지원하지 않는 조회 조건입니다: {names}")
 
+    try:
+        center_code = normalize_center_code(query_params.get("center"))
+    except DownloadReviewCenterError as exc:
+        raise ReferenceQueryError(str(exc)) from exc
     filters = {
         "project_number": _clean(query_params.get("project_number")),
         "company": _clean(query_params.get("company")),
@@ -218,7 +233,7 @@ def parse_project_query(query_params):
     if sort not in SORT_NAMES:
         raise ReferenceQueryError(f"지원하지 않는 정렬 방식입니다: {sort}")
 
-    return ProjectQuery(filters=filters, limit=limit, offset=offset, sort=sort)
+    return ProjectQuery(center_code=center_code, filters=filters, limit=limit, offset=offset, sort=sort)
 
 
 def _connect_readonly(db_path):
@@ -338,10 +353,10 @@ def _fetch_projects(conn, table_name, columns, where_sql, params, query):
         + " LIMIT ? OFFSET ?"
     )
     rows = conn.execute(sql, [*params, query.limit, query.offset]).fetchall()
-    return [_serialize_project(row, columns) for row in rows]
+    return [_serialize_project(row, columns, query.center_code) for row in rows]
 
 
-def _fetch_projects_by_numbers(conn, table_name, columns, project_numbers):
+def _fetch_projects_by_numbers(conn, table_name, columns, project_numbers, center_code):
     if not project_numbers:
         return {}
 
@@ -355,7 +370,7 @@ def _fetch_projects_by_numbers(conn, table_name, columns, project_numbers):
     )
     rows = conn.execute(sql, project_numbers).fetchall()
     return {
-        _row_value(row, "프로젝트번호"): _serialize_project(row, columns)
+        _row_value(row, "프로젝트번호"): _serialize_project(row, columns, center_code)
         for row in rows
     }
 
@@ -387,10 +402,12 @@ def _update_project_review_row(conn, table_name, project_number, updates):
     return list(updates.keys())
 
 
-def _serialize_project(row, columns):
+def _serialize_project(row, columns, center_code):
     review_raw = _row_value(row, "점검결과")
     review = review_label(review_raw)
     return {
+        "center_code": center_code,
+        "center_label": center_label(center_code),
         "project_number": _row_value(row, "프로젝트번호"),
         "cert_date": _row_value(row, "인증일자"),
         "company": _row_value(row, "회사명"),

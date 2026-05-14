@@ -135,7 +135,7 @@ def job_project_results(request, job_project_id):
 
 @require_GET
 def latest_project_results(request, project_number):
-    return _json_or_not_found(lambda: get_latest_project_results_payload(project_number))
+    return _json_or_not_found(lambda: get_latest_project_results_payload(project_number, request.GET.get("center")))
 
 
 def _error_payload(exc, message, details=None):
@@ -153,6 +153,9 @@ def _json_or_not_found(factory):
     try:
         payload = factory()
         status = 200
+    except DownloadReviewJobRequestError as exc:
+        payload = _error_payload(exc, str(exc), details=exc.details)
+        status = exc.status_code
     except DownloadReviewNotFoundError as exc:
         payload = _error_payload(exc, str(exc))
         status = exc.status_code

@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 from django.conf import settings
+from main.views.review.ecm_download_review_centers import ecm_tree_root, ecm_tree_root_index, normalize_center_code
 
 try:
     from playwright.async_api import Browser, Page, async_playwright
@@ -76,13 +77,8 @@ def _browser_args():
     return list(args)
 
 
-def _tree_root_index():
-    return int(getattr(settings, "ECM_TREE_ROOT_INDEX", 1))
-
-
 # --- ECM 트리 경로 설정 ---
-# 실제 구조: 상암AX센터(초기 펼침) > {연도}년 시험서비스 > 01 GS인증시험(1등급) > 프로젝트 폴더
-ECM_TREE_ROOT = "상암AX센터"
+# 실제 구조: {센터}AX센터 > {연도}년 시험서비스 > 01 GS인증시험(1등급) > 프로젝트 폴더
 ECM_TREE_TEST_TYPE = "01 GS인증시험(1등급)"
 
 
@@ -209,12 +205,14 @@ async def _document_list_snapshot(page: Page) -> str:
     return " | ".join(parts)
 
 
-async def navigate_to_project_folder(page: Page, project_number: str) -> None:
+async def navigate_to_project_folder(page: Page, project_number: str, *, center_code: str = "") -> None:
     """ECM 트리에서 상위 폴더를 순서대로 펼치고 프로젝트 폴더를 클릭한다.
 
     트리 경로:
-      상암AX센터(초기 펼침) > {연도}년 시험서비스 > 01 GS인증시험(1등급) > 프로젝트 폴더
+      {센터}AX센터 > {연도}년 시험서비스 > 01 GS인증시험(1등급) > 프로젝트 폴더
     """
+    center_code = normalize_center_code(center_code)
+    root_name = ecm_tree_root(center_code)
     t = _timeouts()
     tree = page.locator(FOLDER_TREE)
 
@@ -224,9 +222,9 @@ async def navigate_to_project_folder(page: Page, project_number: str) -> None:
         raise RuntimeError(f"프로젝트번호 형식 오류: {project_number}")
     year = f"20{m.group(1)}"
 
-    # Step 1: 상암AX센터가 접혀 있을 수 있으므로 명시적으로 펼친다.
-    root_index = _tree_root_index()
-    ax_node = _visible_tree_link(tree, ECM_TREE_ROOT, index=root_index)
+    # Step 1: 센터 폴더가 접혀 있을 수 있으므로 명시적으로 펼친다.
+    root_index = ecm_tree_root_index(center_code)
+    ax_node = _visible_tree_link(tree, root_name, index=root_index)
     try:
         await ax_node.wait_for(state="visible", timeout=t["FOLDER_SEARCH"])
         await ax_node.scroll_into_view_if_needed(timeout=3000)
@@ -234,7 +232,7 @@ async def navigate_to_project_folder(page: Page, project_number: str) -> None:
     except Exception as exc:
         snapshot = await _tree_text_snapshot(tree)
         raise RuntimeError(
-            f"ECM 트리에서 '{ECM_TREE_ROOT}' 폴더 #{root_index + 1}을 찾거나 펼치지 못했습니다. "
+            f"ECM 트리에서 '{root_name}' 폴더 #{root_index + 1}을 찾거나 펼치지 못했습니다. "
             f"visible={snapshot}"
         ) from exc
 
@@ -455,7 +453,7 @@ async def _visible_menu_items(menu) -> str:
     return " | ".join(cleaned) if cleaned else "<empty>"
 
 
-async def run_ecm_automation(browser: Browser, project_number: str) -> DownloadStepResult:
+async def run_ecm_automation(browser: Browser, project_number: str, *, center_code: str = "") -> DownloadStepResult:
     """ECM 접속 → 프로젝트 폴더 선택 → 전체 선택 → 다운로드 메뉴 클릭.
 
     성공하면 Windows '폴더 찾아보기' 팝업이 표시된 상태로 반환한다.
@@ -464,7 +462,7 @@ async def run_ecm_automation(browser: Browser, project_number: str) -> DownloadS
     page: Optional[Page] = None
     try:
         page = await open_ecm_page(browser)
-        await navigate_to_project_folder(page, project_number)
+        await navigate_to_project_folder(page, project_number, center_code=center_code)
 
         doc_count = await select_all_documents(page)
         if doc_count == 0:

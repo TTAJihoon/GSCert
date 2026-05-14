@@ -20,6 +20,7 @@ from main.models import (
     DownloadReviewRuleStatus,
 )
 from main.views.review.ecm_reference_db import get_projects_by_numbers, is_completed_review_value
+from main.views.review.ecm_download_review_centers import center_label, normalize_center_code
 
 
 PROJECT_NUMBER_RE = re.compile(r"^TTA-\d{2}-\d{5}$")
@@ -97,18 +98,20 @@ class JobSchedule:
 
 
 def create_download_review_job(payload, request_ip=None, now=None):
+    center_code = parse_center_code(payload.get("center"))
     project_numbers = parse_project_numbers(payload)
-    projects = get_projects_by_numbers(project_numbers)
+    projects = get_projects_by_numbers(project_numbers, center_code=center_code)
     _validate_projects_found(project_numbers, projects)
     _validate_not_completed(projects)
 
     workflow_alias = getattr(settings, "WORKFLOW_DATABASE_ALIAS", "workflow")
     with transaction.atomic(using=workflow_alias):
         _validate_active_job_limit()
-        _validate_no_active_project(project_numbers)
+        _validate_no_active_project(project_numbers, center_code)
 
         schedule = build_job_schedule(now=now)
         job = DownloadReviewJob.objects.create(
+            center_code=center_code,
             status=schedule.status,
             available_after=schedule.available_after,
             queued_at=schedule.queued_at,
@@ -121,8 +124,9 @@ def create_download_review_job(payload, request_ip=None, now=None):
             [
                 DownloadReviewProject(
                     job=job,
+                    center_code=center_code,
                     project_number=project["project_number"],
-                    ecm_row_json=project,
+                    ecm_row_json={**project, "center_code": center_code, "center_label": center_label(center_code)},
                     status=DownloadReviewProjectStatus.QUEUED,
                 )
                 for project in projects
@@ -132,6 +136,8 @@ def create_download_review_job(payload, request_ip=None, now=None):
     return {
         "success": True,
         "job_id": str(job.id),
+        "center_code": job.center_code,
+        "center_label": center_label(job.center_code),
         "status": job.status,
         "status_label": job_status_label(job.status),
         "requested_project_count": job.requested_project_count,
@@ -189,7 +195,12 @@ def get_jobs_payload(query_params):
 
 def attach_active_project_states(projects_payload):
     items = projects_payload.get("items") or []
-    project_numbers = [item.get("project_number") for item in items if item.get("project_number")]
+    project_keys = [
+        (item.get("center_code") or normalize_center_code(None), item.get("project_number"))
+        for item in items
+        if item.get("project_number")
+    ]
+    project_numbers = [project_number for _, project_number in project_keys]
     if not project_numbers:
         return projects_payload
 
@@ -201,10 +212,11 @@ def attach_active_project_states(projects_payload):
         .order_by("job__requested_at", "job__created_at", "created_at", "id")
     )
     for project in active_projects:
-        active_by_number.setdefault(project.project_number, project)
+        active_by_number.setdefault((project.center_code, project.project_number), project)
 
     for item in items:
-        active_project = active_by_number.get(item.get("project_number"))
+        item_center = item.get("center_code") or normalize_center_code(None)
+        active_project = active_by_number.get((item_center, item.get("project_number")))
         if not active_project:
             completed = is_completed_review_value(item.get("review_raw") or item.get("review"))
             item.update(
@@ -235,7 +247,8 @@ def attach_active_project_states(projects_payload):
     return projects_payload
 
 
-def get_latest_project_results_payload(project_number):
+def get_latest_project_results_payload(project_number, center_code=None):
+    center_code = parse_center_code(center_code)
     project_number = str(project_number or "").strip()
     if not PROJECT_NUMBER_RE.match(project_number):
         raise DownloadReviewNotFoundError("작업 프로젝트를 찾을 수 없습니다.")
@@ -245,7 +258,7 @@ def get_latest_project_results_payload(project_number):
         .select_related("job")
         .exclude(job__status__in=ACTIVE_JOB_STATUSES)
         .exclude(job__status=DownloadReviewJobStatus.CANCELED)
-        .filter(project_number=project_number)
+        .filter(center_code=center_code, project_number=project_number)
         .order_by("-completed_at", "-updated_at", "-created_at", "-id")
         .first()
     )
@@ -385,6 +398,13 @@ def parse_json_body(request):
     if not isinstance(payload, dict):
         raise DownloadReviewJobRequestError("JSON 요청 본문은 객체여야 합니다.")
     return payload
+
+
+def parse_center_code(value):
+    try:
+        return normalize_center_code(value)
+    except ValueError as exc:
+        raise DownloadReviewJobRequestError(str(exc)) from exc
 
 
 def parse_job_list_query(query_params):
@@ -580,6 +600,8 @@ def serialize_job(job):
     progress_percent = int(((completed + failed) / total) * 100) if total else 0
     return {
         "id": str(job.id),
+        "center_code": job.center_code,
+        "center_label": center_label(job.center_code),
         "status": job.status,
         "status_label": job_status_label(job.status),
         "requested_at": _iso(job.requested_at),
@@ -605,9 +627,12 @@ def serialize_job(job):
 
 def serialize_project(project):
     ecm_row = project.ecm_row_json or {}
+    center_code = project.center_code or ecm_row.get("center_code") or normalize_center_code(None)
     return {
         "id": str(project.id),
         "job_id": str(project.job_id),
+        "center_code": center_code,
+        "center_label": center_label(center_code),
         "project_number": project.project_number,
         "cert_date": ecm_row.get("cert_date", ""),
         "company": ecm_row.get("company", ""),
@@ -685,9 +710,10 @@ def _validate_active_job_limit():
         )
 
 
-def _validate_no_active_project(project_numbers):
+def _validate_no_active_project(project_numbers, center_code):
     conflicts = list(
         DownloadReviewProject.objects.filter(
+            center_code=center_code,
             project_number__in=project_numbers,
             job__status__in=ACTIVE_JOB_STATUSES,
         )

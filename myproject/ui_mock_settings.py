@@ -62,7 +62,9 @@ WORKFLOW_MODEL_NAMES = {
 ECM_AGENT_LOCK_PATH = BASE_DIR / "main" / "data" / "ecm_agent.lock"
 ECM_AGENT_LOCK_TIMEOUT_SECONDS = 600
 REFERENCE_DB_PATH = BASE_DIR / "main" / "data" / "ecmlist.db"
+REFERENCE_DB_PATH_2 = BASE_DIR / "main" / "data" / "ecmlist2.db"
 REFERENCE_DB_TABLE = "ecm_list"
+DOWNLOAD_REVIEW_DEFAULT_CENTER = "sangam"
 DOWNLOAD_REVIEW_TIME_ZONE = "Asia/Seoul"
 # TODO(TEST_ONLY_DOWNLOAD_REVIEW_TIME_WINDOW):
 # 라이브 검증 중에는 0~24 전체 시간 허용. 테스트 완료 즉시 START_HOUR=20, END_HOUR=7로 되돌린다.
@@ -82,6 +84,7 @@ ECM_BROWSER_ARGS = [
     if arg.strip()
 ]
 ECM_TREE_ROOT_INDEX = int(os.environ.get("ECM_TREE_ROOT_INDEX", "1"))
+ECM_TREE_ROOT_INDEX_YEONGNAM = int(os.environ.get("ECM_TREE_ROOT_INDEX_YEONGNAM", "0"))
 AGENT_DOWNLOAD_BASE_DIR = os.environ.get(
     "AGENT_DOWNLOAD_BASE_DIR",
     str(Path.home() / "Downloads"),

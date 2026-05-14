@@ -62,6 +62,7 @@ class DownloadReviewLogLevel(models.TextChoices):
 
 class DownloadReviewJob(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    center_code = models.CharField(max_length=20, default="sangam", db_index=True)
     status = models.CharField(
         max_length=20,
         choices=DownloadReviewJobStatus.choices,
@@ -93,6 +94,7 @@ class DownloadReviewJob(models.Model):
         indexes = [
             models.Index(fields=["status", "requested_at"], name="dr_job_status_req_idx"),
             models.Index(fields=["available_after"], name="dr_job_available_idx"),
+            models.Index(fields=["center_code", "status"], name="dr_job_center_status_idx"),
         ]
 
     def __str__(self):
@@ -106,6 +108,7 @@ class DownloadReviewProject(models.Model):
         on_delete=models.CASCADE,
         related_name="projects",
     )
+    center_code = models.CharField(max_length=20, default="sangam", db_index=True)
     project_number = models.CharField(max_length=32, db_index=True)
     ecm_row_json = models.JSONField(default=dict, blank=True)
     status = models.CharField(
@@ -145,6 +148,7 @@ class DownloadReviewProject(models.Model):
         indexes = [
             models.Index(fields=["job", "status"], name="dr_project_job_status_idx"),
             models.Index(fields=["project_number"], name="dr_project_number_idx"),
+            models.Index(fields=["center_code", "project_number"], name="dr_project_center_number_idx"),
         ]
 
     def __str__(self):

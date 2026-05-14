@@ -4,7 +4,9 @@
 
 프로젝트 목록은 별도 SQLite 파일에서 관리한다.
 
-- 위치: `main/data/ecmlist.db`
+- 위치:
+  - 상암: `main/data/ecmlist.db`
+  - 영남: `main/data/ecmlist2.db`
 - 테이블명: `ecm_list`
 - 컬럼 타입: 모두 문자열
 
@@ -58,6 +60,7 @@
 확정 방향:
 
 - `ecmlist.db`: 프로젝트 기준 데이터
+- `ecmlist2.db`: 영남 프로젝트 기준 데이터
 - `workflow.db`: 작업, 락, 다운로드, 검사 결과 데이터
 - Django 인증/관리 기본 테이블은 기존 `db.sqlite3` 사용 가능
 
@@ -207,6 +210,7 @@
 - 통과한 규칙과 실패한 규칙을 모두 저장한다.
 - 예: 프로젝트 5개, 규칙 30개를 점검하면 `inspection_result`에는 150행을 저장한다.
 - `ecmlist.db` 전체 프로젝트에 대해 미리 결과 행을 만들지는 않는다.
+- job/project에는 `center_code`를 저장한다. 같은 프로젝트번호가 센터별 DB에 모두 있어도 선택한 센터 기준으로 조회, 중복 검사, write-back을 처리한다.
 
 ## 별도 테이블 후보
 

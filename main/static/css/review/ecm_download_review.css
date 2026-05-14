@@ -208,6 +208,24 @@
   margin-bottom: 12px;
 }
 
+.panel-actions {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.center-picker {
+  display: grid;
+  gap: 5px;
+  min-width: 118px;
+}
+
+.center-picker span {
+  color: var(--review-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
 .panel-header h2 {
   margin-bottom: 4px;
   font-size: 18px;

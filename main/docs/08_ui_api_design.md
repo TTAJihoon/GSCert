@@ -20,6 +20,7 @@
 역할:
 
 - `ecmlist.db`의 `ecm_list` 프로젝트 목록 조회
+- 센터 선택: 상암은 `ecmlist.db`, 영남은 `ecmlist2.db`를 조회
 - 프로젝트 검색/필터
 - 점검 작업 요청
 - 프로젝트별 최신 점검 결과 상세 팝업 표시
@@ -163,6 +164,7 @@ Query:
 | `company` | 회사명 부분 검색 |
 | `product` | 제품명 부분 검색 |
 | `pl` | 시험PL 부분 검색 |
+| `center` | `sangam` 또는 `yeongnam` |
 | `review` | 점검결과 필터 |
 | `cert_date` | 인증일자 필터 |
 | `q` | 프로젝트번호/회사명/제품명/시험PL 통합 검색 |
@@ -178,6 +180,8 @@ Response:
   "items": [
     {
       "project_number": "TTA-26-00200",
+      "center_code": "sangam",
+      "center_label": "상암",
       "cert_date": "05/13",
       "company": "회사명",
       "product": "제품명",
@@ -210,6 +214,7 @@ Request:
 
 ```json
 {
+  "center": "sangam",
   "project_numbers": ["TTA-26-00200"]
 }
 ```
@@ -220,6 +225,8 @@ Response:
 {
   "success": true,
   "job_id": "uuid",
+  "center_code": "sangam",
+  "center_label": "상암",
   "status": "queued",
   "status_label": "대기중",
   "requested_project_count": 1,
@@ -231,6 +238,7 @@ Response:
 검증:
 
 - 프로젝트번호 형식은 `TTA-YY-NNNNN`이어야 한다.
+- `center`는 `sangam` 또는 `yeongnam`만 허용한다. 비어 있으면 상암을 기본값으로 본다.
 - 없는 프로젝트가 포함되면 전체 요청을 실패 처리한다.
 - 이미 예약/대기/진행 중인 프로젝트가 포함되면 전체 요청을 실패 처리한다.
 - 이미 `O`로 완료된 프로젝트가 포함되면 우회 요청으로 보고 실패 처리한다.

@@ -70,7 +70,9 @@ class DownloadReviewProjectsApiTests(TestCase):
         self.factory = RequestFactory()
         self.temp_dir = tempfile.TemporaryDirectory()
         self.reference_db_path = Path(self.temp_dir.name) / "ecmlist.db"
+        self.reference_db_path_2 = Path(self.temp_dir.name) / "ecmlist2.db"
         self._create_reference_db()
+        self.reference_db_path_2.write_bytes(self.reference_db_path.read_bytes())
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -100,6 +102,22 @@ class DownloadReviewProjectsApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(data["success"])
         self.assertEqual(data["error_code"], "invalid_query")
+
+    def test_projects_can_read_yeongnam_center_db(self):
+        yeongnam_db_path = self.reference_db_path_2
+        if yeongnam_db_path.exists():
+            yeongnam_db_path.unlink()
+        self._create_yeongnam_reference_db(yeongnam_db_path)
+
+        request = self.factory.get("/api/projects/", {"center": "yeongnam"})
+        with self.settings(REFERENCE_DB_PATH_2=yeongnam_db_path, REFERENCE_DB_TABLE="ecm_list"):
+            response = projects(request)
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["items"][0]["center_code"], "yeongnam")
+        self.assertEqual(data["items"][0]["center_label"], "영남")
+        self.assertEqual(data["items"][0]["project_number"], "TTA-26-09999")
 
     def _get_projects(self, params=None):
         response = self._request(params or {})
@@ -173,6 +191,40 @@ class DownloadReviewProjectsApiTests(TestCase):
         finally:
             conn.close()
 
+    def _create_yeongnam_reference_db(self, db_path):
+        conn = sqlite3.connect(db_path)
+        try:
+            conn.execute(
+                """
+                CREATE TABLE ecm_list (
+                    "프로젝트번호" TEXT,
+                    "인증일자" TEXT,
+                    "회사명" TEXT,
+                    "제품명" TEXT,
+                    "시험PL" TEXT,
+                    "점검결과" TEXT,
+                    "점검날짜" TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                INSERT INTO ecm_list (
+                    "프로젝트번호",
+                    "인증일자",
+                    "회사명",
+                    "제품명",
+                    "시험PL",
+                    "점검결과",
+                    "점검날짜"
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                ("TTA-26-09999", "05/14", "영남테스트", "Yeongnam Suite", "김영남", "", ""),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
 
 class DownloadReviewJobsApiTests(TestCase):
     databases = {"default", "workflow"}
@@ -181,7 +233,9 @@ class DownloadReviewJobsApiTests(TestCase):
         self.factory = RequestFactory()
         self.temp_dir = tempfile.TemporaryDirectory()
         self.reference_db_path = Path(self.temp_dir.name) / "ecmlist.db"
+        self.reference_db_path_2 = Path(self.temp_dir.name) / "ecmlist2.db"
         self._create_reference_db()
+        self.reference_db_path_2.write_bytes(self.reference_db_path.read_bytes())
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -196,6 +250,23 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertIn(data["status"], {"scheduled", "queued"})
         self.assertEqual(DownloadReviewJob.objects.count(), 1)
         self.assertEqual(DownloadReviewProject.objects.count(), 1)
+
+    def test_job_request_uses_selected_center_without_cross_center_conflict(self):
+        yeongnam_response = self._post_job(["TTA-26-00010"], center="yeongnam")
+        yeongnam_data = json.loads(yeongnam_response.content.decode("utf-8"))
+
+        sangam_response = self._post_job(["TTA-26-00010"], center="sangam")
+        sangam_data = json.loads(sangam_response.content.decode("utf-8"))
+
+        self.assertEqual(yeongnam_response.status_code, 201)
+        self.assertEqual(yeongnam_data["center_code"], "yeongnam")
+        self.assertEqual(sangam_response.status_code, 201)
+        self.assertEqual(sangam_data["center_code"], "sangam")
+        self.assertEqual(DownloadReviewJob.objects.count(), 2)
+        self.assertEqual(
+            set(DownloadReviewProject.objects.values_list("center_code", flat=True)),
+            {"sangam", "yeongnam"},
+        )
 
     def test_job_request_rejects_completed_projects(self):
         response = self._post_job(["TTA-26-00009"])
@@ -663,14 +734,21 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(row["점검결과"], "O")
         self.assertEqual(row["계약서"], "O")
 
-    def _post_job(self, project_numbers):
+    def _post_job(self, project_numbers, *, center=None):
+        payload = {"project_numbers": project_numbers}
+        if center:
+            payload["center"] = center
         request = self.factory.post(
             "/api/jobs/",
-            data=json.dumps({"project_numbers": project_numbers}),
+            data=json.dumps(payload),
             content_type="application/json",
             REMOTE_ADDR="127.0.0.1",
         )
-        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
+        with self.settings(
+            REFERENCE_DB_PATH=self.reference_db_path,
+            REFERENCE_DB_PATH_2=self.reference_db_path_2,
+            REFERENCE_DB_TABLE="ecm_list",
+        ):
             return jobs(request)
 
     def _create_reference_db(self):
