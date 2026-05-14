@@ -106,7 +106,8 @@ ECM_AGENT_LOCK_TIMEOUT_SECONDS = 600
 REFERENCE_DB_PATH = BASE_DIR / 'main' / 'data' / 'ecmlist.db'
 REFERENCE_DB_TABLE = 'ecm_list'
 DOWNLOAD_REVIEW_TIME_ZONE = 'Asia/Seoul'
-# 테스트 중에는 0~24 전체 시간 허용. 테스트 종료 후 20~7로 되돌린다.
+# TODO(TEST_ONLY_DOWNLOAD_REVIEW_TIME_WINDOW):
+# 라이브 검증 중에는 0~24 전체 시간 허용. 테스트 완료 즉시 START_HOUR=20, END_HOUR=7로 되돌린다.
 DOWNLOAD_REVIEW_IGNORE_TIME_WINDOW = False
 DOWNLOAD_REVIEW_START_HOUR = 0
 DOWNLOAD_REVIEW_END_HOUR = 24
@@ -115,6 +116,16 @@ DOWNLOAD_REVIEW_MAX_PROJECTS_PER_JOB = 100
 
 # --- ECM 다운로드 자동화 설정 ---
 ECM_BASE_URL = os.environ.get('ECM_BASE_URL', 'http://210.96.71.85')
+ECM_BROWSER_CHANNEL = os.environ.get('ECM_BROWSER_CHANNEL', 'chrome')
+ECM_BROWSER_ARGS = [
+    arg.strip()
+    for arg in os.environ.get(
+        'ECM_BROWSER_ARGS',
+        '--disable-features=LocalNetworkAccessChecks,BlockInsecurePrivateNetworkRequests,PrivateNetworkAccessSendPreflights,PrivateNetworkAccessRespectPreflightResults --disable-local-network-access-check',
+    ).split()
+    if arg.strip()
+]
+ECM_TREE_ROOT_INDEX = int(os.environ.get('ECM_TREE_ROOT_INDEX', '1'))
 AGENT_DOWNLOAD_BASE_DIR = os.environ.get(
     'AGENT_DOWNLOAD_BASE_DIR',
     str(Path.home() / 'Downloads'),

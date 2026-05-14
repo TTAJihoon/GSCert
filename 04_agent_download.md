@@ -177,4 +177,4 @@ Downloads/GSCert/TTA-26-00009_2
 - 버튼: `덮어쓰기`, `이름변경`, `건너뛰기`, `취소`
 - 자동화에서는 `덮어쓰기`를 클릭한다.
 
-구현 파일: `main/services/agent_popup.py`
+구현 파일: `main/views/review/ecm_agent_popup.py`

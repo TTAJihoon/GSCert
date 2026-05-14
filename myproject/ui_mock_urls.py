@@ -2,7 +2,7 @@ from django.shortcuts import redirect, render
 from django.urls import path
 from django.views.decorators.csrf import ensure_csrf_cookie
 
-from main.views.download_review_api import (
+from main.views.review.ecm_download_review_api import (
     active_job as download_review_active_job,
     job_cancel as download_review_job_cancel,
     job_detail as download_review_job_detail,
@@ -16,7 +16,7 @@ from main.views.download_review_api import (
 
 @ensure_csrf_cookie
 def download_review(request):
-    return render(request, "download_review.html")
+    return render(request, "review/ecm_download_review.html")
 
 
 urlpatterns = [

@@ -22,9 +22,9 @@ Uvicorn 프로세스
 download_worker 프로세스
 └─ workflow.db에서 pending 작업 확인
 └─ 작업 락 획득
-└─ 웹페이지1 자동화 (ecm_download.py, ecm_selectors.py)
-└─ 에이전트 다운로드 팝업 처리 (agent_popup.py)
-└─ 다운로드 파일 확인 (download_verify.py)
+└─ 웹페이지1 자동화 (main/views/review/ecm_download.py, main/views/review/ecm_selectors.py)
+└─ 에이전트 다운로드 팝업 처리 (main/views/review/ecm_agent_popup.py)
+└─ 다운로드 파일 확인 (main/views/review/ecm_download_verify.py)
 └─ 검사 실행
 └─ 작업 상태 저장
 ```

@@ -2,7 +2,7 @@ import time
 
 from django.core.management.base import BaseCommand
 
-from main.services.download_review_worker import run_worker_once
+from main.views.review.ecm_download_review_worker import run_worker_once
 
 
 class Command(BaseCommand):

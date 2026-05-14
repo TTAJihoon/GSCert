@@ -10,7 +10,7 @@ import os
 from dataclasses import dataclass, field
 from typing import List
 
-logger = logging.getLogger("main.services.download_verify")
+logger = logging.getLogger("main.views.review.ecm_download_verify")
 
 
 @dataclass

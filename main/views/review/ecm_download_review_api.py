@@ -1,7 +1,7 @@
 from django.http import JsonResponse
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
-from main.services.download_review_jobs import (
+from main.views.review.ecm_download_review_jobs import (
     DownloadReviewJobRequestError,
     DownloadReviewNotFoundError,
     attach_active_project_states,
@@ -15,7 +15,7 @@ from main.services.download_review_jobs import (
     get_project_results_payload,
     parse_json_body,
 )
-from main.services.reference_db import (
+from main.views.review.ecm_reference_db import (
     ReferenceDbError,
     ReferenceDbMissing,
     ReferenceDbSchemaError,

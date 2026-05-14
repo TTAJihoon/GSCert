@@ -14,7 +14,7 @@ from main.views.certy.prdinfo_download import download_filled_prdinfo
 from main.views.certy.prdinfo_db import lookup_cert_info
 
 from main.views.review.checkreport import parse_view
-from main.views.download_review_api import (
+from main.views.review.ecm_download_review_api import (
     active_job as download_review_active_job,
     job_cancel as download_review_job_cancel,
     job_detail as download_review_job_detail,

@@ -35,4 +35,4 @@ def test(request):
 
 @ensure_csrf_cookie
 def download_review(request):
-    return render(request, 'download_review.html')
+    return render(request, 'review/ecm_download_review.html')

@@ -19,7 +19,7 @@ from main.models import (
     DownloadReviewRuleResult,
     DownloadReviewRuleStatus,
 )
-from main.services.reference_db import get_projects_by_numbers
+from main.views.review.ecm_reference_db import get_projects_by_numbers
 
 
 PROJECT_NUMBER_RE = re.compile(r"^TTA-\d{2}-\d{5}$")

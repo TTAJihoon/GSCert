@@ -14,16 +14,16 @@ from main.models import (
     DownloadReviewRuleResult,
     DownloadReviewRuleStatus,
 )
-from main.services.reference_db import (
+from main.views.review.ecm_reference_db import (
     ARTIFACT_REVIEW_COLUMNS,
     ReferenceDbError,
     ReferenceDbMissing,
     ReferenceQueryError,
     write_project_review_result,
 )
-from main.services.download_review_worker import run_worker_once
-from main.services.download_verify import verify_downloaded_files
-from main.views.download_review_api import (
+from main.views.review.ecm_download_review_worker import run_worker_once
+from main.views.review.ecm_download_verify import verify_downloaded_files
+from main.views.review.ecm_download_review_api import (
     active_job,
     job_cancel,
     job_detail,

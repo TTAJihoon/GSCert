@@ -84,3 +84,34 @@ Word 표 검사 예:
 - 실패/경고/정보 상태 구분
 - 검사 결과 화면에서 보여줄 메시지 형식
 - 규칙 변경 시 버전 관리 방식
+
+## 현재 권장 저장 방식
+
+점검 결과는 프로젝트 최종 결과와 규칙별 상세 결과를 분리한다.
+
+- 프로젝트 최종 결과: `DownloadReviewProject.review_status`
+- 규칙별 상세 결과: `DownloadReviewRuleResult`
+- 사용자 표시용 파일 정보: 규칙 결과의 `file_name`, `file_path`, `message`, `expected`, `actual`
+- 관리자 확인용 원문 상세: `raw_detail_json` 또는 `DownloadReviewLog`
+
+판정 기준:
+
+- 모든 규칙 통과: `review_status=completed`, `ecmlist.db` 점검결과 `O`
+- 하나라도 부적합: `review_status=needs_fix`, `ecmlist.db` 점검결과 `X`
+- 다운로드/agent/분석 실행 실패: workflow DB에서는 실패/보류로 표시한다. `ecmlist.db` 점검결과는 `O/X`만 기록하는 방향을 우선 추천한다.
+
+사용자 화면에는 서버 절대경로를 표시하지 않는다. 프로젝트 폴더 기준 상대 경로 또는 파일명만 표시한다.
+
+## 분석 완료 후 파일 정리
+
+다운로드 파일과 폴더는 규칙 분석 완료 후 삭제한다.
+
+삭제 전에 DB에 남겨야 하는 정보:
+
+- 다운로드된 파일명
+- 파일 크기
+- 규칙별 판정 결과
+- 사용자용 메시지
+- 관리자 로그 event code
+
+`ecmlist.db`는 삭제하지 않는다. 프로젝트별 점검결과와 산출물 컬럼만 추가/수정한다.

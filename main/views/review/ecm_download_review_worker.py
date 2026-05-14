@@ -1,9 +1,11 @@
+import asyncio
 import os
 import socket
 import time
 from dataclasses import dataclass
 import logging
 
+from asgiref.sync import sync_to_async
 from django.conf import settings
 from django.db import transaction
 from django.utils import timezone
@@ -20,11 +22,11 @@ from main.models import (
     DownloadReviewRuleResult,
     DownloadReviewRuleStatus,
 )
-from main.services.reference_db import ARTIFACT_REVIEW_COLUMNS, write_project_review_result
+from main.views.review.ecm_reference_db import ARTIFACT_REVIEW_COLUMNS, write_project_review_result
 from main.utils.ecm_agent_lock import async_ecm_agent_lock
 
 
-logger = logging.getLogger("main.services.download_review_worker")
+logger = logging.getLogger("main.views.review.ecm_download_review_worker")
 
 
 DRY_RUN_RULES = [
@@ -59,6 +61,10 @@ DRY_RUN_RULES = [
     "압축 내 경로 길이",
     "최종 산출물 개수",
 ]
+
+
+async def _run_sync(func, *args, **kwargs):
+    return await sync_to_async(func, thread_sensitive=True)(*args, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -105,8 +111,6 @@ def run_worker_once(*, dry_run=False, sleep_seconds=0, headless=True):
 
 def _run_live_worker(*, headless=True):
     """실제 ECM 자동화를 사용하는 worker 실행."""
-    import asyncio
-
     claim = claim_next_job()
     if claim is None:
         return WorkerRunResult(
@@ -118,11 +122,12 @@ def _run_live_worker(*, headless=True):
     job = claim
     try:
         asyncio.run(_run_live_job(job, headless=headless))
+        job.refresh_from_db()
         return WorkerRunResult(
             processed=True,
             job_id=str(job.id),
-            status="completed",
-            message="ECM 다운로드 자동화 작업을 완료했습니다.",
+            status=job.status,
+            message=job.progress_message or "ECM 다운로드 자동화 작업을 완료했습니다.",
         )
     except Exception as exc:
         mark_job_failed(job, str(exc))
@@ -144,20 +149,20 @@ async def _run_live_job(job, *, headless=True):
     2. Windows 폴더 찾아보기 팝업에서 다운로드 폴더 선택 (7단계)
     3. 전송현황 창 대기 및 시스템 알림 처리 (8단계)
     """
-    from main.services.agent_popup import handle_folder_popup_and_download
-    from main.services.download_verify import summarize_files, verify_downloaded_files
-    from main.services.ecm_download import close_browser, launch_browser, run_ecm_automation
+    from main.views.review.ecm_agent_popup import handle_folder_popup_and_download
+    from main.views.review.ecm_download_verify import summarize_files, verify_downloaded_files
+    from main.views.review.ecm_download import close_browser, launch_browser, run_ecm_automation
 
     browser = await launch_browser(headless=headless)
     try:
-        projects = _projects_for_job(job)
+        projects = await _run_sync(_projects_for_job, job)
         total = len(projects)
         completed = 0
         failed = 0
 
         for project in projects:
-            _touch_job(job, f"{project.project_number} ECM 자동화 진행 중")
-            _mark_project(project, DownloadReviewProjectStatus.RUNNING, "ECM 폴더 선택 중")
+            await _run_sync(_touch_job, job, f"{project.project_number} ECM 자동화 진행 중")
+            await _run_sync(_mark_project, project, DownloadReviewProjectStatus.RUNNING, "ECM 폴더 선택 중")
 
             lock_timeout = getattr(settings, "ECM_AGENT_LOCK_TIMEOUT_SECONDS", 600)
             async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
@@ -165,16 +170,18 @@ async def _run_live_job(job, *, headless=True):
                 ecm_result = await run_ecm_automation(browser, project.project_number)
 
                 if not ecm_result.success:
-                    _fail_project(
+                    await _run_sync(
+                        _fail_project,
                         job, project, ecm_result.error_step, ecm_result.error_message,
                         event_code="ecm_download_failed",
                     )
                     failed += 1
-                    _update_job_counts(job, completed=completed, failed=failed, total=total)
+                    await _run_sync(_update_job_counts, job, completed=completed, failed=failed, total=total)
                     continue
 
                 # --- 7~8단계: Windows 팝업 자동화 (동기) ---
-                _mark_project(
+                await _run_sync(
+                    _mark_project,
                     project, DownloadReviewProjectStatus.RUNNING,
                     f"폴더 선택 및 다운로드 대기 중 (문서 {ecm_result.doc_count}건)",
                 )
@@ -190,7 +197,8 @@ async def _run_live_job(job, *, headless=True):
 
             if popup_result.success:
                 # --- 9단계: 다운로드 파일 확인 ---
-                _mark_project(
+                await _run_sync(
+                    _mark_project,
                     project, DownloadReviewProjectStatus.DOWNLOADED,
                     "다운로드 파일 확인 중",
                 )
@@ -204,28 +212,18 @@ async def _run_live_job(job, *, headless=True):
                 )
 
                 if verify_result.success:
-                    project.status = DownloadReviewProjectStatus.DOWNLOADED
-                    project.review_status = DownloadReviewProjectReviewStatus.UNREVIEWED
-                    project.current_step = f"다운로드 완료 ({verify_result.file_count}개 파일)"
-                    project.download_dir = popup_result.download_dir
-                    project.completed_at = timezone.now()
-                    project.save(
-                        update_fields=[
-                            "status", "review_status", "current_step", "download_dir",
-                            "completed_at", "updated_at",
-                        ]
-                    )
-                    DownloadReviewLog.objects.create(
-                        job=job,
-                        job_project=project,
-                        level=DownloadReviewLogLevel.INFO,
-                        event_code="download_verified",
-                        message=f"{project.project_number} 다운로드 확인 완료: {verify_result.file_count}개 파일",
-                        detail_json=file_summary,
+                    await _run_sync(
+                        _record_download_verified,
+                        job,
+                        project,
+                        popup_result.download_dir,
+                        verify_result.file_count,
+                        file_summary,
                     )
                     completed += 1
                 else:
-                    _fail_project(
+                    await _run_sync(
+                        _fail_project,
                         job, project,
                         "다운로드 파일 확인",
                         verify_result.error_message,
@@ -233,24 +231,16 @@ async def _run_live_job(job, *, headless=True):
                     )
                     failed += 1
             else:
-                _fail_project(
+                await _run_sync(
+                    _fail_project,
                     job, project, popup_result.error_step, popup_result.error_message,
                     event_code="agent_popup_failed",
                 )
                 failed += 1
 
-            _update_job_counts(job, completed=completed, failed=failed, total=total)
+            await _run_sync(_update_job_counts, job, completed=completed, failed=failed, total=total)
 
-        if failed == total:
-            job.status = DownloadReviewJobStatus.FAILED
-            job.last_error_message = "모든 프로젝트가 실패했습니다."
-        else:
-            job.status = DownloadReviewJobStatus.COMPLETED
-        job.completed_at = timezone.now()
-        job.progress_message = f"다운로드 완료: 성공 {completed}건, 실패 {failed}건"
-        job.save(update_fields=[
-            "status", "completed_at", "progress_message", "last_error_message", "updated_at",
-        ])
+        await _run_sync(_finish_live_job, job, completed=completed, failed=failed, total=total)
     finally:
         await close_browser(browser)
 
@@ -278,6 +268,43 @@ def _fail_project(job, project, error_step, error_message, event_code="project_f
         message=f"{project.project_number} 실패: {error_message}",
         detail_json={"step": error_step, "error": error_message},
     )
+
+
+def _record_download_verified(job, project, download_dir, file_count, file_summary):
+    completed_at = timezone.now()
+    project.status = DownloadReviewProjectStatus.DOWNLOADED
+    project.review_status = DownloadReviewProjectReviewStatus.UNREVIEWED
+    project.current_step = f"다운로드 완료 ({file_count}개 파일)"
+    project.download_dir = download_dir
+    project.completed_at = completed_at
+    project.save(
+        update_fields=[
+            "status", "review_status", "current_step", "download_dir",
+            "completed_at", "updated_at",
+        ]
+    )
+    DownloadReviewLog.objects.create(
+        job=job,
+        job_project=project,
+        level=DownloadReviewLogLevel.INFO,
+        event_code="download_verified",
+        message=f"{project.project_number} 다운로드 확인 완료: {file_count}개 파일",
+        detail_json=file_summary,
+    )
+
+
+def _finish_live_job(job, *, completed, failed, total):
+    if failed == total:
+        job.status = DownloadReviewJobStatus.FAILED
+        job.last_error_message = "모든 프로젝트가 실패했습니다."
+    else:
+        job.status = DownloadReviewJobStatus.COMPLETED
+        job.last_error_message = ""
+    job.completed_at = timezone.now()
+    job.progress_message = f"다운로드 완료: 성공 {completed}건, 실패 {failed}건"
+    job.save(update_fields=[
+        "status", "completed_at", "progress_message", "last_error_message", "updated_at",
+    ])
 
 
 async def _close_ecm_page(page):
@@ -336,7 +363,7 @@ def claim_next_job(now=None):
         lock.job = job
         lock.locked_at = current
         lock.heartbeat_at = current
-        lock.note = "download-review dry-run"
+        lock.note = "download-review worker"
         lock.save(update_fields=["locked", "owner", "job", "locked_at", "heartbeat_at", "note", "updated_at"])
 
         job.status = DownloadReviewJobStatus.RUNNING
@@ -345,7 +372,7 @@ def claim_next_job(now=None):
         job.worker_pid = os.getpid()
         job.worker_host = socket.gethostname()
         job.worker_heartbeat_at = current
-        job.progress_message = "dry-run 작업 시작"
+        job.progress_message = "worker 작업 시작"
         job.save(
             update_fields=[
                 "status",
@@ -361,8 +388,8 @@ def claim_next_job(now=None):
         DownloadReviewLog.objects.create(
             job=job,
             level=DownloadReviewLogLevel.INFO,
-            event_code="dry_run_started",
-            message="dry-run worker가 작업을 시작했습니다.",
+            event_code="worker_started",
+            message="download-review worker가 작업을 시작했습니다.",
         )
         return job
 
@@ -408,11 +435,27 @@ def run_dry_run_job(job, *, sleep_seconds=0):
 
 
 def mark_job_failed(job, message):
+    completed_at = timezone.now()
     job.status = DownloadReviewJobStatus.FAILED
-    job.completed_at = timezone.now()
+    job.completed_at = completed_at
     job.progress_message = "worker 오류로 작업 실패"
     job.last_error_message = message
     job.save(update_fields=["status", "completed_at", "progress_message", "last_error_message", "updated_at"])
+    job.projects.filter(
+        status__in=(
+            DownloadReviewProjectStatus.QUEUED,
+            DownloadReviewProjectStatus.RUNNING,
+            DownloadReviewProjectStatus.DOWNLOADED,
+            DownloadReviewProjectStatus.INSPECTING,
+        )
+    ).update(
+        status=DownloadReviewProjectStatus.FAILED,
+        review_status=DownloadReviewProjectReviewStatus.HELD,
+        current_step="worker 오류",
+        error_message=message,
+        completed_at=completed_at,
+        updated_at=completed_at,
+    )
     DownloadReviewLog.objects.create(
         job=job,
         level=DownloadReviewLogLevel.ERROR,
@@ -585,7 +628,7 @@ def _update_job_counts(job, *, completed, failed, total):
     job.failed_project_count = failed
     job.requested_project_count = total
     job.worker_heartbeat_at = timezone.now()
-    job.progress_message = f"dry-run 진행 중: 완료 {completed}건, 실패 {failed}건"
+    job.progress_message = f"작업 진행 중: 완료 {completed}건, 실패 {failed}건"
     job.save(
         update_fields=[
             "completed_project_count",

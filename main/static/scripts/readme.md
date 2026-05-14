@@ -9,7 +9,7 @@
 | 파일 | 설명 |
 | --- | --- |
 | `index.js` | 기존 메인 화면 동작을 담당한다. |
-| `download_review.js` | ECM 제출물 자동 검사 mock UI의 mock 데이터, 탭 전환, 필터, 상태 표시를 담당한다. |
+| `review/ecm_download_review.js` | ECM 제출물 자동 검사 mock UI의 mock 데이터, 탭 전환, 필터, 상태 표시를 담당한다. |
 
 ## 하위 폴더
 
