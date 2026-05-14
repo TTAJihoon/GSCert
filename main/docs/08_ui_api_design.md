@@ -15,12 +15,19 @@
 
 ## 화면 구조
 
+### 상단 센터 탭
+
+역할:
+
+- `상암`, `영남`을 페이지 세트의 최상위 탭으로 선택한다.
+- 센터를 바꾸면 프로젝트 선택, 현재 작업 진행 상황, 작업 조회가 모두 해당 센터 기준으로 다시 조회된다.
+- 상암은 `ecmlist.db`, 영남은 `ecmlist2.db`를 조회한다.
+
 ### 프로젝트 선택 탭
 
 역할:
 
 - `ecmlist.db`의 `ecm_list` 프로젝트 목록 조회
-- 센터 선택: 상암은 `ecmlist.db`, 영남은 `ecmlist2.db`를 조회
 - 프로젝트 검색/필터
 - 점검 작업 요청
 - 프로젝트별 최신 점검 결과 상세 팝업 표시
@@ -41,7 +48,7 @@
 
 주요 API:
 
-- `GET /api/jobs/active/`
+- `GET /api/jobs/active/?center=sangam|yeongnam`
 - `GET /api/jobs/{job_id}/projects/`
 
 진행 중 또는 대기 중이면 3초 polling을 권장한다. 예약 상태이면서 시작 가능 시간이 남아 있으면 polling을 중지하고 `wake_at` 시각에 다시 조회한다.
@@ -144,8 +151,8 @@ GET /api/job-projects/{job_project_id}/results/
 | --- | --- | --- |
 | GET | `/api/projects/` | 프로젝트 목록 조회 |
 | POST | `/api/jobs/` | 작업 요청 생성 |
-| GET | `/api/jobs/active/` | 현재 작업 조회 |
-| GET | `/api/jobs/` | 작업 목록 조회 |
+| GET | `/api/jobs/active/` | 현재 작업 조회. `center`를 주면 해당 센터의 현재 작업만 조회 |
+| GET | `/api/jobs/` | 작업 목록 조회. `center`를 주면 해당 센터 작업만 조회 |
 | GET | `/api/jobs/{job_id}/` | 작업 상세 조회 |
 | GET | `/api/jobs/{job_id}/projects/` | 작업 내 프로젝트 목록 조회 |
 | POST | `/api/jobs/{job_id}/cancel/` | 예약/대기 작업 취소 |
@@ -248,6 +255,12 @@ Response:
 
 현재 작업을 조회한다.
 
+Query:
+
+| 이름 | 설명 |
+| --- | --- |
+| `center` | 선택. `sangam` 또는 `yeongnam`. 지정하면 해당 센터의 현재 작업만 조회 |
+
 Response, 작업 없음:
 
 ```json
@@ -255,6 +268,7 @@ Response, 작업 없음:
   "success": true,
   "active_job": null,
   "active_job_count": 0,
+  "center_active_job_count": 0,
   "polling": {
     "should_poll": false,
     "recommended_interval_ms": null,
@@ -276,6 +290,7 @@ Response, 진행/대기:
     "progress_message": "ECM 자동화 진행 중"
   },
   "active_job_count": 1,
+  "center_active_job_count": 1,
   "polling": {
     "should_poll": true,
     "recommended_interval_ms": 3000,
@@ -312,6 +327,7 @@ Query:
 | 이름 | 설명 |
 | --- | --- |
 | `status` | `all`, `finished`, `scheduled`, `queued`, `running`, `completed`, `failed`, `canceled` |
+| `center` | 선택. `sangam` 또는 `yeongnam`. 지정하면 해당 센터 작업만 조회 |
 | `limit` | 조회 개수 |
 | `offset` | 조회 시작 위치 |
 

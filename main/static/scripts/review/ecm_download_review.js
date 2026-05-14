@@ -383,6 +383,7 @@ const state = {
   selectionMessage: "",
   projectLoadError: "",
   activeJob: null,
+  hasAnyActiveJob: false,
   activeProjects: [],
   resultJobs: [],
   resultProjects: [],
@@ -451,6 +452,20 @@ function projectsUrl() {
     center: state.center
   });
   return `${apiEndpoints.projects}?${params.toString()}`;
+}
+
+function activeJobUrl() {
+  const params = new URLSearchParams({ center: state.center });
+  return `${apiEndpoints.activeJob}?${params.toString()}`;
+}
+
+function jobsUrl() {
+  const params = new URLSearchParams({
+    status: "all",
+    limit: "50",
+    center: state.center
+  });
+  return `${apiEndpoints.jobs}?${params.toString()}`;
 }
 
 async function requestJson(url, options = {}) {
@@ -757,9 +772,11 @@ function renderSelection() {
     }).join("")
     : `<p class="muted">선택된 프로젝트가 없습니다.</p>`;
 
-  qs("lockMessage").textContent = state.selectionMessage || (state.emptyJob
+  qs("lockMessage").textContent = state.selectionMessage || (!state.hasAnyActiveJob
     ? "선택한 프로젝트는 요청 순서대로 대기열에 등록됩니다."
-    : "현재 다른 작업이 진행 중입니다. 요청하면 예약됨 상태로 등록됩니다.");
+    : state.emptyJob
+      ? "다른 센터 작업이 진행 중입니다. 요청하면 예약됨 상태로 등록됩니다."
+      : "현재 이 센터의 작업이 진행 중입니다. 요청하면 예약됨 상태로 등록됩니다.");
   qs("requestJob").disabled = !hasSelection;
 }
 
@@ -790,8 +807,9 @@ function renderDetail() {
 
 async function refreshActiveJob() {
   try {
-    const payload = await requestJson(apiEndpoints.activeJob);
+    const payload = await requestJson(activeJobUrl());
     state.activeJob = payload.active_job;
+    state.hasAnyActiveJob = (payload.active_job_count || 0) > 0;
     state.emptyJob = !payload.active_job;
     if (state.activeJob) {
       const projectsPayload = await requestJson(`/api/jobs/${state.activeJob.id}/projects/`);
@@ -802,6 +820,7 @@ async function refreshActiveJob() {
   } catch (error) {
     state.activeJob = null;
     state.activeProjects = [];
+    state.hasAnyActiveJob = false;
     state.emptyJob = true;
   }
   renderProgress();
@@ -816,7 +835,7 @@ async function loadResultJobs(preferredJobId = null) {
   `;
 
   try {
-    const payload = await requestJson(`${apiEndpoints.jobs}?status=all&limit=50`);
+    const payload = await requestJson(jobsUrl());
     state.resultJobs = payload.items.map(normalizeApiJob);
     state.resultJobId = preferredJobId
       || (state.resultJobs.some((job) => job.id === state.resultJobId) ? state.resultJobId : null)
@@ -1363,11 +1382,10 @@ function bindControls() {
     }, 1200);
   });
 
-  qs("centerSelect").addEventListener("change", async () => {
-    state.center = qs("centerSelect").value;
-    state.selectionMessage = "";
-    state.selected.clear();
-    await loadProjects();
+  document.querySelectorAll("[data-center-tab]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await switchCenter(button.dataset.centerTab);
+    });
   });
 
   qs("selectVisible").addEventListener("change", () => {
@@ -1444,10 +1462,31 @@ function bindControls() {
   });
 }
 
+async function switchCenter(center) {
+  if (!center || center === state.center) return;
+  state.center = center;
+  state.selectionMessage = "";
+  state.selected.clear();
+  state.resultJobId = null;
+  state.resultProjects = [];
+  syncCenterTabs();
+  await Promise.allSettled([
+    loadProjects(),
+    refreshActiveJob(),
+    loadResultJobs()
+  ]);
+}
+
+function syncCenterTabs() {
+  document.querySelectorAll("[data-center-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.centerTab === state.center);
+  });
+}
+
 async function init() {
   updateClock();
   bindControls();
-  qs("centerSelect").value = state.center;
+  syncCenterTabs();
   populateFilters();
   renderProjects();
   await loadProjects();

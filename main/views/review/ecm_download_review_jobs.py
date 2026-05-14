@@ -33,7 +33,7 @@ CANCELABLE_JOB_STATUSES = (
     DownloadReviewJobStatus.SCHEDULED,
     DownloadReviewJobStatus.QUEUED,
 )
-JOB_LIST_PARAM_NAMES = {"status", "limit", "offset"}
+JOB_LIST_PARAM_NAMES = {"status", "limit", "offset", "center"}
 JOB_LIST_STATUS_FILTERS = {
     "all": None,
     "finished": (
@@ -146,14 +146,23 @@ def create_download_review_job(payload, request_ip=None, now=None):
     }
 
 
-def get_active_job_payload():
-    job = find_active_job()
+def get_active_job_payload(center_code=None):
+    selected_center = parse_center_code(center_code) if center_code else None
+    job = find_active_job(selected_center)
     active_count = DownloadReviewJob.objects.filter(status__in=ACTIVE_JOB_STATUSES).count()
+    center_active_count = (
+        DownloadReviewJob.objects
+        .filter(status__in=ACTIVE_JOB_STATUSES, center_code=selected_center)
+        .count()
+        if selected_center
+        else active_count
+    )
     if job is None:
         return {
             "success": True,
             "active_job": None,
-            "active_job_count": 0,
+            "active_job_count": active_count,
+            "center_active_job_count": center_active_count,
             "polling": {
                 "should_poll": False,
                 "recommended_interval_ms": None,
@@ -165,6 +174,7 @@ def get_active_job_payload():
         "success": True,
         "active_job": serialize_job(job),
         "active_job_count": active_count,
+        "center_active_job_count": center_active_count,
         "polling": polling_hint(job),
     }
 
@@ -172,6 +182,8 @@ def get_active_job_payload():
 def get_jobs_payload(query_params):
     query = parse_job_list_query(query_params)
     qs = DownloadReviewJob.objects.all()
+    if query["center"]:
+        qs = qs.filter(center_code=query["center"])
     statuses = JOB_LIST_STATUS_FILTERS[query["status"]]
     if statuses:
         qs = qs.filter(status__in=statuses)
@@ -190,6 +202,7 @@ def get_jobs_payload(query_params):
             "has_more": query["offset"] + len(jobs) < total,
         },
         "status": query["status"],
+        "center": query["center"],
     }
 
 
@@ -361,9 +374,13 @@ def get_project_results_payload(job_project_id):
     }
 
 
-def find_active_job():
+def find_active_job(center_code=None):
+    base_qs = DownloadReviewJob.objects.all()
+    if center_code:
+        base_qs = base_qs.filter(center_code=center_code)
+
     running = (
-        DownloadReviewJob.objects
+        base_qs
         .filter(status=DownloadReviewJobStatus.RUNNING)
         .order_by("started_at", "requested_at", "id")
         .first()
@@ -372,7 +389,7 @@ def find_active_job():
         return running
 
     queued = (
-        DownloadReviewJob.objects
+        base_qs
         .filter(status=DownloadReviewJobStatus.QUEUED)
         .order_by("queued_at", "requested_at", "id")
         .first()
@@ -381,7 +398,7 @@ def find_active_job():
         return queued
 
     return (
-        DownloadReviewJob.objects
+        base_qs
         .filter(status=DownloadReviewJobStatus.SCHEDULED)
         .order_by("available_after", "requested_at", "id")
         .first()
@@ -416,6 +433,9 @@ def parse_job_list_query(query_params):
     status = str(query_params.get("status") or "all").strip()
     if status not in JOB_LIST_STATUS_FILTERS:
         raise DownloadReviewJobRequestError(f"지원하지 않는 작업 상태 필터입니다: {status}")
+    center = None
+    if query_params.get("center"):
+        center = parse_center_code(query_params.get("center"))
 
     limit = _parse_int(query_params.get("limit"), DEFAULT_JOB_LIST_LIMIT, "limit")
     offset = _parse_int(query_params.get("offset"), 0, "offset")
@@ -426,6 +446,7 @@ def parse_job_list_query(query_params):
 
     return {
         "status": status,
+        "center": center,
         "limit": limit,
         "offset": offset,
     }

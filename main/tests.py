@@ -353,6 +353,29 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(detail_response.status_code, 200)
         self.assertEqual(detail_data["job"]["selected_project_numbers"], ["TTA-26-00010"])
 
+    def test_active_job_endpoint_can_filter_by_center(self):
+        sangam = DownloadReviewJob.objects.create(
+            center_code="sangam",
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        yeongnam = DownloadReviewJob.objects.create(
+            center_code="yeongnam",
+            status=DownloadReviewJobStatus.SCHEDULED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00011"],
+        )
+
+        response = active_job(self.factory.get("/api/jobs/active/", {"center": "yeongnam"}))
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["active_job"]["id"], str(yeongnam.id))
+        self.assertNotEqual(data["active_job"]["id"], str(sangam.id))
+        self.assertEqual(data["active_job_count"], 2)
+        self.assertEqual(data["center_active_job_count"], 1)
+
     def test_projects_api_marks_active_project_as_not_selectable(self):
         job = DownloadReviewJob.objects.create(
             status=DownloadReviewJobStatus.SCHEDULED,
@@ -408,6 +431,28 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(completed_data["items"][0]["id"], str(completed.id))
         self.assertEqual(completed_data["items"][0]["completed_project_count"], 1)
         self.assertEqual(completed_data["items"][0]["failed_project_count"], 1)
+
+    def test_jobs_list_endpoint_filters_center(self):
+        DownloadReviewJob.objects.create(
+            center_code="sangam",
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        yeongnam = DownloadReviewJob.objects.create(
+            center_code="yeongnam",
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00011"],
+        )
+
+        response = jobs(self.factory.get("/api/jobs/", {"status": "all", "center": "yeongnam"}))
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["pagination"]["total"], 1)
+        self.assertEqual(data["items"][0]["id"], str(yeongnam.id))
+        self.assertEqual(data["items"][0]["center_code"], "yeongnam")
 
     def test_cancel_scheduled_job_marks_projects_skipped(self):
         job = DownloadReviewJob.objects.create(
