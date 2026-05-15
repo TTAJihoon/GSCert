@@ -20,3 +20,4 @@
 | `05_zip_inspection.md` | 다운로드 파일 점검과 규칙 결과 관리 |
 | `08_ui_api_design.md` | download-review UI/API 계약 |
 | `15_open_decisions.md` | 남은 결정사항 |
+| `17_llm_review_interface.md` | LLM 기반 점검 인터페이스와 수동 테스트 방식 |

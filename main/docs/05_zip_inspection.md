@@ -119,3 +119,23 @@ Word 표 검사 예:
 - 관리자 로그 event code
 
 `ecmlist.db`는 삭제하지 않는다. 프로젝트별 점검결과와 산출물 컬럼만 추가/수정한다.
+
+## LLM 규칙 후보
+
+파일 존재, 확장자, 파일명 포함 여부처럼 명확한 규칙은 프로그램 규칙으로 처리한다.
+
+문서 본문을 읽고 의미를 판단해야 하는 규칙은 LLM 규칙 후보가 될 수 있다.
+다만 현재는 실제 API 호출을 연결하지 않고, 아래 인터페이스만 먼저 구현했다.
+
+- provider-neutral payload 생성
+- Claude/GPT/Gemini/내부 GPU API로 변환 가능한 `messages` 구조
+- 응답 JSON schema
+- 응답 파서
+- 수동 테스트용 `build_llm_review_prompt` 관리 명령
+
+관련 문서:
+
+- `17_llm_review_interface.md`
+
+운영 연결 전까지 LLM 결과는 자동 write-back 대상이 아니다.
+특히 `warning`은 `O/X`로 쓰지 않고 사용자 확인이 필요한 상태로 다루는 것이 안전하다.

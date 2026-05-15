@@ -29,6 +29,12 @@ from main.views.review.ecm_download_review_inspection import (
     cleanup_download_dir,
     run_download_inspection,
 )
+from main.views.review.ecm_llm_review import (
+    LlmReviewFileContext,
+    LlmReviewRuleContext,
+    build_llm_review_payload,
+    parse_llm_review_response,
+)
 from main.views.review.ecm_download_verify import verify_downloaded_files
 from main.views.review.ecm_download_review_api import (
     active_job,
@@ -63,6 +69,81 @@ class DownloadVerifyTests(SimpleTestCase):
         self.assertTrue(result.success)
         self.assertFalse(result.has_project_number_files)
         self.assertTrue(result.warnings)
+
+
+class LlmReviewInterfaceTests(SimpleTestCase):
+    def test_payload_builder_creates_provider_neutral_messages(self):
+        payload = build_llm_review_payload(
+            project={"project_number": "TTA-26-00010", "company": "Example"},
+            rule=LlmReviewRuleContext(
+                code="manual_llm_rule",
+                name="Manual LLM rule",
+                prompt="Check whether the report is acceptable.",
+                artifact_column="Report",
+            ),
+            files=[
+                LlmReviewFileContext(
+                    name="TTA-26-00010_report.pdf",
+                    path="TTA-26-00010/TTA-26-00010_report.pdf",
+                    size=123,
+                    extension=".pdf",
+                )
+            ],
+        )
+
+        data = payload.to_dict()
+
+        self.assertEqual(data["schema_version"], "download-review-llm-v1")
+        self.assertEqual(data["provider_hint"], "manual-claude")
+        self.assertEqual(data["messages"][0]["role"], "system")
+        self.assertIn("response_schema", data)
+        self.assertEqual(data["files"][0]["path"], "TTA-26-00010/TTA-26-00010_report.pdf")
+
+    def test_parser_accepts_fenced_json_response(self):
+        parsed = parse_llm_review_response(
+            """
+            ```json
+            {
+              "status": "fail",
+              "expected": "Company name matches",
+              "actual": "Different company name",
+              "message": "The supplied evidence does not match.",
+              "evidence": [{"file_name": "report.pdf", "reason": "Mismatch"}],
+              "confidence": 0.82
+            }
+            ```
+            """
+        )
+
+        self.assertEqual(parsed.status, DownloadReviewRuleStatus.FAIL)
+        self.assertEqual(parsed.confidence, 0.82)
+        self.assertEqual(parsed.evidence[0]["file_name"], "report.pdf")
+
+    def test_build_llm_review_prompt_command_outputs_json(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            report = Path(temp_dir) / "TTA-26-00010_report.txt"
+            report.write_text("sample document text", encoding="utf-8")
+            out = StringIO()
+
+            call_command(
+                "build_llm_review_prompt",
+                "--project-number",
+                "TTA-26-00010",
+                "--download-dir",
+                temp_dir,
+                "--rule-name",
+                "Manual rule",
+                "--rule-prompt",
+                "Check the supplied document.",
+                stdout=out,
+            )
+
+        data = json.loads(out.getvalue())
+
+        self.assertEqual(data["schema_version"], "download-review-llm-v1")
+        self.assertEqual(data["project"]["project_number"], "TTA-26-00010")
+        self.assertEqual(data["files"][0]["name"], "TTA-26-00010_report.txt")
+        self.assertEqual(data["rule"]["name"], "Manual rule")
 
 
 class DownloadReviewRuleSeedCommandTests(TestCase):

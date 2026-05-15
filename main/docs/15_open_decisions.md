@@ -156,7 +156,36 @@ codex-job-runner-persistence
 - `09_worker_process_design.md`
 - `10_operations_scripts.md`
 
-### 6. 웹페이지1 자동화 실제 검증
+### 6. LLM 점검 규칙 적용 범위
+
+LLM 호출은 웹서버 내부 모델 실행이 아니라 API 호출 방식으로 가져간다.
+내부 모델을 사용하더라도 별도 GPU 서버에 올리고, 웹서버는 provider adapter를 통해 API만 호출하는 구조가 적합하다.
+
+현재 반영:
+
+- `main/views/review/ecm_llm_review.py`에 provider-neutral payload builder와 응답 parser를 추가했다.
+- `build_llm_review_prompt` 관리 명령으로 Claude 수동 테스트용 JSON payload를 만들 수 있다.
+- 실제 Claude/GPT/Gemini/내부 API 호출은 아직 연결하지 않았다.
+
+확정 필요:
+
+- 어떤 산출물 규칙을 LLM으로 처리할지
+- 문서 본문 추출을 어떤 순서로 구현할지
+- LLM provider adapter 설정값 이름과 보관 방식
+- API 호출 로그에서 어떤 값을 마스킹할지
+- `warning`을 UI에서 어떤 문구로 보여줄지
+
+추천:
+
+- 단순 파일 존재/확장자/파일명 규칙은 프로그램 규칙으로 유지한다.
+- 문서 본문 의미 판단이 필요한 규칙만 LLM 후보로 둔다.
+- API 연결 전에는 `build_llm_review_prompt`로 Claude 수동 테스트를 먼저 진행한다.
+
+관련 문서:
+
+- `17_llm_review_interface.md`
+
+### 7. 웹페이지1 자동화 실제 검증
 
 웹페이지1 주소:
 
@@ -196,7 +225,7 @@ http://210.96.71.85
 
 - `03_webpage1_automation.md`
 
-### 7. Windows 폴더 선택 팝업 자동화
+### 8. Windows 폴더 선택 팝업 자동화
 
 개발 PC 다운로드 경로:
 
@@ -222,7 +251,7 @@ AGENT_DOWNLOAD_BASE_DIR
 
 - `04_agent_download.md`
 
-### 8. 전송현황/시스템 알림 처리
+### 9. 전송현황/시스템 알림 처리
 
 작업 관리자에서 확인된 에이전트:
 
@@ -256,7 +285,7 @@ DestinyECMAgent(32비트)
 - `04_agent_download.md`
 - `06_recovery_and_lock.md`
 
-### 9. 다운로드 파일 확인
+### 10. 다운로드 파일 확인
 
 확정 사항:
 
@@ -277,7 +306,7 @@ DestinyECMAgent(32비트)
 - `04_agent_download.md`
 - `05_zip_inspection.md`
 
-### 10. 검사 규칙 설계
+### 11. 검사 규칙 설계
 
 검사 규칙 상세 설계는 마지막 단계로 보류했다.
 
@@ -302,7 +331,7 @@ DestinyECMAgent(32비트)
 - `05_zip_inspection.md`
 - `07_skill_strategy.md`
 
-### 11. dependency와 requirements 정리
+### 12. dependency와 requirements 정리
 
 현재 의존성은 `14_dependency_management.md`에 기록했다.
 
