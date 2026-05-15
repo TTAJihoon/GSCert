@@ -25,7 +25,7 @@
 - Claude/GPT/Gemini/내부 API에 공통으로 넣을 수 있는 `messages` 구성
 - 모델 응답 JSON schema 정의
 - 모델 응답을 `pass/fail/warning/error`로 파싱
-- Claude에 직접 붙여 넣어 테스트할 JSON payload 생성 command 제공
+- 현재 Codex 대화나 다른 LLM에 직접 붙여 넣어 테스트할 JSON payload 생성 command 제공
 
 아직 하지 않는 것:
 
@@ -48,7 +48,7 @@
   --rule-prompt "계약서에 프로젝트번호와 회사명이 프로젝트 정보와 일치하게 기재되어 있는지 확인하세요."
 ```
 
-명령 결과 JSON의 `messages`를 Claude 등에 전달한다.
+명령 결과 JSON의 `messages`를 현재 Codex 대화나 다른 LLM에 전달한다.
 
 문서 본문을 직접 제공해 테스트하려면 텍스트 파일을 만든 뒤 `--context-file`을 추가한다.
 
@@ -131,8 +131,20 @@ LLM을 쓰더라도 규칙은 먼저 사람이 정의해야 한다.
 
 1. 단순 파일 존재/확장자/파일명 규칙은 기존 프로그램 규칙으로 구현한다.
 2. 문서 내용 해석이 필요한 규칙만 LLM 규칙 후보로 둔다.
-3. 먼저 `build_llm_review_prompt`로 Claude 수동 테스트를 반복한다.
+3. 먼저 `build_llm_review_prompt`로 Codex 수동 테스트를 반복한다.
 4. 응답 품질이 안정되면 provider adapter를 추가한다.
 5. 마지막에 worker의 실제 규칙 실행 경로에 LLM rule type을 연결한다.
 
 이 순서가 좋은 이유는 API 비용과 보안 리스크를 낮추면서, 규칙별 판정 기준을 먼저 검증할 수 있기 때문이다.
+
+## 수동 테스트와 API 호출의 관계
+
+현재 수동 테스트와 나중의 API 호출은 같은 흐름으로 볼 수 있다.
+
+차이는 전달 방식뿐이다.
+
+- 수동 테스트: `build_llm_review_prompt` 결과를 Codex 대화에 붙여 넣는다.
+- API 테스트: 같은 payload를 provider adapter가 HTTP 요청으로 보낸다.
+- 운영 자동화: worker가 규칙 실행 중 payload를 만들고 provider adapter를 호출한 뒤 응답 parser로 결과를 저장한다.
+
+따라서 지금 만든 payload와 response schema는 임시 프롬프트가 아니라, 추후 API 호출 인터페이스의 초안이다.

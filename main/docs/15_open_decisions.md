@@ -164,13 +164,20 @@ LLM 호출은 웹서버 내부 모델 실행이 아니라 API 호출 방식으�
 현재 반영:
 
 - `main/views/review/ecm_llm_review.py`에 provider-neutral payload builder와 응답 parser를 추가했다.
-- `build_llm_review_prompt` 관리 명령으로 Claude 수동 테스트용 JSON payload를 만들 수 있다.
+- `build_llm_review_prompt` 관리 명령으로 Codex/LLM 수동 테스트용 JSON payload를 만들 수 있다.
 - 실제 Claude/GPT/Gemini/내부 API 호출은 아직 연결하지 않았다.
+
+현재 결정:
+
+- 단순 파일 존재/확장자/파일명 규칙은 프로그램 규칙으로 유지한다.
+- 문서 본문 의미 판단이 필요한 규칙만 LLM 후보로 둔다.
+- 수동 테스트는 Claude로 고정하지 않고 현재 Codex 대화에도 payload를 전달해 진행할 수 있다.
+- 본문 추출은 먼저 수동 텍스트/context 파일로 테스트하고, 이후 Word/PDF 추출기를 붙인다.
 
 확정 필요:
 
-- 어떤 산출물 규칙을 LLM으로 처리할지
-- 문서 본문 추출을 어떤 순서로 구현할지
+- 산출물별 실제 규칙 초안
+- 어떤 산출물 규칙이 문서 본문 의미 판단에 해당하는지
 - LLM provider adapter 설정값 이름과 보관 방식
 - API 호출 로그에서 어떤 값을 마스킹할지
 - `warning`을 UI에서 어떤 문구로 보여줄지
@@ -179,7 +186,7 @@ LLM 호출은 웹서버 내부 모델 실행이 아니라 API 호출 방식으�
 
 - 단순 파일 존재/확장자/파일명 규칙은 프로그램 규칙으로 유지한다.
 - 문서 본문 의미 판단이 필요한 규칙만 LLM 후보로 둔다.
-- API 연결 전에는 `build_llm_review_prompt`로 Claude 수동 테스트를 먼저 진행한다.
+- API 연결 전에는 `build_llm_review_prompt`로 Codex 수동 테스트를 먼저 진행한다.
 
 관련 문서:
 

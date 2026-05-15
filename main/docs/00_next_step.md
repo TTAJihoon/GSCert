@@ -15,7 +15,7 @@
 
 ## 직전 작업
 
-LLM 기반 점검을 나중에 붙일 수 있도록 provider-neutral 인터페이스와 Claude 수동 테스트 경로를 추가했다.
+LLM 기반 점검을 나중에 붙일 수 있도록 provider-neutral 인터페이스와 Codex/LLM 수동 테스트 경로를 추가했다.
 
 - `main/views/review/ecm_llm_review.py`를 추가했다.
   - 프로젝트 정보, 파일 목록, 규칙 프롬프트를 LLM payload로 구성한다.
@@ -24,7 +24,7 @@ LLM 기반 점검을 나중에 붙일 수 있도록 provider-neutral 인터페�
   - 모델 응답을 `pass/fail/warning/error`로 파싱한다.
 - `main/management/commands/build_llm_review_prompt.py`를 추가했다.
   - 실제 API key 없이 다운로드 폴더 기준 LLM 테스트 payload를 생성한다.
-  - 생성된 JSON의 `messages`를 Claude 등에 붙여 넣어 수동 테스트할 수 있다.
+  - 생성된 JSON의 `messages`를 현재 Codex 대화나 다른 LLM에 붙여 넣어 수동 테스트할 수 있다.
 - `main/docs/17_llm_review_interface.md`를 추가했다.
   - 현재는 실제 API 호출, API key, endpoint, Word/PDF 본문 추출, worker 자동 연결은 하지 않는다.
   - 실제 provider adapter는 API 환경이 준비된 뒤 추가한다.
@@ -49,20 +49,27 @@ LLM 기반 점검을 나중에 붙일 수 있도록 provider-neutral 인터페�
 2. 실제 산출물별 규칙을 정의한다.
    - 단순 존재/파일명/확장자 규칙은 기존 프로그램 규칙으로 구현한다.
    - 본문 해석이 필요한 규칙만 LLM 수동 테스트 후보로 분리한다.
-3. Claude 수동 테스트가 필요한 규칙은 `build_llm_review_prompt`로 payload를 만들고 응답 품질을 확인한다.
+3. Codex 수동 테스트가 필요한 규칙은 `build_llm_review_prompt`로 payload를 만들고 이 대화에 붙여 넣어 응답 품질을 확인한다.
 4. API 환경이 준비되면 provider adapter를 추가한다.
 5. 테스트가 끝나면 시간 제한을 운영 기준으로 되돌린다.
    - `DOWNLOAD_REVIEW_START_HOUR = 20`
    - `DOWNLOAD_REVIEW_END_HOUR = 7`
 
+## 최근 결정
+
+1. LLM 적용 범위는 단순 규칙 전체가 아니라 문서 본문 의미 판단이 필요한 규칙으로 제한한다.
+   - 단순 파일 존재/확장자/파일명 규칙은 프로그램 규칙으로 구현한다.
+   - 이유: 프로그램 규칙이 더 빠르고 재현성이 높으며, LLM 비용과 보안 검토 범위를 줄일 수 있다.
+2. LLM 수동 테스트에 사용할 문서 본문은 먼저 텍스트 context 파일로 제공하고, 이후 Word/PDF 추출기를 붙인다.
+   - 이유: 규칙 프롬프트 품질 검증과 문서 추출 오류를 분리할 수 있다.
+3. 수동 테스트 대상은 Claude로 고정하지 않는다.
+   - 현재 대화의 Codex에게 payload를 전달해 테스트할 수 있고, 나중에 API를 붙일 때도 같은 payload 흐름을 사용한다.
+
 ## 결정 필요
 
-1. LLM을 적용할 규칙 범위를 정해야 한다.
-   - 추천: 모든 규칙을 LLM으로 보내지 말고, 문서 본문 해석이 필요한 규칙만 LLM 후보로 둔다.
-   - 이유: 단순 규칙은 프로그램이 더 빠르고 재현성이 높으며, LLM 비용과 보안 검토 범위를 줄일 수 있다.
-2. 실제 점검 규칙 초안을 작성해야 한다.
+1. 실제 점검 규칙 초안을 작성해야 한다.
    - 추천: 산출물 컬럼별로 "대상 파일, 확인 기준, 통과 조건, 실패 조건, 판단불가 조건"을 먼저 적는다.
    - 이유: 이 정보가 있어야 프로그램 규칙과 LLM 규칙을 나누고, LLM prompt도 안정적으로 만들 수 있다.
-3. LLM 수동 테스트에 사용할 문서 본문 추출 방식을 정해야 한다.
-   - 추천: 처음에는 사람이 추출한 텍스트 또는 간단한 text context 파일로 테스트하고, 이후 Word/PDF 추출기를 붙인다.
-   - 이유: API가 없는 상태에서도 규칙 프롬프트 품질을 먼저 검증할 수 있고, 추출기 문제와 모델 판단 문제를 분리할 수 있다.
+2. API 환경이 준비되면 provider adapter 설정값을 정해야 한다.
+   - 추천: provider, endpoint, model, timeout, retry, max token, key 환경변수명을 먼저 정한다.
+   - 이유: 상용 API와 내부 GPU API를 같은 인터페이스로 바꾸려면 설정 경계가 명확해야 한다.
