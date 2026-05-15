@@ -84,16 +84,46 @@
 
 ## 추천 순서
 
-1. 검사 규칙 작성 Skill
-2. ECM 자동화 설계 Skill
-3. 프로젝트 문서화 Skill
+1. download-review 유지보수 Skill
+2. 검사 규칙 작성 Skill
+3. ECM 자동화 설계 Skill
+4. 프로젝트 문서화 Skill
+
+## 제작 완료
+
+### `gscert-download-review-maintainer`
+
+위치:
+
+```text
+C:\Users\jh910\.codex\skills\gscert-download-review-maintainer
+```
+
+용도:
+
+- `/download-review/` UI/API/worker/DB 구조를 이어서 수정할 때
+- `main/docs/00_next_step.md` 중심으로 handoff를 갱신할 때
+- 센터 분기, active job 전역 기준, `ecmlist*.db`/`workflow.db` 분리를 다시 확인할 때
+- 실제 규칙 작성 전후로 draft 규칙 운영 정책을 확인할 때
+
+구성:
+
+- `SKILL.md`: 핵심 workflow와 검증 명령
+- `references/architecture.md`: 파일 구조, DB 분리, API 원칙
+- `references/operations.md`: 서버/worker/ECM 자동화/검증 절차
+- `references/rules.md`: draft 규칙, 실제 규칙 전환, 결과 저장 기준
+
+검증:
+
+```powershell
+.\.venv\Scripts\python.exe C:\Users\jh910\.codex\skills\.system\skill-creator\scripts\quick_validate.py C:\Users\jh910\.codex\skills\gscert-download-review-maintainer
+```
 
 ## Skill 생성 전 확정할 것
 
-- 검사 규칙 DB 구조
-- 실제 규칙 예시 3개 이상
-- 에이전트 다운로드 팝업 자동화 방식
-- 프로젝트 문서화 양식
+- 검사 규칙 작성 Skill: 실제 규칙 예시 3개 이상
+- ECM 자동화 Skill: 영남 live 다운로드 검증 결과
+- 프로젝트 문서화 Skill: 폴더별 `readme.md` 갱신 자동화 범위
 
 ## 문서화 Skill에 반영할 현재 정책
 

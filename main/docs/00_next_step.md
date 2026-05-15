@@ -42,6 +42,9 @@
 - 센터 탭 변경 시 프로젝트 선택과 작업 조회는 선택한 센터 기준으로 다시 조회된다.
 - worker와 현재 작업 진행 상황은 센터와 무관한 전체 서버 기준으로 표시한다.
 - `GET /api/jobs/`는 `center=sangam|yeongnam` 필터를 지원한다.
+- 로컬 Codex skill `gscert-download-review-maintainer`를 생성했다.
+  - 위치: `C:\Users\jh910\.codex\skills\gscert-download-review-maintainer`
+  - 용도: download-review UI/API/worker/DB/문서 handoff 유지보수
 
 ## 검증 완료
 
@@ -53,6 +56,7 @@ node --check main\static\scripts\review\ecm_download_review.js
 .\.venv\Scripts\python.exe manage.py migrate --database=workflow --settings=myproject.ui_mock_settings
 .\.venv\Scripts\python.exe manage.py seed_download_review_rules --dry-run --settings=myproject.ui_mock_settings
 .\.venv\Scripts\python.exe manage.py seed_download_review_rules --settings=myproject.ui_mock_settings
+.\.venv\Scripts\python.exe C:\Users\jh910\.codex\skills\.system\skill-creator\scripts\quick_validate.py C:\Users\jh910\.codex\skills\gscert-download-review-maintainer
 ```
 
 브라우저에서 `/download-review/`를 새로고침한 뒤 상단 센터 탭 노출과 영남 탭 전환을 확인했다.
@@ -61,9 +65,10 @@ node --check main\static\scripts\review\ecm_download_review.js
 
 1. 영남 live 다운로드를 실제 프로젝트 1건으로 검증한다.
    - ECM 트리가 `영남AX센터 > {연도}년 시험서비스 > 01 GS인증시험(1등급) > 프로젝트폴더` 순서로 열리는지 확인한다.
-2. 실제 산출물 파일명 기준을 확인한 뒤 `seed_download_review_rules --enable --update-existing` 적용 여부를 결정한다.
-3. 파일 존재/확장자/파일명 포함 규칙부터 실제 산출물 컬럼과 1:1 매핑한다.
-4. 테스트가 끝나면 시간 제한을 운영 기준으로 되돌린다.
+2. 다른 PC에서도 skill을 쓰려면 `gscert-download-review-maintainer` 폴더를 해당 PC의 `.codex\skills`로 복사한다.
+3. 실제 산출물 파일명 기준을 확인한 뒤 `seed_download_review_rules --enable --update-existing` 적용 여부를 결정한다.
+4. 파일 존재/확장자/파일명 포함 규칙부터 실제 산출물 컬럼과 1:1 매핑한다.
+5. 테스트가 끝나면 시간 제한을 운영 기준으로 되돌린다.
    - `DOWNLOAD_REVIEW_START_HOUR = 20`
    - `DOWNLOAD_REVIEW_END_HOUR = 7`
 
