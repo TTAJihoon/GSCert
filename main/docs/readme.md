@@ -21,3 +21,4 @@
 | `08_ui_api_design.md` | download-review UI/API 계약 |
 | `15_open_decisions.md` | 남은 결정사항 |
 | `17_llm_review_interface.md` | LLM 기반 점검 인터페이스와 수동 테스트 방식 |
+| `codex_skills/` | 다른 개발 PC에서 설치할 Codex skill 배포용 사본 |

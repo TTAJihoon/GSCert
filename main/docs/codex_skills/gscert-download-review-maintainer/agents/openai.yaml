@@ -1,0 +1,5 @@
+interface:
+  display_name: "GSCert Download Review"
+  short_description: "GSCert download-review 유지보수 절차"
+  default_prompt: "Use $gscert-download-review-maintainer to continue GSCert download-review work safely."
+

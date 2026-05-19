@@ -13,42 +13,75 @@
 - 운영 기준 시간: `20:00-07:00`
 - 숫자 prefix 설계 문서는 최상위 루트가 아니라 `main/docs/`에서 관리한다.
 
+## 다른 개발 PC에서 시작하는 순서
+
+1. 저장소를 받는다.
+
+```powershell
+git clone https://github.com/TTAJihoon/GSCert.git
+cd GSCert
+git switch codex-job-runner-persistence
+git pull
+```
+
+이미 저장소가 있으면:
+
+```powershell
+git switch codex-job-runner-persistence
+git pull
+```
+
+2. Codex skill을 설치한다.
+
+```powershell
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.codex\skills" | Out-Null
+Copy-Item -Recurse -Force `
+  ".\main\docs\codex_skills\gscert-download-review-maintainer" `
+  "$env:USERPROFILE\.codex\skills\gscert-download-review-maintainer"
+```
+
+3. 새 Codex 대화에서 아래 순서로 읽고 이어간다.
+
+- `main/docs/00_next_step.md`
+- `main/docs/15_open_decisions.md`
+- `main/docs/17_llm_review_interface.md`
+- 실제 작업이 ECM 자동화면 `main/docs/03_webpage1_automation.md`
+- 실제 작업이 규칙 구현이면 `main/docs/05_zip_inspection.md`
+- skill을 설치했다면 `gscert-download-review-maintainer`를 사용한다.
+
 ## 직전 작업
 
-LLM 기반 점검을 나중에 붙일 수 있도록 provider-neutral 인터페이스와 Codex/LLM 수동 테스트 경로를 추가했다.
+다른 개발 PC에서도 같은 Codex 작업 지침을 사용할 수 있도록 skill 배포용 사본과 이어받기 순서를 정리했다.
 
-- `main/views/review/ecm_llm_review.py`를 추가했다.
-  - 프로젝트 정보, 파일 목록, 규칙 프롬프트를 LLM payload로 구성한다.
-  - Claude/GPT/Gemini/내부 GPU API에 공통으로 넘길 수 있는 `messages`를 만든다.
-  - 모델 응답 JSON schema를 제공한다.
-  - 모델 응답을 `pass/fail/warning/error`로 파싱한다.
-- `main/management/commands/build_llm_review_prompt.py`를 추가했다.
-  - 실제 API key 없이 다운로드 폴더 기준 LLM 테스트 payload를 생성한다.
-  - 생성된 JSON의 `messages`를 현재 Codex 대화나 다른 LLM에 붙여 넣어 수동 테스트할 수 있다.
-- `main/docs/17_llm_review_interface.md`를 추가했다.
-  - 현재는 실제 API 호출, API key, endpoint, Word/PDF 본문 추출, worker 자동 연결은 하지 않는다.
-  - 실제 provider adapter는 API 환경이 준비된 뒤 추가한다.
-- `main/tests.py`에 `LlmReviewInterfaceTests`를 추가했다.
-- 로컬 Codex skill `gscert-download-review-maintainer` 참고 문서도 LLM 인터페이스 기준으로 갱신한다.
+- `main/docs/codex_skills/gscert-download-review-maintainer/`를 추가했다.
+  - 로컬 skill의 저장소 배포용 사본이다.
+  - 다른 PC에서는 이 폴더를 `$env:USERPROFILE\.codex\skills\gscert-download-review-maintainer`로 복사한다.
+- `main/docs/codex_skills/README.md`를 추가했다.
+  - skill 설치 명령을 보관한다.
+- `main/docs/00_next_step.md`에 다른 개발 PC 시작 순서를 추가했다.
+- 최근 결정:
+  - 기본 다운로드 방식은 계속 문서 목록 전체 선택으로 유지한다.
+  - `1개만 선택`, `PDF만 선택`, `파일명 포함 선택` 등은 지금은 skill 지침에만 두고, 실제 테스트/예외 상황이 필요할 때 코드화한다.
 
 ## 검증 완료
 
 ```powershell
-.\.venv\Scripts\python.exe -m py_compile main\views\review\ecm_llm_review.py main\management\commands\build_llm_review_prompt.py
-.\.venv\Scripts\python.exe manage.py test main.tests.LlmReviewInterfaceTests --settings=myproject.ui_mock_settings
-.\.venv\Scripts\python.exe manage.py check --settings=myproject.ui_mock_settings
-.\.venv\Scripts\python.exe manage.py test main.tests --settings=myproject.ui_mock_settings
+.\.venv\Scripts\python.exe C:\Users\jh910\.codex\skills\.system\skill-creator\scripts\quick_validate.py main\docs\codex_skills\gscert-download-review-maintainer
 .\.venv\Scripts\python.exe C:\Users\jh910\.codex\skills\.system\skill-creator\scripts\quick_validate.py C:\Users\jh910\.codex\skills\gscert-download-review-maintainer
 ```
 
 ## 바로 다음 작업
 
-1. 영남 live 다운로드를 실제 프로젝트 1건으로 검증한다.
+1. 실제 점검 규칙 18개를 규칙 정의 양식으로 작성한다.
+   - 대상 파일
+   - 확인 기준
+   - 통과 조건
+   - 실패 조건
+   - 판단불가 조건
+   - 프로그램 규칙/LLM 후보 여부
+2. 영남 live 다운로드를 실제 프로젝트 1건으로 검증한다.
    - 후보: `TTA-26-00200`
    - ECM 트리가 `영남AX센터 > {연도}년 시험서비스 > 01 GS인증시험(1등급) > 프로젝트폴더` 순서로 열리는지 확인한다.
-2. 실제 산출물별 규칙을 정의한다.
-   - 단순 존재/파일명/확장자 규칙은 기존 프로그램 규칙으로 구현한다.
-   - 본문 해석이 필요한 규칙만 LLM 수동 테스트 후보로 분리한다.
 3. Codex 수동 테스트가 필요한 규칙은 `build_llm_review_prompt`로 payload를 만들고 이 대화에 붙여 넣어 응답 품질을 확인한다.
 4. API 환경이 준비되면 provider adapter를 추가한다.
 5. 테스트가 끝나면 시간 제한을 운영 기준으로 되돌린다.
@@ -64,6 +97,8 @@ LLM 기반 점검을 나중에 붙일 수 있도록 provider-neutral 인터페�
    - 이유: 규칙 프롬프트 품질 검증과 문서 추출 오류를 분리할 수 있다.
 3. 수동 테스트 대상은 Claude로 고정하지 않는다.
    - 현재 대화의 Codex에게 payload를 전달해 테스트할 수 있고, 나중에 API를 붙일 때도 같은 payload 흐름을 사용한다.
+4. 기본 ECM 다운로드 방식은 전체 선택으로 유지한다.
+   - 다른 선택 방식은 skill 지침에만 두고, 실제 필요가 생기면 코드화한다.
 
 ## 결정 필요
 

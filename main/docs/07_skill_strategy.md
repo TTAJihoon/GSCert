@@ -99,6 +99,21 @@
 C:\Users\jh910\.codex\skills\gscert-download-review-maintainer
 ```
 
+저장소 배포용 사본:
+
+```text
+main/docs/codex_skills/gscert-download-review-maintainer
+```
+
+다른 개발 PC 설치:
+
+```powershell
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.codex\skills" | Out-Null
+Copy-Item -Recurse -Force `
+  ".\main\docs\codex_skills\gscert-download-review-maintainer" `
+  "$env:USERPROFILE\.codex\skills\gscert-download-review-maintainer"
+```
+
 용도:
 
 - `/download-review/` UI/API/worker/DB 구조를 이어서 수정할 때
@@ -111,6 +126,7 @@ C:\Users\jh910\.codex\skills\gscert-download-review-maintainer
 - `SKILL.md`: 핵심 workflow와 검증 명령
 - `references/architecture.md`: 파일 구조, DB 분리, API 원칙
 - `references/operations.md`: 서버/worker/ECM 자동화/검증 절차
+- `references/ecm_navigation.md`: ECM 트리 탐색과 문서 목록 체크박스 선택 지침
 - `references/rules.md`: draft 규칙, 실제 규칙 전환, 결과 저장 기준
 
 검증:
