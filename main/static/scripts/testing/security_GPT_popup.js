@@ -244,6 +244,18 @@
     return html.join("");
   }
 
+  function extractAiErrorMessage(rawText) {
+    const trimmed = String(rawText || "").trim();
+    if (trimmed.startsWith("__GSCERT_AI_ERROR__:")) {
+      return trimmed.replace(/^__GSCERT_AI_ERROR__:\s*/, "");
+    }
+    const bracketError = trimmed.match(/^\[(?:오류|\?\?)\]\s*([\s\S]*)$/);
+    if (bracketError) {
+      return bracketError[1] || "AI 추천 생성 중 오류가 발생했습니다.";
+    }
+    return "";
+  }
+
   // 공통 템플릿: AI 응답 말풍선 + 툴바(복사 버튼)
   function buildGptMessageHTML({ title = "AI 응답", bodyHTML = "", variant = "default" }) {
     const isError = variant === "error";
@@ -503,6 +515,15 @@
       }
       rawText += decoder.decode();
       updateGptMarkdown(rawText, { streaming: false });
+
+      const errorMessage = extractAiErrorMessage(rawText);
+      if (errorMessage) {
+        throw new Error(errorMessage);
+      }
+      const trimmedText = rawText.trim();
+      if (!trimmedText) {
+        throw new Error("AI 추천 응답이 비어 있습니다. 잠시 후 다시 시도해 주세요.");
+      }
 
       // 5) 성공: 캐시 + 표시
       row.gpt_response = rawText;

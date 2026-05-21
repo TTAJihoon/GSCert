@@ -58,6 +58,11 @@ Copy-Item -Recurse -Force `
   - 새 API: `POST /security/gpt/recommend/stream/`
   - 기존 API: `POST /security/gpt/recommend/` 유지
   - Gemini 스트리밍 helper: `generate_gemma_text_stream`
+- Gemini/Gemma API 일시 오류 대응을 추가했다.
+  - `500 INTERNAL`, `UNAVAILABLE`, `RESOURCE_EXHAUSTED` 같은 일시 오류는 짧게 재시도한다.
+  - 보안 추천은 `GEMINI_SECURITY_RETRIES`로 재시도 횟수를 조정할 수 있다.
+  - 기본 fallback 모델은 `gemini-3.1-flash-lite`이며, `GEMINI_SECURITY_FALLBACK_MODELS` 또는 `GEMINI_FALLBACK_MODELS`로 바꿀 수 있다.
+  - 기본 모델은 `GEMINI_SECURITY_MODEL`이 있으면 우선 사용하고, 없으면 `GEMINI_MODEL`을 사용한다.
 - 프롬프트를 보완했다.
   - 첨부 보고서 내용을 무조건 결함으로 보지 않는다.
   - 실제 보안 결함이면 근거와 수정 방안을 제시한다.
@@ -74,6 +79,8 @@ Copy-Item -Recurse -Force `
   - 회전 인디케이터, 움직이는 진행바, 경과 시간, 단계 문구를 표시한다.
   - 첫 응답이 도착하면 자동으로 typewriter 출력으로 전환한다.
   - 이유: 모델이 첫 chunk를 늦게 반환하는 동안 한 줄짜리 로딩 문구만 보이면 멈춘 것처럼 느껴질 수 있었다.
+- AI 추천 API가 끝까지 실패할 때는 `__GSCERT_AI_ERROR__:` 내부 마커로 내려보낸 뒤 요청 실패 UI로 표시한다.
+  - 이유: 한글 `[오류]` 마커는 브라우저/콘솔 환경에 따라 깨질 수 있어 감지가 불안정했다.
 - AI 추천 팝업 JS/CSS에 정적 파일 버전 쿼리를 붙였다.
   - 이유: 브라우저 캐시 때문에 스트리밍/Markdown 렌더링 코드가 반영되지 않는 문제가 있었다.
 - 공용 모달 레이아웃을 `flex column` 구조로 보정했다.
@@ -126,9 +133,10 @@ node --check main\static\scripts\testing\security_invicti_popup.js
   - 다시 Invicti 분석 팝업 열기
   - AI 팝업 스트리밍 중간 상태와 최종 Markdown 렌더링 확인
   - AI 응답을 일부러 지연시켜 로딩 인디케이터, 진행바, 경과 시간 갱신 확인
+  - Gemini/Gemma 가짜 클라이언트로 `500 INTERNAL` 후 retry/fallback 호출 순서 확인
   - `AI 추천 > 닫기 > Invicti 분석` 순서 확인
   - `Invicti 분석 > 닫기 > AI 추천 > 닫기 > Invicti 분석` 순서 확인
-  - `security_GPT_popup.js?v=20260522a`, `security_invicti_popup.js?v=20260521d`, `security_GPT.css?v=20260522a` 로드 확인
+  - `security_GPT_popup.js?v=20260522c`, `security_invicti_popup.js?v=20260521d`, `security_GPT.css?v=20260522b` 로드 확인
 
 ## 바로 다음 작업
 

@@ -1,4 +1,5 @@
 import json
+import os
 from django.http import JsonResponse, StreamingHttpResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
@@ -9,6 +10,27 @@ from main.utils.gemini_gemma import (
     generate_gemma_text,
     generate_gemma_text_stream,
 )
+
+
+DEFAULT_SECURITY_FALLBACK_MODELS = "gemini-3.1-flash-lite"
+DEFAULT_SECURITY_RETRIES = 2
+
+
+def _env_int(name, default):
+    try:
+        return int(os.environ.get(name) or default)
+    except (TypeError, ValueError):
+        return default
+
+
+def _security_model_settings():
+    return {
+        "model": os.environ.get("GEMINI_SECURITY_MODEL") or os.environ.get("GEMINI_MODEL"),
+        "fallback_models": os.environ.get("GEMINI_SECURITY_FALLBACK_MODELS")
+        or os.environ.get("GEMINI_FALLBACK_MODELS")
+        or DEFAULT_SECURITY_FALLBACK_MODELS,
+        "retries": _env_int("GEMINI_SECURITY_RETRIES", DEFAULT_SECURITY_RETRIES),
+    }
 
 
 def _build_security_recommendation_prompt(prompt):
@@ -51,8 +73,9 @@ def get_gpt_recommendation_view(request):
         return JsonResponse({"error": "잘못된 요청 형식입니다."}, status=400)
 
     ai_prompt = _build_security_recommendation_prompt(prompt)
+    model_settings = _security_model_settings()
     try:
-        response_content = generate_gemma_text(ai_prompt)
+        response_content = generate_gemma_text(ai_prompt, **model_settings)
         return JsonResponse({"response": response_content})
     except GemmaConfigError as e:
         return JsonResponse({"error": str(e)}, status=500)
@@ -74,17 +97,18 @@ def stream_gpt_recommendation_view(request):
         return JsonResponse({"error": "잘못된 요청 형식입니다."}, status=400)
 
     ai_prompt = _build_security_recommendation_prompt(prompt)
+    model_settings = _security_model_settings()
 
     def stream():
         try:
-            for chunk in generate_gemma_text_stream(ai_prompt):
+            for chunk in generate_gemma_text_stream(ai_prompt, **model_settings):
                 yield chunk
         except GemmaConfigError as exc:
-            yield f"\n\n[오류] {exc}"
+            yield f"\n\n__GSCERT_AI_ERROR__:{exc}"
         except GemmaGenerationError as exc:
-            yield f"\n\n[오류] Gemma API 호출 중 오류 발생: {exc}"
+            yield "\n\n__GSCERT_AI_ERROR__:AI 서버가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요."
         except Exception as exc:
-            yield f"\n\n[오류] AI 추천 생성 중 오류 발생: {exc}"
+            yield f"\n\n__GSCERT_AI_ERROR__:AI 추천 생성 중 오류 발생: {exc}"
 
     response = StreamingHttpResponse(stream(), content_type="text/plain; charset=utf-8")
     response["Cache-Control"] = "no-cache"
