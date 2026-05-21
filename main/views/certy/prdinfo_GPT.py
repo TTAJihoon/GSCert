@@ -1,53 +1,38 @@
 # -*- coding: utf-8 -*-
-import os, json, re
-from openai import OpenAI
+from main.utils.gemini_gemma import extract_json_object, generate_gemma_text
 
-# 환경변수 OPENAI_API_KEY 필요
-_client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-
-_PROMPT_TEMPLATE = """너는 SW 프로그램을 분류하고 핵심 키워드를 추천하는 전문가야.
+_PROMPT_TEMPLATE = """너는 SW 제품 분류와 검색 키워드를 추천하는 전문가야.
 {INPUT}
-위에서 입력 받은 값에 대해 핵심 키워드를 작성해줘.
-누군가가 해당 제품을 검색하고 싶을 때, 입력할만한 단어 2개를 핵심 키워드로 작성해줘.
 
-결과 출력은 json 형태로 출력해줘. json 이외의 어떠한 말도 작성하지 말아줘.
-{
- keyword1: (첫번째 핵심 키워드)
- keyword2: (두번째 핵심 키워드)
-}
+위 입력은 시험성적서에서 추출한 제품 설명과 주요 기능이다.
+입력 내용에만 근거해서 SW 분류와 검색 키워드 2개를 추천해줘.
+
+규칙:
+1. SW는 입력 내용에서 명확히 판단 가능한 간단한 분류명으로 작성한다. 판단하기 어렵다면 빈 문자열로 둔다.
+2. keyword1, keyword2는 사용자가 유사 제품을 검색할 때 입력할 만한 핵심 단어로 작성한다.
+3. 제품명이나 회사명 자체보다 기능/도메인 중심 단어를 우선한다.
+4. 입력에 없는 기술명이나 기능을 추정해서 추가하지 않는다.
+5. JSON 이외의 문구는 출력하지 않는다.
+
+반드시 아래 JSON 객체 하나만 출력해줘.
+{{
+  "SW": "",
+  "keyword1": "",
+  "keyword2": ""
+}}
 """
 
-def _extract_json(s: str):
-    # 가장 바깥 { ... } 블록만 추출
-    m = re.search(r"\{.*\}", s, flags=re.DOTALL)
-    if not m:
-        return None
-    try:
-        return json.loads(m.group(0))
-    except Exception:
-        # JSON에 따옴표 누락 등 경미한 오류 시 재시도 (쌍따옴표 강제 등은 생략)
-        return None
-
 def classify_sw_and_keywords(input_text: str):
-    print("[STEP 1] GPT 요청 시작")
+    print("[STEP 1] Gemini/Gemma 요청 시작")
     prompt = _PROMPT_TEMPLATE.replace("{INPUT}", input_text)
-    resp = _client.responses.create(
-        model="gpt-5-nano",
-        input=prompt
-    )
-    # responses API: 첫 메시지 텍스트 추출
     try:
-        content = resp.output_text
+        content = generate_gemma_text(prompt)
         print(content)
-    except Exception:
-        # 구버전 SDK 호환
-        try:
-            content = resp.choices[0].message["content"]
-        except Exception as e:
-            print("GPT 에러 발생" + e)
-            content = ""
+    except Exception as e:
+        print("Gemma 호출 실패: " + str(e))
+        return None
 
-    data = _extract_json(content or "")
+    data = extract_json_object(content or "")
     if not isinstance(data, dict):
         return None
     return {
