@@ -175,6 +175,76 @@
   margin: 0;
 }
 
+.gpt-loading {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 2px 0 4px;
+}
+
+.gpt-loading-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.gpt-spinner {
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+  border: 3px solid #dbeafe;
+  border-top-color: #2563eb;
+  flex: 0 0 auto;
+  animation: gpt-spin .8s linear infinite;
+}
+
+.gpt-loading-title {
+  color: #0f172a;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.gpt-loading-step {
+  color: #475569;
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+.gpt-loading-bar {
+  position: relative;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 9999px;
+  background: #e2e8f0;
+}
+
+.gpt-loading-bar span {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 36%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #38bdf8, #2563eb);
+  animation: gpt-loading-slide 1.35s ease-in-out infinite;
+}
+
+.gpt-loading-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+@keyframes gpt-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes gpt-loading-slide {
+  0% { transform: translateX(-100%); }
+  50% { transform: translateX(120%); }
+  100% { transform: translateX(320%); }
+}
+
 .gpt-streaming::after {
   content: "";
   display: inline-block;

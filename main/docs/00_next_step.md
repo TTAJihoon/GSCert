@@ -70,6 +70,10 @@ Copy-Item -Recurse -Force `
 - AI 추천 팝업에 화면 표시용 typewriter 렌더링을 추가했다.
   - 이유: Gemini API가 큰 chunk로 응답하면 네트워크 스트리밍이 되어도 사용자는 한 번에 표시되는 것처럼 보일 수 있었다.
   - 이제 응답이 한 덩어리로 도착해도 UI가 조금씩 써 내려가듯 표시한다.
+- AI 추천 팝업의 첫 응답 전 대기 UX를 보강했다.
+  - 회전 인디케이터, 움직이는 진행바, 경과 시간, 단계 문구를 표시한다.
+  - 첫 응답이 도착하면 자동으로 typewriter 출력으로 전환한다.
+  - 이유: 모델이 첫 chunk를 늦게 반환하는 동안 한 줄짜리 로딩 문구만 보이면 멈춘 것처럼 느껴질 수 있었다.
 - AI 추천 팝업 JS/CSS에 정적 파일 버전 쿼리를 붙였다.
   - 이유: 브라우저 캐시 때문에 스트리밍/Markdown 렌더링 코드가 반영되지 않는 문제가 있었다.
 - 공용 모달 레이아웃을 `flex column` 구조로 보정했다.
@@ -121,9 +125,10 @@ node --check main\static\scripts\testing\security_invicti_popup.js
   - Markdown 표와 굵게 렌더링 확인
   - 다시 Invicti 분석 팝업 열기
   - AI 팝업 스트리밍 중간 상태와 최종 Markdown 렌더링 확인
+  - AI 응답을 일부러 지연시켜 로딩 인디케이터, 진행바, 경과 시간 갱신 확인
   - `AI 추천 > 닫기 > Invicti 분석` 순서 확인
   - `Invicti 분석 > 닫기 > AI 추천 > 닫기 > Invicti 분석` 순서 확인
-  - `security_GPT_popup.js?v=20260521d`, `security_invicti_popup.js?v=20260521d`, `security_GPT.css?v=20260521d` 로드 확인
+  - `security_GPT_popup.js?v=20260522a`, `security_invicti_popup.js?v=20260521d`, `security_GPT.css?v=20260522a` 로드 확인
 
 ## 바로 다음 작업
 

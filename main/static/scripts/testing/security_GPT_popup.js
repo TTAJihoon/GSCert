@@ -8,10 +8,20 @@
   let visibleText = "";
   let targetText = "";
   let keepStreamingCaret = false;
+  let loadingTimer = null;
+  let loadingStartedAt = 0;
 
   const TYPEWRITER_INTERVAL_MS = 18;
   const TYPEWRITER_BASE_STEP = 2;
   const TYPEWRITER_FAST_STEP = 6;
+  const LOADING_INTERVAL_MS = 500;
+  const LOADING_STEPS = [
+    "보고서 내용을 읽는 중입니다.",
+    "취약점 근거를 정리하는 중입니다.",
+    "결함 여부를 판단하는 중입니다.",
+    "수정 방안을 구성하는 중입니다.",
+    "첫 응답을 기다리는 중입니다.",
+  ];
 
   function escHandler(e) { if (e.key === "Escape") closeModal(); }
 
@@ -305,14 +315,75 @@
       window.clearInterval(typewriterTimer);
       typewriterTimer = null;
     }
+    stopLoadingProgress();
     visibleText = "";
     targetText = "";
     keepStreamingCaret = false;
   }
 
+  function buildLoadingHTML() {
+    return `
+      <div class="gpt-loading" aria-live="polite">
+        <div class="gpt-loading-top">
+          <span class="gpt-spinner" aria-hidden="true"></span>
+          <div>
+            <div class="gpt-loading-title">AI 추천 수정 방안을 생성 중입니다</div>
+            <div class="gpt-loading-step" data-loading-step>보고서 내용을 읽는 중입니다.</div>
+          </div>
+        </div>
+        <div class="gpt-loading-bar" aria-hidden="true"><span></span></div>
+        <div class="gpt-loading-meta">
+          <span data-loading-elapsed>0초 경과</span>
+          <span>첫 응답을 받으면 바로 표시됩니다.</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function startLoadingProgress() {
+    stopLoadingProgress();
+    loadingStartedAt = Date.now();
+    renderLoadingProgress();
+    loadingTimer = window.setInterval(renderLoadingProgress, LOADING_INTERVAL_MS);
+  }
+
+  function stopLoadingProgress() {
+    if (loadingTimer) {
+      window.clearInterval(loadingTimer);
+      loadingTimer = null;
+    }
+    loadingStartedAt = 0;
+  }
+
+  function renderLoadingProgress() {
+    const body = host && host.querySelector(".gpt-body");
+    if (!body || targetText) return;
+
+    if (!body.querySelector(".gpt-loading")) {
+      body.innerHTML = buildLoadingHTML();
+    }
+
+    const elapsedSeconds = loadingStartedAt
+      ? Math.max(Math.floor((Date.now() - loadingStartedAt) / 1000), 0)
+      : 0;
+    const stepIndex = Math.min(
+      Math.floor(elapsedSeconds / 4),
+      LOADING_STEPS.length - 1
+    );
+
+    const step = body.querySelector("[data-loading-step]");
+    const elapsed = body.querySelector("[data-loading-elapsed]");
+    if (step) step.textContent = LOADING_STEPS[stepIndex];
+    if (elapsed) elapsed.textContent = `${elapsedSeconds}초 경과`;
+  }
+
   function renderGptBodyFrame() {
     const body = host && host.querySelector(".gpt-body");
     if (!body) return;
+
+    if (targetText) {
+      stopLoadingProgress();
+    }
 
     const remaining = Math.max(targetText.length - visibleText.length, 0);
     if (remaining > 0) {
@@ -325,8 +396,12 @@
     body.classList.toggle("gpt-streaming", keepStreamingCaret || isTyping);
     body.innerHTML = visibleText
       ? renderMarkdown(visibleText)
-      : `<p class="gpt-muted">AI 추천 수정 방안을 생성 중입니다...</p>`;
+      : buildLoadingHTML();
     body.scrollTop = body.scrollHeight;
+
+    if (!visibleText) {
+      renderLoadingProgress();
+    }
 
     if (!keepStreamingCaret && !isTyping && typewriterTimer) {
       window.clearInterval(typewriterTimer);
@@ -386,10 +461,11 @@
     resetTypewriter();
     const loading = buildGptMessageHTML({
       title: "생성 중...",
-      bodyHTML: `<p class="gpt-muted">AI 추천 수정 방안을 생성 중입니다...</p>`,
+      bodyHTML: buildLoadingHTML(),
     });
     displayContent(loading);
     openModal();
+    startLoadingProgress();
 
     // 4) 백엔드 호출
     try {
@@ -434,6 +510,7 @@
       if (title) title.textContent = "🤖 AI 추천 수정 방안";
     } catch (error) {
       // 6) 실패 표시
+      stopLoadingProgress();
       console.error("AI 요청 실패:", error);
       const err = buildGptMessageHTML({
         title: "⚠️ 요청 실패",
