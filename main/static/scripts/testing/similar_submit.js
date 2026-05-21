@@ -83,13 +83,17 @@ document.addEventListener('DOMContentLoaded', function () {
 console.log('similarities:', data.similarities);
 console.log('response:', data.response);
       
-      const summaryhtml = `${data.summary || '요약 없음'}`;
+      const rerankWarning = data.rerank_error
+        ? `<div class="rerank-warning">${data.rerank_error}</div>`
+        : '';
+      const summaryhtml = `${data.summary || '요약 없음'}${rerankWarning}`;
       const rows = Array.isArray(data.response) ? data.response : [];
       const resulthtml = rows.map(row => {
         const simVal = row.similarity;
         const simPercent = (typeof simVal === 'number' && !isNaN(simVal))
           ? (simVal * 100).toFixed(2)
           : 'N/A';
+        const scoreLabel = typeof row.llm_score === 'number' ? 'AI 유사도' : '유사도';
 
         return `
           <div class="similar-product">
@@ -109,7 +113,7 @@ console.log('response:', data.response);
                 <table>
                   <tr>
                     <td>
-                      <div class="similarity-score" id="similarity-score">유사도 ${simPercent}%</div>
+                      <div class="similarity-score" id="similarity-score">${scoreLabel} ${simPercent}%</div>
                     </td>
                     <td>
                       <button class="download-btn"><i class="fas fa-download"></i></button>

@@ -91,8 +91,13 @@ def compare_from_index(text, k=30):
     # 3) 검색 (D: 유사도(IP), L: 라벨=DB 일련번호)
     D, L = index.search(query_vec, k)
 
-    labels = [int(x) for x in L[0] if x >= 0]
-    sims   = [float(x) for x in D[0][:len(labels)]]
+    ranked_pairs = [
+        (int(label), float(score))
+        for label, score in zip(L[0], D[0])
+        if label >= 0
+    ]
+    labels = [label for label, _ in ranked_pairs]
+    score_by_id = {label: score for label, score in ranked_pairs}
 
     # 4) DB 조회
     tables_unsorted = select_data_from_db(labels)
@@ -100,11 +105,11 @@ def compare_from_index(text, k=30):
     tables_in_rank = [id_to_table[i] for i in labels if i in id_to_table]
 
     # 5) similarity 부여
-    for tbl, sim in zip(tables_in_rank, sims):
+    for tbl in tables_in_rank:
+        sim = score_by_id.get(int(tbl['일련번호']), 0.0)
         tbl['similarity'] = sim
+        tbl['faiss_similarity'] = sim
 
-    # 6) 🔥 ID 내림차순 정렬
-    tables_sorted = sorted(tables_in_rank, key=lambda x: int(x['일련번호']), reverse=True)
-    similarities_sorted = [t['similarity'] for t in tables_sorted]
+    similarities = [t['similarity'] for t in tables_in_rank]
 
-    return tables_sorted, similarities_sorted
+    return tables_in_rank, similarities

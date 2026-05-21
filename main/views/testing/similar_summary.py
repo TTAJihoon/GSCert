@@ -9,7 +9,8 @@ from pptx import Presentation
 
 import os
 import re
-from .similar_GPT import run_gemini_gemma
+from main.utils.gemini_gemma import GemmaConfigError, GemmaGenerationError
+from .similar_GPT import rerank_similar_candidates, run_gemini_gemma
 from .similar_compare import SimilarSearchDependencyError, compare_from_index
 
 # PDF 파일에서 텍스트 추출
@@ -118,15 +119,36 @@ def summarize_document(request):
         else:
             return JsonResponse({'response': "파일 또는 제품 설명을 입력해주세요."}, status=400)
 
+        rerank_error = ""
         try:
-            compare_result, similarity_list = compare_from_index(summary_text)
+            faiss_result, similarity_list = compare_from_index(summary_text, k=100)
         except SimilarSearchDependencyError as exc:
             return JsonResponse({'response': str(exc)}, status=503)
+
+        try:
+            reranked_result = rerank_similar_candidates(summary_text, faiss_result, top_n=30)
+            if reranked_result:
+                seen_ids = {str(row.get("일련번호")) for row in reranked_result}
+                fill_rows = [
+                    row
+                    for row in faiss_result
+                    if str(row.get("일련번호")) not in seen_ids
+                ]
+                compare_result = (reranked_result + fill_rows)[:30]
+            else:
+                rerank_error = "LLM 재평가 결과가 비어 있어 FAISS 결과를 표시합니다."
+                compare_result = faiss_result[:30]
+        except (GemmaConfigError, GemmaGenerationError) as exc:
+            rerank_error = f"LLM 재평가를 수행하지 못해 FAISS 결과를 표시합니다: {exc}"
+            compare_result = faiss_result[:30]
+
+        similarity_list = [row.get("similarity", 0.0) for row in compare_result]
                 
         return JsonResponse({
             'summary': summary_text,
             'response': compare_result,
             'similarities': similarity_list,
+            'rerank_error': rerank_error,
         })
 
     return JsonResponse({'response': "POST 메소드만 지원됩니다."})

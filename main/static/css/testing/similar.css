@@ -262,9 +262,14 @@ select {
   font-size: 15px;
   color: #1e3a8a;
   font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow-wrap: anywhere;
+}
+
+.rerank-warning {
+  margin-top: 6px;
+  color: #b45309;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .results-content {
