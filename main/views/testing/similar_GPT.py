@@ -1,21 +1,10 @@
-import os
-import re
-import json
-from datetime import datetime
-from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_core.documents import Document
-from openai import OpenAI
-from dotenv import load_dotenv
+from main.utils.gemini_gemma import GemmaConfigError, GemmaGenerationError, generate_gemma_text
 
-# 환경변수 로드
-load_dotenv()
 
-# GPT API 초기화
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-
-def run_openai_GPT(query): # 문장당 유사제품 검색 개수
-    print("[STEP 1] 사용자 질문 수신:", query)
+def run_gemini_gemma(query):
+    """Gemini API hosted Gemma 모델로 제품 개요를 한 문장으로 요약한다."""
+    source_text = "\n".join(query) if isinstance(query, (list, tuple)) else str(query)
+    print("[STEP 1] 사용자 질문 수신:", source_text[:500])
     prompt = f"""
     너는 SW 프로그램 매뉴얼 내용을 참고하여 제3자에게 제품을 설명하는 SW 제품 설명 전문가이다.  
     아래 조건에 따라 한 문장의 제품 개요를 100자 미만으로 작성하라.  
@@ -29,20 +18,23 @@ def run_openai_GPT(query): # 문장당 유사제품 검색 개수
     6. 요약 대상 메뉴얼 텍스트에 포함되지 않은 임의의 기술명, 기능, 연관 단어를 추가하지 않는다.  
     7. 오직 매뉴얼에 작성된 내용에만 기반하여 한 문장으로 요약문만 작성하고, 요약문 외에는 어떠한 문구도 제공 금지.
     아래는 요약 대상 매뉴얼 텍스트야:
-    \"\"\"{query}\"\"\"
+    \"\"\"{source_text}\"\"\"
     """
     
-    print("[STEP 2] GPT 요청 시작")
+    print("[STEP 2] Gemini/Gemma 요청 시작")
     try:
-        response = client.chat.completions.create(
-            model="gpt-5-nano",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        # GPT 결과 문장만 추출
-        result_text = response.choices[0].message.content.strip()
-        print("[STEP 3] GPT 응답 완료:", result_text)
+        result_text = generate_gemma_text(prompt)
+        print("[STEP 3] Gemini/Gemma 응답 완료:", result_text)
         return result_text
 
-    except Exception as e:
-        print("[ERROR] GPT 응답 실패:", e)
-        return "❌ GPT 응답 생성 중 오류가 발생했습니다."
+    except GemmaConfigError as e:
+        print("[ERROR] Gemini/Gemma 설정 오류:", e)
+        return f"❌ {e}"
+    except GemmaGenerationError as e:
+        print("[ERROR] Gemini/Gemma 응답 실패:", e)
+        return "❌ Gemma 응답 생성 중 오류가 발생했습니다."
+
+
+# 기존 import 경로 호환용. 새 코드에서는 run_gemini_gemma를 직접 사용하는 것을 권장한다.
+def run_openai_GPT(query):
+    return run_gemini_gemma(query)

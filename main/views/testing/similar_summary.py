@@ -9,7 +9,7 @@ from pptx import Presentation
 
 import os
 import re
-from .similar_GPT import run_openai_GPT
+from .similar_GPT import run_gemini_gemma
 from .similar_compare import compare_from_index
 
 # PDF 파일에서 텍스트 추출
@@ -116,7 +116,7 @@ def summarize_document(request):
         sentences = re.split(r'(?<=[.!?])\s+', clean_text)
         print(sentences)
 
-        summary_text = run_openai_GPT(sentences)
+        summary_text = run_gemini_gemma(sentences)
         compare_result, similarity_list = compare_from_index(summary_text)
                 
         return JsonResponse({
