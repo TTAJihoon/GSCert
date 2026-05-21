@@ -52,7 +52,7 @@ Copy-Item -Recurse -Force `
 
 ## 직전 작업
 
-`/security/` 페이지의 AI 추천 수정 방안 팝업과 Invicti 분석 팝업 재오픈 오류를 수정했다.
+`/security/` 페이지의 AI 추천 수정 방안 팝업과 Invicti 분석 팝업 표시 오류를 수정했다.
 
 - AI 추천 수정 방안 응답을 기존 일괄 응답에서 스트리밍 응답으로 추가했다.
   - 새 API: `POST /security/gpt/recommend/stream/`
@@ -66,10 +66,18 @@ Copy-Item -Recurse -Force `
 - AI 추천 팝업에서 Markdown을 렌더링한다.
   - 제목, 목록, 표, 굵게, 기울임, 인라인 코드 지원
   - 복사 버튼은 렌더링된 HTML이 아니라 원본 Markdown을 복사한다.
+- AI 추천 팝업 JS/CSS에 정적 파일 버전 쿼리를 붙였다.
+  - 이유: 브라우저 캐시 때문에 스트리밍/Markdown 렌더링 코드가 반영되지 않는 문제가 있었다.
+- 공용 모달 레이아웃을 `flex column` 구조로 보정했다.
+  - 이유: 기존 `modalContent`가 `h-full`이고 하단 푸터가 별도로 붙어 있어 AI 팝업에서 콘텐츠와 푸터가 함께 80vh를 초과할 수 있었다.
 - Invicti 분석 팝업의 펼침/닫힘 기능 사용 후 다른 팝업을 열 때 빈 화면이 보이는 문제를 수정했다.
   - Invicti 팝업은 Shadow DOM을 사용한다.
   - AI 팝업이 `#modalContent`를 교체할 수 있어 기존 ShadowRoot 참조가 stale 상태가 될 수 있었다.
   - 팝업 닫기와 재오픈 시 ShadowRoot/host를 초기화하도록 변경했다.
+- Invicti 보고서에서 `container-fluid` 상위 컨테이너가 없는 취약점도 원본 HTML 스니펫을 만들도록 수정했다.
+  - 확인 샘플: `gs.docuops.ngrok.app - 상세 스캔 보고서.html`
+  - 증상: 5번 `약한 암호가 사용되었습니다.` 항목의 `invicti_analysis`가 빈 값이라 팝업이 비어 있었다.
+  - 수정 후 해당 항목에 약한 암호 목록이 포함된 HTML 스니펫이 생성된다.
 
 ## 변경 파일
 
@@ -79,11 +87,14 @@ Copy-Item -Recurse -Force `
 - `main/static/scripts/testing/security_GPT_popup.js`
 - `main/static/scripts/testing/security_invicti_popup.js`
 - `main/static/css/testing/security_GPT.css`
+- `main/templates/testing/security.html`
+- `main/views/testing/security_extractHTML.py`
 
 ## 검증 완료
 
 ```powershell
 .\.venv\Scripts\python.exe -m py_compile main\views\testing\security_GPT.py main\utils\gemini_gemma.py
+.\.venv\Scripts\python.exe -m py_compile main\views\testing\security_extractHTML.py
 node --check main\static\scripts\testing\security_GPT_popup.js
 node --check main\static\scripts\testing\security_invicti_popup.js
 .\.venv\Scripts\python.exe manage.py check
@@ -94,12 +105,15 @@ node --check main\static\scripts\testing\security_invicti_popup.js
 - `GET /security/` 응답 200
 - `POST /security/gpt/recommend/stream/` 응답 200 및 streaming 응답 확인
 - Chromium 자동화로 실제 페이지 팝업 흐름 확인
+  - 샘플 HTML 업로드 후 5개 행 렌더링
+  - 5번 `약한 암호가 사용되었습니다.` Invicti 팝업에서 `TLS_ECDHE_ECDSA_WITH_AES_128_CBC_SHA` 표시 확인
   - Invicti 분석 팝업 열기
   - 취약점 URL 펼침/닫힘 토글
   - 탭 전환
   - 팝업 닫기 후 AI 추천 팝업 열기
   - Markdown 표와 굵게 렌더링 확인
   - 다시 Invicti 분석 팝업 열기
+  - AI 팝업 스트리밍 중간 상태와 최종 Markdown 렌더링 확인
 
 ## 바로 다음 작업
 

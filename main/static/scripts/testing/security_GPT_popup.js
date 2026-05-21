@@ -19,7 +19,7 @@
         console.log("Shadow DOM detected. Re-creating modal content area.");
         const newHost = document.createElement("div");
         newHost.id = "modalContent";
-        newHost.className = "h-full overflow-auto p-3";
+        newHost.className = "flex-1 min-h-0 overflow-auto p-3";
         contentHost.parentNode.replaceChild(newHost, contentHost);
         host = newHost;
       } else {
@@ -40,8 +40,15 @@
       modal._gptHandlersBound = true;
     }
 
-    // AI 응답 팝업 컨테이너 클래스 부여(없으면 추가)
-    host.classList && host.classList.add("gpt-modal");
+    shell.style.width = "80vw";
+    shell.style.height = "80vh";
+    shell.style.display = "flex";
+    shell.style.flexDirection = "column";
+    host.className = "flex-1 min-h-0 overflow-auto p-3 gpt-modal";
+    host.style.flex = "1 1 auto";
+    host.style.minHeight = "0";
+    host.style.height = "auto";
+    host.style.overflow = "auto";
     return true;
   }
 

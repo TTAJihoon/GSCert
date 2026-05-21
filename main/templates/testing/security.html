@@ -13,12 +13,12 @@
 
 <link rel="stylesheet" href="{% static 'css/testing/security.css' %}"/>
 <link rel="stylesheet" href="{% static 'css/testing/security_table.css' %}"/>
-<link rel="stylesheet" href="{% static 'css/testing/security_GPT.css' %}"/>
+<link rel="stylesheet" href="{% static 'css/testing/security_GPT.css' %}?v=20260521b"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 
 <script src="{% static 'scripts/testing/security_editable.js' %}" defer></script>
-<script src="{% static 'scripts/testing/security_invicti_popup.js' %}" defer></script>
-<script src="{% static 'scripts/testing/security_GPT_popup.js' %}" defer></script>
+<script src="{% static 'scripts/testing/security_invicti_popup.js' %}?v=20260521b" defer></script>
+<script src="{% static 'scripts/testing/security_GPT_popup.js' %}?v=20260521b" defer></script>
 <script src="{% static 'scripts/testing/security_button.js' %}" defer></script>
 <script src="{% static 'scripts/testing/security_submit.js' %}" defer></script>
 {% endblock %}
@@ -132,9 +132,9 @@
         <!-- 배경 -->
         <div class="modal-backdrop fixed inset-0 bg-gray-500 bg-opacity-50"></div>        
         <!-- 80% 뷰포트 팝업 -->
-        <div class="modal-shell absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl overflow-hidden w-[80vw] h-[80vh]">
+        <div class="modal-shell absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg shadow-xl overflow-hidden w-[80vw] h-[80vh] flex flex-col">
           <!-- 콘텐츠: 여백 최소 & 내부 스크롤 -->
-          <div id="modalContent" class="h-full overflow-auto p-3">
+          <div id="modalContent" class="flex-1 min-h-0 overflow-auto p-3">
           <!-- Invicti 섹션 HTML이 이곳에 그대로 주입됩니다 -->
           </div>
           <!-- 푸터 -->

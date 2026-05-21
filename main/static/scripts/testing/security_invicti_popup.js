@@ -40,8 +40,8 @@
       modal.innerHTML = `
         <div class="modal-backdrop fixed inset-0 bg-gray-500 bg-opacity-50"></div>
         <div class="modal-shell absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2
-                     bg-white rounded-lg shadow-xl overflow-hidden w-[80vw] h-[80vh]">
-          <div id="modalContent" class="h-full overflow-auto p-3"></div>
+                     bg-white rounded-lg shadow-xl overflow-hidden w-[80vw] h-[80vh] flex flex-col">
+          <div id="modalContent" class="flex-1 min-h-0 overflow-auto p-3"></div>
           <div class="flex items-center justify-end gap-2 border-t px-3 py-2">
             <button type="button" id="downloadHtml"
                     class="inline-flex items-center rounded-md border px-3 py-1.5 text-sm bg-white hover:bg-gray-50">
@@ -64,6 +64,12 @@
     // 크기/스크롤 보증(보완)
     shell.style.width = "80vw";
     shell.style.height = "80vh";
+    shell.style.display = "flex";
+    shell.style.flexDirection = "column";
+    host.className = "flex-1 min-h-0 overflow-auto p-3";
+    host.style.flex = "1 1 auto";
+    host.style.minHeight = "0";
+    host.style.height = "auto";
     host.style.overflow = "auto";
     host.style.padding = "12px";
     if (shadowRoot && shadowRoot.host !== host) {
@@ -104,7 +110,7 @@
     if (host.shadowRoot || shadowRoot) {
       const freshHost = document.createElement("div");
       freshHost.id = "modalContent";
-      freshHost.className = "h-full overflow-auto p-3";
+      freshHost.className = "flex-1 min-h-0 overflow-auto p-3";
       host.parentNode.replaceChild(freshHost, host);
       host = freshHost;
       shadowRoot = null;

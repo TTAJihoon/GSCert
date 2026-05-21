@@ -258,14 +258,20 @@ def extract_vulnerability_sections(html_content):
             )
 
         parent_container = vuln_desc_div.find_parent(class_='container-fluid')
-        html_snippet = ""
+        parent_classes = []
         if parent_container:
-            parent_class = ' '.join(parent_container.get('class', []))
-            inner_html = "".join(el.prettify() for el in vuln_block_elements)
-            raw_html = f'<div class="{parent_class}">{inner_html}</div>'
-            allowed_tags = set(bleach.sanitizer.ALLOWED_TAGS) | {'div', 'h2', 'h3', 'h4', 'p', 'pre', 'code', 'span', 'ul', 'li', 'ol', 'a', 'svg', 'use', 'path', 'g', 'circle', 'rect', 'polygon', 'defs', 'style', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'input', 'label', 'button'}
-            allowed_attrs = {'*': ['class', 'id', 'style', 'aria-label', 'tabindex', 'role', 'aria-labelledby', 'scope', 'type', 'checked', 'for', 'data-responseid', 'data-button', 'data-panel', 'aria-controls', 'aria-selected', 'aria-expanded', 'aria-hidden', 'viewbox', 'xmlns', 'points', 'cx', 'cy', 'r', 'd', 'fill', 'transform', 'x', 'y', 'width', 'height', 'rx', 'ry', 'xlink:href', 'x1', 'y1', 'x2', 'y2', 'stroke', 'stroke-width']}
-            html_snippet = bleach.clean(raw_html, tags=allowed_tags, attributes=allowed_attrs, css_sanitizer=css_sanitizer, strip=True)
+            parent_classes = parent_container.get('class', [])
+        if not parent_classes:
+            parent_classes = ['container-fluid']
+        if 'invicti-report-popup' not in parent_classes:
+            parent_classes = [*parent_classes, 'invicti-report-popup']
+
+        parent_class = ' '.join(parent_classes)
+        inner_html = "".join(el.prettify() for el in vuln_block_elements)
+        raw_html = f'<div class="{parent_class}">{inner_html}</div>'
+        allowed_tags = set(bleach.sanitizer.ALLOWED_TAGS) | {'div', 'h2', 'h3', 'h4', 'p', 'pre', 'code', 'span', 'ul', 'li', 'ol', 'a', 'svg', 'use', 'path', 'g', 'circle', 'rect', 'polygon', 'defs', 'style', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'input', 'label', 'button'}
+        allowed_attrs = {'*': ['class', 'id', 'style', 'aria-label', 'tabindex', 'role', 'aria-labelledby', 'scope', 'type', 'checked', 'for', 'data-responseid', 'data-button', 'data-panel', 'aria-controls', 'aria-selected', 'aria-expanded', 'aria-hidden', 'viewbox', 'xmlns', 'points', 'cx', 'cy', 'r', 'd', 'fill', 'transform', 'x', 'y', 'width', 'height', 'rx', 'ry', 'xlink:href', 'x1', 'y1', 'x2', 'y2', 'stroke', 'stroke-width']}
+        html_snippet = bleach.clean(raw_html, tags=allowed_tags, attributes=allowed_attrs, css_sanitizer=css_sanitizer, strip=True)
 
         level_class = vuln_desc_div.get('class', [])
         defect_level = 'H' if any(c in level_class for c in ['criticals', 'highs']) else 'M' if 'mediums' in level_class else ''
