@@ -75,12 +75,17 @@ document.addEventListener('DOMContentLoaded', function () {
       });
 
       const data = await response.json();
+      if (!response.ok) {
+        const message = typeof data.response === 'string' ? data.response : '유사 제품 조회 중 오류가 발생했습니다.';
+        throw new Error(message);
+      }
 
 console.log('similarities:', data.similarities);
 console.log('response:', data.response);
       
       const summaryhtml = `${data.summary || '요약 없음'}`;
-      const resulthtml = (data.response || []).map(row => {
+      const rows = Array.isArray(data.response) ? data.response : [];
+      const resulthtml = rows.map(row => {
         const simVal = row.similarity;
         const simPercent = (typeof simVal === 'number' && !isNaN(simVal))
           ? (simVal * 100).toFixed(2)

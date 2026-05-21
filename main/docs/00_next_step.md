@@ -51,20 +51,33 @@ Copy-Item -Recurse -Force `
 
 ## 직전 작업
 
-의존성 파일을 현재 코드 사용 기준으로 정리했다.
+`/similar/` 유사도 검색 응답 시간을 줄이기 위해 수동 입력과 FAISS 검색 흐름을 정리했다.
 
-- `requirements.txt`에서 직접 사용 흔적이 없는 `requests`를 제거했다.
-- `requirements-ui.txt`를 제거했다.
-  - 현재 `/download-review/` UI는 API/DB 흐름을 사용하므로 기본 `requirements.txt` 기준으로 실행한다.
-- `requirements-search.txt`를 추가했다.
-  - FAISS/임베딩/형태소 분석 의존성을 기본 서버 의존성과 분리한다.
-  - 포함 패키지: `faiss-cpu`, `sentence-transformers`, `kiwipiepy`
-- dependency 문서와 남은 결정사항 문서를 갱신했다.
+- 수동 입력은 더 이상 LLM 요약을 호출하지 않고, 입력한 요약 문장을 바로 FAISS 검색 기준으로 사용한다.
+- FAISS 인덱스와 `SentenceTransformer` 모델을 서버 프로세스 메모리에 캐시한다.
+  - 서버 재시작 후 첫 검색은 모델 로드 때문에 느릴 수 있다.
+  - 같은 서버 프로세스의 두 번째 검색부터는 캐시를 사용한다.
+- 검색 패키지를 `requirements-search.txt`로 분리한 상태에서도 기본 Django URL 로딩이 깨지지 않도록 `faiss`/`sentence-transformers` import를 지연시켰다.
+- 검색 인덱스가 없으면 500 오류 대신 사용자에게 인덱스 생성 안내를 반환한다.
+- 유사도 검색 UI 문구를 수동 요약 문장 입력 기준으로 수정했다.
+- 로컬에서 `python manage.py embed_db main/data/reference.db`로 FAISS 인덱스를 생성했다.
+  - 생성 결과: 5,603건, `main/data/faiss_bge_m3_ko.idmap.index`
+  - 이 파일은 생성 산출물이므로 Git에는 올리지 않는다.
 
 ## 검증 완료
 
 ```powershell
+.\.venv\Scripts\python.exe -m py_compile main\views\testing\similar_compare.py main\views\testing\similar_summary.py
+node --check main\static\scripts\testing\similar_submit.js
+.\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py check --settings=myproject.ui_mock_settings
+```
+
+수동 입력 성능 측정:
+
+```text
+1회차: 17.18초
+2회차: 0.29초
 ```
 
 ## 바로 다음 작업
@@ -85,6 +98,7 @@ Copy-Item -Recurse -Force `
    - `DOWNLOAD_REVIEW_START_HOUR = 20`
    - `DOWNLOAD_REVIEW_END_HOUR = 7`
 6. 검색/임베딩 기능을 사용하는 PC에서는 `requirements-search.txt`를 별도로 설치한다.
+7. `/similar/` 첫 검색 지연이 업무상 불편하면 서버 시작 후 모델을 미리 로드하는 prewarm 방식을 추가한다.
 
 ## 최근 결정
 
@@ -101,6 +115,8 @@ Copy-Item -Recurse -Force `
    - 이유: 현재 UI가 API/DB 흐름을 사용하므로 Django 단독 설치 기준이 실제 실행 조건과 맞지 않는다.
 6. FAISS/임베딩/형태소 분석 의존성은 별도 requirements로 분리한다.
    - 이유: 기본 웹서버 설치를 무겁게 만들지 않고, 검색 기능이 필요한 환경에서만 설치하기 위해서다.
+7. `/similar/` 수동 입력은 요약문 직접 입력으로 본다.
+   - 이유: 수동 입력에서도 LLM 요약을 호출하면 자동 입력 대비 시간 절감 효과가 사라진다.
 
 ## 결정 필요
 

@@ -33,7 +33,10 @@ FAISS 인덱스 생성, 임베딩 검색, 형태소 분석처럼 검색/유사�
 
 ```powershell
 pip install -r requirements-search.txt
+python manage.py embed_db main/data/reference.db
 ```
+
+`main/data/faiss_bge_m3_ko.idmap.index`는 `reference.db`에서 생성되는 산출물이므로 Git에 올리지 않는다. `reference.db`가 갱신된 뒤 유사도 검색을 사용하려면 위 명령으로 인덱스를 다시 생성하거나 증분 갱신한다.
 
 ## 설치/갱신 원칙
 
@@ -64,3 +67,4 @@ pip install -r requirements-search.txt
 - live worker는 Playwright/pywinauto가 없어도 import 단계에서 실패하지 않아야 한다.
 - 자동화 패키지가 없는 환경에서는 `--live` 실행 시 해석 가능한 오류를 남기고 실패해야 한다.
 - `requirements-ui.txt`는 실제 API/DB 연동 UI 흐름과 맞지 않아 제거했다. UI 목업도 기본적으로 `requirements.txt` 기준으로 실행한다.
+- 유사도 검색의 첫 요청은 임베딩 모델 로드 때문에 느릴 수 있다. 같은 서버 프로세스 안의 두 번째 요청부터는 모델/인덱스 캐시를 사용한다.

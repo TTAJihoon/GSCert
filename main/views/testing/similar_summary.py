@@ -10,7 +10,7 @@ from pptx import Presentation
 import os
 import re
 from .similar_GPT import run_gemini_gemma
-from .similar_compare import compare_from_index
+from .similar_compare import SimilarSearchDependencyError, compare_from_index
 
 # PDF 파일에서 텍스트 추출
 def parse_pdf(file_path):
@@ -108,16 +108,20 @@ def summarize_document(request):
             text = parse_file(uploaded_file)
             if text is None or len(text.strip()) < 10:
                 return JsonResponse({'response': "내용이 부족하거나 지원되지 않는 형식입니다."})
+            clean_text = preprocess_text(text)
+            sentences = re.split(r'(?<=[.!?])\s+', clean_text)
+            print(sentences)
+            summary_text = run_gemini_gemma(sentences)
         elif manual_input:  # 수동 입력 탭의 텍스트 처리
             print("입력 내용 확인 완료: ", manual_input)
-            text = manual_input
-            
-        clean_text = preprocess_text(text)
-        sentences = re.split(r'(?<=[.!?])\s+', clean_text)
-        print(sentences)
+            summary_text = preprocess_text(manual_input)
+        else:
+            return JsonResponse({'response': "파일 또는 제품 설명을 입력해주세요."}, status=400)
 
-        summary_text = run_gemini_gemma(sentences)
-        compare_result, similarity_list = compare_from_index(summary_text)
+        try:
+            compare_result, similarity_list = compare_from_index(summary_text)
+        except SimilarSearchDependencyError as exc:
+            return JsonResponse({'response': str(exc)}, status=503)
                 
         return JsonResponse({
             'summary': summary_text,
