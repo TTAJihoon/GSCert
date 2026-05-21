@@ -19,6 +19,10 @@ class GemmaGenerationError(RuntimeError):
     pass
 
 
+class GemmaRateLimitError(GemmaGenerationError):
+    pass
+
+
 def _load_env():
     dotenv_path = find_dotenv(usecwd=True)
     load_dotenv(dotenv_path=dotenv_path or None)
@@ -50,8 +54,24 @@ def _is_retryable_error(exc: Exception) -> bool:
             "INTERNAL",
             "UNAVAILABLE",
             "DEADLINE",
+        )
+    )
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    text = str(exc).upper()
+    return any(
+        marker in text
+        for marker in (
+            "429",
             "RESOURCE_EXHAUSTED",
             "RATE_LIMIT",
+            "RATE LIMIT",
+            "QUOTA",
+            "TOO MANY REQUESTS",
+            "EXCEEDED",
+            "REQUESTS PER MINUTE",
+            "TOKENS PER MINUTE",
         )
     )
 
@@ -96,6 +116,10 @@ def generate_gemma_text(
                 return result_text
             except Exception as exc:
                 last_error = exc
+                if _is_rate_limit_error(exc):
+                    raise GemmaRateLimitError(
+                        _format_generation_error(exc, candidate_model)
+                    ) from exc
                 if _is_retryable_error(exc) and attempt < max(retries, 0):
                     time.sleep(retry_delay)
                     continue
@@ -151,6 +175,10 @@ def generate_gemma_text_stream(
                 last_error = exc
                 if emitted:
                     raise GemmaGenerationError(
+                        _format_generation_error(exc, candidate_model)
+                    ) from exc
+                if _is_rate_limit_error(exc):
+                    raise GemmaRateLimitError(
                         _format_generation_error(exc, candidate_model)
                     ) from exc
                 if _is_retryable_error(exc) and attempt < max(retries, 0):

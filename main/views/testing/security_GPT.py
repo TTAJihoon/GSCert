@@ -7,6 +7,7 @@ from django.views.decorators.http import require_http_methods
 from main.utils.gemini_gemma import (
     GemmaConfigError,
     GemmaGenerationError,
+    GemmaRateLimitError,
     generate_gemma_text,
     generate_gemma_text_stream,
 )
@@ -79,6 +80,11 @@ def get_gpt_recommendation_view(request):
         return JsonResponse({"response": response_content})
     except GemmaConfigError as e:
         return JsonResponse({"error": str(e)}, status=500)
+    except GemmaRateLimitError:
+        return JsonResponse(
+            {"error": "AI 모델 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요."},
+            status=429,
+        )
     except GemmaGenerationError as e:
         return JsonResponse({"error": f"Gemma API 호출 중 오류 발생: {e}"}, status=500)
     except Exception as e:
@@ -105,6 +111,8 @@ def stream_gpt_recommendation_view(request):
                 yield chunk
         except GemmaConfigError as exc:
             yield f"\n\n__GSCERT_AI_ERROR__:{exc}"
+        except GemmaRateLimitError:
+            yield "\n\n__GSCERT_AI_RATE_LIMIT__:AI 모델 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요."
         except GemmaGenerationError as exc:
             yield "\n\n__GSCERT_AI_ERROR__:AI 서버가 일시적으로 응답하지 않습니다. 잠시 후 다시 시도해 주세요."
         except Exception as exc:

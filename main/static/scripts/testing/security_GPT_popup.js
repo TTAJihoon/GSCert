@@ -246,6 +246,9 @@
 
   function extractAiErrorMessage(rawText) {
     const trimmed = String(rawText || "").trim();
+    if (trimmed.startsWith("__GSCERT_AI_RATE_LIMIT__:")) {
+      return trimmed.replace(/^__GSCERT_AI_RATE_LIMIT__:\s*/, "");
+    }
     if (trimmed.startsWith("__GSCERT_AI_ERROR__:")) {
       return trimmed.replace(/^__GSCERT_AI_ERROR__:\s*/, "");
     }

@@ -59,7 +59,9 @@ Copy-Item -Recurse -Force `
   - 기존 API: `POST /security/gpt/recommend/` 유지
   - Gemini 스트리밍 helper: `generate_gemma_text_stream`
 - Gemini/Gemma API 일시 오류 대응을 추가했다.
-  - `500 INTERNAL`, `UNAVAILABLE`, `RESOURCE_EXHAUSTED` 같은 일시 오류는 짧게 재시도한다.
+  - `500 INTERNAL`, `UNAVAILABLE` 같은 일시 서버 오류는 짧게 재시도한다.
+  - `429`, `RESOURCE_EXHAUSTED`, quota/rate limit 계열은 호출 한도 오류로 분리한다.
+  - 호출 한도 오류는 추가 재시도나 fallback 호출 없이 사용자에게 "AI 모델 호출 한도에 도달했습니다. 잠시 후 다시 시도해 주세요."로 표시한다.
   - 보안 추천은 `GEMINI_SECURITY_RETRIES`로 재시도 횟수를 조정할 수 있다.
   - 기본 fallback 모델은 `gemini-3.1-flash-lite`이며, `GEMINI_SECURITY_FALLBACK_MODELS` 또는 `GEMINI_FALLBACK_MODELS`로 바꿀 수 있다.
   - 기본 모델은 `GEMINI_SECURITY_MODEL`이 있으면 우선 사용하고, 없으면 `GEMINI_MODEL`을 사용한다.
@@ -134,9 +136,10 @@ node --check main\static\scripts\testing\security_invicti_popup.js
   - AI 팝업 스트리밍 중간 상태와 최종 Markdown 렌더링 확인
   - AI 응답을 일부러 지연시켜 로딩 인디케이터, 진행바, 경과 시간 갱신 확인
   - Gemini/Gemma 가짜 클라이언트로 `500 INTERNAL` 후 retry/fallback 호출 순서 확인
+  - Gemini/Gemma 가짜 클라이언트로 `429 RESOURCE_EXHAUSTED`는 추가 호출 없이 호출 한도 오류로 분리되는 것 확인
   - `AI 추천 > 닫기 > Invicti 분석` 순서 확인
   - `Invicti 분석 > 닫기 > AI 추천 > 닫기 > Invicti 분석` 순서 확인
-  - `security_GPT_popup.js?v=20260522c`, `security_invicti_popup.js?v=20260521d`, `security_GPT.css?v=20260522b` 로드 확인
+  - `security_GPT_popup.js?v=20260522d`, `security_invicti_popup.js?v=20260521d`, `security_GPT.css?v=20260522b` 로드 확인
 
 ## 바로 다음 작업
 
