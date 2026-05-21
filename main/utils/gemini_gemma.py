@@ -43,6 +43,32 @@ def generate_gemma_text(prompt: str, *, model: str | None = None) -> str:
     return result_text
 
 
+def generate_gemma_text_stream(prompt: str, *, model: str | None = None):
+    load_dotenv()
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    selected_model = model or os.environ.get("GEMINI_MODEL") or DEFAULT_GEMMA_MODEL
+
+    if not api_key:
+        raise GemmaConfigError("GEMINI_API_KEY 또는 GOOGLE_API_KEY가 설정되지 않았습니다.")
+
+    try:
+        from google import genai
+
+        client = genai.Client(api_key=api_key)
+        stream = client.models.generate_content_stream(
+            model=selected_model,
+            contents=prompt,
+        )
+        for chunk in stream:
+            text = (getattr(chunk, "text", "") or "")
+            if text:
+                yield text
+    except ImportError as exc:
+        raise GemmaConfigError("google-genai 패키지가 설치되지 않았습니다. requirements.txt를 설치하세요.") from exc
+    except Exception as exc:
+        raise GemmaGenerationError(str(exc)) from exc
+
+
 def extract_json_object(text: str):
     value = str(text or "").strip()
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", value, flags=re.IGNORECASE | re.DOTALL)

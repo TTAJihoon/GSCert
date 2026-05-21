@@ -54,6 +54,10 @@
 
 .gpt-body {
   padding: 12px 14px;
+  font-size: 14px;
+  line-height: 1.65;
+  color: #1f2937;
+  overflow-wrap: anywhere;
 }
 
 /* 본문 텍스트(프리 포맷) */
@@ -72,12 +76,95 @@
   overflow: auto;
 }
 
+.gpt-body p {
+  margin: 0 0 10px 0;
+}
+
+.gpt-body h3,
+.gpt-body h4,
+.gpt-body h5,
+.gpt-body h6 {
+  color: #0f172a;
+  font-weight: 700;
+  margin: 16px 0 8px;
+}
+
+.gpt-body h3 { font-size: 18px; }
+.gpt-body h4 { font-size: 16px; }
+.gpt-body h5,
+.gpt-body h6 { font-size: 14px; }
+
+.gpt-body ul,
+.gpt-body ol {
+  margin: 0 0 12px 22px;
+  padding: 0;
+}
+
+.gpt-body li {
+  margin: 4px 0;
+}
+
+.gpt-body strong {
+  font-weight: 700;
+  color: #111827;
+}
+
+.gpt-body em {
+  font-style: italic;
+}
+
 /* 인라인 코드(답변에 있을 수 있음) */
 .gpt-body code {
   font-family: inherit;
   background: #f1f5f9;          /* slate-100 */
   border-radius: 4px;
   padding: 0 4px;
+}
+
+.gpt-table-wrap {
+  overflow-x: auto;
+  margin: 12px 0;
+}
+
+.gpt-md-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  background: #ffffff;
+}
+
+.gpt-md-table th,
+.gpt-md-table td {
+  border: 1px solid #e5e7eb;
+  padding: 8px 10px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.gpt-md-table th {
+  background: #f8fafc;
+  color: #0f172a;
+  font-weight: 700;
+}
+
+.gpt-muted {
+  color: #64748b;
+  margin: 0;
+}
+
+.gpt-streaming::after {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 16px;
+  margin-left: 4px;
+  vertical-align: -2px;
+  background: #2563eb;
+  animation: gpt-caret 1s steps(1) infinite;
+}
+
+@keyframes gpt-caret {
+  50% { opacity: 0; }
 }
 
 /* 에러 박스 변형 */

@@ -60,6 +60,116 @@
     document.removeEventListener("keydown", escHandler);
   }
 
+  function escapeHtml(value) {
+    return String(value || "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  function renderInlineMarkdown(value) {
+    let html = escapeHtml(value);
+    html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+    html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    return html;
+  }
+
+  function isMarkdownTable(lines, index) {
+    if (index + 1 >= lines.length) return false;
+    const header = lines[index].trim();
+    const separator = lines[index + 1].trim();
+    return (
+      header.startsWith("|") &&
+      header.endsWith("|") &&
+      /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?$/.test(separator)
+    );
+  }
+
+  function splitTableRow(line) {
+    return line
+      .trim()
+      .replace(/^\|/, "")
+      .replace(/\|$/, "")
+      .split("|")
+      .map((cell) => cell.trim());
+  }
+
+  function renderMarkdown(rawText) {
+    const lines = String(rawText || "").replace(/\r\n/g, "\n").split("\n");
+    const html = [];
+
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      if (!trimmed) {
+        continue;
+      }
+
+      if (isMarkdownTable(lines, i)) {
+        const headers = splitTableRow(lines[i]);
+        i += 2;
+        const rows = [];
+        while (i < lines.length && lines[i].trim().startsWith("|") && lines[i].trim().endsWith("|")) {
+          rows.push(splitTableRow(lines[i]));
+          i += 1;
+        }
+        i -= 1;
+
+        html.push("<div class=\"gpt-table-wrap\"><table class=\"gpt-md-table\"><thead><tr>");
+        headers.forEach((header) => html.push(`<th>${renderInlineMarkdown(header)}</th>`));
+        html.push("</tr></thead><tbody>");
+        rows.forEach((row) => {
+          html.push("<tr>");
+          row.forEach((cell) => html.push(`<td>${renderInlineMarkdown(cell)}</td>`));
+          html.push("</tr>");
+        });
+        html.push("</tbody></table></div>");
+        continue;
+      }
+
+      const heading = trimmed.match(/^(#{1,4})\s+(.+)$/);
+      if (heading) {
+        const level = Math.min(heading[1].length + 2, 6);
+        html.push(`<h${level}>${renderInlineMarkdown(heading[2])}</h${level}>`);
+        continue;
+      }
+
+      if (/^[-*]\s+/.test(trimmed)) {
+        const items = [];
+        while (i < lines.length && /^[-*]\s+/.test(lines[i].trim())) {
+          items.push(lines[i].trim().replace(/^[-*]\s+/, ""));
+          i += 1;
+        }
+        i -= 1;
+        html.push("<ul>");
+        items.forEach((item) => html.push(`<li>${renderInlineMarkdown(item)}</li>`));
+        html.push("</ul>");
+        continue;
+      }
+
+      if (/^\d+\.\s+/.test(trimmed)) {
+        const items = [];
+        while (i < lines.length && /^\d+\.\s+/.test(lines[i].trim())) {
+          items.push(lines[i].trim().replace(/^\d+\.\s+/, ""));
+          i += 1;
+        }
+        i -= 1;
+        html.push("<ol>");
+        items.forEach((item) => html.push(`<li>${renderInlineMarkdown(item)}</li>`));
+        html.push("</ol>");
+        continue;
+      }
+
+      html.push(`<p>${renderInlineMarkdown(trimmed)}</p>`);
+    }
+
+    return html.join("");
+  }
+
   // 공통 템플릿: AI 응답 말풍선 + 툴바(복사 버튼)
   function buildGptMessageHTML({ title = "AI 응답", bodyHTML = "", variant = "default" }) {
     const isError = variant === "error";
@@ -92,9 +202,9 @@
     // 복사 버튼 핸들러
     host.querySelectorAll(".gpt-btn[data-action='copy']").forEach((btn) => {
       btn.addEventListener("click", async () => {
-        const pre = host.querySelector(".gpt-body pre");
-        if (!pre) return;
-        const text = pre.innerText;
+        const body = host.querySelector(".gpt-body");
+        if (!body) return;
+        const text = body.dataset.rawText || body.innerText;
         try {
           await navigator.clipboard.writeText(text);
           btn.textContent = "복사됨";
@@ -105,6 +215,17 @@
         }
       });
     });
+  }
+
+  function updateGptMarkdown(rawText, { streaming = false } = {}) {
+    const body = host && host.querySelector(".gpt-body");
+    if (!body) return;
+    body.dataset.rawText = rawText || "";
+    body.classList.toggle("gpt-streaming", Boolean(streaming));
+    body.innerHTML = rawText
+      ? renderMarkdown(rawText)
+      : `<p class="gpt-muted">AI 추천 수정 방안을 생성 중입니다...</p>`;
+    body.scrollTop = body.scrollHeight;
   }
 
   /**
@@ -133,9 +254,11 @@
     if (row.gpt_response) {
       const html = buildGptMessageHTML({
         title: "🤖 AI 추천 수정 방안 (저장된 답변)",
-        bodyHTML: `<pre class="whitespace-pre-wrap">${row.gpt_response}</pre>`,
+        bodyHTML: renderMarkdown(row.gpt_response),
       });
       displayContent(html);
+      const body = host && host.querySelector(".gpt-body");
+      if (body) body.dataset.rawText = row.gpt_response;
       openModal();
       return;
     }
@@ -156,37 +279,52 @@
     // 3) 로딩 상태
     const loading = buildGptMessageHTML({
       title: "생성 중...",
-      bodyHTML: `
-        <div class="text-center py-6">
-          <div class="inline-flex items-center px-4 py-2 font-semibold leading-6 text-sm rounded-md text-gray-600 bg-white border border-gray-200">
-            <i class="fas fa-spinner fa-spin mr-2"></i> AI 추천 수정 방안을 생성 중입니다...
-          </div>
-        </div>
-      `,
+      bodyHTML: `<p class="gpt-muted">AI 추천 수정 방안을 생성 중입니다...</p>`,
     });
     displayContent(loading);
     openModal();
 
     // 4) 백엔드 호출
     try {
-      const response = await fetch("/security/gpt/recommend/", {
+      const response = await fetch("/security/gpt/recommend/stream/", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: row.gpt_prompt }),
       });
 
-      const result = await response.json();
       if (!response.ok) {
-        throw new Error(result.error || `서버에서 오류가 발생했습니다: ${response.status}`);
+        let message = `서버에서 오류가 발생했습니다: ${response.status}`;
+        try {
+          const result = await response.json();
+          message = result.error || message;
+        } catch {
+          const text = await response.text();
+          message = text || message;
+        }
+        throw new Error(message);
+      }
+      if (!response.body) {
+        throw new Error("브라우저가 스트리밍 응답을 지원하지 않습니다.");
       }
 
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let rawText = "";
+      updateGptMarkdown(rawText, { streaming: true });
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        rawText += decoder.decode(value, { stream: true });
+        updateGptMarkdown(rawText, { streaming: true });
+      }
+      rawText += decoder.decode();
+      updateGptMarkdown(rawText, { streaming: false });
+
       // 5) 성공: 캐시 + 표시
-      row.gpt_response = result.response;
-      const success = buildGptMessageHTML({
-        title: "🤖 AI 추천 수정 방안",
-        bodyHTML: `<pre class="whitespace-pre-wrap">${result.response}</pre>`,
-      });
-      displayContent(success);
+      row.gpt_response = rawText;
+      const title = host && host.querySelector(".gpt-title");
+      if (title) title.textContent = "🤖 AI 추천 수정 방안";
     } catch (error) {
       // 6) 실패 표시
       console.error("AI 요청 실패:", error);

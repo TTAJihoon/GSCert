@@ -66,6 +66,9 @@
     shell.style.height = "80vh";
     host.style.overflow = "auto";
     host.style.padding = "12px";
+    if (shadowRoot && shadowRoot.host !== host) {
+      shadowRoot = null;
+    }
   }
 
   // 전역으로 주입된 원본 CSS 비활성화(팝업 동안만) → 레이아웃 누수 방지
@@ -88,11 +91,27 @@
     modal.classList.add("hidden");
     document.body.classList.remove("overflow-hidden");
     document.removeEventListener("keydown", escHandler);
-    // Shadow DOM 정리
-    if (shadowRoot) shadowRoot.innerHTML = "";
+    resetShadowHost();
     restoreGlobalInvictiStyle();
   }
   function escHandler(e){ if (e.key === "Escape") closeModal(); }
+
+  function resetShadowHost() {
+    if (!host) return;
+    if (shadowRoot) {
+      shadowRoot.innerHTML = "";
+    }
+    if (host.shadowRoot || shadowRoot) {
+      const freshHost = document.createElement("div");
+      freshHost.id = "modalContent";
+      freshHost.className = "h-full overflow-auto p-3";
+      host.parentNode.replaceChild(freshHost, host);
+      host = freshHost;
+      shadowRoot = null;
+    } else {
+      host.innerHTML = "";
+    }
+  }
 
   // ========= 상호작용 배선 =========
   function cssEscape(sel) {
@@ -229,7 +248,12 @@ ${bodyHtml}
     disableGlobalInvictiStyle();
 
     // Shadow DOM 격리 렌더링
-    if (!shadowRoot) shadowRoot = host.attachShadow({ mode: "open" });
+    if (shadowRoot && shadowRoot.host !== host) {
+      shadowRoot = null;
+    }
+    if (!shadowRoot) {
+      shadowRoot = host.shadowRoot || host.attachShadow({ mode: "open" });
+    }
     shadowRoot.innerHTML = "";
 
     const reportCss = (App.state && App.state.reportCss) ? App.state.reportCss : ""; // 원본 CSS 주입

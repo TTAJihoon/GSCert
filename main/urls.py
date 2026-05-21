@@ -6,7 +6,7 @@ from main.views.init import index, similar, security, prdinfo, checkreport, test
 from main.views.testing.history import history
 from main.views.testing.similar_summary import summarize_document
 from main.views.testing.security import invicti_parse_view
-from main.views.testing.security_GPT import get_gpt_recommendation_view
+from main.views.testing.security_GPT import get_gpt_recommendation_view, stream_gpt_recommendation_view
 
 from main.views.certy.prdinfo_generate import generate_prdinfo
 from main.views.certy.prdinfo_URL import source_excel_view
@@ -36,6 +36,7 @@ urlpatterns = [
     path('security/', security, name='security'),
     path('security/invicti/parse/', invicti_parse_view, name='invicti_parse'),
     path('security/gpt/recommend/', get_gpt_recommendation_view, name='gpt_recommend'),
+    path('security/gpt/recommend/stream/', stream_gpt_recommendation_view, name='gpt_recommend_stream'),
 
     path('prdinfo/', prdinfo, name='prdinfo'),
     path('lookup_cert_info/', lookup_cert_info, name='lookup_cert_info'),
