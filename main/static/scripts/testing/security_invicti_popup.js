@@ -89,6 +89,7 @@
   }
 
   function openModal() {
+    modal.dataset.modalOwner = "invicti";
     modal.classList.remove("hidden");
     document.body.classList.add("overflow-hidden");
     document.addEventListener("keydown", escHandler);
@@ -244,6 +245,9 @@ ${bodyHtml}
   // ========= 공개 API: 테이블의 "Invicti 분석" 버튼에서 호출 =========
   App.popup.showInvictiAnalysis = function (rowId) {
     ensureModal();
+    if (App.gpt && typeof App.gpt.releaseModal === "function") {
+      App.gpt.releaseModal();
+    }
 
     // rows는 /security/invicti/parse/ 응답을 사용(이미 별도 스크립트에서 setData/주입) :contentReference[oaicite:3]{index=3}
     const rows = (App.state && App.state.currentData) || [];
@@ -297,6 +301,14 @@ ${bodyHtml}
       URL.revokeObjectURL(a.href);
       a.remove();
     };
+  };
+
+  App.popup.releaseInvictiModal = function () {
+    if (shadowRoot) {
+      shadowRoot.innerHTML = "";
+      shadowRoot = null;
+    }
+    restoreGlobalInvictiStyle();
   };
 
   function toSafeName(name, fallback) {

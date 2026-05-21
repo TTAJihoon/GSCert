@@ -78,6 +78,11 @@
   overflow: auto;
 }
 
+.gpt-body .gpt-code-block {
+  margin: 10px 0 12px 0;
+  max-height: 420px;
+}
+
 .gpt-body p {
   margin: 0 0 10px 0;
 }
@@ -104,6 +109,22 @@
 
 .gpt-body li {
   margin: 4px 0;
+}
+
+.gpt-body blockquote {
+  margin: 10px 0 12px 0;
+  padding: 8px 12px;
+  border-left: 4px solid #cbd5e1;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.gpt-body blockquote p {
+  margin: 0 0 6px 0;
+}
+
+.gpt-body blockquote p:last-child {
+  margin-bottom: 0;
 }
 
 .gpt-body strong {

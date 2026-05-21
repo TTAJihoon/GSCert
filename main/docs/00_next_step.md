@@ -64,8 +64,12 @@ Copy-Item -Recurse -Force `
   - 결함으로 보기 어렵다면 그 이유를 설명하고 불필요한 수정 방안을 제시하지 않는다.
   - 판단 불가하면 부족한 증거를 명확히 말한다.
 - AI 추천 팝업에서 Markdown을 렌더링한다.
-  - 제목, 목록, 표, 굵게, 기울임, 인라인 코드 지원
+  - 제목, 목록, 표, 굵게, 기울임, 인라인 코드, 인용, 코드블록 지원
+  - 응답 전체가 ```markdown 코드블록으로 감싸져 와도 바깥 fence를 제거한 뒤 렌더링한다.
   - 복사 버튼은 렌더링된 HTML이 아니라 원본 Markdown을 복사한다.
+- AI 추천 팝업에 화면 표시용 typewriter 렌더링을 추가했다.
+  - 이유: Gemini API가 큰 chunk로 응답하면 네트워크 스트리밍이 되어도 사용자는 한 번에 표시되는 것처럼 보일 수 있었다.
+  - 이제 응답이 한 덩어리로 도착해도 UI가 조금씩 써 내려가듯 표시한다.
 - AI 추천 팝업 JS/CSS에 정적 파일 버전 쿼리를 붙였다.
   - 이유: 브라우저 캐시 때문에 스트리밍/Markdown 렌더링 코드가 반영되지 않는 문제가 있었다.
 - 공용 모달 레이아웃을 `flex column` 구조로 보정했다.
@@ -74,6 +78,9 @@ Copy-Item -Recurse -Force `
   - Invicti 팝업은 Shadow DOM을 사용한다.
   - AI 팝업이 `#modalContent`를 교체할 수 있어 기존 ShadowRoot 참조가 stale 상태가 될 수 있었다.
   - 팝업 닫기와 재오픈 시 ShadowRoot/host를 초기화하도록 변경했다.
+- AI 추천 팝업을 본 뒤 Invicti 분석 팝업을 다시 열면 내용이 비어 보일 수 있는 상태 충돌을 정리했다.
+  - 공용 모달의 닫기 핸들러와 내부 상태를 현재 팝업 소유자 기준으로 정리한다.
+  - AI 팝업을 열 때 Invicti Shadow DOM 상태를 해제하고, Invicti 팝업을 열 때 AI typewriter 상태를 해제한다.
 - Invicti 보고서에서 `container-fluid` 상위 컨테이너가 없는 취약점도 원본 HTML 스니펫을 만들도록 수정했다.
   - 확인 샘플: `gs.docuops.ngrok.app - 상세 스캔 보고서.html`
   - 증상: 5번 `약한 암호가 사용되었습니다.` 항목의 `invicti_analysis`가 빈 값이라 팝업이 비어 있었다.
@@ -114,6 +121,9 @@ node --check main\static\scripts\testing\security_invicti_popup.js
   - Markdown 표와 굵게 렌더링 확인
   - 다시 Invicti 분석 팝업 열기
   - AI 팝업 스트리밍 중간 상태와 최종 Markdown 렌더링 확인
+  - `AI 추천 > 닫기 > Invicti 분석` 순서 확인
+  - `Invicti 분석 > 닫기 > AI 추천 > 닫기 > Invicti 분석` 순서 확인
+  - `security_GPT_popup.js?v=20260521d`, `security_invicti_popup.js?v=20260521d`, `security_GPT.css?v=20260521d` 로드 확인
 
 ## 바로 다음 작업
 

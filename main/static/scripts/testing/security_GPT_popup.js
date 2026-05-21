@@ -4,6 +4,14 @@
   AppNS.gpt = AppNS.gpt || {};
 
   let modal, backdrop, shell, host, closeBtn;
+  let typewriterTimer = null;
+  let visibleText = "";
+  let targetText = "";
+  let keepStreamingCaret = false;
+
+  const TYPEWRITER_INTERVAL_MS = 18;
+  const TYPEWRITER_BASE_STEP = 2;
+  const TYPEWRITER_FAST_STEP = 6;
 
   function escHandler(e) { if (e.key === "Escape") closeModal(); }
 
@@ -16,6 +24,9 @@
 
       let contentHost = modal.querySelector("#modalContent");
       if (contentHost && contentHost.shadowRoot) {
+        if (AppNS.popup && typeof AppNS.popup.releaseInvictiModal === "function") {
+          AppNS.popup.releaseInvictiModal();
+        }
         console.log("Shadow DOM detected. Re-creating modal content area.");
         const newHost = document.createElement("div");
         newHost.id = "modalContent";
@@ -34,11 +45,11 @@
       return false;
     }
 
-    if (!modal._gptHandlersBound) {
-      closeBtn.addEventListener("click", closeModal);
-      backdrop.addEventListener("click", closeModal);
-      modal._gptHandlersBound = true;
+    if (AppNS.popup && typeof AppNS.popup.releaseInvictiModal === "function") {
+      AppNS.popup.releaseInvictiModal();
     }
+    closeBtn.onclick = closeModal;
+    backdrop.onclick = closeModal;
 
     shell.style.width = "80vw";
     shell.style.height = "80vh";
@@ -54,6 +65,7 @@
 
   function openModal() {
     if (!modal) return;
+    modal.dataset.modalOwner = "gpt";
     modal.classList.remove("hidden");
     document.body.classList.add("overflow-hidden");
     document.addEventListener("keydown", escHandler);
@@ -63,6 +75,7 @@
     if (!modal) return;
     modal.classList.add("hidden");
     document.body.classList.remove("overflow-hidden");
+    resetTypewriter();
     if (host) host.innerHTML = "";
     document.removeEventListener("keydown", escHandler);
   }
@@ -79,9 +92,16 @@
   function renderInlineMarkdown(value) {
     let html = escapeHtml(value);
     html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-    html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
-    html = html.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+    html = html.replace(/\*\*([\s\S]+?)\*\*/g, "<strong>$1</strong>");
+    html = html.replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
     return html;
+  }
+
+  function normalizeMarkdown(rawText) {
+    let text = String(rawText || "").replace(/\r\n/g, "\n").trimStart();
+    text = text.replace(/^\s*```(?:markdown|md|gfm)?\s*\n?/i, "");
+    text = text.replace(/\n?```\s*$/i, "");
+    return text;
   }
 
   function isMarkdownTable(lines, index) {
@@ -105,7 +125,7 @@
   }
 
   function renderMarkdown(rawText) {
-    const lines = String(rawText || "").replace(/\r\n/g, "\n").split("\n");
+    const lines = normalizeMarkdown(rawText).split("\n");
     const html = [];
 
     for (let i = 0; i < lines.length; i += 1) {
@@ -113,6 +133,18 @@
       const trimmed = line.trim();
 
       if (!trimmed) {
+        continue;
+      }
+
+      if (/^```/.test(trimmed)) {
+        const lang = trimmed.replace(/^```/, "").trim();
+        const codeLines = [];
+        i += 1;
+        while (i < lines.length && !/^```/.test(lines[i].trim())) {
+          codeLines.push(lines[i]);
+          i += 1;
+        }
+        html.push(`<pre class="gpt-code-block"${lang ? ` data-lang="${escapeHtml(lang)}"` : ""}><code>${escapeHtml(codeLines.join("\n"))}</code></pre>`);
         continue;
       }
 
@@ -135,6 +167,17 @@
           html.push("</tr>");
         });
         html.push("</tbody></table></div>");
+        continue;
+      }
+
+      if (/^>\s?/.test(trimmed)) {
+        const quotes = [];
+        while (i < lines.length && /^>\s?/.test(lines[i].trim())) {
+          quotes.push(lines[i].trim().replace(/^>\s?/, ""));
+          i += 1;
+        }
+        i -= 1;
+        html.push(`<blockquote>${quotes.map((item) => `<p>${renderInlineMarkdown(item)}</p>`).join("")}</blockquote>`);
         continue;
       }
 
@@ -171,7 +214,21 @@
         continue;
       }
 
-      html.push(`<p>${renderInlineMarkdown(trimmed)}</p>`);
+      const paragraph = [trimmed];
+      while (
+        i + 1 < lines.length &&
+        lines[i + 1].trim() &&
+        !isMarkdownTable(lines, i + 1) &&
+        !/^(#{1,4})\s+/.test(lines[i + 1].trim()) &&
+        !/^[-*]\s+/.test(lines[i + 1].trim()) &&
+        !/^\d+\.\s+/.test(lines[i + 1].trim()) &&
+        !/^>\s?/.test(lines[i + 1].trim()) &&
+        !/^```/.test(lines[i + 1].trim())
+      ) {
+        i += 1;
+        paragraph.push(lines[i].trim());
+      }
+      html.push(`<p>${paragraph.map((item) => renderInlineMarkdown(item)).join("<br>")}</p>`);
     }
 
     return html.join("");
@@ -204,6 +261,7 @@
       console.error("Modal host element is not available to display content.");
       return;
     }
+    resetTypewriter();
     host.innerHTML = content;
 
     // 복사 버튼 핸들러
@@ -225,14 +283,55 @@
   }
 
   function updateGptMarkdown(rawText, { streaming = false } = {}) {
+    targetText = rawText || "";
+    keepStreamingCaret = Boolean(streaming);
+    const body = host && host.querySelector(".gpt-body");
+    if (body) body.dataset.rawText = targetText;
+
+    if (!targetText) {
+      visibleText = "";
+      renderGptBodyFrame();
+      return;
+    }
+
+    if (!typewriterTimer) {
+      typewriterTimer = window.setInterval(renderGptBodyFrame, TYPEWRITER_INTERVAL_MS);
+    }
+    renderGptBodyFrame();
+  }
+
+  function resetTypewriter() {
+    if (typewriterTimer) {
+      window.clearInterval(typewriterTimer);
+      typewriterTimer = null;
+    }
+    visibleText = "";
+    targetText = "";
+    keepStreamingCaret = false;
+  }
+
+  function renderGptBodyFrame() {
     const body = host && host.querySelector(".gpt-body");
     if (!body) return;
-    body.dataset.rawText = rawText || "";
-    body.classList.toggle("gpt-streaming", Boolean(streaming));
-    body.innerHTML = rawText
-      ? renderMarkdown(rawText)
+
+    const remaining = Math.max(targetText.length - visibleText.length, 0);
+    if (remaining > 0) {
+      const step = remaining > 120 ? TYPEWRITER_FAST_STEP : TYPEWRITER_BASE_STEP;
+      visibleText = targetText.slice(0, visibleText.length + step);
+    }
+
+    const isTyping = visibleText.length < targetText.length;
+    body.dataset.rawText = targetText;
+    body.classList.toggle("gpt-streaming", keepStreamingCaret || isTyping);
+    body.innerHTML = visibleText
+      ? renderMarkdown(visibleText)
       : `<p class="gpt-muted">AI 추천 수정 방안을 생성 중입니다...</p>`;
     body.scrollTop = body.scrollHeight;
+
+    if (!keepStreamingCaret && !isTyping && typewriterTimer) {
+      window.clearInterval(typewriterTimer);
+      typewriterTimer = null;
+    }
   }
 
   /**
@@ -284,6 +383,7 @@
     }
 
     // 3) 로딩 상태
+    resetTypewriter();
     const loading = buildGptMessageHTML({
       title: "생성 중...",
       bodyHTML: `<p class="gpt-muted">AI 추천 수정 방안을 생성 중입니다...</p>`,
@@ -345,5 +445,12 @@
   }
 
   AppNS.gpt.getGptRecommendation = getGptRecommendation;
+  AppNS.gpt.releaseModal = function () {
+    resetTypewriter();
+    const contentHost = document.querySelector("#modalContent");
+    if (contentHost && !contentHost.shadowRoot) {
+      contentHost.innerHTML = "";
+    }
+  };
 
 })(window, document);
