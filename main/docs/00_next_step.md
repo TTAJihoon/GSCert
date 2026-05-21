@@ -51,30 +51,19 @@ Copy-Item -Recurse -Force `
 
 ## 직전 작업
 
-로컬에 추가된 유틸/데이터 변경분을 Git에 올리기 위해 정리했다.
+의존성 파일을 현재 코드 사용 기준으로 정리했다.
 
-- `main/utils/gemini_gemma.py`를 추가했다.
-  - `GEMINI_API_KEY` 또는 `GOOGLE_API_KEY` 환경변수로 Gemini API hosted Gemma 모델을 호출한다.
-  - 응답 JSON 추출 helper를 제공한다.
-- 기존 일부 GPT 호출 경로를 Gemma 유틸 기반으로 전환했다.
-  - `main/views/certy/prdinfo_GPT.py`
-  - `main/views/testing/security_GPT.py`
-  - `main/views/testing/similar_GPT.py`
-  - `main/views/testing/similar_summary.py`
-- UI 문구 중 `GPT` 고정 표현 일부를 `AI` 표현으로 바꿨다.
-- `requirements.txt`에 `google-genai`를 추가했다.
-- `weekly.py`에 수동 주차/이미 받은 xlsx 반영 옵션을 추가했다.
-  - `GSCERT_WEEKLY_TARGET_DATE`
-  - `GSCERT_WEEKLY_SOURCE_XLSX`
-- `embed_db`와 `embedding_to_faiss.py`를 FAISS 증분 갱신/전체 재생성 선택 방식으로 정리했다.
-- `reference.xlsx`와 `reference.db`가 갱신됐다.
+- `requirements.txt`에서 직접 사용 흔적이 없는 `requests`를 제거했다.
+- `requirements-ui.txt`를 제거했다.
+  - 현재 `/download-review/` UI는 API/DB 흐름을 사용하므로 기본 `requirements.txt` 기준으로 실행한다.
+- `requirements-search.txt`를 추가했다.
+  - FAISS/임베딩/형태소 분석 의존성을 기본 서버 의존성과 분리한다.
+  - 포함 패키지: `faiss-cpu`, `sentence-transformers`, `kiwipiepy`
+- dependency 문서와 남은 결정사항 문서를 갱신했다.
 
 ## 검증 완료
 
 ```powershell
-.\.venv\Scripts\python.exe -m py_compile main\utils\gemini_gemma.py main\management\commands\embed_db.py main\utils\embedding_to_faiss.py main\utils\weekly.py main\views\certy\prdinfo_GPT.py main\views\certy\prdinfo_parse_report.py main\views\testing\security_GPT.py main\views\testing\similar_GPT.py main\views\testing\similar_summary.py
-node --check main\static\scripts\testing\security_GPT_popup.js
-node --check main\static\scripts\testing\security_editable.js
 .\.venv\Scripts\python.exe manage.py check --settings=myproject.ui_mock_settings
 ```
 
@@ -95,6 +84,7 @@ node --check main\static\scripts\testing\security_editable.js
 5. 테스트가 끝나면 시간 제한을 운영 기준으로 되돌린다.
    - `DOWNLOAD_REVIEW_START_HOUR = 20`
    - `DOWNLOAD_REVIEW_END_HOUR = 7`
+6. 검색/임베딩 기능을 사용하는 PC에서는 `requirements-search.txt`를 별도로 설치한다.
 
 ## 최근 결정
 
@@ -107,6 +97,10 @@ node --check main\static\scripts\testing\security_editable.js
    - 현재 대화의 Codex에게 payload를 전달해 테스트할 수 있고, 나중에 API를 붙일 때도 같은 payload 흐름을 사용한다.
 4. 기본 ECM 다운로드 방식은 전체 선택으로 유지한다.
    - 다른 선택 방식은 skill 지침에만 두고, 실제 필요가 생기면 코드화한다.
+5. UI 목업 전용 requirements는 제거하고 기본 서버 requirements로 통일한다.
+   - 이유: 현재 UI가 API/DB 흐름을 사용하므로 Django 단독 설치 기준이 실제 실행 조건과 맞지 않는다.
+6. FAISS/임베딩/형태소 분석 의존성은 별도 requirements로 분리한다.
+   - 이유: 기본 웹서버 설치를 무겁게 만들지 않고, 검색 기능이 필요한 환경에서만 설치하기 위해서다.
 
 ## 결정 필요
 

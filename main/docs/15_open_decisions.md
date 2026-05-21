@@ -346,12 +346,15 @@ DestinyECMAgent(32비트)
 
 - `requirements.txt`는 Django 5.2 계열 기준으로 정리했다.
 - Windows 자동화 의존성은 `requirements-automation.txt`로 분리했다.
-- UI 목업/로컬 실행 의존성은 `requirements-ui.txt`를 유지한다.
+- UI 목업/로컬 실행 의존성은 `requirements.txt` 기준으로 통일했다.
+- `requirements-ui.txt`는 제거했다.
+- FAISS/임베딩/형태소 분석 의존성은 `requirements-search.txt`로 분리했다.
 
 추가 확인 필요:
 
 - 운영 서버에서 실제 서버 실행에 사용하는 패키지 목록과 `requirements.txt`의 차이
 - 운영 서버 시작 방식이 Uvicorn인지 Django runserver 래퍼인지
+- 검색/임베딩 기능을 운영 서버에서 함께 실행할지, 별도 관리 PC/배치 환경에서만 실행할지
 
 관련 문서:
 

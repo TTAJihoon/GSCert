@@ -1,0 +1,4 @@
+-r requirements.txt
+faiss-cpu>=1.13,<1.14
+sentence-transformers>=5.2,<5.3
+kiwipiepy>=0.22,<0.23
