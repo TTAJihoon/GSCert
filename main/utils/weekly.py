@@ -25,6 +25,11 @@ def _env_path(name: str, default: Path) -> Path:
     return Path(value) if value else default
 
 
+def _env_optional_path(name: str) -> Path | None:
+    value = os.environ.get(name)
+    return Path(value) if value else None
+
+
 # =========================
 # 설정
 # =========================
@@ -40,6 +45,12 @@ class Config:
 
     # 다운로드 폴더
     download_folder: Path = _env_path("GSCERT_WEEKLY_DOWNLOAD_DIR", Path(r"C:\Users\Administrator"))
+
+    # 특정 주차를 수동 갱신할 때 사용한다. 예: 20260511
+    target_monday: str = os.environ.get("GSCERT_WEEKLY_TARGET_DATE", "").strip()
+
+    # 이미 받은 xlsx를 직접 기준 파일에 반영할 때 사용한다.
+    source_xlsx: Path | None = _env_optional_path("GSCERT_WEEKLY_SOURCE_XLSX")
 
     # 시작 URL
     start_url: str = os.environ.get("GSCERT_WEEKLY_START_URL", "http://210.104.181.10")
@@ -118,6 +129,13 @@ def _reference_sheet(wb):
 # 날짜(전 주 월요일)
 # =========================
 def this_week_monday_yyyymmdd(tz: str = "Asia/Seoul") -> str:
+    if CFG.target_monday:
+        try:
+            datetime.strptime(CFG.target_monday, "%Y%m%d")
+        except ValueError as exc:
+            raise ValueError("GSCERT_WEEKLY_TARGET_DATE는 YYYYMMDD 형식이어야 합니다.") from exc
+        return CFG.target_monday
+
     now = datetime.now(ZoneInfo(tz))
     monday = now - timedelta(days=now.weekday()) - timedelta(days=7)
     return monday.strftime("%Y%m%d")
@@ -498,38 +516,47 @@ def main():
     if getattr(CFG, "test_click_doc_enabled", False):
         monday = "20260105"  # 테스트 끝나면 이 블록 삭제하거나 False로
         logging.info("[TEST] monday 강제 설정: %s", monday)
+    if CFG.target_monday:
+        logging.info("대상 주차 수동 지정: %s", monday)
 
     xlsx_name = f"{CFG.doc_prefix}({monday}).xlsx"
     expected_path = CFG.download_folder / xlsx_name
 
-    if expected_path.exists():
-        try:
-            expected_path.unlink()
-        except Exception:
-            pass
+    if CFG.source_xlsx:
+        downloaded = CFG.source_xlsx
+        if not downloaded.exists():
+            raise FileNotFoundError(f"GSCERT_WEEKLY_SOURCE_XLSX 파일을 찾을 수 없습니다: {downloaded}")
+        logging.info("다운로드 단계 생략, 지정된 xlsx 사용: %s", downloaded)
+    else:
+        if expected_path.exists():
+            try:
+                expected_path.unlink()
+            except Exception:
+                pass
 
-    year = datetime.now(ZoneInfo("Asia/Seoul")).year
+        year = datetime.now(ZoneInfo("Asia/Seoul")).year
 
-    # 3) 웹에서 저장 트리거 + 폴더 선택 팝업 처리 + 파일 생성 대기
-    with sync_playwright() as p:
-        browser, ctx, page = ensure_page(p)
-        try:
-            click_year_and_first_00_folder(page, year)
-            open_doc_properties_by_monday(page, monday)
+        # 3) 웹에서 저장 트리거 + 폴더 선택 팝업 처리 + 파일 생성 대기
+        with sync_playwright() as p:
+            browser, ctx, page = ensure_page(p)
+            try:
+                click_year_and_first_00_folder(page, year)
+                open_doc_properties_by_monday(page, monday)
 
-            trigger_save_icon_for_attachment(page, monday)
+                trigger_save_icon_for_attachment(page, monday)
 
-            # 폴더 찾아보기 팝업: 2~3초 후 Enter면 충분하다고 했으니 그대로 반영
-            confirm_browse_dialog_by_enter(wait_popup_sec=CFG.dialog_wait_sec, after_popup_sec=3.0)
+                # 폴더 찾아보기 팝업: 2~3초 후 Enter면 충분하다고 했으니 그대로 반영
+                confirm_browse_dialog_by_enter(wait_popup_sec=CFG.dialog_wait_sec, after_popup_sec=3.0)
 
-            downloaded = wait_for_file_complete(CFG.download_folder, xlsx_name, timeout_sec=CFG.download_wait_sec)
-            logging.info("다운로드 완료 확인: %s", downloaded)
+                downloaded = wait_for_file_complete(CFG.download_folder, xlsx_name, timeout_sec=CFG.download_wait_sec)
+                logging.info("다운로드 완료 확인: %s", downloaded)
 
-        finally:
-            ctx.close()
-            browser.close()
+            finally:
+                ctx.close()
+                browser.close()
 
     # 4) xlsx에서 last_serial 아래부터 A~N 추출 -> 정규화 -> master.xlsx append
+    logging.info("추가분 추출 대상 xlsx: %s", downloaded)
     rows = extract_a_to_n_rows_after_serial(downloaded, start_serial=last_serial, sheet_name="인증획득제품리스트")
     logging.info("추출된 행 수(A~N, 정규화 전): %d", len(rows))
 

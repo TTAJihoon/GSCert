@@ -23,7 +23,7 @@
       { name: "quality_attribute", type: "text", label: "품질특성", editable: true, defaultValue: "보안성", width: "75px" },
       { name: "defect_description", type: "textarea", label: "결함 설명", editable: true, width: "400px" },
       { name: "invicti_popup", type: "popup", label: "Invicti 분석", editable: false, width: "150px" },
-      { name: "gpt_recommendation", type: "popup", label: "GPT 추천 수정 방안", editable: false, width: "150px" },
+      { name: "gpt_recommendation", type: "popup", label: "AI 추천 수정 방안", editable: false, width: "150px" },
     ],
   };
 

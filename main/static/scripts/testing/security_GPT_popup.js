@@ -40,7 +40,7 @@
       modal._gptHandlersBound = true;
     }
 
-    // ChatGPT 스타일 컨테이너 클래스 부여(없으면 추가)
+    // AI 응답 팝업 컨테이너 클래스 부여(없으면 추가)
     host.classList && host.classList.add("gpt-modal");
     return true;
   }
@@ -60,8 +60,8 @@
     document.removeEventListener("keydown", escHandler);
   }
 
-  // 공통 템플릿: ChatGPT 느낌 말풍선 + 툴바(복사 버튼)
-  function buildGptMessageHTML({ title = "GPT 응답", bodyHTML = "", variant = "default" }) {
+  // 공통 템플릿: AI 응답 말풍선 + 툴바(복사 버튼)
+  function buildGptMessageHTML({ title = "AI 응답", bodyHTML = "", variant = "default" }) {
     const isError = variant === "error";
     return `
       <div class="gpt-msg${isError ? " gpt-error" : ""}">
@@ -108,7 +108,7 @@
   }
 
   /**
-   * GPT API를 호출하고 결과를 캐싱하며 팝업에 표시
+   * AI API를 호출하고 결과를 캐싱하며 팝업에 표시
    * @param {string} rowId - 테이블 행의 고유 ID
    */
   async function getGptRecommendation(rowId) {
@@ -132,7 +132,7 @@
     // 1) 캐시 존재 시 즉시 표시
     if (row.gpt_response) {
       const html = buildGptMessageHTML({
-        title: "🤖 GPT 추천 수정 방안 (저장된 답변)",
+        title: "🤖 AI 추천 수정 방안 (저장된 답변)",
         bodyHTML: `<pre class="whitespace-pre-wrap">${row.gpt_response}</pre>`,
       });
       displayContent(html);
@@ -145,7 +145,7 @@
       const html = buildGptMessageHTML({
         title: "오류",
         bodyHTML:
-          `<pre class="whitespace-pre-wrap">GPT에게 보낼 프롬프트 데이터가 없습니다.</pre>`,
+          `<pre class="whitespace-pre-wrap">AI에게 보낼 프롬프트 데이터가 없습니다.</pre>`,
         variant: "error",
       });
       displayContent(html);
@@ -159,7 +159,7 @@
       bodyHTML: `
         <div class="text-center py-6">
           <div class="inline-flex items-center px-4 py-2 font-semibold leading-6 text-sm rounded-md text-gray-600 bg-white border border-gray-200">
-            <i class="fas fa-spinner fa-spin mr-2"></i> GPT 추천 수정 방안을 생성 중입니다...
+            <i class="fas fa-spinner fa-spin mr-2"></i> AI 추천 수정 방안을 생성 중입니다...
           </div>
         </div>
       `,
@@ -183,13 +183,13 @@
       // 5) 성공: 캐시 + 표시
       row.gpt_response = result.response;
       const success = buildGptMessageHTML({
-        title: "🤖 GPT 추천 수정 방안",
+        title: "🤖 AI 추천 수정 방안",
         bodyHTML: `<pre class="whitespace-pre-wrap">${result.response}</pre>`,
       });
       displayContent(success);
     } catch (error) {
       // 6) 실패 표시
-      console.error("GPT 요청 실패:", error);
+      console.error("AI 요청 실패:", error);
       const err = buildGptMessageHTML({
         title: "⚠️ 요청 실패",
         bodyHTML: `<pre class="whitespace-pre-wrap">${error.message}</pre>`,

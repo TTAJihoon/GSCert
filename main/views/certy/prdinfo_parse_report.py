@@ -254,7 +254,7 @@ def extract_process2_docx_overview(byts: bytes, filename: str):
         payload = (desc + ("\n" if desc and feats_text else "") + feats_text).strip()
 
         if payload:
-            res = classify_sw_and_keywords(payload)  # ~GPT.py: (SW분류, 키워드1, 키워드2) 리턴
+            res = classify_sw_and_keywords(payload)  # AI 모델: (SW분류, 키워드1, 키워드2) 리턴
 
             sw, k1, k2 = "", "", ""
 
@@ -276,7 +276,7 @@ def extract_process2_docx_overview(byts: bytes, filename: str):
                 out["키워드"] = keywords_joined
 
     except Exception as e:
-        print("GPT 호출 실패: "+e)
+        print("AI 호출 실패: " + str(e))
         pass
 
     return out

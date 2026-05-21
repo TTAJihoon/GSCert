@@ -28,8 +28,35 @@
 .\.venv\Scripts\python.exe manage.py sqlite --no-git-sync
 ```
 
+특정 주차 파일을 강제로 반영해야 하면 `weekly.py` 실행 전에 대상 월요일을 지정한다.
+
+```powershell
+$env:GSCERT_WEEKLY_TARGET_DATE = "20260511"
+.\.venv\Scripts\python.exe main\utils\weekly.py
+```
+
+이미 내려받은 xlsx를 바로 기준 파일에 반영해야 하면 다운로드 단계를 생략할 수 있다.
+
+```powershell
+$env:GSCERT_WEEKLY_SOURCE_XLSX = "C:\Users\jh910\Downloads\Telegram Desktop\인증획득제품(20260511).xlsx"
+.\.venv\Scripts\python.exe main\utils\weekly.py
+```
+
 ## Git 제외
 
 - `workflow.db`: 작업 요청, 대기열, 진행상태, 로그 등 실행 이력 DB
 - `ecm_agent.lock`: ECM/agent 동시 접근 방지용 로컬 잠금 파일
 - `faiss_bge_m3_ko.idmap.index`, `ngram_table.npz`: 유틸리티가 생성하는 검색 인덱스
+
+FAISS 임베딩 인덱스는 아래 명령으로 갱신한다. 기본 동작은 기존 인덱스의 `일련번호`를
+확인한 뒤 DB에 추가된 신규 행만 임베딩해서 붙인다.
+
+```powershell
+.\.venv\Scripts\python.exe manage.py embed_db main\data\reference.db
+```
+
+기존 행의 내용이 수정되었거나 모델/인덱스 구조를 바꾼 경우에는 전체 재생성을 명시한다.
+
+```powershell
+.\.venv\Scripts\python.exe manage.py embed_db main\data\reference.db --rebuild
+```

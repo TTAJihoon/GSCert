@@ -51,23 +51,31 @@ Copy-Item -Recurse -Force `
 
 ## 직전 작업
 
-다른 개발 PC에서도 같은 Codex 작업 지침을 사용할 수 있도록 skill 배포용 사본과 이어받기 순서를 정리했다.
+로컬에 추가된 유틸/데이터 변경분을 Git에 올리기 위해 정리했다.
 
-- `main/docs/codex_skills/gscert-download-review-maintainer/`를 추가했다.
-  - 로컬 skill의 저장소 배포용 사본이다.
-  - 다른 PC에서는 이 폴더를 `$env:USERPROFILE\.codex\skills\gscert-download-review-maintainer`로 복사한다.
-- `main/docs/codex_skills/README.md`를 추가했다.
-  - skill 설치 명령을 보관한다.
-- `main/docs/00_next_step.md`에 다른 개발 PC 시작 순서를 추가했다.
-- 최근 결정:
-  - 기본 다운로드 방식은 계속 문서 목록 전체 선택으로 유지한다.
-  - `1개만 선택`, `PDF만 선택`, `파일명 포함 선택` 등은 지금은 skill 지침에만 두고, 실제 테스트/예외 상황이 필요할 때 코드화한다.
+- `main/utils/gemini_gemma.py`를 추가했다.
+  - `GEMINI_API_KEY` 또는 `GOOGLE_API_KEY` 환경변수로 Gemini API hosted Gemma 모델을 호출한다.
+  - 응답 JSON 추출 helper를 제공한다.
+- 기존 일부 GPT 호출 경로를 Gemma 유틸 기반으로 전환했다.
+  - `main/views/certy/prdinfo_GPT.py`
+  - `main/views/testing/security_GPT.py`
+  - `main/views/testing/similar_GPT.py`
+  - `main/views/testing/similar_summary.py`
+- UI 문구 중 `GPT` 고정 표현 일부를 `AI` 표현으로 바꿨다.
+- `requirements.txt`에 `google-genai`를 추가했다.
+- `weekly.py`에 수동 주차/이미 받은 xlsx 반영 옵션을 추가했다.
+  - `GSCERT_WEEKLY_TARGET_DATE`
+  - `GSCERT_WEEKLY_SOURCE_XLSX`
+- `embed_db`와 `embedding_to_faiss.py`를 FAISS 증분 갱신/전체 재생성 선택 방식으로 정리했다.
+- `reference.xlsx`와 `reference.db`가 갱신됐다.
 
 ## 검증 완료
 
 ```powershell
-.\.venv\Scripts\python.exe C:\Users\jh910\.codex\skills\.system\skill-creator\scripts\quick_validate.py main\docs\codex_skills\gscert-download-review-maintainer
-.\.venv\Scripts\python.exe C:\Users\jh910\.codex\skills\.system\skill-creator\scripts\quick_validate.py C:\Users\jh910\.codex\skills\gscert-download-review-maintainer
+.\.venv\Scripts\python.exe -m py_compile main\utils\gemini_gemma.py main\management\commands\embed_db.py main\utils\embedding_to_faiss.py main\utils\weekly.py main\views\certy\prdinfo_GPT.py main\views\certy\prdinfo_parse_report.py main\views\testing\security_GPT.py main\views\testing\similar_GPT.py main\views\testing\similar_summary.py
+node --check main\static\scripts\testing\security_GPT_popup.js
+node --check main\static\scripts\testing\security_editable.js
+.\.venv\Scripts\python.exe manage.py check --settings=myproject.ui_mock_settings
 ```
 
 ## 바로 다음 작업
