@@ -290,6 +290,10 @@ ${bodyHtml}
     // 버튼 배선
     closeBtn.onclick = closeModal;
     backdrop.onclick = closeModal;
+    downloadBtn.textContent = "HTML 다운로드";
+    downloadBtn.disabled = false;
+    downloadBtn.classList.remove("opacity-50", "cursor-not-allowed");
+    downloadBtn.title = "Invicti 분석 내용을 HTML 파일로 다운로드합니다.";
     downloadBtn.onclick = function () {
       const html = buildDownloadHtml(container.innerHTML);
       const a = document.createElement("a");

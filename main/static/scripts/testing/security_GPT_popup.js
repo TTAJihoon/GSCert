@@ -3,7 +3,7 @@
   AppNS.popup = AppNS.popup || {};
   AppNS.gpt = AppNS.gpt || {};
 
-  let modal, backdrop, shell, host, closeBtn;
+  let modal, backdrop, shell, host, closeBtn, downloadBtn;
   let typewriterTimer = null;
   let visibleText = "";
   let targetText = "";
@@ -48,6 +48,7 @@
       }
 
       closeBtn = modal.querySelector("#closeModal");
+      downloadBtn = modal.querySelector("#downloadHtml");
     }
 
     if (!modal || !backdrop || !shell || !host || !closeBtn) {
@@ -70,6 +71,7 @@
     host.style.minHeight = "0";
     host.style.height = "auto";
     host.style.overflow = "auto";
+    configureMarkdownDownload({ enabled: false });
     return true;
   }
 
@@ -97,6 +99,43 @@
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
+  }
+
+  function toSafeFileName(value, fallback = "ai_recommendation") {
+    const base = String(value || fallback).trim() || fallback;
+    return base.replace(/[\\/:*?"<>|]/g, "_").slice(0, 120) || fallback;
+  }
+
+  function getDownloadBaseName(row) {
+    if (!row) return "ai_recommendation";
+    return row.invicti_report || row.title || row.name || row.id || "ai_recommendation";
+  }
+
+  function configureMarkdownDownload({ rawText = "", fileName = "ai_recommendation", enabled = false } = {}) {
+    if (!downloadBtn) return;
+    downloadBtn.textContent = "MD 다운로드";
+    downloadBtn.disabled = !enabled;
+    downloadBtn.classList.toggle("opacity-50", !enabled);
+    downloadBtn.classList.toggle("cursor-not-allowed", !enabled);
+    downloadBtn.title = enabled
+      ? "AI 추천 수정 방안을 Markdown 파일로 다운로드합니다."
+      : "AI 추천 수정 방안이 생성되면 다운로드할 수 있습니다.";
+    downloadBtn.onclick = function () {
+      const body = host && host.querySelector(".gpt-body");
+      const markdown = ((body && body.dataset.rawText) || rawText || "").trim();
+      if (!markdown) {
+        alert("다운로드할 AI 추천 수정 방안이 없습니다.");
+        return;
+      }
+      const a = document.createElement("a");
+      const safe = toSafeFileName(fileName);
+      a.href = URL.createObjectURL(new Blob([markdown], { type: "text/markdown;charset=utf-8" }));
+      a.download = `${safe}.md`;
+      document.body.appendChild(a);
+      a.click();
+      URL.revokeObjectURL(a.href);
+      a.remove();
+    };
   }
 
   function renderInlineMarkdown(value) {
@@ -435,6 +474,7 @@
     const row = (state.currentData || []).find((r) => r.id === rowId);
 
     if (!row) {
+      configureMarkdownDownload({ enabled: false });
       const html = buildGptMessageHTML({
         title: "오류",
         bodyHTML:
@@ -448,6 +488,11 @@
 
     // 1) 캐시 존재 시 즉시 표시
     if (row.gpt_response) {
+      configureMarkdownDownload({
+        rawText: row.gpt_response,
+        fileName: getDownloadBaseName(row),
+        enabled: true,
+      });
       const html = buildGptMessageHTML({
         title: "🤖 AI 추천 수정 방안 (저장된 답변)",
         bodyHTML: renderMarkdown(row.gpt_response),
@@ -461,6 +506,7 @@
 
     // 2) 프롬프트 유효성 검사
     if (!row.gpt_prompt) {
+      configureMarkdownDownload({ enabled: false });
       const html = buildGptMessageHTML({
         title: "오류",
         bodyHTML:
@@ -474,6 +520,10 @@
 
     // 3) 로딩 상태
     resetTypewriter();
+    configureMarkdownDownload({
+      fileName: getDownloadBaseName(row),
+      enabled: false,
+    });
     const loading = buildGptMessageHTML({
       title: "생성 중...",
       bodyHTML: buildLoadingHTML(),
@@ -530,6 +580,11 @@
 
       // 5) 성공: 캐시 + 표시
       row.gpt_response = rawText;
+      configureMarkdownDownload({
+        rawText,
+        fileName: getDownloadBaseName(row),
+        enabled: true,
+      });
       const title = host && host.querySelector(".gpt-title");
       if (title) title.textContent = "🤖 AI 추천 수정 방안";
     } catch (error) {
@@ -542,6 +597,10 @@
         variant: "error",
       });
       displayContent(err);
+      configureMarkdownDownload({
+        fileName: getDownloadBaseName(row),
+        enabled: false,
+      });
     }
   }
 

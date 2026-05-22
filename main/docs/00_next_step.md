@@ -74,6 +74,10 @@ Copy-Item -Recurse -Force `
   - 제목, 목록, 표, 굵게, 기울임, 인라인 코드, 인용, 코드블록 지원
   - 응답 전체가 ```markdown 코드블록으로 감싸져 와도 바깥 fence를 제거한 뒤 렌더링한다.
   - 복사 버튼은 렌더링된 HTML이 아니라 원본 Markdown을 복사한다.
+- AI 추천 팝업의 하단 다운로드 버튼을 Markdown 전용으로 변경했다.
+  - AI 추천 팝업에서는 공용 모달 하단 버튼이 `MD 다운로드`로 표시되고 원본 Markdown `.md` 파일을 저장한다.
+  - 응답 생성 전이나 오류 상태에서는 다운로드 버튼을 비활성화한다.
+  - Invicti 분석 팝업을 다시 열면 같은 버튼이 `HTML 다운로드`로 복구되고 기존 HTML 저장 동작을 유지한다.
 - AI 추천 팝업에 화면 표시용 typewriter 렌더링을 추가했다.
   - 이유: Gemini API가 큰 chunk로 응답하면 네트워크 스트리밍이 되어도 사용자는 한 번에 표시되는 것처럼 보일 수 있었다.
   - 이제 응답이 한 덩어리로 도착해도 UI가 조금씩 써 내려가듯 표시한다.
@@ -139,7 +143,8 @@ node --check main\static\scripts\testing\security_invicti_popup.js
   - Gemini/Gemma 가짜 클라이언트로 `429 RESOURCE_EXHAUSTED`는 추가 호출 없이 호출 한도 오류로 분리되는 것 확인
   - `AI 추천 > 닫기 > Invicti 분석` 순서 확인
   - `Invicti 분석 > 닫기 > AI 추천 > 닫기 > Invicti 분석` 순서 확인
-  - `security_GPT_popup.js?v=20260522d`, `security_invicti_popup.js?v=20260521d`, `security_GPT.css?v=20260522b` 로드 확인
+  - `security_GPT_popup.js?v=20260522e`, `security_invicti_popup.js?v=20260522e`, `security_GPT.css?v=20260522b` 로드 확인
+  - AI 추천 팝업에서 `MD 다운로드` 버튼이 `.md` 파일을 생성하고, Invicti 팝업으로 전환하면 `HTML 다운로드`로 복구되는지 확인
 
 ## 바로 다음 작업
 
