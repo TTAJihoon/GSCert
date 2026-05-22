@@ -47,6 +47,7 @@ Copy-Item -Recurse -Force `
 - `main/docs/15_open_decisions.md`
 - `main/docs/17_llm_review_interface.md`
 - ECM 자동화 작업이면 `main/docs/03_webpage1_automation.md`
+- 기존 시험 이력/유사 시험 ECM 버튼을 서버 파일 캐시 방식으로 바꾸는 검토는 `main/docs/ecm_download_issue/readme.md`
 - 점검 규칙 구현이면 `main/docs/05_zip_inspection.md`
 - skill이 설치되어 있으면 `gscert-download-review-maintainer`를 사용한다.
 
@@ -157,6 +158,7 @@ node --check main\static\scripts\testing\security_invicti_popup.js
 3. 실제 점검 규칙 18개 초안을 작성한다.
    - 추천: 각 규칙을 `대상 파일`, `확인 기준`, `통과 조건`, `실패 조건`, `판단불가 조건`, `LLM 사용 여부`로 먼저 분해한다.
    - 이유: 프로그램 규칙과 LLM 규칙을 안정적으로 나눌 수 있다.
+   - 현재 산출물 점검 작업은 이 규칙 정의 단계로 돌아오면 된다.
 4. 영남 live 다운로드를 실제 프로젝트 1건으로 검증한다.
    - 후보: `TTA-26-00200`
    - 확인 기준: `영남AX센터 > {연도} 인증시험서비스 > 01 GS인증시험(1등급) > 프로젝트폴더`
