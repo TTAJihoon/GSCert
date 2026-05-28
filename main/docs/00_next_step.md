@@ -67,6 +67,11 @@ Copy-Item -Recurse -Force `
 - `20_download_review_operations_manual.md`: 운영/검증 매뉴얼
 - `21_developer_change_manual.md`: 개발 변경 위치와 검증 체크리스트
 
+프로젝트 목록 API 안정화도 반영했다.
+
+- 기준 DB 조회는 정상인데 `workflow.db`의 활성 작업 상태 조회가 실패하는 경우, 프로젝트 목록 전체를 실패시키지 않고 활성 작업 상태만 빈 값으로 표시한다.
+- 이 경우에도 완료 프로젝트는 기존 `점검결과` 기준으로 `완료` 상태를 유지한다.
+
 ## 현재 실제 구현된 규칙
 
 | 번호 | 산출물 | 구현 상태 |
@@ -90,6 +95,16 @@ git diff --check
 ```
 
 `C:\test` 샘플 zip과 프로젝트 번호 `TTA-26-00266` 기준으로 1~5번 규칙은 모두 `O`로 확인됐다.
+
+프로젝트 목록 핫픽스 후 추가 검증:
+
+```powershell
+node --check main\static\scripts\review\ecm_download_review.js
+.\.venv\Scripts\python.exe manage.py test main.tests.DownloadReviewProjectsApiTests --settings=myproject.ui_mock_settings
+.\.venv\Scripts\python.exe manage.py test main.tests --settings=myproject.ui_mock_settings
+```
+
+전체 테스트는 35개 통과했다.
 
 ## 바로 다음 작업
 

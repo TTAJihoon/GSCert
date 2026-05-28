@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from dataclasses import dataclass
 from datetime import timedelta, timezone as datetime_timezone
@@ -6,6 +7,7 @@ from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db import transaction
+from django.db.utils import DatabaseError
 from django.utils import timezone
 
 from main.models import (
@@ -22,6 +24,8 @@ from main.models import (
 from main.views.review.ecm_reference_db import get_projects_by_numbers, is_completed_review_value
 from main.views.review.ecm_download_review_centers import center_label, normalize_center_code
 
+
+logger = logging.getLogger(__name__)
 
 PROJECT_NUMBER_RE = re.compile(r"^TTA-\d{2}-\d{5}$")
 ACTIVE_JOB_STATUSES = (
@@ -208,30 +212,25 @@ def attach_active_project_states(projects_payload):
         return projects_payload
 
     active_by_number = {}
-    active_projects = (
-        DownloadReviewProject.objects
-        .select_related("job")
-        .filter(project_number__in=project_numbers, job__status__in=ACTIVE_JOB_STATUSES)
-        .order_by("job__requested_at", "job__created_at", "created_at", "id")
-    )
-    for project in active_projects:
-        active_by_number.setdefault((project.center_code, project.project_number), project)
+    try:
+        active_projects = (
+            DownloadReviewProject.objects
+            .select_related("job")
+            .filter(project_number__in=project_numbers, job__status__in=ACTIVE_JOB_STATUSES)
+            .order_by("job__requested_at", "job__created_at", "created_at", "id")
+        )
+        for project in active_projects:
+            active_by_number.setdefault((project.center_code, project.project_number), project)
+    except DatabaseError:
+        logger.info("Failed to read active download-review project states; continuing without active state.")
+        _attach_empty_active_project_states(items)
+        return projects_payload
 
     for item in items:
         item_center = item.get("center_code") or normalize_center_code(None)
         active_project = active_by_number.get((item_center, item.get("project_number")))
         if not active_project:
-            completed = is_completed_review_value(item.get("review_raw") or item.get("review"))
-            item.update(
-                {
-                    "active_job_id": None,
-                    "active_job_status": "",
-                    "active_job_status_label": "",
-                    "active_project_status": "",
-                    "active_project_status_label": "",
-                    "active_state_label": "완료" if completed else "",
-                }
-            )
+            _attach_empty_active_project_state(item)
             continue
 
         job_status = active_project.job.status
@@ -248,6 +247,25 @@ def attach_active_project_states(projects_payload):
         )
 
     return projects_payload
+
+
+def _attach_empty_active_project_states(items):
+    for item in items:
+        _attach_empty_active_project_state(item)
+
+
+def _attach_empty_active_project_state(item):
+    completed = is_completed_review_value(item.get("review_raw") or item.get("review"))
+    item.update(
+        {
+            "active_job_id": None,
+            "active_job_status": "",
+            "active_job_status_label": "",
+            "active_project_status": "",
+            "active_project_status_label": "",
+            "active_state_label": "완료" if completed else "",
+        }
+    )
 
 
 def get_latest_project_results_payload(project_number, center_code=None):

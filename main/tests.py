@@ -4,9 +4,11 @@ import tempfile
 import zipfile
 from io import StringIO
 from pathlib import Path
+from unittest.mock import patch
 from xml.sax.saxutils import escape
 
 from django.core.management import call_command
+from django.db.utils import DatabaseError
 from django.test import RequestFactory, SimpleTestCase, TestCase
 
 from main.models import (
@@ -276,6 +278,40 @@ class DownloadReviewProjectsApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertFalse(data["success"])
         self.assertEqual(data["error_code"], "invalid_query")
+
+    def test_projects_still_return_when_workflow_state_db_is_unavailable(self):
+        class BrokenProjectManager:
+            def select_related(self, *args):
+                return self
+
+            def filter(self, *args, **kwargs):
+                return self
+
+            def order_by(self, *args):
+                return self
+
+            def __iter__(self):
+                raise DatabaseError("workflow database is unavailable")
+
+        class BrokenDownloadReviewProject:
+            objects = BrokenProjectManager()
+
+        request = self.factory.get("/api/projects/", {"limit": "2"})
+        with (
+            self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"),
+            patch(
+                "main.views.review.ecm_download_review_jobs.DownloadReviewProject",
+                BrokenDownloadReviewProject,
+            ),
+        ):
+            response = projects(request)
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(data["items"]), 2)
+        self.assertIsNone(data["items"][0]["active_job_id"])
+        self.assertEqual(data["items"][0]["active_state_label"], "")
+        self.assertEqual(data["items"][1]["active_state_label"], "완료")
 
     def test_projects_can_read_yeongnam_center_db(self):
         yeongnam_db_path = self.reference_db_path_2
