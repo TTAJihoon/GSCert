@@ -523,6 +523,22 @@ function normalizeApiProject(item) {
   };
 }
 
+function localRuleSeed(project) {
+  const digits = String(project?.number || "").replace(/\D/g, "");
+  return Number(digits.slice(-5)) || 1;
+}
+
+function localInspectionRules(project) {
+  if (project.rules?.length) return project.rules;
+  if (project.review === "완료") {
+    return makeRules(localRuleSeed(project), "complete");
+  }
+  if (project.review === "수정 필요") {
+    return makeRules(localRuleSeed(project), "needs_fix");
+  }
+  return [];
+}
+
 function normalizeApiJobProject(item) {
   return {
     id: item.id,
@@ -1168,8 +1184,9 @@ function renderLocalInspectionFallback(project, error) {
     return;
   }
 
-  if (project.rules.length) {
-    const rows = project.rules.map((rule) => `
+  const fallbackRules = localInspectionRules(project);
+  if (fallbackRules.length) {
+    const rows = fallbackRules.map((rule) => `
       <tr>
         <td>${rule.no}</td>
         <td>${escapeHtml(rule.name)}</td>
@@ -1179,7 +1196,9 @@ function renderLocalInspectionFallback(project, error) {
     `).join("");
 
     qs("modalBody").innerHTML = `
-      <p class="modal-lead">약 30개 점검 규칙을 표로 확인하는 화면입니다. 실제 규칙 정의 후 컬럼은 확장할 수 있습니다.</p>
+      <p class="modal-lead">${project.rules.length
+        ? "약 30개 점검 규칙을 표로 확인하는 화면입니다. 실제 규칙 정의 후 컬럼은 확장할 수 있습니다."
+        : "최근 작업 이력이 없는 완료/수정 필요 프로젝트라 더미 규칙 결과를 표시합니다."}</p>
       <div class="table-wrap modal-table">
         <table class="data-table">
           <thead>
