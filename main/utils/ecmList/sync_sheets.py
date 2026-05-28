@@ -1,6 +1,7 @@
 """
 Google Sheets → SQLite 동기화 스크립트
 - 구글시트 2153행~마지막 행에서 DB에 없는 프로젝트번호만 추가
+- F열 값을 WD 컬럼으로 저장
 - 수동 실행
 """
 
@@ -43,7 +44,7 @@ def get_credentials():
 
 
 def get_sheets_data():
-    """구글시트 2153행~마지막 행에서 B, C, D, L, Q열 데이터를 가져온다."""
+    """구글시트 2153행~마지막 행에서 B, C, D, F, L, Q열 데이터를 가져온다."""
     if not SPREADSHEET_ID:
         raise RuntimeError("ECMLIST_SPREADSHEET_ID 환경변수를 설정해야 합니다.")
 
@@ -79,6 +80,7 @@ def get_sheets_data():
             "project_no": project_no,
             "company": safe_get(2),      # C열
             "product": safe_get(3),      # D열
+            "wd": safe_get(5),           # F열
             "tester": safe_get(11),      # L열
             "cert_date": safe_get(16),   # Q열 → 인증일자
         })
@@ -118,6 +120,7 @@ def ensure_table():
             회사명 TEXT,
             제품명 TEXT,
             시험PL TEXT,
+            WD TEXT DEFAULT '',
             점검결과 TEXT DEFAULT 'X',
             계약서 TEXT DEFAULT 'X',
             "합의서(PDF)" TEXT DEFAULT 'X',
@@ -140,8 +143,18 @@ def ensure_table():
         )
     """)
 
+    ensure_columns(cursor)
+
     conn.commit()
     conn.close()
+
+
+def ensure_columns(cursor):
+    """기존 ecm_list 테이블에 새 기준 컬럼이 없으면 추가한다."""
+    cursor.execute("PRAGMA table_info(ecm_list)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "WD" not in columns:
+        cursor.execute('ALTER TABLE ecm_list ADD COLUMN WD TEXT DEFAULT ""')
 
 
 def sync_to_db(new_data):
@@ -160,8 +173,20 @@ def sync_to_db(new_data):
         while next_num in used_numbers:
             next_num += 1
         cursor.execute(
-            "INSERT INTO ecm_list (번호, 인증일자, 프로젝트번호, 회사명, 제품명, 시험PL) VALUES (?, ?, ?, ?, ?, ?)",
-            (next_num, d["cert_date"], d["project_no"], d["company"], d["product"], d["tester"]),
+            """
+            INSERT INTO ecm_list (
+                번호, 인증일자, 프로젝트번호, 회사명, 제품명, 시험PL, WD
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                next_num,
+                d["cert_date"],
+                d["project_no"],
+                d["company"],
+                d["product"],
+                d["tester"],
+                d["wd"],
+            ),
         )
         used_numbers.add(next_num)
         next_num += 1

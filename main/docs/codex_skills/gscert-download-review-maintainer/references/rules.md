@@ -62,6 +62,25 @@ Current useful patterns include:
 - required file extension
 - file name contains project number
 - all files non-empty
+- required artifact file (`required_artifact_file`)
+- document artifact check (`document_artifact_check`)
+
+Implemented real artifact rules:
+
+- 1번 계약서
+- 2번 합의서
+- 3번 수수료산정표
+- 4번 시험환경구성도
+- 5번 품질특성별제품정보기재사항
+
+Rule details are stored in `inspection_rule.config_json`, including folder keyword chains,
+file-name keywords, extension counts, labels, expected values, regexes, and user-facing messages.
+
+Use this command to seed only implemented real rules:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py seed_download_review_rules --only-real --enable --update-existing --settings=myproject.ui_mock_settings
+```
 
 Prefer extending the inspection engine with small, explicit rule types rather than placing complex logic directly in the worker.
 

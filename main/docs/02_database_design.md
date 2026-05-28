@@ -9,6 +9,7 @@
   - 영남: `main/data/ecmlist2.db`
 - 테이블명: `ecm_list`
 - 컬럼 타입: 모두 문자열
+- `WD`는 Google Sheet F열에서 가져온다.
 
 ## ecm_list 테이블 컬럼
 
@@ -49,6 +50,11 @@
 - 산출물별 점검 컬럼 값은 해당 규칙의 최신 통과 여부로 `O` 또는 `X`를 사용한다.
 - 미실행/대상 없음 기본값은 빈 값으로 둔다.
 - 다운로드/agent/분석 실행 실패는 workflow DB에 실패/보류로 남기고, `ecmlist.db`의 규칙 판정 `O/X`와 섞지 않는다.
+
+현재 샘플 DB 상태:
+
+- `main/data/ecmlist.db`와 `main/data/ecmlist2.db`에는 `WD` 컬럼이 추가되어 있다.
+- `main/utils/ecmList/sync_sheets.py`는 신규 프로젝트 추가 시 Google Sheet F열 값을 `WD`에 저장한다.
 
 ## 실행 이력 DB
 

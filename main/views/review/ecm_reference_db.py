@@ -24,6 +24,7 @@ REQUIRED_COLUMNS = (
     "점검결과",
 )
 OPTIONAL_COLUMNS = (
+    "WD",
     "점검날짜",
 )
 ARTIFACT_REVIEW_COLUMNS = (
@@ -413,6 +414,7 @@ def _serialize_project(row, columns, center_code):
         "company": _row_value(row, "회사명"),
         "product": _row_value(row, "제품명"),
         "pl": _row_value(row, "시험PL"),
+        "wd": _row_value(row, "WD") if "WD" in columns else "",
         "review": review,
         "review_raw": review_raw,
         "inspection_date": _row_value(row, "점검날짜") if "점검날짜" in columns else "",

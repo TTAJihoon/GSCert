@@ -1,8 +1,10 @@
 import json
 import sqlite3
 import tempfile
+import zipfile
 from io import StringIO
 from pathlib import Path
+from xml.sax.saxutils import escape
 
 from django.core.management import call_command
 from django.test import RequestFactory, SimpleTestCase, TestCase
@@ -46,6 +48,54 @@ from main.views.review.ecm_download_review_api import (
     latest_project_results,
     projects,
 )
+
+
+def _docx_bytes(*, paragraphs=None, tables=None):
+    paragraphs = paragraphs or []
+    tables = tables or []
+    body_parts = []
+    for paragraph in paragraphs:
+        body_parts.append(f"<w:p><w:r><w:t>{escape(paragraph)}</w:t></w:r></w:p>")
+    for table in tables:
+        rows_xml = []
+        for row in table:
+            cells_xml = []
+            for cell in row:
+                cells_xml.append(
+                    "<w:tc><w:p><w:r><w:t>"
+                    + escape(cell)
+                    + "</w:t></w:r></w:p></w:tc>"
+                )
+            rows_xml.append("<w:tr>" + "".join(cells_xml) + "</w:tr>")
+        body_parts.append("<w:tbl>" + "".join(rows_xml) + "</w:tbl>")
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        "<w:body>"
+        + "".join(body_parts)
+        + "</w:body></w:document>"
+    )
+    bytes_buffer = tempfile.SpooledTemporaryFile()
+    with zipfile.ZipFile(bytes_buffer, "w") as archive:
+        archive.writestr("word/document.xml", document_xml.encode("utf-8"))
+    bytes_buffer.seek(0)
+    data = bytes_buffer.read()
+    bytes_buffer.close()
+    return data
+
+
+def _pdf_bytes(lines):
+    import fitz
+
+    document = fitz.open()
+    page = document.new_page()
+    y = 72
+    for line in lines:
+        page.insert_text((72, y), line, fontsize=11)
+        y += 18
+    data = document.tobytes()
+    document.close()
+    return data
 
 
 class DownloadVerifyTests(SimpleTestCase):
@@ -171,6 +221,20 @@ class DownloadReviewRuleSeedCommandTests(TestCase):
         self.assertEqual(rule.name, ARTIFACT_REVIEW_COLUMNS[0])
         self.assertTrue(rule.enabled)
         self.assertIn("updated=", out.getvalue())
+
+    def test_seed_only_real_creates_implemented_rules(self):
+        out = StringIO()
+
+        call_command("seed_download_review_rules", "--only-real", "--enable", stdout=out)
+
+        self.assertEqual(DownloadReviewRule.objects.count(), 5)
+        self.assertEqual(
+            set(DownloadReviewRule.objects.values_list("name", flat=True)),
+            {"계약서", "합의서(PDF)", "수수료산정표", "시험환경구성도", "품질특성별제품정보기재사항"},
+        )
+        rule = DownloadReviewRule.objects.get(name="계약서")
+        self.assertEqual(rule.rule_type, "required_artifact_file")
+        self.assertTrue(rule.enabled)
 
 
 class DownloadReviewProjectsApiTests(TestCase):
@@ -735,6 +799,67 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertTrue(cleanup.deleted)
         self.assertFalse(project_dir.exists())
         self.assertIsNotNone(project.zip_deleted_at)
+
+    def test_actual_artifact_rules_inspect_zip_entries(self):
+        project_dir = Path(self.temp_dir.name) / "downloads"
+        project_dir.mkdir(parents=True)
+        zip_path = project_dir / "TTA-26-00010.zip"
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            archive.writestr("2.계약/TTA-26-00010 계약서.pdf", b"contract")
+            archive.writestr(
+                "2.계약/TTA-26-00010 시험합의서.docx",
+                _docx_bytes(tables=[[["시험신청번호", "TTA-26-00010"]]]),
+            )
+            archive.writestr(
+                "2.계약/TTA-26-00010 시험합의서.pdf",
+                _pdf_bytes(["ApplicationNo", "TTA-26-00010"]),
+            )
+            archive.writestr("2.계약/TTA-26-00010 수수료산정표.xlsx", b"fee")
+            archive.writestr("4.시험/가.계획/TTA-26-00010 시험환경구성도.pptx", b"diagram")
+            archive.writestr(
+                "4.시험/가.계획/TTA-26-00010 품질특성별 제품 정보 기재사항.docx",
+                _docx_bytes(
+                    paragraphs=[
+                        "(TTA-26-00010) 품질특성별 시험대상제품 정보 기재사항",
+                        "(2026.5.28)",
+                    ],
+                ),
+            )
+
+        call_command("seed_download_review_rules", "--only-real", "--enable", stdout=StringIO())
+        agreement_rule = DownloadReviewRule.objects.get(name="합의서(PDF)")
+        agreement_config = agreement_rule.config_json
+        agreement_config["content_checks"][1]["label"] = "ApplicationNo"
+        agreement_rule.config_json = agreement_config
+        agreement_rule.save(update_fields=["config_json", "updated_at"])
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={"project_number": "TTA-26-00010", "company": "에이치소프트"},
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+
+        outcome = run_download_inspection(project, verify_result, {})
+        results = {
+            result.rule_name: result
+            for result in DownloadReviewRuleResult.objects.filter(job_project=project)
+        }
+
+        self.assertEqual(outcome.reference_review, "O")
+        self.assertEqual(outcome.failed_count, 0)
+        self.assertEqual(outcome.artifact_results["계약서"], "O")
+        self.assertEqual(outcome.artifact_results["합의서(PDF)"], "O")
+        self.assertEqual(outcome.artifact_results["수수료산정표"], "O")
+        self.assertEqual(outcome.artifact_results["시험환경구성도"], "O")
+        self.assertEqual(outcome.artifact_results["품질특성별제품정보기재사항"], "O")
+        self.assertIn("2.계약", results["계약서"].file_path)
+        self.assertIn("4.시험/가.계획", results["시험환경구성도"].file_path)
 
     def test_dry_run_worker_completes_job_with_mixed_project_results(self):
         job = DownloadReviewJob.objects.create(

@@ -645,6 +645,7 @@ def serialize_project(project):
         "company": ecm_row.get("company", ""),
         "product": ecm_row.get("product", ""),
         "pl": ecm_row.get("pl", ""),
+        "wd": ecm_row.get("wd", ""),
         "status": project.status,
         "status_label": project_status_label(project.status),
         "review_status": project.review_status,

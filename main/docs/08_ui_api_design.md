@@ -145,6 +145,7 @@ GET /api/job-projects/{job_project_id}/results/
 | 메시지 | 실패 사유 또는 확인 메시지 |
 
 서버 내부 절대경로와 stack trace는 표시하지 않는다. 필요하면 관리자 로그에서 확인한다.
+테스트/이관용 zip 파일 내부를 검사한 결과는 `zip파일명::내부/경로/파일명`처럼 서버 절대경로를 제거한 형태로 표시한다.
 
 ## API 목록
 
@@ -194,6 +195,7 @@ Response:
       "company": "회사명",
       "product": "제품명",
       "pl": "시험PL",
+      "wd": "10",
       "review": "미점검",
       "review_raw": "",
       "inspection_date": "",
@@ -380,6 +382,7 @@ Response item:
   "company": "회사명",
   "product": "제품명",
   "pl": "시험PL",
+  "wd": "10",
   "status": "downloaded",
   "status_label": "다운로드완료",
   "review_status": "unreviewed",

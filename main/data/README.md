@@ -11,6 +11,9 @@
 - `prdinfo.xlsx`: 제품정보 양식 원본
 - `security.xlsx`: 보안 취약점 매핑 데이터
 
+`ecmlist.db`와 `ecmlist2.db`의 `WD` 컬럼은 Google Sheet F열에서 가져온다.
+신규 프로젝트 추가는 `main/utils/ecmList/sync_sheets.py`를 수동 실행해서 반영한다.
+
 `reference.db`는 아래 명령으로 `reference.xlsx`에서 재생성할 수 있다. 기본 실행은 DB 생성 후
 `reference.xlsx`와 `reference.db` 변경분을 Git commit/push까지 수행한다.
 
