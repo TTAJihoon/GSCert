@@ -75,7 +75,7 @@ Copy-Item -Recurse -Force `
 - `weekly.py`가 `manage.py sqlite`를 호출할 때 `PYTHONIOENCODING=utf-8`, `PYTHONUTF8=1`을 넘긴다.
 - `history.html` 시험 이력 조회 테이블에 `SW분류` 열을 추가하고, 제품 개요 열을 80px 줄였다.
 - 시험 이력 검색 조건에 `SW분류`, `시험원`, 전체 입력값 지우기 버튼을 추가했다.
-- 전체 입력값 지우기 버튼은 텍스트 검색 조건을 비우고 날짜는 기본 10년 범위로 되돌린다.
+- 전체 입력값 지우기 버튼은 CSRF hidden input을 보존하고, 텍스트 검색 조건을 비우며 날짜는 기본 10년 범위로 되돌린다.
 - `xlsx_to_sqlite.py`는 `S/W분류`를 `SW분류`로 정규화하고, 원천 컬럼 변형이 있어도 `SW분류` 컬럼을 보장한다.
 
 `WD` 기준 컬럼 반영과 산출물 점검 규칙 1~5번 실제 구현이 완료됐다.

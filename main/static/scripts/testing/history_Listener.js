@@ -6,6 +6,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if (clearButton) {
         clearButton.addEventListener('click', function() {
             form.querySelectorAll('input').forEach(function(input) {
+                const inputType = (input.getAttribute('type') || 'text').toLowerCase();
+                if (inputType === 'hidden' || input.name === 'csrfmiddlewaretoken') {
+                    return;
+                }
                 input.value = '';
             });
             if (typeof setYearsAgo === 'function') {
