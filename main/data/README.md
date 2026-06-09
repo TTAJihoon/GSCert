@@ -20,6 +20,9 @@
 이 명령은 실행될 때만 동작한다. 별도 스케줄러를 만들지 않았으며, 운영에서는 기존처럼
 `weekly.py` 또는 배치 파일이 이 흐름을 시작한다. 현재 `weekly.py`는 ECM 원천 데이터를
 `reference.xlsx`에 반영한 뒤 `manage.py sqlite`를 직접 호출한다.
+`weekly.py`는 기본적으로 프로젝트의 `.venv\Scripts\python.exe`, `venv\Scripts\python.exe`,
+상위 폴더의 `.venv`/`venv`를 찾아 `manage.py sqlite`를 실행한다. 다른 Python을 강제로 쓰려면
+`GSCERT_PYTHON`을 지정한다.
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py sqlite
@@ -44,6 +47,16 @@ ECM에서 클릭할 문서명과 연도 폴더 선택에도 사용된다.
 ```powershell
 .\.venv\Scripts\python.exe main\utils\weekly.py 20260608
 ```
+
+DB 적재가 정상 실행되면 `weekly_gs_sync.log`에 아래 흐름이 남는다.
+
+```text
+reference DB 적재 실행: ... manage.py sqlite ... reference.xlsx ... reference.db ...
+reference DB 갱신 확인: ... reference.db size=... updated_at=...
+```
+
+`reference.xlsx`만 갱신되고 `reference.db`가 갱신되지 않으면 `weekly_gs_sync.log`의
+`reference DB 적재 stderr` 또는 `UNHANDLED ERROR` 항목을 먼저 확인한다.
 
 이미 내려받은 xlsx를 바로 기준 파일에 반영해야 하면 다운로드 단계를 생략할 수 있다.
 

@@ -66,6 +66,10 @@ Copy-Item -Recurse -Force `
 - 입력 날짜는 ECM 문서명 `인증획득제품(YYYYMMDD)` 선택에 사용된다.
 - ECM 연도 폴더도 현재 연도가 아니라 입력 날짜의 연도 기준으로 선택한다.
 - 현재 기준 데이터 흐름은 `reference.xlsx` 갱신 후 `manage.py sqlite`로 `reference.db`를 재생성하는 방식이다. `reference.csv`가 갱신된다면 최신 `codex-job-runner-persistence`의 `weekly.py`가 아닌 오래된 파일을 실행 중인지 확인한다.
+- `weekly.py`가 `manage.py sqlite`를 실행할 때 프로젝트/상위 폴더의 `.venv` 또는 `venv` Python을 자동 탐색한다.
+- `reference.xlsx`와 `reference.db` 경로를 `manage.py sqlite`에 명시적으로 전달한다.
+- `weekly_gs_sync.log`에 DB 적재 stdout/stderr와 최종 `reference.db` 파일 크기/수정시각을 남긴다.
+- `exit.bat`/`run.bat` 실행은 제한시간을 두고, bat가 멈춰도 DB 적재 단계로 진행할 수 있게 했다.
 
 `WD` 기준 컬럼 반영과 산출물 점검 규칙 1~5번 실제 구현이 완료됐다.
 
@@ -135,6 +139,12 @@ node --check main\static\scripts\testing\security_editable.js
 현재 작업 워크트리에는 Django 실행용 `.venv`가 없어 `manage.py check`는 실행하지 못했다.
 
 `weekly.py` 날짜 인자 보강 후 추가 검증:
+
+```powershell
+python -m py_compile main\utils\weekly.py
+```
+
+`weekly.py` DB 적재 로그 보강 후 추가 검증:
 
 ```powershell
 python -m py_compile main\utils\weekly.py

@@ -30,6 +30,19 @@ def _env_optional_path(name: str) -> Path | None:
     return Path(value) if value else None
 
 
+def _default_python_executable() -> Path:
+    candidates = [
+        PROJECT_ROOT / ".venv" / "Scripts" / "python.exe",
+        PROJECT_ROOT / "venv" / "Scripts" / "python.exe",
+        PROJECT_ROOT.parent / ".venv" / "Scripts" / "python.exe",
+        PROJECT_ROOT.parent / "venv" / "Scripts" / "python.exe",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return Path(sys.executable)
+
+
 # =========================
 # 설정
 # =========================
@@ -59,10 +72,12 @@ class Config:
     storage_state: Path = _env_path("GSCERT_EDM_STORAGE_STATE", DATA_DIR / "edm_storage_state.json")
 
     # reference.xlsx -> reference.db 적재
-    python_executable: Path = _env_path("GSCERT_PYTHON", Path(sys.executable))
+    python_executable: Path = _env_path("GSCERT_PYTHON", _default_python_executable())
     manage_py: Path = _env_path("GSCERT_MANAGE_PY", PROJECT_ROOT / "manage.py")
+    reference_db: Path = _env_path("GSCERT_REFERENCE_DB", DATA_DIR / "reference.db")
     django_settings: str = os.environ.get("GSCERT_DJANGO_SETTINGS", "myproject.settings")
     sqlite_no_git_sync: bool = os.environ.get("GSCERT_SQLITE_NO_GIT_SYNC", "").lower() in {"1", "true", "yes", "y"}
+    bat_timeout_sec: int = int(os.environ.get("GSCERT_WEEKLY_BAT_TIMEOUT_SEC", "60"))
 
     # 타임아웃/대기
     pw_timeout_ms: int = 30_000
@@ -485,7 +500,26 @@ def run_bats_in_order(bats: list[Path | None]):
             logging.warning("bat 파일이 지정되어 있지만 존재하지 않습니다: %s", bat)
             continue
         logging.info("bat 실행(완료까지 대기): %s", bat)
-        subprocess.run([str(bat)], check=False, shell=True)
+        try:
+            completed = subprocess.run(
+                str(bat),
+                cwd=str(CFG.project_root),
+                check=False,
+                shell=True,
+                text=True,
+                capture_output=True,
+                timeout=CFG.bat_timeout_sec,
+            )
+        except subprocess.TimeoutExpired:
+            logging.warning("bat 실행 제한시간 초과, 다음 단계로 진행합니다: %s", bat)
+            continue
+
+        if completed.stdout.strip():
+            logging.info("bat stdout: %s", completed.stdout.strip())
+        if completed.stderr.strip():
+            logging.warning("bat stderr: %s", completed.stderr.strip())
+        if completed.returncode != 0:
+            logging.warning("bat 종료 코드가 0이 아닙니다: %s code=%s", bat, completed.returncode)
 
 
 def sync_reference_db():
@@ -498,6 +532,8 @@ def sync_reference_db():
         str(CFG.python_executable),
         str(CFG.manage_py),
         "sqlite",
+        str(CFG.master_xlsx),
+        str(CFG.reference_db),
         "--settings",
         CFG.django_settings,
     ]
@@ -505,7 +541,30 @@ def sync_reference_db():
         cmd.append("--no-git-sync")
 
     logging.info("reference DB 적재 실행: %s", " ".join(cmd))
-    subprocess.run(cmd, cwd=str(CFG.project_root), check=True)
+    completed = subprocess.run(
+        cmd,
+        cwd=str(CFG.project_root),
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.stdout.strip():
+        logging.info("reference DB 적재 stdout: %s", completed.stdout.strip())
+    if completed.stderr.strip():
+        logging.error("reference DB 적재 stderr: %s", completed.stderr.strip())
+    if completed.returncode != 0:
+        raise RuntimeError(f"reference DB 적재 실패: exit_code={completed.returncode}")
+
+    if not CFG.reference_db.exists():
+        raise FileNotFoundError(f"reference DB 파일이 생성되지 않았습니다: {CFG.reference_db}")
+    stat = CFG.reference_db.stat()
+    updated_at = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+    logging.info(
+        "reference DB 갱신 확인: %s size=%s updated_at=%s",
+        CFG.reference_db,
+        stat.st_size,
+        updated_at,
+    )
 
 
 # =========================
