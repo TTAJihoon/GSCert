@@ -96,6 +96,42 @@ body {
   padding: 20px;
   box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
+
+.search-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.search-title-row h3 {
+  margin: 0;
+  color: var(--tta-blue);
+  font-size: 18px;
+}
+
+.clear-search-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d9e2ec;
+  border-radius: 50%;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.clear-search-btn:hover {
+  border-color: var(--tta-blue);
+  color: var(--tta-blue);
+  background: #f0f7ff;
+}
+
 .form-group { margin-bottom: 15px; }
 .form-label {
   display: block;
@@ -208,8 +244,8 @@ body {
 .results-table col.col-test-no   { width: 110px; }
 .results-table col.col-cmp-name  { width: 200px; }
 .results-table col.col-prd-name  { width: 200px; }
-/* ❗ 기존: col.col-overview { width: 250px; } → 제거
-      요구사항에 맞춰 th 최소폭으로 전환 */
+.results-table col.col-overview  { width: 170px; }
+.results-table col.col-sw-type   { width: 80px; }
 .results-table col.col-date      { width: 100px; }
 .results-table col.col-tester    { width: 110px; }
 .results-table col.col-wd        { width: 50px; }
@@ -222,7 +258,8 @@ body {
 .results-table th.col-test-no    { width: 110px; }
 .results-table th.col-cmp-name   { width: 200px; }
 .results-table th.col-prd-name   { width: 200px; }
-.results-table th.col-overview   { min-width: 250px; } /* 요구사항 */
+.results-table th.col-overview   { width: 170px; }
+.results-table th.col-sw-type    { width: 80px; }
 .results-table th.col-date       { width: 100px; }
 .results-table th.col-tester     { width: 110px; }
 .results-table th.col-wd         { width: 50px; }

@@ -19,12 +19,17 @@
     <div class="search-section">
       <form id=queryForm method="post" action="{% url 'history' %}">
         {% csrf_token %}
-        <h3 style="margin-bottom: 20px; color: var(--tta-blue); font-size: 18px;">
-          <i class="fas fa-search"></i> 검색 조건 
-          <span class="tooltip">ⓘ
-            <span class="tooltiptext search">입력한 검색어에 해당하는</BR>시험 이력을 조회합니다.</span>
-          </span>
-        </h3>
+        <div class="search-title-row">
+          <h3>
+            <i class="fas fa-search"></i> 검색 조건
+            <span class="tooltip">ⓘ
+              <span class="tooltiptext search">입력한 검색어에 해당하는</BR>시험 이력을 조회합니다.</span>
+            </span>
+          </h3>
+          <button type="button" class="clear-search-btn" id="clearSearchBtn" title="검색 조건 지우기" aria-label="검색 조건 지우기">
+            <i class="fas fa-times"></i>
+          </button>
+        </div>
 
         <div class="form-group" id="gsnum-group">
           <label class="form-label">인증번호</label>
@@ -37,19 +42,31 @@
           <input type="text" class="form-input" name="project" id="project"
             value="{{ project }}" placeholder="시험번호를 입력하세요">
         </div>
-        
+
         <div class="form-group" id="company-group">
           <label class="form-label">회사명</label>
           <input type="text" class="form-input" name="company" id="company"
             value="{{ company }}" placeholder="회사명을 입력하세요">
         </div>
-        
+
         <div class="form-group" id="product-group">
           <label class="form-label">제품명</label>
           <input type="text" class="form-input" name="product" id="product"
             value="{{ product }}" placeholder="제품명을 입력하세요">
         </div>
-        
+
+        <div class="form-group" id="sw-type-group">
+          <label class="form-label">SW분류</label>
+          <input type="text" class="form-input" name="sw_type" id="sw_type"
+            value="{{ sw_type }}" placeholder="SW분류를 입력하세요">
+        </div>
+
+        <div class="form-group" id="tester-group">
+          <label class="form-label">시험원</label>
+          <input type="text" class="form-input" name="tester" id="tester"
+            value="{{ tester }}" placeholder="시험원을 입력하세요">
+        </div>
+
         <div class="form-group" id="date-group">
           <label class="form-label">기간</label>
           <input type="date" class="form-input" name="start_date" id="start_date"
@@ -57,7 +74,7 @@
             style="margin-bottom: 5px;">
           <input type="date" class="form-input" name="end_date" id="end_date"
             value="{% if end_date %}{{ end_date }}{% else %}{{ today_date }}{% endif %}">
-          
+
           <div class="date-shortcuts" style="margin-top:10px;">
             <button type="button" class="shortcut-btn" onclick="setYearsAgo(3)">3년</button>
             <button type="button" class="shortcut-btn" id="five-years-btn" onclick="setYearsAgo(5)">5년</button>
@@ -65,20 +82,20 @@
             <button type="button" class="shortcut-btn" id="ten-years-btn" onclick="setYearsAgo(10)">10년</button>
           </div>
         </div>
-        
+
         <div class="form-group" id="comment-group">
           <label class="form-label">개요</label>
           <input type="text" class="form-input" name="comment" id="comment"
             value="{{ comment }}" placeholder="설명을 입력하세요">
         </div>
-        
+
         <button class="search-btn" type="submit">
           <i class="fas fa-search"></i> 검색
         </button>
       </form>
     </div>
   </div>
-  
+
   <div class="main-content">
     <div class="hidden" id="loadingIndicator" style="text-align:center; margin-top:20px;">
       <i class="fas fa-spinner fa-spin" style="font-size:24px; color:#3498db;"></i>
@@ -90,7 +107,7 @@
       <p>{{ response|linebreaksbr }}</p>
     </div>
     {% endif %}
-    
+
     {% if response_tables %}
     <div class="content-header">
       <h2 style="margin: 0; color: var(--tta-blue); font-size: 24px;">
@@ -101,7 +118,7 @@
       </h2>
       <div class="results-count" id="resultsCount">🔍 총 {{ response_tables|length }}건의 검색 결과</div>
     </div>
-    
+
     <div class="table-container">
       <div class="scrollable-table-wrapper">
         <table class="results-table">
@@ -112,6 +129,7 @@
             <col class="col-cmp-name">
             <col class="col-prd-name">
             <col class="col-overview">
+            <col class="col-sw-type">
             <col class="col-date">
             <col class="col-date">
             <col class="col-tester">
@@ -127,6 +145,7 @@
               <th class="col-cmp-name">회사명</th>
               <th class="col-prd-name">제품명</th>
               <th class="col-overview">제품 개요</th>
+              <th class="col-sw-type">SW분류</th>
               <th class="col-date">시작 날짜</th>
               <th class="col-date">종료 날짜</th>
               <th class="col-tester">시험원</th>
@@ -144,6 +163,7 @@
               <td>{{ table.회사명 }}</td>
               <td>{{ table.제품 }}</td>
               <td>{{ table.제품설명 }}</td>
+              <td>{{ table.SW분류 }}</td>
               <td>{{ table.시작일자 }}</td>
               <td>{{ table.종료일자 }}</td>
               <td>{{ table.시험원 }}</td>
@@ -176,6 +196,7 @@
             <col class="col-cmp-name">
             <col class="col-prd-name">
             <col class="col-overview">
+            <col class="col-sw-type">
             <col class="col-date">
             <col class="col-date">
             <col class="col-tester">
@@ -191,6 +212,7 @@
               <th class="col-cmp-name">회사명</th>
               <th class="col-prd-name">제품명</th>
               <th class="col-overview">제품 개요</th>
+              <th class="col-sw-type">SW분류</th>
               <th class="col-date">시작 날짜</th>
               <th class="col-date">종료 날짜</th>
               <th class="col-tester">시험원</th>

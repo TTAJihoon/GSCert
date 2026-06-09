@@ -59,6 +59,27 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _ensure_sw_category_column(df: pd.DataFrame) -> pd.DataFrame:
+    if "SW분류" in df.columns:
+        return df
+
+    for alias in ["SW구분", "SW분류명", "SW유형", "소프트웨어분류"]:
+        if alias in df.columns:
+            df["SW분류"] = df[alias]
+            return df
+
+    # 원천 xlsx의 G열이 SW분류로 들어오는 변형을 대비한다.
+    if len(df.columns) >= 7:
+        g_column = df.columns[6]
+        non_sw_columns = {"일련번호", "인증번호", "인증일자", "회사명", "제품", "등급", "시험번호"}
+        if g_column not in non_sw_columns:
+            df["SW분류"] = df[g_column]
+            return df
+
+    df["SW분류"] = ""
+    return df
+
+
 def convert_xlsx_to_sqlite(
     xlsx_path: str,
     db_path: str,
@@ -78,6 +99,7 @@ def convert_xlsx_to_sqlite(
     )
 
     df = _normalize_columns(df)
+    df = _ensure_sw_category_column(df)
 
     # 날짜 컬럼 후보 탐색
     date_col = None

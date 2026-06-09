@@ -1,6 +1,5 @@
 import json
 import sqlite3
-import pandas as pd
 from django.shortcuts import render
 from main.request_logging import set_request_log_context
 
@@ -10,6 +9,8 @@ def history(request):
         project = request.POST.get('project', '')
         company = request.POST.get('company', '')
         product = request.POST.get('product', '')
+        sw_type = request.POST.get('sw_type', '')
+        tester = request.POST.get('tester', '')
         startDate = request.POST.get('start_date', '')
         endDate = request.POST.get('end_date', '')
         comment = request.POST.get('comment', '')
@@ -17,6 +18,8 @@ def history(request):
             comment=comment,
             company=company,
             product=product,
+            sw_type=sw_type,
+            tester=tester,
             start_date=startDate,
             end_date=endDate,
             gsnum=gsnum,
@@ -33,12 +36,14 @@ def history(request):
             'project': project,
             'company': company,
             'product': product,
+            'sw_type': sw_type,
+            'tester': tester,
             'start_date': startDate,
             'end_date': endDate,
             'comment': comment,
         }
 
-        tables = GS_history(gsnum, project, company, product, comment, startDate, endDate)
+        tables = GS_history(gsnum, project, company, product, sw_type, tester, comment, startDate, endDate)
         set_request_log_context(request, result_count=len(tables))
             
         clean_tables = []
@@ -65,36 +70,28 @@ def _search_terms(**terms):
         if isinstance(value, str) and value.strip()
     }
 
-def GS_history(gsnum='', project='', company='', product='', comment='', startDate='', endDate='', db_path='main/data/reference.db'):
+def GS_history(gsnum='', project='', company='', product='', sw_type='', tester='', comment='', startDate='', endDate='', db_path='main/data/reference.db'):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row  # 컬럼명을 사용해서 결과를 가져올 수 있게 설정
     cursor = conn.cursor()
+    columns = _table_columns(cursor, "sw_data")
 
     # 기본 쿼리 생성
     query = "SELECT * FROM sw_data WHERE 1=1"
     params = []
 
-    # 조건을 확인하여 쿼리에 추가
-    if gsnum.strip():
-        query += " AND 인증번호 LIKE ?"
-        params.append(f"%{gsnum}%")
-    if project.strip():
-        query += " AND 시험번호 LIKE ?"
-        params.append(f"%{project}%")
-    if company.strip():
-        query += " AND 회사명 LIKE ?"
-        params.append(f"%{company}%")
-    if product.strip():
-        query += " AND 제품 LIKE ?"
-        params.append(f"%{product}%")
-    if comment.strip():
-        query += " AND 제품설명 LIKE ?"
-        params.append(f"%{comment}%")
+    query = _add_like_filter(query, params, columns, "인증번호", gsnum)
+    query = _add_like_filter(query, params, columns, "시험번호", project)
+    query = _add_like_filter(query, params, columns, "회사명", company)
+    query = _add_like_filter(query, params, columns, "제품", product)
+    query = _add_like_filter(query, params, columns, "SW분류", sw_type)
+    query = _add_like_filter(query, params, columns, "시험원", tester)
+    query = _add_like_filter(query, params, columns, "제품설명", comment)
     if startDate.strip():
-        query += " AND 시작일자 >= ?"
+        query += ' AND "시작일자" >= ?'
         params.append(startDate)
     if endDate.strip():
-        query += " AND 종료일자 <= ?"
+        query += ' AND "종료일자" <= ?'
         params.append(endDate)
 
     # 쿼리 실행
@@ -107,3 +104,16 @@ def GS_history(gsnum='', project='', company='', product='', comment='', startDa
     conn.close()
 
     return result
+
+
+def _table_columns(cursor, table_name):
+    return {row["name"] for row in cursor.execute(f'PRAGMA table_info("{table_name}")').fetchall()}
+
+
+def _add_like_filter(query, params, columns, column, value):
+    if not value.strip():
+        return query
+    if column not in columns:
+        return query + " AND 1=0"
+    params.append(f"%{value}%")
+    return query + f' AND "{column}" LIKE ?'
