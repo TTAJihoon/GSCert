@@ -135,7 +135,8 @@
             <col class="col-tester">
             <col class="col-wd">
             <col class="col-renewal">
-            <col class="col-download">
+            <col class="col-document">
+            <col class="col-ecm">
           </colgroup>
           <thead>
             <tr>
@@ -151,7 +152,8 @@
               <th class="col-tester">시험원</th>
               <th class="col-wd">WD</th>
               <th class="col-renewal">재계약</th>
-              <th class="col-download">문서</th>
+              <th class="col-document">문서</th>
+              <th class="col-ecm">ECM</th>
             </tr>
           </thead>
           <tbody id="resultsTableBody">
@@ -169,7 +171,16 @@
               <td>{{ table.시험원 }}</td>
               <td>{{ table.총WD }}</td>
               <td>{{ table.재계약 }}</td>
-              <td><button class="download-btn"><i class="fas fa-download"></i></button></td>
+              <td class="action-cell">
+                <button type="button" class="table-icon-btn document-download-btn" title="문서 다운로드" aria-label="문서 다운로드">
+                  <i class="fas fa-file-arrow-down"></i>
+                </button>
+              </td>
+              <td class="action-cell">
+                <button type="button" class="table-icon-btn download-btn" title="ECM 열기" aria-label="ECM 열기">
+                  <i class="fas fa-download"></i>
+                </button>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -202,7 +213,8 @@
             <col class="col-tester">
             <col class="col-wd">
             <col class="col-renewal">
-            <col class="col-download">
+            <col class="col-document">
+            <col class="col-ecm">
           </colgroup>
           <thead>
             <tr>
@@ -218,7 +230,8 @@
               <th class="col-tester">시험원</th>
               <th class="col-wd">WD</th>
               <th class="col-renewal">재계약</th>
-              <th class="col-download">문서</th>
+              <th class="col-document">문서</th>
+              <th class="col-ecm">ECM</th>
             </tr>
           </thead>
         </table>

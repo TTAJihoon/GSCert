@@ -220,18 +220,39 @@ body {
 .results-table tbody tr:nth-child(even) { background: #f8f9fa; }
 .results-table tbody tr:hover { background: #e3f2fd; }
 
-/* 다운로드 버튼 */
-.download-btn {
-  background: var(--tta-blue);
-  color: white;
+.action-cell {
+  text-align: center;
+  padding: 6px 4px;
+}
+
+/* 문서/ECM 버튼 */
+.table-icon-btn {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: none;
-  padding: 6px 12px;
   border-radius: 4px;
+  color: white;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 10px;
   transition: background-color 0.3s;
 }
+
+.download-btn {
+  background: var(--tta-blue);
+}
+
 .download-btn:hover { background: var(--tta-dark-blue); }
+
+.document-download-btn {
+  background: #5f6c7b;
+}
+
+.document-download-btn:hover {
+  background: #445160;
+}
 
 /* 상태 뱃지(유지) */
 .status-badge { padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: bold; }
@@ -249,8 +270,9 @@ body {
 .results-table col.col-date      { width: 100px; }
 .results-table col.col-tester    { width: 110px; }
 .results-table col.col-wd        { width: 50px; }
-.results-table col.col-renewal   { width: 100px; }
-.results-table col.col-download  { width: 70px; }
+.results-table col.col-renewal   { width: 90px; }
+.results-table col.col-document  { width: 40px; }
+.results-table col.col-ecm       { width: 40px; }
 
 /* 첫 행(th)에도 동일 폭 부여(개요는 'min-width') */
 .results-table th.col-cert-date  { width: 90px; }
@@ -263,8 +285,9 @@ body {
 .results-table th.col-date       { width: 100px; }
 .results-table th.col-tester     { width: 110px; }
 .results-table th.col-wd         { width: 50px; }
-.results-table th.col-renewal    { width: 100px; }
-.results-table th.col-download   { width: 70px; }
+.results-table th.col-renewal    { width: 90px; }
+.results-table th.col-document   { width: 40px; }
+.results-table th.col-ecm        { width: 40px; }
 
 .hidden {
   display: none;
