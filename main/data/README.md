@@ -38,6 +38,13 @@ $env:GSCERT_WEEKLY_TARGET_DATE = "20260511"
 .\.venv\Scripts\python.exe main\utils\weekly.py
 ```
 
+또는 `weekly.py`의 첫 번째 인자로 대상 날짜를 바로 전달한다. 이 값은 환경변수보다 우선하며,
+ECM에서 클릭할 문서명과 연도 폴더 선택에도 사용된다.
+
+```powershell
+.\.venv\Scripts\python.exe main\utils\weekly.py 20260608
+```
+
 이미 내려받은 xlsx를 바로 기준 파일에 반영해야 하면 다운로드 단계를 생략할 수 있다.
 
 ```powershell

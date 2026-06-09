@@ -129,16 +129,23 @@ def _reference_sheet(wb):
 # 날짜(전 주 월요일)
 # =========================
 def this_week_monday_yyyymmdd(tz: str = "Asia/Seoul") -> str:
-    if CFG.target_monday:
+    target_monday = resolve_target_monday_arg()
+    if target_monday:
         try:
-            datetime.strptime(CFG.target_monday, "%Y%m%d")
+            datetime.strptime(target_monday, "%Y%m%d")
         except ValueError as exc:
-            raise ValueError("GSCERT_WEEKLY_TARGET_DATE는 YYYYMMDD 형식이어야 합니다.") from exc
-        return CFG.target_monday
+            raise ValueError("대상 날짜는 YYYYMMDD 형식이어야 합니다.") from exc
+        return target_monday
 
     now = datetime.now(ZoneInfo(tz))
     monday = now - timedelta(days=now.weekday()) - timedelta(days=7)
     return monday.strftime("%Y%m%d")
+
+
+def resolve_target_monday_arg() -> str:
+    if len(sys.argv) > 1 and sys.argv[1].strip():
+        return sys.argv[1].strip()
+    return CFG.target_monday
 
 
 # =========================
@@ -516,7 +523,7 @@ def main():
     if getattr(CFG, "test_click_doc_enabled", False):
         monday = "20260105"  # 테스트 끝나면 이 블록 삭제하거나 False로
         logging.info("[TEST] monday 강제 설정: %s", monday)
-    if CFG.target_monday:
+    if resolve_target_monday_arg():
         logging.info("대상 주차 수동 지정: %s", monday)
 
     xlsx_name = f"{CFG.doc_prefix}({monday}).xlsx"
@@ -534,7 +541,7 @@ def main():
             except Exception:
                 pass
 
-        year = datetime.now(ZoneInfo("Asia/Seoul")).year
+        year = int(monday[:4])
 
         # 3) 웹에서 저장 트리거 + 폴더 선택 팝업 처리 + 파일 생성 대기
         with sync_playwright() as p:

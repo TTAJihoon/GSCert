@@ -60,6 +60,13 @@ Copy-Item -Recurse -Force `
 - `/generate_prdinfo/` POST 로그에는 업로드 파일명, 시험신청번호, AI 추천 SW 분류/키워드를 포함한다.
 - 기존 `print`로 찍히던 Gemini/Gemma 단계 출력은 기본 로그에 섞이지 않도록 `logger.debug`로 낮췄다.
 
+`weekly.py` 기준 데이터 갱신 실행 방식을 보강했다.
+
+- `.\.venv\Scripts\python.exe main\utils\weekly.py 20260608`처럼 첫 번째 인자로 대상 날짜를 넘기면 이 값이 `GSCERT_WEEKLY_TARGET_DATE`보다 우선한다.
+- 입력 날짜는 ECM 문서명 `인증획득제품(YYYYMMDD)` 선택에 사용된다.
+- ECM 연도 폴더도 현재 연도가 아니라 입력 날짜의 연도 기준으로 선택한다.
+- 현재 기준 데이터 흐름은 `reference.xlsx` 갱신 후 `manage.py sqlite`로 `reference.db`를 재생성하는 방식이다. `reference.csv`가 갱신된다면 최신 `codex-job-runner-persistence`의 `weekly.py`가 아닌 오래된 파일을 실행 중인지 확인한다.
+
 `WD` 기준 컬럼 반영과 산출물 점검 규칙 1~5번 실제 구현이 완료됐다.
 
 - `sync_sheets.py`가 Google Sheet F열 값을 `WD` 컬럼으로 저장한다.
@@ -126,6 +133,12 @@ node --check main\static\scripts\testing\security_editable.js
 ```
 
 현재 작업 워크트리에는 Django 실행용 `.venv`가 없어 `manage.py check`는 실행하지 못했다.
+
+`weekly.py` 날짜 인자 보강 후 추가 검증:
+
+```powershell
+python -m py_compile main\utils\weekly.py
+```
 
 ## 바로 다음 작업
 
