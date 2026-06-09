@@ -49,6 +49,7 @@ ECM에서 클릭할 문서명과 연도 폴더 선택에도 사용된다.
 ```
 
 DB 적재가 정상 실행되면 `weekly_gs_sync.log`에 아래 흐름이 남는다.
+이 흐름은 기존 보조 `exit.bat`/`run.bat`보다 먼저 수행된다.
 
 ```text
 reference DB 적재 실행: ... manage.py sqlite ... reference.xlsx ... reference.db ...

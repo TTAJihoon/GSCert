@@ -638,10 +638,10 @@ def main():
     else:
         logging.info("추가할 데이터가 없습니다. master 변경 없음.")
 
-    # 5) 기존 보조 bat 흐름 유지 + 저장소 기준 DB 적재
-    run_bats_in_order([CFG.exit_bat])
+    # 5) 저장소 기준 DB 적재를 먼저 수행한다.
+    # 기존 보조 bat이 반환되지 않아도 reference.db 갱신이 막히면 안 된다.
     sync_reference_db()
-    run_bats_in_order([CFG.run_bat])
+    run_bats_in_order([CFG.exit_bat, CFG.run_bat])
 
     logging.info("DONE")
 

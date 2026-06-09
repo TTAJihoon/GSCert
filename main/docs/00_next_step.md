@@ -69,7 +69,8 @@ Copy-Item -Recurse -Force `
 - `weekly.py`가 `manage.py sqlite`를 실행할 때 프로젝트/상위 폴더의 `.venv` 또는 `venv` Python을 자동 탐색한다.
 - `reference.xlsx`와 `reference.db` 경로를 `manage.py sqlite`에 명시적으로 전달한다.
 - `weekly_gs_sync.log`에 DB 적재 stdout/stderr와 최종 `reference.db` 파일 크기/수정시각을 남긴다.
-- `exit.bat`/`run.bat` 실행은 제한시간을 두고, bat가 멈춰도 DB 적재 단계로 진행할 수 있게 했다.
+- `reference.db` 적재를 `exit.bat`/`run.bat`보다 먼저 실행한다. 보조 bat가 멈춰도 기준 DB 갱신이 막히지 않게 하기 위함이다.
+- `exit.bat`/`run.bat` 실행은 제한시간을 두고, bat가 멈추면 경고만 남긴 뒤 다음 단계로 진행한다.
 
 `WD` 기준 컬럼 반영과 산출물 점검 규칙 1~5번 실제 구현이 완료됐다.
 
