@@ -8,6 +8,9 @@ document.addEventListener('DOMContentLoaded', function () {
             form.querySelectorAll('input').forEach(function(input) {
                 input.value = '';
             });
+            if (typeof setYearsAgo === 'function') {
+                setYearsAgo(10);
+            }
             const firstInput = document.getElementById('gsnum');
             if (firstInput) firstInput.focus();
         });
