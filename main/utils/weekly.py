@@ -17,6 +17,8 @@ from pywinauto.keyboard import send_keys
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_ROOT / "main" / "data"
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+LOG_FILE = DATA_DIR / "weekly_gs_sync.log"
 REFERENCE_SHEET_NAME = "인증획득제품리스트"
 
 
@@ -77,7 +79,6 @@ class Config:
     reference_db: Path = _env_path("GSCERT_REFERENCE_DB", DATA_DIR / "reference.db")
     django_settings: str = os.environ.get("GSCERT_DJANGO_SETTINGS", "myproject.settings")
     sqlite_no_git_sync: bool = os.environ.get("GSCERT_SQLITE_NO_GIT_SYNC", "").lower() in {"1", "true", "yes", "y"}
-    bat_timeout_sec: int = int(os.environ.get("GSCERT_WEEKLY_BAT_TIMEOUT_SEC", "60"))
 
     # 타임아웃/대기
     pw_timeout_ms: int = 30_000
@@ -89,15 +90,12 @@ class Config:
     zero_folder_prefix_re: re.Pattern = re.compile(r"^00\s")
     doc_prefix: str = "인증획득제품"
 
-    exit_bat: Path | None = Path(r"C:\Users\Administrator\Desktop\exit.bat")
-    run_bat: Path | None = Path(r"C:\Users\Administrator\Desktop\run.bat")
-
 CFG = Config()
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler("weekly_gs_sync.log", encoding="utf-8")],
+    handlers=[logging.StreamHandler(sys.stdout), logging.FileHandler(LOG_FILE, encoding="utf-8")],
 )
 
 class _StreamToLogger:
@@ -488,40 +486,6 @@ def trigger_save_icon_for_attachment(page, monday: str):
     save_btn.click()
 
 
-# =========================
-# bat 실행
-# =========================
-def run_bats_in_order(bats: list[Path | None]):
-    import subprocess
-    for bat in bats:
-        if not bat:
-            continue
-        if not bat.exists():
-            logging.warning("bat 파일이 지정되어 있지만 존재하지 않습니다: %s", bat)
-            continue
-        logging.info("bat 실행(완료까지 대기): %s", bat)
-        try:
-            completed = subprocess.run(
-                str(bat),
-                cwd=str(CFG.project_root),
-                check=False,
-                shell=True,
-                text=True,
-                capture_output=True,
-                timeout=CFG.bat_timeout_sec,
-            )
-        except subprocess.TimeoutExpired:
-            logging.warning("bat 실행 제한시간 초과, 다음 단계로 진행합니다: %s", bat)
-            continue
-
-        if completed.stdout.strip():
-            logging.info("bat stdout: %s", completed.stdout.strip())
-        if completed.stderr.strip():
-            logging.warning("bat stderr: %s", completed.stderr.strip())
-        if completed.returncode != 0:
-            logging.warning("bat 종료 코드가 0이 아닙니다: %s code=%s", bat, completed.returncode)
-
-
 def sync_reference_db():
     import subprocess
 
@@ -534,6 +498,7 @@ def sync_reference_db():
         "sqlite",
         str(CFG.master_xlsx),
         str(CFG.reference_db),
+        "--force",
         "--settings",
         CFG.django_settings,
     ]
@@ -638,10 +603,8 @@ def main():
     else:
         logging.info("추가할 데이터가 없습니다. master 변경 없음.")
 
-    # 5) 저장소 기준 DB 적재를 먼저 수행한다.
-    # 기존 보조 bat이 반환되지 않아도 reference.db 갱신이 막히면 안 된다.
+    # 5) 저장소 기준 DB 적재
     sync_reference_db()
-    run_bats_in_order([CFG.exit_bat, CFG.run_bat])
 
     logging.info("DONE")
 

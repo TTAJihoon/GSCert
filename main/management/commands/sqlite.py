@@ -50,6 +50,11 @@ class Command(BaseCommand):
             action="store_true",
             help="DB 생성 후 Git commit/push를 수행하지 않습니다.",
         )
+        parser.add_argument(
+            "--force",
+            action="store_true",
+            help="기존 DB와 내용이 같아도 SQLite DB 파일을 다시 생성합니다.",
+        )
 
     def handle(self, *args, **options):
         base_dir = Path(settings.BASE_DIR)
@@ -59,7 +64,12 @@ class Command(BaseCommand):
         self.stdout.write(f"▶ XLSX 파일: {xlsx_path}")
         self.stdout.write(f"▶ SQLite DB: {db_path}")
 
-        convert_xlsx_to_sqlite(str(xlsx_path), str(db_path), table_name=options["table_name"])
+        convert_xlsx_to_sqlite(
+            str(xlsx_path),
+            str(db_path),
+            table_name=options["table_name"],
+            force=options["force"],
+        )
 
         if options["no_git_sync"]:
             self.stdout.write("▶ Git 동기화 생략 (--no-git-sync)")

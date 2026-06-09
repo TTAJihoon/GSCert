@@ -205,7 +205,7 @@ worker가 Windows 에이전트 팝업을 제어할 수 있으므로 worker를 �
 2. `manage.py sqlite`가 `reference.xlsx`를 `main/data/reference.db`로 적재한다.
 3. 기준 데이터가 바뀐 경우 `manage.py sqlite`가 `reference.xlsx`와 `reference.db`만 Git commit/push한다.
 
-`weekly.py`는 이 명령을 직접 호출하므로 외부 `db.bat`가 없어도 기준 DB를 갱신할 수 있다. 기존 `exit.bat`, `run.bat` 보조 실행 흐름은 유지한다.
+`weekly.py`는 이 명령을 직접 호출하므로 외부 `db.bat`가 없어도 기준 DB를 갱신할 수 있다. 현재 weekly 흐름은 서버 종료/시작용 `exit.bat`, `run.bat`를 호출하지 않고 `ECM 다운로드 -> reference.xlsx 업데이트 -> reference.db 업데이트`만 수행한다.
 
 수동 실행:
 

@@ -59,7 +59,13 @@ def _normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def convert_xlsx_to_sqlite(xlsx_path: str, db_path: str, table_name: str = "sw_data"):
+def convert_xlsx_to_sqlite(
+    xlsx_path: str,
+    db_path: str,
+    table_name: str = "sw_data",
+    *,
+    force: bool = False,
+):
     xlsx_path = Path(xlsx_path)
     db_path = Path(db_path)
 
@@ -100,7 +106,7 @@ def convert_xlsx_to_sqlite(xlsx_path: str, db_path: str, table_name: str = "sw_d
 
     try:
         _write_dataframe_to_sqlite(df, temp_path, table_name)
-        if db_path.exists() and _same_sqlite_table(db_path, temp_path, table_name):
+        if not force and db_path.exists() and _same_sqlite_table(db_path, temp_path, table_name):
             temp_path.unlink()
             print(f"[OK] XLSX({xlsx_path}) -> SQLite({db_path}) 변경 없음")
             return False
