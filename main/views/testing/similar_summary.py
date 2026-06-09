@@ -9,9 +9,11 @@ from pptx import Presentation
 
 import os
 import re
+from main.request_logging import set_request_log_context
 from main.utils.gemini_gemma import GemmaConfigError, GemmaGenerationError
 from .similar_GPT import rerank_similar_candidates, run_gemini_gemma
 from .similar_compare import SimilarSearchDependencyError, compare_from_index
+
 
 # PDF 파일에서 텍스트 추출
 def parse_pdf(file_path):
@@ -20,6 +22,7 @@ def parse_pdf(file_path):
         for page in doc:
             text += page.get_text("text")
     return text
+
 
 # DOCX 파일에서 텍스트 추출
 def parse_docx(file_path):
@@ -43,13 +46,12 @@ def parse_docx(file_path):
             for row in child.iter(tag=WORD_NS+"tr"):
                 cells = []
                 for tc in row.iter(tag=WORD_NS+"tc"):
-                    # 세로 병합(vMerge) 셀 'continue'는 skip
                     tcPr = tc.tcPr if hasattr(tc, 'tcPr') else None
                     vmerge = None
                     if tcPr is not None and hasattr(tcPr, 'vMerge'):
                         vmerge = getattr(tcPr.vMerge, "val", None)
                         if vmerge is None or vmerge == "continue":
-                            continue  # 병합된 셀은 건너뜀
+                            continue
                     cell_text = " ".join(t.text for t in tc.iter(tag=WORD_NS+"t") if t.text)
                     if cell_text.strip():
                         cells.append(cell_text.strip())
@@ -60,6 +62,7 @@ def parse_docx(file_path):
     txt = re.sub(r'(\n\s*){2,}', '\n', txt)
     return txt.strip()
 
+
 # PPTX 파일에서 텍스트 추출
 def parse_pptx(file_path):
     prs = Presentation(file_path)
@@ -69,6 +72,7 @@ def parse_pptx(file_path):
             if shape.has_text_frame:
                 text.extend([p.text for p in shape.text_frame.paragraphs])
     return "\n".join(text)
+
 
 # 파일 파싱 (Django UploadedFile 객체 활용)
 def parse_file(uploaded_file):
@@ -90,11 +94,13 @@ def parse_file(uploaded_file):
     finally:
         os.unlink(tmp_path)
 
+
 # 텍스트 전처리 (공백 및 줄바꿈 제거)
 def preprocess_text(text):
     text = re.sub(r'\n+', '\n', text)
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
+
 
 # Django 뷰 함수 (요약 API)
 @csrf_exempt
@@ -105,18 +111,35 @@ def summarize_document(request):
         manual_input = request.POST.get('manualInput', '').strip()  # textarea 입력값
 
         if uploaded_file:  # 자동 입력 탭의 파일 처리
-            print("파일 확인 완료: ", uploaded_file)
+            set_request_log_context(
+                request,
+                feature="similar",
+                input_mode="file",
+                file_type=file_type,
+                file_name=uploaded_file.name,
+            )
             text = parse_file(uploaded_file)
             if text is None or len(text.strip()) < 10:
                 return JsonResponse({'response': "내용이 부족하거나 지원되지 않는 형식입니다."})
             clean_text = preprocess_text(text)
             sentences = re.split(r'(?<=[.!?])\s+', clean_text)
-            print(sentences)
             summary_text = run_gemini_gemma(sentences)
+            set_request_log_context(
+                request,
+                search_query=summary_text,
+                llm_summary=summary_text,
+            )
         elif manual_input:  # 수동 입력 탭의 텍스트 처리
-            print("입력 내용 확인 완료: ", manual_input)
             summary_text = preprocess_text(manual_input)
+            set_request_log_context(
+                request,
+                feature="similar",
+                input_mode="manual",
+                manual_input=manual_input,
+                search_query=summary_text,
+            )
         else:
+            set_request_log_context(request, feature="similar", input_mode="empty")
             return JsonResponse({'response': "파일 또는 제품 설명을 입력해주세요."}, status=400)
 
         rerank_error = ""
@@ -143,7 +166,8 @@ def summarize_document(request):
             compare_result = faiss_result[:30]
 
         similarity_list = [row.get("similarity", 0.0) for row in compare_result]
-                
+        set_request_log_context(request, result_count=len(compare_result))
+
         return JsonResponse({
             'summary': summary_text,
             'response': compare_result,

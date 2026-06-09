@@ -1,5 +1,10 @@
 # -*- coding: utf-8 -*-
+import logging
+
 from main.utils.gemini_gemma import extract_json_object, generate_gemma_text
+
+
+logger = logging.getLogger(__name__)
 
 _PROMPT_TEMPLATE = """너는 SW 제품 분류와 검색 키워드를 추천하는 전문가야.
 {INPUT}
@@ -22,14 +27,15 @@ _PROMPT_TEMPLATE = """너는 SW 제품 분류와 검색 키워드를 추천하�
 }}
 """
 
+
 def classify_sw_and_keywords(input_text: str):
-    print("[STEP 1] Gemini/Gemma 요청 시작")
+    logger.debug("Gemini/Gemma prdinfo request start")
     prompt = _PROMPT_TEMPLATE.replace("{INPUT}", input_text)
     try:
         content = generate_gemma_text(prompt)
-        print(content)
+        logger.debug("Gemini/Gemma prdinfo response: %s", content)
     except Exception as e:
-        print("Gemma 호출 실패: " + str(e))
+        logger.warning("Gemma prdinfo call failed: %s", e)
         return None
 
     data = extract_json_object(content or "")

@@ -15,6 +15,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    "main.request_logging.RequestLogMiddleware",
     "django.middleware.common.CommonMiddleware",
 ]
 
@@ -91,3 +92,26 @@ AGENT_DOWNLOAD_BASE_DIR = os.environ.get(
 )
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "plain": {
+            "format": "%(message)s",
+        },
+    },
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "plain",
+        },
+    },
+    "loggers": {
+        "gscert.request": {
+            "handlers": ["console"],
+            "level": "INFO",
+            "propagate": False,
+        },
+    },
+}

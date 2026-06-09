@@ -6,6 +6,7 @@ from .prdinfo_parse_agreement import extract_process1_docx_basic
 from .prdinfo_parse_report import extract_process2_docx_overview
 from .prdinfo_parse_defects import extract_process3_xlsx_defects
 from .prdinfo_fillmap import build_fill_map
+from main.request_logging import set_request_log_context
 
 ALLOWED_MAX_FILES = 3
 
@@ -28,6 +29,12 @@ def generate_prdinfo(request):
         return HttpResponseBadRequest("파일이 없습니다.")
     if len(files) > ALLOWED_MAX_FILES:
         return HttpResponseBadRequest("파일은 최대 3개까지 업로드할 수 있습니다.")
+
+    set_request_log_context(
+        request,
+        feature="prdinfo",
+        file_names=[f.name for f in files],
+    )
 
     p1_files, p2_files, p3_files = _classify_files(files)
 
@@ -60,6 +67,12 @@ def generate_prdinfo(request):
 
     fill_map = build_fill_map(obj1, obj2, obj3)
     gs_number = obj1.get("시험신청번호", "") if isinstance(obj1, dict) else ""
+    set_request_log_context(
+        request,
+        gs_number=gs_number,
+        llm_sw=obj2.get("SW분류", "") if isinstance(obj2, dict) else "",
+        llm_keywords=obj2.get("키워드", "") if isinstance(obj2, dict) else "",
+    )
 
     return JsonResponse({
         "list1": list1,

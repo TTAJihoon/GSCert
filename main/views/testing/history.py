@@ -2,6 +2,7 @@ import json
 import sqlite3
 import pandas as pd
 from django.shortcuts import render
+from main.request_logging import set_request_log_context
 
 def history(request):
     if request.method == 'POST':
@@ -12,7 +13,20 @@ def history(request):
         startDate = request.POST.get('start_date', '')
         endDate = request.POST.get('end_date', '')
         comment = request.POST.get('comment', '')
-        print(comment, company, product, startDate, endDate, gsnum, project)
+        search_terms = _search_terms(
+            comment=comment,
+            company=company,
+            product=product,
+            start_date=startDate,
+            end_date=endDate,
+            gsnum=gsnum,
+            project=project,
+        )
+        set_request_log_context(
+            request,
+            feature="history",
+            search=search_terms,
+        )
 
         context = {
             'gsnum': gsnum,
@@ -25,6 +39,7 @@ def history(request):
         }
 
         tables = GS_history(gsnum, project, company, product, comment, startDate, endDate)
+        set_request_log_context(request, result_count=len(tables))
             
         clean_tables = []
         for table in tables:
@@ -41,6 +56,14 @@ def history(request):
                
     # GET 요청 또는 POST 실패 시
     return render(request, 'testing/history.html')
+
+
+def _search_terms(**terms):
+    return {
+        key: value.strip()
+        for key, value in terms.items()
+        if isinstance(value, str) and value.strip()
+    }
 
 def GS_history(gsnum='', project='', company='', product='', comment='', startDate='', endDate='', db_path='main/data/reference.db'):
     conn = sqlite3.connect(db_path)

@@ -49,6 +49,17 @@ Copy-Item -Recurse -Force `
 
 ## 최근 완료 작업
 
+요청 로그 템플릿을 추가했다.
+
+- `main.request_logging.RequestLogMiddleware`를 추가해 Django 요청 종료 시점에 구조화 로그를 남긴다.
+- 성공/일반 응답은 `ACCESS | 2026-.. KST | request_id=... | ip=... | method=... | path=... | status=... | duration_ms=...` 형식이다.
+- 500 이상 응답이나 예외는 `ERROR | ... | error=... | message=...` 형식으로 남긴다.
+- `X-Forwarded-For`, `X-Real-IP`, `REMOTE_ADDR` 순서로 IP를 확인한다.
+- `/history/` POST 로그에는 검색 조건과 결과 수를 포함한다.
+- `/summarize_document/` POST 로그에는 파일/수동 입력 모드, 수동 입력 문장, LLM 요약/검색 문장, 결과 수를 포함한다.
+- `/generate_prdinfo/` POST 로그에는 업로드 파일명, 시험신청번호, AI 추천 SW 분류/키워드를 포함한다.
+- 기존 `print`로 찍히던 Gemini/Gemma 단계 출력은 기본 로그에 섞이지 않도록 `logger.debug`로 낮췄다.
+
 `WD` 기준 컬럼 반영과 산출물 점검 규칙 1~5번 실제 구현이 완료됐다.
 
 - `sync_sheets.py`가 Google Sheet F열 값을 `WD` 컬럼으로 저장한다.
@@ -106,6 +117,16 @@ node --check main\static\scripts\review\ecm_download_review.js
 
 전체 테스트는 35개 통과했다.
 
+요청 로그 템플릿 반영 후 추가 검증:
+
+```powershell
+python -m py_compile main\request_logging.py main\views\testing\history.py main\views\testing\similar_summary.py main\views\testing\similar_GPT.py main\views\certy\prdinfo_GPT.py main\views\certy\prdinfo_generate.py myproject\settings.py myproject\ui_mock_settings.py
+node --check main\static\scripts\testing\security_GPT_popup.js
+node --check main\static\scripts\testing\security_editable.js
+```
+
+현재 작업 워크트리에는 Django 실행용 `.venv`가 없어 `manage.py check`는 실행하지 못했다.
+
 ## 바로 다음 작업
 
 1. 6번 기능리스트 구현 전에 `.xls` 샘플 처리 의존성을 결정한다.
@@ -118,12 +139,21 @@ node --check main\static\scripts\review\ecm_download_review.js
 5. 테스트가 끝나면 download-review 시간 제한을 운영 기준으로 되돌린다.
    - `DOWNLOAD_REVIEW_START_HOUR = 20`
    - `DOWNLOAD_REVIEW_END_HOUR = 7`
+6. 운영 서버에 반영한 뒤 `uvicorn_*_out.log`에서 새 `ACCESS`/`ERROR` 한 줄 로그가 시간, IP, 검색어/요약 문장을 포함하는지 확인한다.
 
 ## 변경 파일 요약
 
 최근 작업으로 변경된 주요 파일은 다음과 같다.
 
 - `main/docs/00_next_step.md`
+- `main/request_logging.py`
+- `myproject/settings.py`
+- `myproject/ui_mock_settings.py`
+- `main/views/testing/history.py`
+- `main/views/testing/similar_summary.py`
+- `main/views/testing/similar_GPT.py`
+- `main/views/certy/prdinfo_GPT.py`
+- `main/views/certy/prdinfo_generate.py`
 - `main/docs/02_database_design.md`
 - `main/docs/05_zip_inspection.md`
 - `main/docs/08_ui_api_design.md`
