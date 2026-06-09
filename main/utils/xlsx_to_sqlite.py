@@ -108,11 +108,11 @@ def convert_xlsx_to_sqlite(
         _write_dataframe_to_sqlite(df, temp_path, table_name)
         if not force and db_path.exists() and _same_sqlite_table(db_path, temp_path, table_name):
             temp_path.unlink()
-            print(f"[OK] XLSX({xlsx_path}) -> SQLite({db_path}) 변경 없음")
+            print(f"[OK] XLSX({xlsx_path}) -> SQLite({db_path}) no changes")
             return False
 
         temp_path.replace(db_path)
-        print(f"[OK] XLSX({xlsx_path}) -> SQLite({db_path}) 변환 및 저장 완료")
+        print(f"[OK] XLSX({xlsx_path}) -> SQLite({db_path}) converted and saved")
         return True
     finally:
         if temp_path.exists():

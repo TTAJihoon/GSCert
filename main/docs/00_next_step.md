@@ -71,6 +71,8 @@ Copy-Item -Recurse -Force `
 - `main/data/weekly_gs_sync.log`에 DB 적재 stdout/stderr와 최종 `reference.db` 파일 크기/수정시각을 남긴다.
 - weekly 흐름은 `ECM 다운로드 -> reference.xlsx 업데이트 -> reference.db 업데이트`만 수행한다.
 - 서버 종료/시작용 `exit.bat`/`run.bat`는 weekly에서 더 이상 호출하지 않는다.
+- `manage.py sqlite` 출력은 Windows 코드페이지 영향을 피하기 위해 ASCII 문구로 정리했다.
+- `weekly.py`가 `manage.py sqlite`를 호출할 때 `PYTHONIOENCODING=utf-8`, `PYTHONUTF8=1`을 넘긴다.
 
 `WD` 기준 컬럼 반영과 산출물 점검 규칙 1~5번 실제 구현이 완료됐다.
 

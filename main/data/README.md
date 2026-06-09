@@ -23,6 +23,8 @@
 `weekly.py`는 기본적으로 프로젝트의 `.venv\Scripts\python.exe`, `venv\Scripts\python.exe`,
 상위 폴더의 `.venv`/`venv`를 찾아 `manage.py sqlite`를 실행한다. 다른 Python을 강제로 쓰려면
 `GSCERT_PYTHON`을 지정한다.
+하위 `manage.py sqlite` 호출에는 UTF-8 입출력 환경을 강제로 전달하므로 Windows 코드페이지가
+cp1252여도 출력 문구 때문에 DB 적재가 중단되지 않는다.
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py sqlite

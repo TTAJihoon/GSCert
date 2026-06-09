@@ -505,13 +505,20 @@ def sync_reference_db():
     if CFG.sqlite_no_git_sync:
         cmd.append("--no-git-sync")
 
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
+
     logging.info("reference DB 적재 실행: %s", " ".join(cmd))
     completed = subprocess.run(
         cmd,
         cwd=str(CFG.project_root),
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
         check=False,
+        env=env,
     )
     if completed.stdout.strip():
         logging.info("reference DB 적재 stdout: %s", completed.stdout.strip())

@@ -8,7 +8,7 @@ from main.utils.xlsx_to_sqlite import convert_xlsx_to_sqlite
 
 
 class Command(BaseCommand):
-    help = "reference.xlsx 파일을 SQLite DB로 변환하고 기준 데이터 변경분을 Git에 반영합니다."
+    help = "Convert reference.xlsx to SQLite and optionally sync reference data to Git."
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -16,44 +16,44 @@ class Command(BaseCommand):
             type=str,
             nargs="?",
             default="main/data/reference.xlsx",
-            help="입력 XLSX 파일 경로 (기본: main/data/reference.xlsx)",
+            help="Input XLSX path. Default: main/data/reference.xlsx",
         )
         parser.add_argument(
             "db_path",
             type=str,
             nargs="?",
             default="main/data/reference.db",
-            help="출력 SQLite DB 파일 경로 (기본: main/data/reference.db)",
+            help="Output SQLite DB path. Default: main/data/reference.db",
         )
         parser.add_argument(
             "--table-name",
             default="sw_data",
-            help="SQLite에 생성할 테이블명 (기본: sw_data)",
+            help="SQLite table name. Default: sw_data",
         )
         parser.add_argument(
             "--commit-message",
             default="data: update reference database",
-            help="Git 커밋 메시지",
+            help="Git commit message.",
         )
         parser.add_argument(
             "--remote",
             default="origin",
-            help="push할 Git remote 이름 (기본: origin)",
+            help="Git remote name to push to. Default: origin",
         )
         parser.add_argument(
             "--branch",
             default="",
-            help="push할 Git 브랜치명. 비우면 현재 브랜치를 사용합니다.",
+            help="Git branch name to push to. Empty value uses current branch.",
         )
         parser.add_argument(
             "--no-git-sync",
             action="store_true",
-            help="DB 생성 후 Git commit/push를 수행하지 않습니다.",
+            help="Skip Git commit/push after DB generation.",
         )
         parser.add_argument(
             "--force",
             action="store_true",
-            help="기존 DB와 내용이 같아도 SQLite DB 파일을 다시 생성합니다.",
+            help="Regenerate SQLite DB even when contents match the existing DB.",
         )
 
     def handle(self, *args, **options):
@@ -61,8 +61,8 @@ class Command(BaseCommand):
         xlsx_path = _resolve_path(base_dir, options["xlsx_path"])
         db_path = _resolve_path(base_dir, options["db_path"])
 
-        self.stdout.write(f"▶ XLSX 파일: {xlsx_path}")
-        self.stdout.write(f"▶ SQLite DB: {db_path}")
+        self.stdout.write(f"XLSX path: {xlsx_path}")
+        self.stdout.write(f"SQLite DB path: {db_path}")
 
         convert_xlsx_to_sqlite(
             str(xlsx_path),
@@ -72,7 +72,7 @@ class Command(BaseCommand):
         )
 
         if options["no_git_sync"]:
-            self.stdout.write("▶ Git 동기화 생략 (--no-git-sync)")
+            self.stdout.write("Git sync skipped (--no-git-sync)")
             return
 
         sync_reference_data_to_git(
@@ -102,7 +102,7 @@ def _run_git(repo_dir, args, *, check=True):
     )
     if check and completed.returncode != 0:
         message = completed.stderr.strip() or completed.stdout.strip()
-        raise CommandError(f"git {' '.join(args)} 실패: {message}")
+        raise CommandError(f"git {' '.join(args)} failed: {message}")
     return completed
 
 
@@ -110,14 +110,14 @@ def _relative_to_repo(repo_dir, path):
     try:
         return str(path.resolve().relative_to(repo_dir.resolve())).replace("\\", "/")
     except ValueError as exc:
-        raise CommandError(f"Git에 반영할 파일이 저장소 밖에 있습니다: {path}") from exc
+        raise CommandError(f"Path is outside the repository and cannot be synced to Git: {path}") from exc
 
 
 def _current_branch(repo_dir):
     completed = _run_git(repo_dir, ["rev-parse", "--abbrev-ref", "HEAD"])
     branch = completed.stdout.strip()
     if not branch or branch == "HEAD":
-        raise CommandError("현재 Git 브랜치를 확인할 수 없습니다. --branch 값을 지정하세요.")
+        raise CommandError("Cannot determine the current Git branch. Provide --branch.")
     return branch
 
 
@@ -129,18 +129,18 @@ def sync_reference_data_to_git(repo_dir, paths, commit_message, remote, branch, 
     unrelated_staged = [path for path in staged_before if path not in rel_paths]
     if unrelated_staged:
         joined = ", ".join(unrelated_staged)
-        raise CommandError(f"기준 데이터 외 staged 변경이 있어 자동 커밋을 중단합니다: {joined}")
+        raise CommandError(f"Unrelated staged changes exist, aborting automatic commit: {joined}")
 
     _run_git(repo_dir, ["add", "--", *rel_paths])
 
     diff = _run_git(repo_dir, ["diff", "--cached", "--quiet", "--", *rel_paths], check=False)
     if diff.returncode == 0:
-        stdout.write("▶ Git 반영할 기준 데이터 변경 없음")
+        stdout.write("No reference data changes to sync to Git")
         return
     if diff.returncode not in (0, 1):
-        raise CommandError("Git staged diff 확인 중 오류가 발생했습니다.")
+        raise CommandError("Failed to inspect Git staged diff.")
 
     _run_git(repo_dir, ["commit", "-m", commit_message, "--", *rel_paths])
     target_branch = branch or _current_branch(repo_dir)
     _run_git(repo_dir, ["push", remote, f"HEAD:{target_branch}"])
-    stdout.write(f"[OK] Git push 완료: {remote}/{target_branch}")
+    stdout.write(f"[OK] Git push complete: {remote}/{target_branch}")
