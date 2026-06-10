@@ -20,8 +20,15 @@ from .selectors import (
     DOC_ROOT,
     DOC_CLICK_SPAN_IN_ROW,
     FILE_ROW,
+    FILE_SAVE_BTN,
     URL_COPY_BTN,
 )
+
+
+TREE_LINK = 'a[menuname="edm-folder-context-tree"]'
+COMMITTEE_ROOT_PATTERN = re.compile(r"^\s*00\s+\d{4}년\s+GS인증심의위원회\s*$")
+COMMITTEE_ROUND_PATTERN = re.compile(r"^\s*\d{2}.*품질인증심의위원회")
+REPORT_DOCUMENT_NAME = "시험성적서"
 
 
 async def wait_loading_done(page: Page) -> None:
@@ -52,6 +59,71 @@ async def _click_tree_text(page: Page, text: str) -> None:
     await wait_loading_done(page)
 
 
+async def _click_tree_anchor(page: Page, anchor) -> None:
+    await anchor.scroll_into_view_if_needed(timeout=TIMEOUTS["TREE_CLICK"])
+    await anchor.click(timeout=TIMEOUTS["TREE_CLICK"], force=True)
+    await wait_loading_done(page)
+
+
+async def _open_tree_anchor(page: Page, anchor) -> None:
+    result = await anchor.evaluate(
+        """
+        (el) => {
+          const root = document.querySelector('#edm-folder');
+          const li = el.closest('li');
+          if (!root || !li) return { ok: false, reason: 'missing tree root or li' };
+          if ((li.className || '').includes('jstree-open')) {
+            return { ok: true, method: 'already-open' };
+          }
+          if (window.jQuery && window.jQuery.fn && window.jQuery.fn.jstree && li.id) {
+            window.jQuery(root).jstree('open_node', li.id);
+            return { ok: true, method: 'jstree-open-node' };
+          }
+          const icon = li.querySelector(':scope > ins.jstree-icon');
+          if (!icon) return { ok: false, reason: 'missing expand icon' };
+          icon.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+          icon.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+          icon.click();
+          return { ok: true, method: 'icon-click' };
+        }
+        """
+    )
+    if not result or not result.get("ok"):
+        raise RuntimeError(f"ECM tree open failed: {result}")
+    await page.wait_for_timeout(800)
+
+
+async def _direct_child_folders(anchor) -> list[dict]:
+    return await anchor.evaluate(
+        """
+        (el) => {
+          const li = el.closest('li');
+          if (!li) return [];
+          return Array.from(li.querySelectorAll(':scope > ul > li > a')).map((a, index) => ({
+            index,
+            name: a.getAttribute('name') || (a.textContent || '').trim(),
+            text: (a.textContent || '').trim(),
+            oid: a.getAttribute('oid') || '',
+          }));
+        }
+        """
+    )
+
+
+async def _click_tree_child_by_oid(page: Page, oid: str) -> None:
+    tree = page.locator(FOLDER_TREE)
+    anchor = tree.locator(f'a[oid="{oid}"]').first
+    await anchor.wait_for(state="visible", timeout=TIMEOUTS["TREE_CLICK"])
+    await _click_tree_anchor(page, anchor)
+
+
+def committee_target_child_folders(folder_names: list[str]) -> list[str]:
+    cleaned = [str(name or "").strip() for name in folder_names if str(name or "").strip()]
+    if len(cleaned) <= 2:
+        return []
+    return cleaned[1:-1]
+
+
 async def click_year(page: Page, year: str) -> Dict:
     # "2025 시험서비스" 우선 → 실패 시 year만
     try:
@@ -64,6 +136,41 @@ async def click_year(page: Page, year: str) -> Dict:
 async def click_committee(page: Page) -> Dict:
     await _click_tree_text(page, "GS인증심의위원회")
     return {}
+
+
+async def click_committee_review_root(page: Page, year: str):
+    tree = page.locator(FOLDER_TREE)
+    root = tree.locator(TREE_LINK).filter(has_text=COMMITTEE_ROOT_PATTERN).first
+    try:
+        await root.wait_for(state="visible", timeout=TIMEOUTS["DOC_LIST"])
+    except Exception:
+        root = tree.locator(TREE_LINK).filter(has_text=f"00 {year}년 GS인증심의위원회").first
+        await root.wait_for(state="visible", timeout=TIMEOUTS["DOC_LIST"])
+    await _open_tree_anchor(page, root)
+    await _click_tree_anchor(page, root)
+    return root
+
+
+async def list_committee_round_folders(page: Page, committee_root) -> list[dict]:
+    await _open_tree_anchor(page, committee_root)
+    folders = await _direct_child_folders(committee_root)
+    return [
+        folder
+        for folder in folders
+        if COMMITTEE_ROUND_PATTERN.search(folder.get("name", "") or folder.get("text", ""))
+    ]
+
+
+async def list_committee_target_folders(page: Page, round_folder: dict) -> list[dict]:
+    oid = round_folder.get("oid")
+    if not oid:
+        raise RuntimeError(f"round folder oid missing: {round_folder}")
+    await _click_tree_child_by_oid(page, oid)
+    round_anchor = page.locator(FOLDER_TREE).locator(f'a[oid="{oid}"]').first
+    await _open_tree_anchor(page, round_anchor)
+    child_folders = await _direct_child_folders(round_anchor)
+    target_names = set(committee_target_child_folders([item["name"] for item in child_folders]))
+    return [item for item in child_folders if item["name"] in target_names]
 
 
 async def click_date_folder(page: Page, cert_date_yyyymmdd: str) -> Dict:
@@ -106,6 +213,26 @@ async def click_document_in_list(page: Page, test_no_pat: Pattern) -> Dict:
     await test_span.click(timeout=TIMEOUTS["DOC_CLICK"])
     await wait_loading_done(page)
     return {"picked": "시험번호(문서)"}
+
+
+async def click_report_document_in_list(page: Page, folder_name: str) -> Dict:
+    await page.locator(DOC_TABLE).wait_for(state="visible", timeout=TIMEOUTS["DOC_LIST"])
+
+    spans = page.locator(f"{DOC_ROOT} {DOC_CLICK_SPAN_IN_ROW}")
+    report_span = spans.filter(has_text=REPORT_DOCUMENT_NAME).first
+    try:
+        await report_span.wait_for(state="visible", timeout=TIMEOUTS["DOC_LIST"])
+        await report_span.click(timeout=TIMEOUTS["DOC_CLICK"])
+        await wait_loading_done(page)
+        return {"picked": REPORT_DOCUMENT_NAME}
+    except Exception:
+        pass
+
+    fallback_span = spans.filter(has_text=folder_name).first
+    await fallback_span.wait_for(state="visible", timeout=TIMEOUTS["DOC_LIST"])
+    await fallback_span.click(timeout=TIMEOUTS["DOC_CLICK"])
+    await wait_loading_done(page)
+    return {"picked": folder_name}
 
 
 async def wait_file_list(page: Page) -> Dict:
@@ -157,6 +284,56 @@ async def select_target_file_and_copy_url(page: Page, test_no_pat: Pattern) -> D
         raise RuntimeError("URL 파싱 실패")
 
     return {"url": m.group(1)}
+
+
+async def click_first_file_save_button(page: Page) -> Dict:
+    rows = page.locator(FILE_ROW)
+    await rows.first.wait_for(state="visible", timeout=TIMEOUTS["FILE_LIST"])
+    save_btn = rows.first.locator(FILE_SAVE_BTN).first
+    await save_btn.wait_for(state="visible", timeout=TIMEOUTS["FILE_LIST"])
+    await save_btn.click(timeout=TIMEOUTS["DOC_CLICK"], force=True)
+    return {"save_clicked": True}
+
+
+async def run_committee_report_download_flow(page: Page, cert_date: str, after_save_click=None) -> Dict:
+    if after_save_click is None:
+        raise RuntimeError("after_save_click callback is required to handle the Windows folder popup")
+
+    year, _ = parse_cert_date(cert_date)
+    await goto_base(page)
+    await wait_left_tree(page)
+    await click_year(page, year)
+    committee_root = await click_committee_review_root(page, year)
+
+    downloaded = []
+    skipped = []
+    for round_folder in await list_committee_round_folders(page, committee_root):
+        targets = await list_committee_target_folders(page, round_folder)
+        for target in targets:
+            folder_name = target["name"]
+            try:
+                await _click_tree_child_by_oid(page, target["oid"])
+                picked = await click_report_document_in_list(page, folder_name)
+                await wait_file_list(page)
+                await click_first_file_save_button(page)
+                await after_save_click({
+                    "round": round_folder.get("name", ""),
+                    "folder": folder_name,
+                    "picked": picked.get("picked", ""),
+                })
+                downloaded.append({
+                    "round": round_folder.get("name", ""),
+                    "folder": folder_name,
+                    "picked": picked.get("picked", ""),
+                })
+            except Exception as exc:
+                skipped.append({
+                    "round": round_folder.get("name", ""),
+                    "folder": folder_name,
+                    "error": str(exc),
+                })
+
+    return {"download_requested": len(downloaded), "downloaded": downloaded, "skipped": skipped}
 
 
 async def run_ecm_flow(page: Page, cert_date: str, test_no: str, test_no_pat: Pattern) -> Dict:

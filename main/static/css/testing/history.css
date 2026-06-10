@@ -205,6 +205,7 @@ body {
 }
 
 .results-table th {
+  position: relative;
   padding: 10px 10px;
   font-weight: 600;
   text-align: left;
@@ -219,6 +220,54 @@ body {
 
 .results-table tbody tr:nth-child(even) { background: #f8f9fa; }
 .results-table tbody tr:hover { background: #e3f2fd; }
+
+.resizable-results-table th,
+.resizable-results-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.resizable-results-table th {
+  overflow: visible;
+}
+
+.resizable-results-header {
+  user-select: none;
+}
+
+.history-column-resize-handle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 3;
+  display: block;
+  width: 10px;
+  height: 100%;
+  cursor: col-resize;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.history-column-resize-handle::after {
+  position: absolute;
+  top: 20%;
+  right: 3px;
+  width: 1px;
+  height: 60%;
+  background: transparent;
+  content: "";
+}
+
+.resizable-results-header:hover .history-column-resize-handle::after,
+.resizable-results-table.is-resizing .history-column-resize-handle::after {
+  background: #fff;
+}
+
+.history-column-resizing,
+.history-column-resizing * {
+  cursor: col-resize !important;
+  user-select: none !important;
+}
 
 .action-cell {
   text-align: center;

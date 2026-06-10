@@ -391,6 +391,12 @@ const state = {
   resultProjectLoadError: ""
 };
 
+const tableColumnDefaults = {
+  projectRows: [46, 145, 105, 180, 220, 95, 105, 115, 80],
+  progressRows: [64, 145, 180, 220, 105, 260, 90, 240, 180],
+  resultRows: [145, 180, 220, 105, 115, 80, 240, 145, 180]
+};
+
 const statusLabel = {
   pending: ["대기", "badge-muted"],
   running: ["진행 중", "badge-run"],
@@ -424,6 +430,127 @@ const statusLabel = {
 
 function qs(id) {
   return document.getElementById(id);
+}
+
+function tableResizeKey(table) {
+  const bodyId = table.querySelector("tbody")?.id || "";
+  return bodyId || table.getAttribute("aria-label") || "";
+}
+
+function tableColumnStorageKey(key) {
+  return `downloadReviewColumnWidths:${key}`;
+}
+
+function readStoredColumnWidths(key) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(tableColumnStorageKey(key)) || "[]");
+    return Array.isArray(parsed) ? parsed.map((value) => Number(value)).filter(Boolean) : [];
+  } catch (error) {
+    return [];
+  }
+}
+
+function writeStoredColumnWidths(key, widths) {
+  try {
+    localStorage.setItem(tableColumnStorageKey(key), JSON.stringify(widths.map((width) => Math.round(width))));
+  } catch (error) {
+    // localStorage may be disabled; resizing should still work for the current page.
+  }
+}
+
+function ensureTableColumnGroup(table, widths) {
+  let colgroup = table.querySelector(":scope > colgroup");
+  if (!colgroup) {
+    colgroup = document.createElement("colgroup");
+    table.insertBefore(colgroup, table.firstElementChild);
+  }
+
+  colgroup.innerHTML = widths.map((width) => `<col style="width: ${width}px;">`).join("");
+  table.style.width = `${widths.reduce((sum, width) => sum + width, 0)}px`;
+  table.style.minWidth = table.style.width;
+  return colgroup;
+}
+
+function initResizableTables() {
+  document.querySelectorAll(".data-table").forEach((table, tableIndex) => {
+    if (table.dataset.resizableReady === "true") return;
+    const key = tableResizeKey(table) || `table-${tableIndex}`;
+    const headers = Array.from(table.querySelectorAll("thead th"));
+    if (!headers.length) return;
+
+    const defaults = tableColumnDefaults[key] || headers.map((header) => Math.max(90, Math.round(header.getBoundingClientRect().width || 120)));
+    const stored = readStoredColumnWidths(key);
+    const widths = headers.map((_, index) => stored[index] || defaults[index] || 120);
+    const colgroup = ensureTableColumnGroup(table, widths);
+
+    table.classList.add("resizable-table");
+    table.dataset.resizableReady = "true";
+    table.dataset.resizeKey = key;
+
+    headers.forEach((header, index) => {
+      header.classList.add("resizable-header");
+      const handle = document.createElement("span");
+      handle.className = "column-resize-handle";
+      handle.setAttribute("role", "separator");
+      handle.setAttribute("aria-orientation", "vertical");
+      handle.setAttribute("aria-label", "열 너비 조정");
+      header.appendChild(handle);
+
+      let resizing = false;
+      const startResize = (event, eventNames) => {
+        if (resizing) return;
+        resizing = true;
+        event.preventDefault();
+        event.stopPropagation();
+        const startX = event.clientX;
+        const startWidth = widths[index];
+        const minWidth = header.classList.contains("check-col") ? 42 : 72;
+        if (event.pointerId !== undefined && handle.setPointerCapture) {
+          handle.setPointerCapture(event.pointerId);
+        }
+        document.body.classList.add("column-resizing");
+        table.classList.add("is-resizing");
+
+        const onMove = (moveEvent) => {
+          const nextWidth = Math.max(minWidth, startWidth + moveEvent.clientX - startX);
+          widths[index] = nextWidth;
+          colgroup.children[index].style.width = `${nextWidth}px`;
+          table.style.width = `${widths.reduce((sum, width) => sum + width, 0)}px`;
+          table.style.minWidth = table.style.width;
+        };
+
+        const onUp = () => {
+          writeStoredColumnWidths(key, widths);
+          document.body.classList.remove("column-resizing");
+          table.classList.remove("is-resizing");
+          resizing = false;
+          document.removeEventListener(eventNames.move, onMove);
+          document.removeEventListener(eventNames.up, onUp);
+          if (eventNames.cancel) {
+            document.removeEventListener(eventNames.cancel, onUp);
+          }
+          try {
+            handle.releasePointerCapture(event.pointerId);
+          } catch (error) {
+            // The browser may release capture automatically when the pointer ends.
+          }
+        };
+
+        document.addEventListener(eventNames.move, onMove);
+        document.addEventListener(eventNames.up, onUp);
+        if (eventNames.cancel) {
+          document.addEventListener(eventNames.cancel, onUp);
+        }
+      };
+
+      handle.addEventListener("pointerdown", (event) => {
+        startResize(event, { move: "pointermove", up: "pointerup", cancel: "pointercancel" });
+      });
+      handle.addEventListener("mousedown", (event) => {
+        startResize(event, { move: "mousemove", up: "mouseup" });
+      });
+    });
+  });
 }
 
 function escapeHtml(value) {
@@ -1501,6 +1628,7 @@ function syncCenterTabs() {
 async function init() {
   updateClock();
   bindControls();
+  initResizableTables();
   syncCenterTabs();
   populateFilters();
   renderProjects();

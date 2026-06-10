@@ -20,3 +20,4 @@ DOC_CLICK_SPAN_IN_ROW = 'span[events="document-list-viewDocument-click"]'
 # ---- File list / URL copy (properties pane) ----
 FILE_ROW = "tr.prop-view-file-list-item"
 URL_COPY_BTN = "div#prop-view-document-btn-url-copy"
+FILE_SAVE_BTN = 'div[events="document-fileSave-click"]'
