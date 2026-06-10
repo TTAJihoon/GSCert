@@ -1,304 +1,302 @@
-# 점검규칙 JSON 매뉴얼
+# 점검규칙 관리 매뉴얼
 
 ## 목적
 
-download-review의 각 산출물 점검 규칙은 `workflow.db`의 `inspection_rule` 테이블에 저장된다. 규칙별 세부 조건은 `config_json`에 JSON으로 들어간다.
+이 문서는 download-review 점검규칙의 단일 기준 문서다. 1번부터 앞으로 추가될 모든 점검규칙은 이 문서에서 같은 형식으로 관리한다.
 
-이 구조의 목표는 명확하다. 문서에서 찾아가는 방식은 같고 값만 달라지는 경우, Python 코드를 계속 수정하지 않고 JSON만 바꿔 빠르게 조정할 수 있게 하는 것이다.
+`main/docs/05_zip_inspection.md`는 큰 설계 흐름을 설명하는 문서이고, 최신 세부 규칙의 원본은 이 문서로 본다.
 
-## 관련 문서와 코드
+## 관련 코드와 문서
 
 | 항목 | 위치 |
 | --- | --- |
-| 이 매뉴얼 | `main/docs/19_inspection_rule_manual.md` |
-| 산출물 점검 설계 원문 | `main/docs/05_zip_inspection.md` |
+| 규칙 원본 문서 | `main/docs/19_inspection_rule_manual.md` |
+| 산출물 점검 설계 | `main/docs/05_zip_inspection.md` |
 | DB 구조 | `main/docs/02_database_design.md` |
 | 규칙 seed 명령 | `main/management/commands/seed_download_review_rules.py` |
-| 검사 엔진 | `main/views/review/ecm_download_review_inspection.py` |
+| 점검 엔진 | `main/views/review/ecm_download_review_inspection.py` |
 | 결과 write-back | `main/views/review/ecm_reference_db.py` |
 | Codex skill 요약 | `main/docs/codex_skills/gscert-download-review-maintainer/references/rules.md` |
 
-## 전체 흐름
+## 규칙 상태
 
-1. worker가 프로젝트 산출물을 다운로드하고 zip 또는 폴더를 확인한다.
+| 상태 | 의미 |
+| --- | --- |
+| `구현됨` | 현재 코드와 DB seed에 반영되어 실행 가능한 규칙 |
+| `정의 확정` | 요구사항은 확정됐지만 아직 코드 미구현인 규칙 |
+| `정의 중` | 추가 질문이나 샘플 확인이 필요한 규칙 |
+| `연결 예정` | 다른 규칙 정의 또는 구현 이후 연결할 항목 |
+
+## 공통 실행 흐름
+
+1. worker가 프로젝트 산출물 zip 또는 다운로드 폴더를 확인한다.
 2. `inspection_rule`에서 `enabled=True`인 규칙을 `sort_order` 순서로 읽는다.
-3. 각 규칙의 `rule_type`에 맞는 Python 검사 함수가 실행된다.
-4. 검사 함수는 `config_json`의 폴더, 파일명, 확장자, 개수, 문서 내용 조건을 사용한다.
-5. 결과는 `inspection_result`에 저장된다.
-6. `config_json.artifact_column`이 `ecm_list` 산출물 컬럼과 매핑되면 해당 컬럼에 `O` 또는 `X`가 write-back 된다.
+3. 각 규칙은 `rule_type`에 맞는 검사 함수로 실행된다.
+4. 검사 결과는 규칙별로 `inspection_result`에 저장한다.
+5. 모든 규칙이 통과하면 프로젝트 점검결과는 `완료`, 하나라도 부적합이면 `수정 필요`가 된다.
+6. 작업 자체가 실패하면 프로젝트 점검결과는 `보류`가 되며, 규칙별 `O/X` write-back은 수행하지 않는다.
+7. `config_json.artifact_column`이 `ecm_list` 산출물 컬럼과 매핑되면 해당 컬럼에 `O` 또는 `X`를 write-back한다.
 
-## DB 필드
+## 공통 변수
 
-`inspection_rule`의 주요 필드는 다음과 같다.
-
-| 필드 | 설명 |
-| --- | --- |
-| `code` | 규칙 코드. 현재 산출물 규칙은 `artifact_01`, `artifact_02` 형식 |
-| `name` | UI와 결과에 보이는 규칙명 |
-| `target_file_pattern` | 예전/단순 규칙용 파일명 패턴. 현재 실제 1~5번은 주로 JSON을 사용 |
-| `target_file_type` | 기본 확장자 힌트. `pdf`, `docx`, `xlsx`, `any` 등 |
-| `rule_type` | 어떤 검사 함수를 쓸지 결정하는 값 |
-| `config_json` | 실제 규칙 조건 JSON |
-| `severity` | 오류 수준. 현재는 주로 `error` |
-| `enabled` | 규칙 활성 여부 |
-| `version` | seed 버전. 실제 규칙은 현재 `actual-1` |
-| `sort_order` | 실행 순서 |
-
-결과는 `inspection_result`에 저장된다.
-
-| 필드 | 설명 |
-| --- | --- |
-| `rule_code`, `rule_name` | 실행 당시 규칙 식별 정보 |
-| `status` | `pass`, `fail`, `warning`, `error` |
-| `expected` | 기대 조건 요약 |
-| `actual` | 실제 매칭 결과 요약 |
-| `message` | 사용자에게 보일 메시지 |
-| `file_path`, `file_name` | 대표 파일 경로와 파일명 |
-| `raw_detail_json` | 내부 확인용 상세 증거. 매칭 파일, 선택 폴더, content check 상세 포함 |
-
-## 현재 실제 구현된 규칙
-
-| 번호 | code | 산출물 컬럼 | rule_type | 핵심 조건 |
-| --- | --- | --- | --- | --- |
-| 1 | `artifact_01` | 계약서 | `required_artifact_file` | 계약 폴더, 계약서+프로젝트번호, `.pdf`, 1개 |
-| 2 | `artifact_02` | 합의서(PDF) | `document_artifact_check` | 계약 폴더, 합의서+프로젝트번호, `.docx` 1개와 `.pdf` 1개, 시험신청번호 일치 |
-| 3 | `artifact_03` | 수수료산정표 | `required_artifact_file` | 계약 폴더, 수수료산정표+프로젝트번호, `.xlsx`, 1개 |
-| 4 | `artifact_04` | 시험환경구성도 | `required_artifact_file` | 시험/계획 폴더, 구성도+프로젝트번호, 확장자 무관, 1개 |
-| 5 | `artifact_05` | 품질특성별제품정보기재사항 | `document_artifact_check` | 시험/계획 폴더, 품질특성별+프로젝트번호, `.docx`, 제목/날짜 검사 |
-
-## 공통 JSON 키
-
-| 키 | 사용 위치 | 설명 |
+| 변수 | 값 | 원천 |
 | --- | --- | --- |
-| `artifact_column` | 모든 실제 산출물 규칙 | write-back할 `ecm_list` 산출물 컬럼명 |
-| `folder_keyword_chain` | 파일 탐색 | 폴더 경로에서 순서대로 찾아야 하는 키워드 목록 |
-| `filename_keywords` | 파일명 탐색 | 파일명에 모두 들어가야 하는 키워드 목록 |
-| `extensions` | 파일 탐색 | 허용 확장자. 비우면 확장자 무관 |
-| `exact_count` | 파일 개수 | 정확히 몇 개여야 하는지 |
-| `min_count` | 파일 개수 | 최소 몇 개 이상이어야 하는지. `exact_count`가 있으면 우선 |
-| `required_files` | 문서 검사 | 같은 파일명 조건으로 잡힌 파일 중 확장자별 필수 개수 |
-| `content_checks` | 문서 검사 | docx/pdf 내부 내용 검사 목록 |
-| `missing_message` | 실패 메시지 | 파일이 없거나 필수 조건이 빠졌을 때 |
-| `multiple_message` | 실패 메시지 | `exact_count`보다 많이 잡혔을 때 |
-| `pass_message` | 성공 메시지 | 규칙 통과 시 표시 |
+| `{project_number}` | 프로젝트 번호 | `DownloadReviewProject.project_number` |
+| `{프로젝트번호}` | 프로젝트 번호 | `DownloadReviewProject.project_number` |
+| `{product}` | 버전 값을 제거한 제품명 | `ecm_row_json["제품명"]` 또는 `ecm_row_json["product"]` |
+| `{제품명}` | 버전 값을 제거한 제품명 | `ecm_row_json["제품명"]` 또는 `ecm_row_json["product"]` |
+| `{버전}` | 제품명 끝부분에서 추출한 버전 | 제품명 파생값 |
+| `{pl}` | 시험PL | `ecm_row_json["시험PL"]` 또는 `ecm_row_json["pl"]` |
+| `{PL}` | 시험PL | `ecm_row_json["시험PL"]` 또는 `ecm_row_json["pl"]` |
+| `{wd}` | WD | `ecm_row_json["WD"]` 또는 `ecm_row_json["wd"]` |
+| `{WD}` | WD | `ecm_row_json["WD"]` 또는 `ecm_row_json["wd"]` |
+| `{시작일}` | 시험 시작일 | `reference.db.sw_data`에서 `시험번호 = {프로젝트번호}`인 행의 `시작일자` |
+| `{종료일}` | 시험 종료일 | `reference.db.sw_data`에서 `시험번호 = {프로젝트번호}`인 행의 `종료일자` |
+| `{연도}` | 프로젝트 연도 | `{프로젝트번호}`의 `TTA-YY-xxxxx`에서 `20YY`로 추출 |
 
-## 변수 치환
+### 변수 세부 규칙
 
-JSON 문자열에는 프로젝트 기준정보를 넣을 수 있다.
+- `{버전}`은 제품명 끝부분에서 `v`, `V`, `ver`, `VER`, `version` 등으로 시작하는 버전 값을 우선 추출한다.
+- 버전 패턴이 없으면 제품명의 마지막 공백 이후 마지막 값을 `{버전}`으로 본다.
+- 제품명에 공백이 없고 버전 패턴도 없으면 `{버전}`은 찾지 못한 것으로 처리한다.
+- `{제품명}`과 `{product}`는 원래 제품명에서 `{버전}`으로 추출된 부분을 제거한 값이다.
+- `{시작일}`과 `{종료일}`은 `reference.db`에서 기준 행을 찾지 못하거나 값이 비어 있으면 기준정보 없음으로 실패 처리한다.
+- `{시작일}` 날짜 형식은 `yyyy.mm.dd.`를 기준으로 한다.
 
-| 플레이스홀더 | 값 |
-| --- | --- |
-| `{project_number}`, `{프로젝트번호}` | 프로젝트 번호 |
-| `{product}`, `{제품명}` | 제품명 |
-| `{pl}`, `{PL}` | 시험PL |
-| `{wd}`, `{WD}` | Google Sheet F열에서 가져온 WD |
-
-예를 들어 `filename_keywords`에 `["합의서", "{project_number}"]`를 넣으면 실제 검사 시 `["합의서", "TTA-26-00266"]`처럼 바뀐다.
-
-## 폴더와 파일 매칭 방식
+## 공통 폴더 탐색 방식
 
 `folder_keyword_chain`은 폴더 경로에서 키워드를 순서대로 찾는다.
 
-예를 들어 `["시험", "계획"]`이면 경로 중 먼저 `시험`이 들어간 폴더를 찾고, 그 뒤에서 `계획`이 들어간 폴더를 찾는다. 조건을 만족하는 첫 폴더가 선택되면 그 하위 파일만 검사한다.
+예를 들어 `["시험", "계획"]`이면 먼저 `시험`이 포함된 폴더를 찾고, 그 하위에서 `계획`이 포함된 폴더를 찾는다. 조건을 만족하는 폴더가 선택되면 해당 폴더 아래 파일을 검사한다.
 
-`filename_keywords`는 파일명에 모든 키워드가 포함되는지 본다. 키워드 순서는 상관없다.
+같은 조건을 만족하는 폴더가 여러 개일 수 있으면 실제 샘플로 확인하고, 필요한 경우 추가 키워드 또는 선택 기준을 별도로 정의한다.
 
-`extensions`는 확장자를 제한한다. `[]` 또는 생략된 확장자가 `any`인 경우 확장자 제한을 두지 않는다.
+## 공통 파일 매칭 방식
 
-## rule_type: required_artifact_file
+- `filename_keywords`의 모든 키워드가 파일명에 포함되어야 한다.
+- 키워드 순서는 상관없다.
+- `extensions`가 비어 있으면 확장자를 제한하지 않는다.
+- `exact_count`가 있으면 정확한 파일 개수를 요구한다.
+- `min_count`는 최소 파일 개수를 요구하며, `exact_count`가 있으면 `exact_count`가 우선이다.
+- 사용자가 보는 경로는 서버 절대경로가 아니라 프로젝트 번호가 포함된 하위 경로를 우선 표시한다.
 
-파일 존재, 폴더, 파일명, 확장자, 개수만 확인하는 규칙이다.
+## 저장 산출물
 
-계약서 규칙 예시는 다음과 같다.
+| 산출물 | 저장/표시 정책 |
+| --- | --- |
+| PDF 1페이지 캡처 | 규칙 결과에서 버튼으로 조회할 수 있게 저장한다. |
+| Excel 영역 이미지 | 규칙 결과에서 버튼으로 조회할 수 있게 저장한다. |
+| 사용자용 오류 메시지 | `inspection_result.message`, `expected`, `actual`에 저장한다. |
+| 상세 증거 | `inspection_result.raw_detail_json`에 저장한다. |
+| 내부 stack trace | 사용자에게 노출하지 않고 관리자 로그에 저장한다. |
 
-```json
-{
-  "artifact_column": "계약서",
-  "folder_keyword_chain": ["계약"],
-  "filename_keywords": ["계약서", "{project_number}"],
-  "extensions": [".pdf"],
-  "exact_count": 1,
-  "missing_message": "파일이 없습니다.",
-  "pass_message": "계약서 PDF 파일을 확인했습니다."
-}
-```
+이미지 파일은 `workflow.db`에 직접 넣지 않고 별도 artifact 폴더에 저장하고, DB에는 조회용 메타데이터만 저장하는 것을 기본 방향으로 한다.
 
-자주 바꾸는 값은 `folder_keyword_chain`, `filename_keywords`, `extensions`, `exact_count`, `missing_message`, `multiple_message`, `pass_message`다.
+## 규칙 목록
 
-## rule_type: document_artifact_check
-
-파일 존재 검사에 더해 docx/pdf 내부 내용을 확인하는 규칙이다.
-
-합의서 규칙 예시는 다음과 같다.
-
-```json
-{
-  "artifact_column": "합의서(PDF)",
-  "folder_keyword_chain": ["계약"],
-  "filename_keywords": ["합의서", "{project_number}"],
-  "required_files": [
-    {"extensions": [".docx"], "exact_count": 1},
-    {"extensions": [".pdf"], "exact_count": 1}
-  ],
-  "content_checks": [
-    {
-      "type": "docx_table_next_cell_equals",
-      "extensions": [".docx"],
-      "label": "시험신청번호",
-      "expected": "{project_number}",
-      "failure_message": "프로젝트 번호가 맞지 않습니다."
-    },
-    {
-      "type": "pdf_first_page_label_value_contains",
-      "extensions": [".pdf"],
-      "label": "시험신청번호",
-      "expected": "{project_number}",
-      "line_window": 3,
-      "failure_message": "프로젝트 번호가 맞지 않습니다."
-    }
-  ],
-  "missing_message": "필요한 합의서 파일이 없습니다.",
-  "pass_message": "합의서 docx/pdf와 시험신청번호를 확인했습니다."
-}
-```
-
-품질특성별제품정보기재사항처럼 특정 제목과 그 다음 문단의 날짜를 보는 규칙은 `docx_text_contains`와 `docx_next_paragraph_matches`를 함께 쓴다.
-
-## 문서 내용 검사 타입
-
-| type | 대상 | 주요 키 | 검사 방식 |
+| 번호 | 규칙명 | 상태 | write-back 컬럼 |
 | --- | --- | --- | --- |
-| `docx_table_next_cell_equals` | `.docx` | `label`, `expected` | Word 표에서 label 셀을 찾고 오른쪽 셀이 expected와 같은지 확인 |
-| `pdf_first_page_label_value_contains` | `.pdf` | `label`, `expected`, `page_index`, `line_window` | PDF 지정 페이지에서 label 주변 줄에 expected가 포함되는지 확인 |
-| `docx_text_contains` | `.docx` | `text` | Word 문단 중 text가 포함된 문단이 있는지 확인 |
-| `docx_next_paragraph_matches` | `.docx` | `after_text`, `regex` | after_text 문단 다음의 첫 비어 있지 않은 문단이 regex와 맞는지 확인 |
+| 1 | 계약서 | 구현됨 | `계약서` |
+| 2 | 합의서 | 구현됨 | `합의서(PDF)` |
+| 3 | 수수료산정표 | 구현됨 | `수수료산정표` |
+| 4 | 시험환경구성도 | 구현됨 | `시험환경구성도` |
+| 5 | 품질특성별제품정보기재사항 | 구현됨 | `품질특성별제품정보기재사항` |
+| 6 | 기능리스트 | 정의 확정 | `기능리스트` |
+| 7 | 시험계획서 | 정의 확정 | `시험계획서(PDF)` |
+| 8~18 | 추후 정의 | 정의 중 | 추후 정의 |
 
-공통 보정 옵션은 다음과 같다.
+## 1. 계약서
 
-| 키 | 설명 |
+- 상태: `구현됨`
+- code: `artifact_01`
+- rule_type: `required_artifact_file`
+- 점검 대상 폴더: `계약` 단어가 포함된 폴더
+- 파일명 조건: `계약서`, `{프로젝트번호}` 포함
+- 확장자/개수 조건: `.pdf` 정확히 1개
+- 문서 내부 검사 조건: 없음
+- 변수 사용 목록: `{프로젝트번호}`
+- 실패 메시지: `파일이 없습니다.`
+- 저장 산출물: 없음
+- `ecmlist.db` write-back 컬럼: `계약서`
+- 구현 메모: 현재 seed 규칙은 `{project_number}` 표기를 사용하지만 의미는 `{프로젝트번호}`와 같다.
+
+## 2. 합의서
+
+- 상태: `구현됨`
+- code: `artifact_02`
+- rule_type: `document_artifact_check`
+- 점검 대상 폴더: `계약` 단어가 포함된 폴더
+- 파일명 조건: `합의서`, `{프로젝트번호}` 포함
+- 확장자/개수 조건: `.docx` 1개, `.pdf` 1개
+- 문서 내부 검사 조건:
+  - `.docx` 표에서 `시험신청번호` 오른쪽 셀이 `{프로젝트번호}`와 일치해야 한다.
+  - `.pdf` 1페이지에서 `시험신청번호` 주변 텍스트에 `{프로젝트번호}`가 포함되어야 한다.
+- 변수 사용 목록: `{프로젝트번호}`
+- 실패 메시지:
+  - 파일 누락: `필요한 합의서 파일이 없습니다.`
+  - 내부값 불일치: `프로젝트 번호가 맞지 않습니다.`
+- 저장 산출물: `.pdf` 1페이지 캡처 이미지 저장 필요
+- `ecmlist.db` write-back 컬럼: `합의서(PDF)`
+- 구현 메모: 파일/내용 검사는 구현됨. PDF 캡처 저장 및 UI 조회 버튼은 산출물 저장 기능과 함께 보강한다.
+
+## 3. 수수료산정표
+
+- 상태: `구현됨`
+- code: `artifact_03`
+- rule_type: `required_artifact_file`
+- 점검 대상 폴더: `계약` 단어가 포함된 폴더
+- 파일명 조건: `수수료산정표`, `{프로젝트번호}` 포함
+- 확장자/개수 조건: `.xlsx` 정확히 1개
+- 문서 내부 검사 조건: 없음
+- 변수 사용 목록: `{프로젝트번호}`
+- 실패 메시지: `파일이 없습니다.`
+- 저장 산출물: 없음
+- `ecmlist.db` write-back 컬럼: `수수료산정표`
+- 구현 메모: 현재 `.xlsx`만 허용한다.
+
+## 4. 시험환경구성도
+
+- 상태: `구현됨`
+- code: `artifact_04`
+- rule_type: `required_artifact_file`
+- 점검 대상 폴더: `시험` 단어가 포함된 폴더 하위의 `계획` 단어가 포함된 폴더
+- 파일명 조건: `구성도`, `{프로젝트번호}` 포함
+- 확장자/개수 조건: 확장자 제한 없음, 정확히 1개
+- 문서 내부 검사 조건: 없음
+- 변수 사용 목록: `{프로젝트번호}`
+- 실패 메시지:
+  - 파일 누락: `파일이 없습니다.`
+  - 여러 개 존재: `시험환경구성도 파일이 여러개 존재함`
+- 저장 산출물: 없음
+- `ecmlist.db` write-back 컬럼: `시험환경구성도`
+- 구현 메모: 파일 개수만 판정한다.
+
+## 5. 품질특성별제품정보기재사항
+
+- 상태: `구현됨`
+- code: `artifact_05`
+- rule_type: `document_artifact_check`
+- 점검 대상 폴더: `시험` 단어가 포함된 폴더 하위의 `계획` 단어가 포함된 폴더
+- 파일명 조건: `품질특성별`, `{프로젝트번호}` 포함
+- 확장자/개수 조건: `.docx` 정확히 1개
+- 문서 내부 검사 조건:
+  - 문서에 `({프로젝트번호}) 품질특성별 시험대상제품 정보 기재사항` 문장이 있어야 한다.
+  - 위 제목 다음 문단이 날짜 형식이어야 한다.
+- 변수 사용 목록: `{프로젝트번호}`
+- 실패 메시지:
+  - 파일명/파일 누락: `파일명이 잘못되었습니다.`
+  - 제목 오류: `1페이지 제목이 잘못되었습니다.`
+  - 날짜 오류: `1페이지 날짜가 잘못되었습니다.`
+- 저장 산출물: 없음
+- `ecmlist.db` write-back 컬럼: `품질특성별제품정보기재사항`
+- 구현 메모: 공백 제거 비교를 사용한다.
+
+## 6. 기능리스트
+
+- 상태: `정의 확정`
+- code: `artifact_06` 예정
+- rule_type: Excel 문서 검사 유형 추가 예정
+- 점검 대상 폴더: `시험` 단어가 포함된 폴더 하위의 `계획` 단어가 포함된 폴더
+- 파일명 조건: `기능`, `{프로젝트번호}` 포함
+- 확장자/개수 조건: `.xls` 또는 `.xlsx`, 정확히 1개
+- 문서 내부 검사 조건:
+  - 해당 Excel 파일의 시트가 정확히 1개여야 한다.
+  - 파일 내에 `{프로젝트번호} 기능리스트` 문장이 있어야 한다.
+  - `작성자`라는 단어가 작성된 같은 셀에 `{PL}`이 포함되어야 한다.
+  - A열에서 `대분류`가 작성된 셀을 찾고, 그 셀 기준 오른쪽과 아래로 값이 있는 모든 영역을 캡처한다.
+- 변수 사용 목록: `{프로젝트번호}`, `{PL}`
+- 실패 메시지:
+  - 파일 누락: `파일이 없습니다.`
+  - 시트 2개 이상: `불필요한 시트가 존재`
+  - 시험번호 또는 작성자 오류: `시험번호 또는 작성자가 잘못 작성됨`
+- 저장 산출물: `대분류` 기준 표 영역 스크린샷
+- `ecmlist.db` write-back 컬럼: `기능리스트`
+- 구현 메모:
+  - `.xls`와 `.xlsx`를 모두 읽을 수 있는 parser가 필요하다.
+  - Excel 영역 이미지는 artifact 폴더에 저장하고, 결과 상세 팝업에서 버튼으로 조회할 수 있게 한다.
+
+## 7. 시험계획서
+
+- 상태: `정의 확정`
+- code: `artifact_07` 예정
+- rule_type: Word/PDF 복합 문서 검사 유형 추가 예정
+- 점검 대상 폴더: `시험` 단어가 포함된 폴더 하위의 `계획` 단어가 포함된 폴더
+- 파일명 조건: `계획서`, `{프로젝트번호}` 포함
+- 확장자/개수 조건: `.docx` 1개, `.pdf` 1개
+- 문서 내부 검사 조건:
+  - `.docx` 첫 번째 표의 1행 2열 값이 `{시작일}`과 정확히 일치해야 한다.
+  - 첫 번째 표의 3행 2열 값에 담당자 expected 값이 포함되어야 한다. 현재 기본 expected 값은 `김진영`이다.
+  - 첫 번째 표의 4행 2열 값에 `{PL}`이 포함되어야 한다.
+  - `.docx` 두 번째 표에서 `소프트웨어 명` 오른쪽 칸은 `{제품명}`과 일치해야 한다.
+  - 같은 표에서 `버전` 오른쪽 칸은 `{버전}`과 일치해야 한다.
+  - 같은 표에서 `시험신청번호` 오른쪽 칸은 `{프로젝트번호}`와 일치해야 한다.
+  - `5.1 형상항목 식별 규칙` 문장 다음에 나오는 표에서 `형상항목 ID`가 작성된 열을 찾고, 헤더 아래 비어 있지 않은 모든 값에 `{프로젝트번호}`가 포함되어야 한다.
+  - `2.2 시험일정` 문장 다음에 나오는 표에서 `WD`라고 작성된 열의 값이 위에서부터 `1`, `1`, `{WD}-3`, `1`이어야 한다.
+  - `.docx` 바닥글에 `Copyright {연도} TTA`가 정확히 포함되어야 한다.
+  - `<세부사양>` 다음 표는 13번 시험결과서의 `<세부사양>` 다음 표와 일치해야 한다. 이 검사는 13번 규칙 정의 후 연결한다.
+- 변수 사용 목록: `{프로젝트번호}`, `{제품명}`, `{버전}`, `{시작일}`, `{PL}`, `{WD}`, `{연도}`
+- 실패 메시지:
+  - 파일 누락: 존재하지 않는 파일 통보
+  - 첫 번째 표 날짜 오류: `시험계획서 날짜가 잘못 작성됨`
+  - 담당자 오류: `시험계획서 담당자가 잘못 작성됨`
+  - PL 오류: `시험계획서 PL이 잘못 작성됨`
+  - 제품정보 오류: `제품정보가 틀림`
+  - 형상항목 ID 오류: `형상항목 ID가 잘못 작성됨`
+  - 시험일정 WD 오류: `시험일정 WD가 틀림`
+  - 바닥글 오류: `바닥글 Copyright가 잘못 작성됨`
+  - 세부사양 비교 오류: `시험환경 세부사양 표가 결과서와 다름`
+- 저장 산출물: `.pdf` 1페이지 캡처 이미지
+- `ecmlist.db` write-back 컬럼: `시험계획서(PDF)`
+- 구현 메모:
+  - 첫 번째 표의 좌표는 사람이 보는 기준인 1행 1열부터 계산한다.
+  - 담당자 expected 값은 규칙 JSON에 둔다.
+  - `Copyright {연도} TTA` 검사는 대소문자와 공백을 모두 정확히 비교한다.
+  - `<세부사양>` 표 비교는 LLM 사용 예정이며 13번 시험결과서 규칙 정의 후 연결한다.
+
+## 연결 예정 항목
+
+| 항목 | 상태 | 메모 |
+| --- | --- | --- |
+| 7번 시험계획서 `<세부사양>` 표 비교 | 연결 예정 | 13번 시험결과서 규칙의 대상 파일과 표 추출 기준이 정의된 뒤 연결한다. |
+| PDF/Excel 캡처 조회 | 정의 확정 | 규칙 결과 상세 팝업에서 버튼으로 조회할 수 있게 artifact 저장소와 API를 연결한다. |
+| 8~18번 규칙 | 정의 중 | 새 규칙을 받을 때마다 이 문서의 규칙 목록에 같은 포맷으로 추가한다. |
+
+## rule_type 참고
+
+현재 구현된 주요 `rule_type`은 다음과 같다.
+
+| rule_type | 용도 |
 | --- | --- |
-| `remove_whitespace` | 모든 공백을 제거하고 비교 |
-| `normalize_whitespace` | 여러 공백을 하나로 줄여 비교. 일부 비교는 기본값이 true |
-| `failure_message` | 해당 content check 실패 시 메시지 |
-| `missing_message` | 해당 확장자의 검사 대상 파일이 없을 때 메시지 |
-| `pass_message` | 해당 content check 성공 시 메시지 |
+| `required_artifact_file` | 폴더, 파일명, 확장자, 개수 조건만 검사 |
+| `document_artifact_check` | 파일 조건과 docx/pdf 내부 조건을 함께 검사 |
 
-## JSON만 바꾸면 되는 경우
-
-| 변경 내용 | JSON 수정만으로 가능 |
-| --- | --- |
-| 폴더명이 조금 달라짐 | `folder_keyword_chain` 변경 |
-| 파일명 키워드가 바뀜 | `filename_keywords` 변경 |
-| 프로젝트번호 대신 제품명/PL/WD를 파일명에 넣어야 함 | `{product}`, `{pl}`, `{wd}` 플레이스홀더 사용 |
-| 확장자를 제한하거나 풀어야 함 | `extensions` 변경 |
-| 1개가 아니라 N개 이상 허용 | `exact_count` 제거 후 `min_count` 사용 |
-| docx 표 label명이 바뀜 | content check의 `label` 변경 |
-| PDF label 주변 검색 범위를 늘림 | `line_window` 변경 |
-| 날짜 형식 허용 범위가 바뀜 | `regex` 변경 |
-| 사용자 메시지를 바꿈 | `missing_message`, `multiple_message`, `pass_message`, `failure_message` 변경 |
-| 규칙을 잠시 끔 | `enabled=False` |
-
-## 코드 수정이 필요한 경우
-
-| 변경 내용 | 필요한 작업 |
-| --- | --- |
-| 새로운 문서 형식 검사 | `ecm_download_review_inspection.py`에 parser/check type 추가 |
-| Excel 내부 셀 값을 읽어야 함 | xlsx/xls reader 구현과 테스트 추가 |
-| 이미지/OCR 기반 검사 | OCR 또는 이미지 분석 경로 설계 필요 |
-| 여러 표/여러 페이지에서 의미 기반 비교 | 새 content check type 추가 |
-| ECM 다운로드 흐름 변경 | `03_webpage1_automation.md`, `04_agent_download.md` 기준으로 자동화 코드 수정 |
-| UI 결과 표시 형식 변경 | `08_ui_api_design.md`와 프론트 코드 수정 |
+새 규칙이 기존 `rule_type`으로 표현하기 어려우면 `ecm_download_review_inspection.py`에 작은 검사 유형을 추가한다. 복잡한 로직을 worker에 직접 넣지 않는다.
 
 ## 수정 절차
 
-### 1. 현재 규칙 확인
+1. 새 규칙 요구사항을 받으면 애매한 부분을 질문해 확정한다.
+2. 확정된 조건을 이 문서에 먼저 추가한다.
+3. 구현 전 상태는 `정의 확정` 또는 `정의 중`으로 둔다.
+4. 코드와 seed에 반영한 뒤 상태를 `구현됨`으로 변경한다.
+5. 규칙 결과가 `ecmlist.db`의 어느 컬럼에 write-back되는지 반드시 적는다.
+6. 다음 PC에서 이어서 작업할 수 있도록 `main/docs/00_next_step.md`에는 바로 다음 작업만 요약한다.
+
+## 검증 명령
+
+현재 활성 규칙 확인:
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py shell --settings=myproject.ui_mock_settings -c "from main.models import DownloadReviewRule; import json; [print(r.code, r.name, r.rule_type, r.enabled, json.dumps(r.config_json, ensure_ascii=False)) for r in DownloadReviewRule.objects.order_by('sort_order')]"
 ```
 
-### 2. DB 백업
-
-`workflow.db`는 로컬 실행 DB라 Git에 올리지 않는다. 직접 바꾸기 전에는 백업한다.
-
-```powershell
-Copy-Item main\data\workflow.db "main\data\workflow.db.bak-$(Get-Date -Format yyyyMMdd-HHmmss)"
-```
-
-### 3. 기본 규칙을 코드로 관리하는 경우
-
-기본 규칙은 `main/management/commands/seed_download_review_rules.py`의 `_actual_rule_spec()`에서 관리한다.
-
-수정 후 dry-run으로 반영 내용을 본다.
+실제 규칙 seed dry-run:
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py seed_download_review_rules --only-real --dry-run --settings=myproject.ui_mock_settings
 ```
 
-문제가 없으면 실제 DB에 반영한다.
+문서 핵심 항목 확인:
 
 ```powershell
-.\.venv\Scripts\python.exe manage.py seed_download_review_rules --only-real --enable --update-existing --settings=myproject.ui_mock_settings
+rg "상태:|기능리스트|시험계획서|Copyright \{연도\} TTA|\{시작일\}|\{버전\}" main/docs/19_inspection_rule_manual.md
 ```
-
-### 4. 로컬 DB만 임시 수정하는 경우
-
-긴급 확인용으로 로컬 `workflow.db`만 바꿀 수 있다. 다만 반복해서 쓸 변경이면 seed 명령의 기본 규칙도 같이 수정해야 한다.
-
-예시는 `artifact_01`의 계약서 파일명 키워드만 바꾸는 명령이다.
-
-```powershell
-.\.venv\Scripts\python.exe manage.py shell --settings=myproject.ui_mock_settings -c "from main.models import DownloadReviewRule; r=DownloadReviewRule.objects.get(code='artifact_01'); c=dict(r.config_json); c['filename_keywords']=['계약서','{project_number}']; r.config_json=c; r.save(update_fields=['config_json','updated_at'])"
-```
-
-### 5. 검증
-
-```powershell
-.\.venv\Scripts\python.exe manage.py test main.tests --settings=myproject.ui_mock_settings
-.\.venv\Scripts\python.exe manage.py check --settings=myproject.ui_mock_settings
-.\.venv\Scripts\python.exe manage.py seed_download_review_rules --only-real --dry-run --settings=myproject.ui_mock_settings
-git diff --check
-```
-
-샘플 zip 검증 기준은 `C:\test` 경로와 프로젝트 번호 `TTA-26-00266`이다. 현재 1~5번 실제 규칙은 이 샘플 기준으로 모두 통과한 상태다.
-
-## 자주 하는 수정 예시
-
-### 파일명이 `합의서`에서 `시험합의서`로 바뀌는 경우
-
-```json
-{
-  "filename_keywords": ["시험합의서", "{project_number}"]
-}
-```
-
-### 파일명에 WD도 포함되어야 하는 경우
-
-```json
-{
-  "filename_keywords": ["계약서", "{project_number}", "{WD}"]
-}
-```
-
-`{WD}` 값은 Google Sheet F열에서 `ecm_list.WD`로 들어온다. 값이 비어 있으면 해당 키워드는 검사에서 빠진다.
-
-### 날짜 형식을 더 엄격하게 하는 경우
-
-```json
-{
-  "type": "docx_next_paragraph_matches",
-  "after_text": "({project_number}) 품질특성별 시험대상제품 정보 기재사항",
-  "regex": "^\\d{4}\\.\\d{2}\\.\\d{2}\\.$",
-  "remove_whitespace": true,
-  "failure_message": "1페이지 날짜가 yyyy.mm.dd. 형식이 아닙니다."
-}
-```
-
-## 주의사항
-
-- `config_json.artifact_column`은 `ecm_list`의 산출물 컬럼명과 정확히 맞아야 write-back 된다.
-- `filename_keywords`는 모든 키워드가 파일명에 포함되어야 한다.
-- `folder_keyword_chain`은 첫 번째로 조건을 만족한 폴더를 선택한다. 같은 조건의 폴더가 여러 개라면 실제 샘플로 확인해야 한다.
-- 사용자에게 표시되는 경로는 서버 절대 경로가 아니라 프로젝트 번호가 포함된 상대적 표시 경로를 우선 사용한다.
-- 직접 DB를 수정한 내용은 seed 명령을 다시 실행하면 덮일 수 있다.
-- JSON으로 표현하기 어려운 새 검사 방식은 새 `rule_type` 또는 새 `content_check` 타입으로 구현한다.

@@ -17,6 +17,39 @@ Rules live in `workflow.db` through `DownloadReviewRule`:
 
 Rule results live in `DownloadReviewRuleResult`. Store both pass and fail results for every rule executed.
 
+## Canonical Rule Manual
+
+The source of truth for artifact rules is:
+
+```text
+main/docs/19_inspection_rule_manual.md
+```
+
+That document manages every rule from 1 through 18. When a new rule is discussed, update the manual first, then implement code and seed changes.
+
+Current rule status:
+
+| No. | Rule | Status | Artifact column |
+| --- | --- | --- | --- |
+| 1 | 계약서 | implemented | `계약서` |
+| 2 | 합의서 | implemented | `합의서(PDF)` |
+| 3 | 수수료산정표 | implemented | `수수료산정표` |
+| 4 | 시험환경구성도 | implemented | `시험환경구성도` |
+| 5 | 품질특성별제품정보기재사항 | implemented | `품질특성별제품정보기재사항` |
+| 6 | 기능리스트 | spec locked, not implemented | `기능리스트` |
+| 7 | 시험계획서 | spec locked, not implemented | `시험계획서(PDF)` |
+| 8-18 | TBD | defining | TBD |
+
+## Shared Placeholders
+
+- `{project_number}`, `{프로젝트번호}`: project number
+- `{product}`, `{제품명}`: product name after removing the parsed version
+- `{버전}`: version parsed from product name; if no version prefix exists, use the final whitespace-delimited token; if no whitespace exists, treat version as missing
+- `{pl}`, `{PL}`: 시험PL
+- `{wd}`, `{WD}`: WD
+- `{시작일}`, `{종료일}`: `reference.db.sw_data` dates matched by `시험번호 = {프로젝트번호}`
+- `{연도}`: `20YY` parsed from `TTA-YY-xxxxx`
+
 ## Draft Rules
 
 Draft rules are test scaffolding created by:
@@ -65,16 +98,7 @@ Current useful patterns include:
 - required artifact file (`required_artifact_file`)
 - document artifact check (`document_artifact_check`)
 
-Implemented real artifact rules:
-
-- 1번 계약서
-- 2번 합의서
-- 3번 수수료산정표
-- 4번 시험환경구성도
-- 5번 품질특성별제품정보기재사항
-
-Rule details are stored in `inspection_rule.config_json`, including folder keyword chains,
-file-name keywords, extension counts, labels, expected values, regexes, and user-facing messages.
+Rule details are stored in `inspection_rule.config_json`, including folder keyword chains, file-name keywords, extension counts, labels, expected values, regexes, and user-facing messages.
 
 Use this command to seed only implemented real rules:
 
@@ -83,6 +107,11 @@ Use this command to seed only implemented real rules:
 ```
 
 Prefer extending the inspection engine with small, explicit rule types rather than placing complex logic directly in the worker.
+
+## Pending Rule Notes
+
+- Rule 6 기능리스트 uses `.xls/.xlsx`, requires one sheet, checks `{프로젝트번호} 기능리스트`, checks `{PL}` in the same cell as `작성자`, and stores an image of the table area starting at `대분류`.
+- Rule 7 시험계획서 uses `.docx` plus `.pdf`, checks the first and second tables, checks `형상항목 ID`, checks the `WD` schedule column, checks exact footer text `Copyright {연도} TTA`, stores a PDF first-page image, and defers `<세부사양>` comparison until rule 13 is defined.
 
 ## LLM Review Interface
 
@@ -105,15 +134,15 @@ Policy:
 - Keep simple file existence/name/extension checks as deterministic program rules.
 - Use LLM only for rules that require document-text interpretation.
 - Do not add real API calls until provider, endpoint, key storage, timeout, retry, logging, and masking policies are decided.
-- Treat `warning` as "manual review needed"; do not write it as `O/X` in `ecmlist.db`.
+- Treat `warning` as manual review needed; do not write it as `O/X` in `ecmlist.db`.
 - When LLM API is later connected, add a provider adapter rather than changing rule storage or UI contracts.
 
 ## Rule Implementation Checklist
 
-1. Add or update rule evaluation code in `ecm_download_review_inspection.py`.
-2. Ensure each result has user-friendly `expected`, `actual`, and `message`.
-3. Keep internal details in `raw_detail_json` or admin logs.
-4. Map one actual rule to one `ecmlist.db` artifact column when applicable.
-5. Add focused tests in `main/tests.py`.
-6. Update `main/docs/05_zip_inspection.md`, `08_ui_api_design.md`, and `00_next_step.md` when behavior changes.
-
+1. Update `main/docs/19_inspection_rule_manual.md`.
+2. Add or update rule evaluation code in `ecm_download_review_inspection.py`.
+3. Ensure each result has user-friendly `expected`, `actual`, and `message`.
+4. Keep internal details in `raw_detail_json` or admin logs.
+5. Map one actual rule to one `ecmlist.db` artifact column when applicable.
+6. Add focused tests.
+7. Update `main/docs/00_next_step.md` with only the immediate next work.
