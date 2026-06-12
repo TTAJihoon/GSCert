@@ -4,7 +4,10 @@
 
 ## 현재 기준
 
-- 브랜치: `codex-job-runner-persistence`
+- 작업 브랜치: `codex-job-runner-persistence`
+- 점검규칙 수정 브랜치: `download-review-inspection-fixes` (커밋 `6e699c1`, base `f5d285f`)
+  - 이 브랜치는 test.zip 샘플 검증으로 찾은 버그/폴더 매칭 수정이 들어 있다. `codex-job-runner-persistence`(27560e6)보다 base가 1커밋 뒤이므로, 메인 워크트리에서 `git merge download-review-inspection-fixes` 로 합친다.
+  - 아직 GitHub에 push되지 않았다. 원격/모바일 세션으로 이어가려면 `git push -u origin download-review-inspection-fixes` 필요.
 - 다운로드 검토 페이지: `http://127.0.0.1:8000/download-review/`
 - 서버 실행 예시: `.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload`
 - 테스트용 작업 시작 가능 시간: 현재 `00:00-24:00`
@@ -44,7 +47,22 @@ Copy-Item -Recurse -Force `
 4. `main/docs/21_developer_change_manual.md`
 5. `main/docs/15_open_decisions.md`
 
-## 최근 완료 작업
+## 이번 세션 변경 (`download-review-inspection-fixes`)
+
+`test.zip`(TTA-26-00266) 샘플로 활성 규칙 17개를 실제 실행 검증하고 발견한 버그를 수정했다.
+
+- 엔진(`ecm_download_review_inspection.py`):
+  - `_docx_all_text`/`_docx_footer_text`: `w:t` run을 문단 단위로 공백 없이 이어붙여 Word가 쪼갠 숫자(`2026`→`20 2 6`)로 날짜·프로젝트번호 검사가 깨지던 버그 수정.
+  - `_docx_all_text`: 머리말(`header*`)/바닥글(`footer*`)도 포함.
+  - `_build_rule_context`: 회사명/제품명 줄바꿈 값에서 첫 줄만 사용(`_first_line`).
+  - `_read_xls_workbook`+`_xls_print_headers`: `.xls` 인쇄 머리글을 BIFF HEADER(0x14) 레코드 직접 파싱으로 시트별 추출(xlrd가 노출 안 함). Rule 11 머리글 검사.
+  - `_numeric_sequence_last_row`: 숫자 뒤 요약행이 와도 마지막 연속 숫자 행을 반환(Rule 11 기능별 점검표).
+  - `_check_checklist_cover`: 표지 날짜 정규화 비교(`_find_cell_with_date_range`), 검토자/작성자 분리 셀 허용.
+- seed(`seed_download_review_rules.py`): 15/16 폴더 `["인증관련"]`, 12번 `결함` 키워드 + 성능폴더 `min_entries=1`.
+- 문서 `19_inspection_rule_manual.md` 위 동작 반영. `xlrd` 설치 확인.
+- 검증: `test.zip` PASS 7/17. 남은 FAIL은 전부 (의도된 샘플 오류 5/17/18) + (현행 엄격 유지 결정 7 버전·10 환경) + (10 cascade로 9/11/16/15)로 설명됨.
+
+## 이전 완료 작업
 
 점검규칙과 산출물 조회 기반을 확장했다.
 
@@ -125,13 +143,20 @@ git diff --check
 
 ## 바로 다음 작업
 
-1. 14번 시험기록서를 구현한다.
+1. 14번 시험기록서를 구현한다. (현재 `--only-real` seed에 없어 활성 규칙 17개뿐)
    - `시험 > 종료` 폴더에서 `시험기록서`와 `{프로젝트번호}`를 포함한 PDF 1개를 찾는다.
    - 사용자가 직접 확인할 수 있도록 다운로드형 산출물 버튼으로 제공한다.
-2. 14번 구현 후 실제 규칙 1~18번 중 14번을 제외한 빈틈이 없는지 seed와 통합 테스트를 다시 확인한다.
-3. 실제 샘플 zip 또는 live 다운로드 결과로 전체 규칙 순서를 검증한다.
+2. Rule 10 결함리포트의 `{R}`(수정전) 추출 버그를 조사·수정한다.
+   - `_defect_analysis_value(wbk, "수정전", offset_rows=5, offset_cols=0)`가 `test.zip` v3.0 `시험분석자료`에서 빈 값을 낸다(`{H}`는 정상). 시트 하단 요약표 레이아웃 확인 필요.
+   - Rule 10 환경 동일성 게이트 뒤라 현재 실제 실행엔 영향 없으나, 환경 검사 완화 시 노출되는 잠재 버그.
+3. 실제 샘플 zip 또는 live 다운로드 결과로 전체 규칙 순서를 다시 검증한다.
 
 ## 결정 필요
 
 1. 14번 시험기록서 PDF 제공 방식 확정이 필요하다.
    - 추천: 검사 결과는 파일 존재 여부만 자동 판정하고, 산출물 버튼은 `download=true`로 제공해 브라우저에서 바로 다운로드되게 한다.
+2. `download-review-inspection-fixes` 를 `codex-job-runner-persistence` 에 언제/어떻게 합칠지 (merge vs cherry-pick).
+
+## 검증 하니스 메모
+
+워커는 ECM 브라우저 자동화에 묶여 있어 zip 단독 검사 진입점이 없다. `test.zip` 으로 전체 규칙을 검증하려면 `_build_rule_context`+`_evaluate_rule` 루프를 `SimpleNamespace` project + `DownloadVerifyResult(files=[FileInfo(test.zip)])` 로 직접 호출하는 일회성 스크립트를 쓴다(`_inspection_files`가 최상위 zip을 자동 확장). 사전조건: `ecmlist.db`에 해당 프로젝트번호 행 존재(없으면 작업 생성 거부).
