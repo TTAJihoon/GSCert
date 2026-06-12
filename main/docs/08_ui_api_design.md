@@ -159,6 +159,7 @@ GET /api/job-projects/{job_project_id}/results/
 | GET | `/api/jobs/{job_id}/projects/` | 작업 내 프로젝트 목록 조회 |
 | POST | `/api/jobs/{job_id}/cancel/` | 예약/대기 작업 취소 |
 | GET | `/api/job-projects/{job_project_id}/results/` | 특정 작업 프로젝트의 규칙 결과 조회 |
+| GET | `/api/rule-results/{result_id}/artifacts/{artifact_id}/` | 규칙 결과 산출물 파일 조회 |
 | GET | `/api/projects/{project_number}/latest-results/` | 프로젝트 최신 규칙 결과 조회 |
 
 ## GET /api/projects/
@@ -449,6 +450,16 @@ Response:
       "expected": "프로젝트번호 포함",
       "actual": "TTA-26-00200",
       "message": "계약서 파일명이 기준을 만족합니다.",
+      "artifacts": [
+        {
+          "id": "pdf_first_page",
+          "label": "시험성적서 1페이지",
+          "kind": "image",
+          "file_name": "artifact_13_pdf_first_page.png",
+          "content_type": "image/png",
+          "download": false
+        }
+      ],
       "raw_detail": {},
       "created_at": "2026-05-14T13:48:00+09:00"
     }
@@ -457,6 +468,17 @@ Response:
 ```
 
 규칙 결과가 30개라면 통과/실패와 관계없이 30개 item을 반환한다.
+
+`artifacts`에는 UI에서 버튼으로 표시할 공개 메타데이터만 포함한다. 서버 내부 저장 경로나 stack trace는 포함하지 않는다.
+
+## GET /api/rule-results/{result_id}/artifacts/{artifact_id}/
+
+규칙 결과에 연결된 PDF 캡처 이미지, Excel 캡처 이미지, 수동 확인용 파일 등을 조회한다.
+
+- 조회 전용이다.
+- `inspection_result.raw_detail_json.artifacts`의 상대 경로만 사용한다.
+- 서버 절대경로는 응답하지 않는다.
+- 파일이 없거나 경로 검증에 실패하면 404 JSON 오류를 반환한다.
 
 ## GET /api/projects/{project_number}/latest-results/
 

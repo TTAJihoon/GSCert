@@ -11,6 +11,7 @@ from main.views.review.ecm_download_review_api import (
     jobs as download_review_jobs,
     latest_project_results as download_review_latest_project_results,
     projects as download_review_projects,
+    rule_result_artifact as download_review_rule_result_artifact,
 )
 
 
@@ -34,5 +35,6 @@ urlpatterns = [
     path("api/jobs/<uuid:job_id>/", download_review_job_detail, name="download_review_job_detail"),
     path("api/jobs/<uuid:job_id>/projects/", download_review_job_projects, name="download_review_job_projects"),
     path("api/job-projects/<uuid:job_project_id>/results/", download_review_job_project_results, name="download_review_job_project_results"),
+    path("api/rule-results/<uuid:result_id>/artifacts/<str:artifact_id>/", download_review_rule_result_artifact, name="download_review_rule_result_artifact"),
     path("api/projects/<str:project_number>/latest-results/", download_review_latest_project_results, name="download_review_latest_project_results"),
 ]

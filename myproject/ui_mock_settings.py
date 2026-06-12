@@ -64,6 +64,7 @@ ECM_AGENT_LOCK_PATH = BASE_DIR / "main" / "data" / "ecm_agent.lock"
 ECM_AGENT_LOCK_TIMEOUT_SECONDS = 600
 REFERENCE_DB_PATH = BASE_DIR / "main" / "data" / "ecmlist.db"
 REFERENCE_DB_PATH_2 = BASE_DIR / "main" / "data" / "ecmlist2.db"
+DOWNLOAD_REVIEW_ARTIFACT_DIR = BASE_DIR / "main" / "data" / "download_review_artifacts"
 REFERENCE_DB_TABLE = "ecm_list"
 DOWNLOAD_REVIEW_DEFAULT_CENTER = "sangam"
 DOWNLOAD_REVIEW_TIME_ZONE = "Asia/Seoul"

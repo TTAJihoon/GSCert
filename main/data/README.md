@@ -72,6 +72,7 @@ $env:GSCERT_WEEKLY_SOURCE_XLSX = "C:\Users\jh910\Downloads\Telegram Desktop\인�
 ## Git 제외
 
 - `workflow.db`: 작업 요청, 대기열, 진행상태, 로그 등 실행 이력 DB
+- `download_review_artifacts/`: PDF 캡처 이미지, Excel 캡처 이미지 등 점검 결과 상세 조회용 산출물 파일
 - `ecm_agent.lock`: ECM/agent 동시 접근 방지용 로컬 잠금 파일
 - `faiss_bge_m3_ko.idmap.index`, `ngram_table.npz`: 유틸리티가 생성하는 검색 인덱스
 

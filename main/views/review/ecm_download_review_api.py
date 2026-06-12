@@ -13,6 +13,7 @@ from main.views.review.ecm_download_review_jobs import (
     get_jobs_payload,
     get_latest_project_results_payload,
     get_project_results_payload,
+    get_rule_result_artifact_response,
     parse_json_body,
 )
 from main.views.review.ecm_reference_db import (
@@ -136,6 +137,16 @@ def job_project_results(request, job_project_id):
 @require_GET
 def latest_project_results(request, project_number):
     return _json_or_not_found(lambda: get_latest_project_results_payload(project_number, request.GET.get("center")))
+
+
+@require_GET
+def rule_result_artifact(request, result_id, artifact_id):
+    try:
+        return get_rule_result_artifact_response(result_id, artifact_id)
+    except DownloadReviewNotFoundError as exc:
+        response = JsonResponse(_error_payload(exc, str(exc)), status=exc.status_code, json_dumps_params={"ensure_ascii": False})
+        response["Cache-Control"] = "no-store"
+        return response
 
 
 def _error_payload(exc, message, details=None):
