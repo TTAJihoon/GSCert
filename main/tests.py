@@ -30,6 +30,7 @@ from main.views.review.ecm_reference_db import (
 )
 from main.views.review.ecm_download_review_worker import run_worker_once
 from main.views.review.ecm_download_review_inspection import (
+    _list_mismatches,
     cleanup_download_dir,
     get_rule_output_variables,
     run_download_inspection,
@@ -145,13 +146,17 @@ def _xlsx_bytes(*, rows=None, sheet_name="Sheet1"):
     return buffer.getvalue()
 
 
-def _xlsx_workbook_bytes(sheets):
+def _xlsx_workbook_bytes(sheets, *, header=None, footer=None):
     from openpyxl import Workbook
 
     workbook = Workbook()
     workbook.remove(workbook.active)
     for sheet_name, rows in sheets:
         worksheet = workbook.create_sheet(sheet_name)
+        if header is not None:
+            worksheet.oddHeader.center.text = header
+        if footer is not None:
+            worksheet.oddFooter.center.text = footer
         for row in rows:
             worksheet.append(row)
     buffer = BytesIO()
@@ -160,7 +165,7 @@ def _xlsx_workbook_bytes(sheets):
     return buffer.getvalue()
 
 
-def _defect_report_xlsx(project_number, sheets):
+def _defect_report_xlsx(project_number, sheets, *, header=None, footer=None):
     rows_by_sheet = []
     for sheet_name in sheets:
         if sheet_name in ("최종결함리포트", "시험분석자료"):
@@ -192,7 +197,7 @@ def _defect_report_xlsx(project_number, sheets):
                 ["", "", "7"],
             ])
         rows_by_sheet.append((sheet_name, rows))
-    return _xlsx_workbook_bytes(rows_by_sheet)
+    return _xlsx_workbook_bytes(rows_by_sheet, header=header, footer=footer)
 
 
 def _test_case_xlsx(
@@ -321,14 +326,15 @@ def _inspection_checklist_xlsx(
     return buffer.getvalue()
 
 
-def _quality_inspection_table_xlsx(project_number):
+def _quality_inspection_table_xlsx(project_number, *, score_overrides=None):
     from openpyxl import Workbook
 
+    score_overrides = score_overrides or {}
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = f"{project_number} 품질검사표"
     for index, row in enumerate(range(4, 88), start=1):
-        worksheet.cell(row=row, column=4, value=f"score-{index}")
+        worksheet.cell(row=row, column=4, value=score_overrides.get(index, f"score-{index}"))
     for index, row in enumerate(range(4, 37), start=1):
         worksheet.cell(row=row, column=5, value=f"quality-{index}")
 
@@ -339,31 +345,40 @@ def _quality_inspection_table_xlsx(project_number):
 
 
 def _quality_evaluation_report_docx(project_number, *, company="에이치소프트"):
-    quality_values = [f"quality-{index}" for index in range(4, 34)] + ["quality-1", "quality-2", "quality-3"]
-    quality_table = [["항목", "구분", "평가결과", "비고"]]
+    quality_values = [
+        *[f"quality-{index}" for index in range(4, 27)],
+        *[f"quality-{index}" for index in range(28, 34)],
+        "quality-1",
+        "quality-2",
+        "quality-3",
+    ]
+    quality_table = [["품질특성", "구분", "평가결과", "비고"]]
     for index, value in enumerate(quality_values, start=1):
         quality_table.append([f"항목{index}", "", value, ""])
 
+    paragraphs = [
+        f"{project_number} 품질평가보고서",
+        project_number,
+        project_number,
+        project_number,
+        project_number,
+        project_number,
+        "성  명 : 김  성  희",
+        "정  성  룡     (서명)",
+        "신청일자 : 2026년 5월 2일",
+        "계약일자 : 2026년 5월 3일",
+        "제품시험평가 : 2026년 5월 1일 ~ 2026년 5월 31일",
+        "품질인증심의위원회 : 2026년 6월 1일",
+        "<품질특성별 세부 평가결과>",
+    ]
+    blocks = [
+        *({"type": "paragraph", "text": paragraph} for paragraph in paragraphs),
+        {"type": "table", "rows": [["목차", "페이지"], ["품질특성별 세부 평가결과", "12"]]},
+        {"type": "table", "rows": quality_table},
+        {"type": "table", "rows": [["회사(기관)명", company]]},
+    ]
     return _docx_bytes(
-        paragraphs=[
-            f"{project_number} 품질평가보고서",
-            project_number,
-            project_number,
-            project_number,
-            project_number,
-            project_number,
-            "성  명 : 김  성  희",
-            "정  성  룡     (서명)",
-            "신청일자 : 2026년 5월 2일",
-            "계약일자 : 2026년 5월 3일",
-            "제품시험평가 : 2026년 5월 1일 ~ 2026년 5월 31일",
-            "품질인증심의위원회 : 2026년 6월 1일",
-            "<품질특성별 세부 평가결과>",
-        ],
-        tables=[
-            quality_table,
-            [["회사(기관)명", company]],
-        ],
+        blocks=blocks,
     )
 
 
@@ -388,6 +403,17 @@ class DownloadVerifyTests(SimpleTestCase):
         self.assertTrue(result.success)
         self.assertFalse(result.has_project_number_files)
         self.assertTrue(result.warnings)
+
+
+class DownloadReviewInspectionCompareTests(SimpleTestCase):
+    def test_list_mismatches_compares_numeric_text_by_value(self):
+        mismatches = _list_mismatches(
+            ["1", "1.0", "0.125", "1,000", "NA", "30분"],
+            ["1.00", "1", "0.1250", "1000.00", "NA", "30"],
+            start_index=2,
+        )
+
+        self.assertEqual(mismatches, [{"row": 7, "expected": "30분", "actual": "30"}])
 
 
 class LlmReviewInterfaceTests(SimpleTestCase):
@@ -1377,12 +1403,13 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(checklist_result.raw_detail_json["variables"]["측정항목별점수표"][0], "score-1")
         quality_result = results["품질검사표"]
         quality_values = quality_result.raw_detail_json["variables"]["품질부특성측정값"]
-        self.assertEqual(len(quality_values), 33)
+        self.assertEqual(len(quality_values), 32)
         self.assertEqual(quality_values[0], "quality-4")
+        self.assertNotIn("quality-27", quality_values)
         self.assertEqual(quality_values[-1], "quality-3")
         report_quality_result = results["품질평가보고서"]
         self.assertEqual(report_quality_result.raw_detail_json["project_number_count"], 6)
-        self.assertEqual(len(report_quality_result.raw_detail_json["quality_value_check"]["actual_values"]), 33)
+        self.assertEqual(len(report_quality_result.raw_detail_json["quality_value_check"]["actual_values"]), 32)
         for result in (agreement_result, feature_result, plan_result, report_result):
             self.assertEqual(len(result.raw_detail_json["artifacts"]), 1)
             self.assertTrue(
@@ -1461,6 +1488,65 @@ class DownloadReviewJobsApiTests(TestCase):
         )
         self.assertEqual(agreement_payload["artifacts"][0]["label"], "합의서 1페이지")
         self.assertEqual(feature_payload["artifacts"][0]["id"], "feature_list_area")
+
+    def test_image_screenshot_date_failure_lists_period_dates_and_count(self):
+        project_dir = Path(self.temp_dir.name) / "downloads"
+        project_dir.mkdir(parents=True)
+        master_db_path = Path(self.temp_dir.name) / "reference.db"
+        self._create_master_reference_db(master_db_path)
+        zip_path = project_dir / "TTA-26-00010.zip"
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            for folder_name, date_time in (
+                ("최초형상", (2026, 4, 30, 12, 0, 0)),
+                ("최종형상", (2026, 6, 1, 12, 0, 0)),
+            ):
+                for index in range(5):
+                    info = zipfile.ZipInfo(
+                        f"3.설계/제품스크린샷/{folder_name}/image-{index}.png",
+                        date_time=date_time,
+                    )
+                    archive.writestr(info, b"image")
+
+        DownloadReviewRule.objects.create(
+            code="artifact_8",
+            name="최초/최종형상RawData",
+            rule_type="image_screenshot_folder_date_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=80,
+            config_json={
+                "artifact_column": "최초/최종형상RawData",
+                "folder_keyword_chain": ["설계"],
+                "min_images_per_folder": 5,
+                "required_candidate_folder_count": 2,
+            },
+        )
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={"project_number": "TTA-26-00010"},
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+
+        with self.settings(DOWNLOAD_REVIEW_REFERENCE_MASTER_DB_PATH=master_db_path):
+            outcome = run_download_inspection(project, verify_result, {})
+
+        result = DownloadReviewRuleResult.objects.get(job_project=project)
+        message = "시험기간은 2026.05.01.~2026.05.31.인데 수정일자가 2026.04.30. 또는 2026.06.01.인 이미지가 10개 존재함"
+        self.assertEqual(outcome.failed_count, 1)
+        self.assertEqual(result.status, DownloadReviewRuleStatus.FAIL)
+        self.assertEqual(result.message, message)
+        self.assertEqual(result.actual, message)
+        self.assertEqual(result.raw_detail_json["out_of_range_date_counts"], {
+            "2026.04.30.": 5,
+            "2026.06.01.": 5,
+        })
 
     def test_defect_report_count_mismatch_uses_test_report_message(self):
         project_dir = Path(self.temp_dir.name) / "downloads"
@@ -1544,6 +1630,227 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(result.status, DownloadReviewRuleStatus.FAIL)
         self.assertEqual(result.message, "시험성적서의 결함 차수와 결함리포트 개수가 다름")
         self.assertEqual(result.actual, "결함리포트 Excel 파일 2개")
+
+    def test_defect_report_variables_are_kept_when_print_text_check_fails(self):
+        project_dir = Path(self.temp_dir.name) / "downloads"
+        project_dir.mkdir(parents=True)
+        master_db_path = Path(self.temp_dir.name) / "reference.db"
+        self._create_master_reference_db(master_db_path)
+        zip_path = project_dir / "TTA-26-00010.zip"
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            archive.writestr(
+                "4.시험/나.설계/TTA-26-00010 테스트케이스.xlsx",
+                _test_case_xlsx("TTA-26-00010", pl="김준호"),
+            )
+            archive.writestr(
+                "5.수행/TTA-26-00010 결함리포트 v1.0.xlsx",
+                _defect_report_xlsx("TTA-26-00010", ["1차 결함리포트"]),
+            )
+            archive.writestr(
+                "5.수행/TTA-26-00010 결함리포트 v2.0.xlsx",
+                _defect_report_xlsx("TTA-26-00010", ["1차 결함리포트", "2차 결함리포트"]),
+            )
+            archive.writestr(
+                "5.수행/TTA-26-00010 결함리포트 v3.0.xlsx",
+                _defect_report_xlsx(
+                    "TTA-26-00010",
+                    ["1차 결함리포트", "2차 결함리포트", "최종결함리포트", "시험분석자료"],
+                    footer="소프트웨어시험인증연구소",
+                ),
+            )
+            archive.writestr(
+                "6.시험/나.종료/TTA-26-00010 시험성적서.docx",
+                _docx_bytes(
+                    tables=[
+                        [["결함리포트 송부 1차: 2026.05.10 2차: 2026.05.20"]],
+                    ],
+                ),
+            )
+            archive.writestr(
+                "6.시험/나.종료/TTA-26-00010 시험성적서.pdf",
+                _pdf_bytes(["TTA-26-00010 시험성적서"]),
+            )
+
+        DownloadReviewRule.objects.create(
+            code="artifact_13",
+            name="시험성적서(PDF)",
+            rule_type="test_report_document_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=95,
+            config_json={
+                "artifact_column": "시험성적서(PDF)",
+                "folder_keyword_chain": ["시험", "종료"],
+                "filename_keywords": ["시험성적서", "{project_number}"],
+                "required_files": [
+                    {"extensions": [".docx"], "exact_count": 1},
+                    {"extensions": [".pdf"], "exact_count": 1},
+                ],
+                "spec_marker": "<세부사양>",
+                "pdf_artifact_label": "시험성적서 1페이지",
+            },
+        )
+        DownloadReviewRule.objects.create(
+            code="artifact_10",
+            name="결함리포트",
+            rule_type="defect_report_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=100,
+            config_json={
+                "artifact_column": "결함리포트",
+                "folder_keyword_chain": ["수행"],
+                "filename_keywords": ["결함리포트", "{project_number}"],
+                "extensions": [".xlsx", ".xls"],
+                "version_pattern": r"(?i)v(\d+)\.0",
+                "forbidden_footer_terms": [
+                    {
+                        "text": "소프트웨어시험인증연구소",
+                        "message": "결함리포트 바닥글에 '소프트웨어시험인증연구소'라는 단어가 잘못 작성됨",
+                    },
+                ],
+            },
+        )
+        DownloadReviewRule.objects.create(
+            code="artifact_9",
+            name="테스트케이스",
+            rule_type="test_case_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=110,
+            config_json={
+                "artifact_column": "테스트케이스",
+                "folder_keyword_chain": ["설계"],
+                "filename_keywords": ["테스트케이스", "{project_number}"],
+                "extensions": [".xlsx", ".xls"],
+                "exact_count": 1,
+                "title_text": "{project_number} 테스트케이스",
+                "author_label": "작성자:",
+                "reviewer_label": "검토자:",
+                "reviewer_expected": "김진영",
+                "date_text": "작성일: {시작일} ~ {종료일}",
+                "result_header": "상세 테스트 결과",
+                "residual_message": "잔여 결함이 작성되지 않음",
+            },
+        )
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={
+                "project_number": "TTA-26-00010",
+                "product": "테스트제품 v1.0",
+                "pl": "김준호",
+            },
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+        artifact_dir = Path(self.temp_dir.name) / "artifacts"
+
+        with self.settings(
+            DOWNLOAD_REVIEW_REFERENCE_MASTER_DB_PATH=master_db_path,
+            DOWNLOAD_REVIEW_ARTIFACT_DIR=artifact_dir,
+        ):
+            outcome = run_download_inspection(project, verify_result, {})
+
+        results = {
+            result.rule_name: result
+            for result in DownloadReviewRuleResult.objects.filter(job_project=project)
+        }
+        defect_result = results["결함리포트"]
+        test_case_result = results["테스트케이스"]
+
+        self.assertEqual(outcome.failed_count, 1)
+        self.assertEqual(defect_result.status, DownloadReviewRuleStatus.FAIL)
+        self.assertEqual(defect_result.raw_detail_json["variables"]["잔여결함수"], 2)
+        self.assertEqual(defect_result.raw_detail_json["variables"]["H"], "3")
+        self.assertEqual(defect_result.raw_detail_json["variables"]["R"], "7")
+        self.assertEqual(test_case_result.status, DownloadReviewRuleStatus.PASS)
+        self.assertEqual(test_case_result.raw_detail_json["residual_defect_check"]["expected_count"], 2)
+        self.assertEqual(get_rule_output_variables(project)["잔여결함수"], 2)
+
+    def test_quality_report_still_uses_quality_values_when_quality_table_score_compare_fails(self):
+        project_dir = Path(self.temp_dir.name) / "downloads"
+        project_dir.mkdir(parents=True)
+        master_db_path = Path(self.temp_dir.name) / "reference.db"
+        self._create_master_reference_db(master_db_path)
+        zip_path = project_dir / "TTA-26-00010.zip"
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            archive.writestr(
+                "4.시험/나.설계/TTA-26-00010 점검표.xlsx",
+                _inspection_checklist_xlsx("TTA-26-00010", pl="김준호", wd="10", high="", before=""),
+            )
+            archive.writestr(
+                "4.시험/나.설계/TTA-26-00010 점검표.pdf",
+                _pdf_bytes(["TTA-26-00010 점검표"]),
+            )
+            archive.writestr(
+                "6.시험/인증관련/TTA-26-00010 품질검사표.xlsx",
+                _quality_inspection_table_xlsx("TTA-26-00010", score_overrides={21: "NA"}),
+            )
+            archive.writestr(
+                "6.시험/인증관련/TTA-26-00010 품질평가보고서.docx",
+                _quality_evaluation_report_docx("TTA-26-00010"),
+            )
+
+        call_command("seed_download_review_rules", "--only-real", "--enable", stdout=StringIO())
+        DownloadReviewRule.objects.exclude(
+            name__in=["점검표(PDF)", "품질검사표", "품질평가보고서"]
+        ).update(enabled=False)
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={
+                "project_number": "TTA-26-00010",
+                "company": "에이치소프트",
+                "product": "테스트제품 v1.0",
+                "pl": "김준호",
+                "wd": "10",
+                "request_date": "2026.05.02.",
+                "contract_date": "2026.05.03.",
+                "cert_date": "2026.06.01.",
+            },
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+        artifact_dir = Path(self.temp_dir.name) / "artifacts"
+
+        with self.settings(
+            DOWNLOAD_REVIEW_REFERENCE_MASTER_DB_PATH=master_db_path,
+            DOWNLOAD_REVIEW_ARTIFACT_DIR=artifact_dir,
+        ):
+            outcome = run_download_inspection(project, verify_result, {})
+
+        results = {
+            result.rule_name: result
+            for result in DownloadReviewRuleResult.objects.filter(job_project=project)
+        }
+        quality_table_result = results["품질검사표"]
+        quality_report_result = results["품질평가보고서"]
+
+        self.assertEqual(outcome.failed_count, 1)
+        self.assertEqual(quality_table_result.status, DownloadReviewRuleStatus.FAIL)
+        self.assertEqual(
+            quality_table_result.message,
+            "점검표와 품질검사표의 품질부특성 값이 총 84개의 값 중에 1개의 값이 다름",
+        )
+        self.assertEqual(quality_table_result.raw_detail_json["score_compare"]["total_count"], 84)
+        self.assertEqual(quality_table_result.raw_detail_json["score_compare"]["mismatch_count"], 1)
+        self.assertEqual(len(quality_table_result.raw_detail_json["variables"]["품질부특성측정값"]), 32)
+        self.assertNotIn("quality-27", quality_table_result.raw_detail_json["variables"]["품질부특성측정값"])
+        self.assertEqual(quality_report_result.status, DownloadReviewRuleStatus.PASS)
+        self.assertTrue(quality_report_result.raw_detail_json["quality_value_check"]["passed"])
+        self.assertEqual(len(quality_report_result.raw_detail_json["quality_value_check"]["actual_values"]), 32)
+        self.assertIn("품질부특성측정값", get_rule_output_variables(project))
 
     def test_dry_run_worker_completes_job_with_mixed_project_results(self):
         job = DownloadReviewJob.objects.create(

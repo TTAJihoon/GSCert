@@ -5,8 +5,8 @@
 ## 현재 기준
 
 - 작업 브랜치: `codex-job-runner-persistence`
-- 로컬 브랜치는 `origin/codex-job-runner-persistence`보다 앞서 있으며, 현재 작업 변경은 아직 커밋하지 않았다.
-- 현재 로컬에 `test.zip`이 추적되지 않은 샘플 파일로 남아 있다. 검증 샘플이므로 Git에는 올리지 않는다.
+- 최신 작업은 이 브랜치에 커밋/푸시해서 이어받는다.
+- 로컬 샘플 `test.zip`은 검증용 파일이며 Git에 올리지 않는다.
 - 다운로드 검토 페이지: `http://127.0.0.1:8000/download-review/`
 - 서버 실행 예시: `.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload`
 - 테스트용 작업 시작 가능 시간: 현재 `00:00-24:00`
@@ -48,54 +48,83 @@ Copy-Item -Recurse -Force `
 
 ## 최근 완료 작업
 
-- 2, 7, 9, 10, 11번 규칙에 머리글/바닥글 조건을 추가했다.
-  - 2번 합의서: Word 머리글 `{프로젝트번호}` 포함, Word 바닥글 `TIS-0101-3 (00)` 포함.
-  - 7번 시험계획서: Word 바닥글 `TIS-`, `소프트웨어시험인증연구소` 금지.
-  - 9번 테스트케이스: Excel 바닥글 `소프트웨어시험인증연구소` 금지.
-  - 10번 결함리포트: 모든 Excel 시트 머리글 `프로젝트번호` 금지, 바닥글 `소프트웨어시험인증연구소` 금지.
-  - 11번 점검표: 모든 Excel 시트 바닥글 `TIS-` 금지, `한국정보통신기술협회` 필수.
-- Word `header*.xml` 추출과 Excel `footer_text` 추출을 구현했다.
-  - `.xlsx`: odd/even/first footer 전체를 검사한다.
-  - `.xls`: BIFF FOOTER(0x15) 레코드를 직접 파싱한다.
-- 정상 샘플 테스트 데이터와 회귀 테스트를 새 조건에 맞춰 보강했다.
-- 로컬 `workflow.db` 실제 규칙 seed도 `--only-real --enable --update-existing`로 갱신했다.
-- 기준 규칙 문서 `main/docs/19_inspection_rule_manual.md`와 Codex skill rules reference를 갱신했다.
+- `test.zip` 실제 점검을 기준으로 규칙 실행 예외와 cascade 문제를 보정했다.
+- `.xls` BIFF HEADER/FOOTER 파서 버그를 수정해 점검표 머리글/바닥글을 정상 추출한다.
+- 결함리포트가 바닥글 등 후속 조건에서 실패해도, 최종 버전 파일에서 `{잔여결함수}`, `{H}`, `{R}`을 찾을 수 있으면 산출 변수로 저장한다.
+- 품질검사표가 점검표 D열 비교에서 실패해도 `{품질부특성측정값}`은 먼저 산출해 품질평가보고서 비교가 계속 진행되도록 했다.
+- 품질검사표/품질평가보고서 값 비교는 양쪽 모두 숫자로 해석 가능하면 숫자값으로 비교한다. 예: `1`, `1.0`, `1.00`은 동일하다.
+- 품질평가보고서는 `<품질특성별 세부 평가결과>` 문장이 목차에도 나타나는 문제를 피하기 위해, 문서의 마지막 표부터 역순으로 확인하여 1행 1열에 `품질특성` 단어가 포함된 표를 찾는다.
+- `{품질부특성측정값}` 산출 순서는 원본 33개 중 27번째 값을 제외하고 `4~26, 28~33, 1~3`으로 확정했다.
+- 제품 스크린샷 수정일자 오류 메시지는 시험기간, 범위 밖 수정일자 목록, 총 이미지 개수를 함께 표시한다.
+- 기준 규칙 문서 `main/docs/19_inspection_rule_manual.md`를 최신 구현 기준으로 갱신했다.
+
+## test.zip 현재 결과
+
+최종 재점검 결과:
+
+- 통과: 9개
+- 실패: 9개
+
+통과:
+
+- 계약서
+- 합의서(PDF)
+- 수수료산정표
+- 시험환경구성도
+- 기능리스트
+- 시험성적서(PDF)
+- 점검표(PDF)
+- 1차/2차/성능/보안RawData
+- 품질평가보고서
+
+남은 실패 분류:
+
+- 실제 문서 내용 수정 필요
+  - 품질특성별제품정보기재사항: 제목/프로젝트번호 문구 불일치
+  - 시험계획서(PDF): 기대 버전 `v1.0`, 실제 `1.0`
+  - 결함리포트: 바닥글 금지어 `소프트웨어시험인증연구소`
+  - 테스트케이스: 바닥글 금지어 `소프트웨어시험인증연구소`
+  - 품질검사표: 점검표와 비교 시 총 84개 중 11개 값 다름
+- 파일 누락
+  - 시험기록서 PDF 없음
+  - SW저작권확인서 PDF 없음
+  - 홍보이미지 없음
+- 메타데이터/날짜 문제
+  - 최초/최종형상RawData: `시험기간은 2026.04.17.~2026.05.14.인데 수정일자가 2026.04.16.인 이미지가 28개 존재함`
 
 ## 검증 완료
 
 ```powershell
 .\.venv\Scripts\python.exe -m py_compile main\views\review\ecm_download_review_inspection.py main\management\commands\seed_download_review_rules.py main\tests.py
-node --check main\static\scripts\review\ecm_download_review.js
 .\.venv\Scripts\python.exe manage.py check --settings=myproject.ui_mock_settings
 .\.venv\Scripts\python.exe manage.py test main.tests --settings=myproject.ui_mock_settings
 .\.venv\Scripts\python.exe manage.py seed_download_review_rules --only-real --enable --update-existing --dry-run --settings=myproject.ui_mock_settings
 git diff --check
 ```
 
-결과:
+예상/최근 결과:
 
-- Django test: 36개 통과
+- Django test: 40개 통과
 - seed dry-run: `created=0 updated=0 unchanged=18`
 - `git diff --check`: whitespace 오류 없음
 
 ## 실제 사용 시 주의점
 
-- 바닥글 양식번호 금지어는 `TIS-`로 확정했다. `TIS` 일반 문자열보다 오탐 가능성이 낮다.
-- Word 머리글/바닥글이 이미지나 필드 코드로만 들어간 경우 텍스트 추출이 되지 않아 실패할 수 있다. 운영 템플릿은 텍스트 머리글/바닥글을 유지하는 것이 좋다.
-- Excel 숨김 시트도 현재 파서 기준으로 검사 대상이다. 숨김 템플릿 시트를 남기는 파일은 머리글/바닥글 조건에서 실패할 수 있다.
-- `.xls` BIFF footer 파싱은 구조가 심하게 손상된 파일에서는 빈 값으로 읽힐 수 있다. 이런 경우 필수어 검사는 실패하고 금지어 검사는 통과한다.
+- 바닥글 양식번호 금지어는 `TIS-`로 확정했다.
+- Word/Excel 머리글/바닥글이 이미지나 필드 코드로만 들어간 경우 텍스트 추출이 되지 않아 실패할 수 있다. 운영 템플릿은 텍스트 머리글/바닥글을 유지하는 것이 좋다.
+- Excel 숨김 시트도 현재 파서 기준으로 검사 대상이다.
+- zip 내부 파일의 실제 생성일은 안정적으로 보존되지 않으므로 제품 스크린샷 날짜 검사는 zip entry 수정일자를 기준으로 한다.
+- `test.zip`의 남은 실패는 현재 기준으로 코드 문제가 아니라 테스트 문서/파일 수정 대상으로 본다.
 
 ## 바로 다음 작업
 
-1. 실제 테스트용 프로젝트 1건을 정한다. 모든 산출물이 들어 있는 정상 zip이 가장 좋다.
-2. `main/data/ecmlist.db` 또는 `ecmlist2.db`에 해당 프로젝트 행과 기준값이 있는지 확인한다.
-3. 서버와 worker를 실행하고 `/download-review/`에서 해당 프로젝트를 예약한다.
-4. 작업 완료 후 작업 조회/규칙 상세 팝업에서 실패 규칙과 산출물 버튼을 확인한다.
-5. 실제 테스트가 끝나면 download-review 시작 가능 시간을 운영 기준 `20:00-07:00`으로 복구한다.
+1. `test.zip`의 남은 9개 실패 항목을 실제 산출물에서 수정한다.
+2. 수정한 zip으로 `/download-review/` 또는 직접 검사 스크립트를 다시 실행해 18개 전체 통과 여부를 확인한다.
+3. 실제 테스트가 끝나면 download-review 시작 가능 시간을 운영 기준 `20:00-07:00`으로 복구한다.
 
 ## 결정 필요
 
-1. 실제 테스트에 사용할 프로젝트 번호와 센터를 정해야 한다.
-   - 추천: 최근 산출물 구성이 가장 완전한 프로젝트 1건을 먼저 사용한다. 규칙 실패가 실제 오류인지 cascade인지 구분하기 쉽다.
-2. 실제 테스트가 끝난 뒤 테스트용 전체 시간 허용을 언제 운영 시간으로 되돌릴지 정해야 한다.
-   - 추천: 정상 산출물 zip 검증과 UI 확인이 끝난 즉시 `20:00-07:00`으로 복구한다.
+1. 남은 9개 실패를 규칙 완화 없이 문서/파일 수정으로 처리할지 유지 결정한다.
+   - 추천: 규칙은 유지한다. 현재 실패 항목은 앞서 확정한 규칙과 직접 연결되어 있어 완화하면 검증력이 떨어진다.
+2. `test.zip` 수정 후 전체 통과 기준을 언제 운영 시간 복구 시점으로 볼지 정한다.
+   - 추천: 샘플 zip 18개 전체 통과와 UI 결과 확인이 끝난 직후 `20:00-07:00`으로 복구한다.

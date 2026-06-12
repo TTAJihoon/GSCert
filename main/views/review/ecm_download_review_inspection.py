@@ -6,6 +6,7 @@ import sqlite3
 import struct
 from dataclasses import dataclass
 from datetime import datetime, time
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path, PurePosixPath
 from zipfile import BadZipFile, ZipFile
@@ -1506,6 +1507,7 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
         "selected_parent": "/".join(selected_parent or ()),
         "selected_candidate_folders": selected_folders,
         "date_range": {"start": context.start_date, "end": context.end_date},
+        "out_of_range_date_counts": _image_modified_date_counts(out_of_range),
         "out_of_range_files": [
             {
                 "path": _display_path(file_info.path, project.project_number),
@@ -1515,21 +1517,53 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
         ],
     })
     status = DownloadReviewRuleStatus.PASS if not out_of_range else DownloadReviewRuleStatus.FAIL
+    failure_message = _image_out_of_range_message(context, out_of_range)
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
         status=status,
         expected=f"이미지 수정일자 {context.start_date} ~ {context.end_date}",
-        actual="범위 밖 파일 없음" if not out_of_range else f"범위 밖 {len(out_of_range)}개",
+        actual="범위 밖 파일 없음" if not out_of_range else failure_message,
         message=(
             config.get("pass_message")
             if status == DownloadReviewRuleStatus.PASS
-            else config.get("date_message")
-        ) or ("제품 스크린샷을 확인했습니다." if status == DownloadReviewRuleStatus.PASS else "제품 스크린샷 생성일이 시험기간과 다름"),
+            else failure_message
+        ) or "제품 스크린샷을 확인했습니다.",
         file_path="/".join((selected_parent or ())),
         file_name="",
         raw_detail=raw_detail,
     )
+
+
+def _image_out_of_range_message(context, out_of_range):
+    date_counts = _image_modified_date_counts(out_of_range)
+    date_text = _join_korean_or(list(date_counts))
+    return (
+        f"시험기간은 {context.start_date}~{context.end_date}인데 "
+        f"수정일자가 {date_text}인 이미지가 {len(out_of_range)}개 존재함"
+    )
+
+
+def _image_modified_date_counts(files):
+    counts = {}
+    for file_info in files:
+        if file_info.modified_at:
+            date_text = _format_dot_date(file_info.modified_at.date().isoformat())
+        else:
+            date_text = "수정일자 없음"
+        counts[date_text] = counts.get(date_text, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def _join_korean_or(values):
+    values = [str(value) for value in values if str(value)]
+    if not values:
+        return "수정일자 없음"
+    if len(values) == 1:
+        return values[0]
+    if len(values) == 2:
+        return f"{values[0]} 또는 {values[1]}"
+    return ", ".join(values[:-1]) + f" 또는 {values[-1]}"
 
 
 def _evaluate_rawdata_folder_structure_check(rule, sequence, project, verify_result):
@@ -1743,6 +1777,10 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
                 raw_detail=raw_detail,
             )
 
+    final_workbook = workbook_by_version.get(expected_file_count)
+    if final_workbook:
+        raw_detail["variables"] = _defect_report_variables(final_workbook)
+
     header_forbidden_check = _check_versioned_workbook_forbidden_print_terms(
         workbook_by_version,
         config.get("forbidden_header_terms") or [],
@@ -1825,12 +1863,7 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
             message=config.get("report_date_message") or "프로젝트 번호, 결함 차시, 보고일자 중 잘못된 값이 작성됨",
         )
 
-    final_workbook = workbook_by_version[expected_file_count]
-    variables = {
-        "잔여결함수": _defect_residual_count(final_workbook),
-        "H": _defect_analysis_value(final_workbook, "High", offset_rows=0, offset_cols=1),
-        "R": _defect_analysis_value(final_workbook, "수정전", offset_rows=5, offset_cols=0),
-    }
+    variables = raw_detail.get("variables") or _defect_report_variables(final_workbook)
     raw_detail["variables"] = variables
 
     return RuleEvaluation(
@@ -1838,7 +1871,7 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
         sequence=sequence,
         status=DownloadReviewRuleStatus.PASS,
         expected=f"결함리포트 파일 {expected_file_count}개 / v1.0~v{expected_file_count}.0 / 시트와 보고일자 정상",
-        actual=f"결함차수 {defect_round_count} / 잔여결함수 {variables['잔여결함수']} / H {variables['H']} / R {variables['R']}",
+        actual=f"결함차수 {defect_round_count} / 잔여결함수 {variables.get('잔여결함수', '')} / H {variables.get('H', '')} / R {variables.get('R', '')}",
         message=config.get("pass_message") or "결함리포트를 확인했습니다.",
         file_path=_representative_path(matched, project.project_number),
         file_name=_representative_name(matched),
@@ -1979,6 +2012,16 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
                     "details": details,
                 }
     return {"passed": True, "details": details}
+
+
+def _defect_report_variables(workbook):
+    variables = {}
+    if _workbook_sheet(workbook, "최종결함리포트"):
+        variables["잔여결함수"] = _defect_residual_count(workbook)
+    if _workbook_sheet(workbook, "시험분석자료"):
+        variables["H"] = _defect_analysis_value(workbook, "High", offset_rows=0, offset_cols=1)
+        variables["R"] = _defect_analysis_value(workbook, "수정전", offset_rows=5, offset_cols=0)
+    return variables
 
 
 def _sheet_top_rows_cell_containing(sheet, keyword):
@@ -2866,37 +2909,6 @@ def _evaluate_quality_inspection_table_check(rule, sequence, project, context, v
         )
 
     sheet = workbook.sheets[0]
-    expected_scores = _context_variable(context, "측정항목별점수표")
-    if not isinstance(expected_scores, list):
-        return _quality_table_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected="11번 점검표 산출 변수 {측정항목별점수표}",
-            actual="{측정항목별점수표} 없음",
-            message=config.get("score_message") or "측정항목별 점수표가 점검표와 상이함",
-        )
-
-    actual_scores = [_sheet_cell(sheet, row, 4) for row in range(4, 88)]
-    raw_detail["score_compare"] = {
-        "expected_count": len(expected_scores),
-        "actual_count": len(actual_scores),
-        "mismatches": _list_mismatches(expected_scores, actual_scores, start_index=4),
-    }
-    if raw_detail["score_compare"]["mismatches"]:
-        return _quality_table_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected="11번 점검표 D7:D90 값과 품질검사표 D4:D87 값 동일",
-            actual=str(raw_detail["score_compare"]["mismatches"][0]),
-            message=config.get("score_message") or "측정항목별 점수표가 점검표와 상이함",
-        )
-
     quality_values_raw = [_sheet_cell(sheet, row, 5) for row in range(4, 86)]
     quality_values = [value for value in quality_values_raw if value]
     raw_detail["quality_sub_characteristic_values"] = {
@@ -2917,17 +2929,62 @@ def _evaluate_quality_inspection_table_check(rule, sequence, project, context, v
             message=config.get("quality_value_message") or "품질검사표의 품질부특성 측정값 확인 필요",
         )
 
-    rotated_values = quality_values[3:] + quality_values[:3]
+    excluded_indices = _quality_value_excluded_indices(config)
+    rotated_values = _quality_sub_characteristic_output_values(quality_values, excluded_indices)
+    raw_detail["quality_sub_characteristic_values"]["excluded_source_indices"] = sorted(excluded_indices)
+    raw_detail["quality_sub_characteristic_values"]["output_value_count"] = len(rotated_values)
     raw_detail["quality_sub_characteristic_values"]["rotated_values"] = rotated_values
     raw_detail["variables"] = {
         "품질부특성측정값": rotated_values,
     }
 
+    expected_scores = _context_variable(context, "측정항목별점수표")
+    if not isinstance(expected_scores, list):
+        return _quality_table_failure(
+            rule,
+            sequence,
+            matched,
+            project,
+            raw_detail,
+            expected="11번 점검표 산출 변수 {측정항목별점수표}",
+            actual="{측정항목별점수표} 없음",
+            message=config.get("score_message") or "측정항목별 점수표가 점검표와 상이함",
+        )
+
+    actual_scores = [_sheet_cell(sheet, row, 4) for row in range(4, 88)]
+    mismatches = _list_mismatches(expected_scores, actual_scores, start_index=4)
+    total_score_count = max(len(expected_scores), len(actual_scores))
+    raw_detail["score_compare"] = {
+        "expected_count": len(expected_scores),
+        "actual_count": len(actual_scores),
+        "total_count": total_score_count,
+        "mismatch_count": len(mismatches),
+        "mismatches": mismatches,
+    }
+    if mismatches:
+        mismatch_message = (
+            f"점검표와 품질검사표의 품질부특성 값이 총 {total_score_count}개의 값 중에 "
+            f"{len(mismatches)}개의 값이 다름"
+        )
+        return _quality_table_failure(
+            rule,
+            sequence,
+            matched,
+            project,
+            raw_detail,
+            expected="11번 점검표 D7:D90 값과 품질검사표 D4:D87 값 동일",
+            actual=mismatch_message,
+            message=mismatch_message,
+        )
+
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
         status=DownloadReviewRuleStatus.PASS,
-        expected=f"{expected_sheet_name} 단일 시트 / D4:D87 점수표 일치 / 품질부특성측정값 {expected_quality_count}개",
+        expected=(
+            f"{expected_sheet_name} 단일 시트 / D4:D87 점수표 일치 / "
+            f"E4:E85 원본 {expected_quality_count}개 / 품질부특성측정값 {len(rotated_values)}개"
+        ),
         actual=f"{file_info.name} / 품질부특성측정값 {len(rotated_values)}개",
         message=config.get("pass_message") or "품질검사표를 확인했습니다.",
         file_path=_representative_path(matched, project.project_number),
@@ -2950,19 +3007,68 @@ def _quality_table_failure(rule, sequence, matched, project, raw_detail, *, expe
     )
 
 
+def _quality_value_excluded_indices(config):
+    raw_indices = config.get("quality_value_excluded_indices")
+    if raw_indices is None:
+        raw_indices = [27]
+    indices = set()
+    for raw_index in raw_indices:
+        try:
+            index = int(raw_index)
+        except (TypeError, ValueError):
+            continue
+        if index > 0:
+            indices.add(index)
+    return indices
+
+
+def _quality_sub_characteristic_output_values(values, excluded_indices):
+    ordered_indices = [
+        *range(4, len(values) + 1),
+        *range(1, min(3, len(values)) + 1),
+    ]
+    return [
+        values[index - 1]
+        for index in ordered_indices
+        if index not in excluded_indices
+    ]
+
+
 def _list_mismatches(expected_values, actual_values, *, start_index):
     mismatches = []
     max_length = max(len(expected_values), len(actual_values))
     for index in range(max_length):
         expected = _variable_to_text(expected_values[index]) if index < len(expected_values) else ""
         actual = _variable_to_text(actual_values[index]) if index < len(actual_values) else ""
-        if expected != actual:
+        if not _same_rule_value(expected, actual):
             mismatches.append({
                 "row": start_index + index,
                 "expected": expected,
                 "actual": actual,
             })
     return mismatches
+
+
+def _same_rule_value(left, right):
+    left_decimal = _decimal_text(left)
+    right_decimal = _decimal_text(right)
+    if left_decimal is not None and right_decimal is not None:
+        return left_decimal == right_decimal
+    return left == right
+
+
+def _decimal_text(value):
+    text = _normalize_spaces(value)
+    if not text:
+        return None
+    normalized = text.replace(",", "")
+    if not re.fullmatch(r"[+-]?(?:\d+(?:\.\d*)?|\.\d+)", normalized):
+        return None
+    try:
+        decimal_value = Decimal(normalized)
+    except InvalidOperation:
+        return None
+    return decimal_value if decimal_value.is_finite() else None
 
 
 def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, verify_result):
@@ -3101,7 +3207,10 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
             message=config.get("period_message") or "시험기간이 잘못 작성됨",
         )
 
-    quality_table = _docx_first_table_after_text(file_info, config.get("quality_marker") or "<품질특성별 세부 평가결과>")
+    quality_table = _docx_last_table_with_first_cell(
+        tables,
+        config.get("quality_table_first_cell_keyword") or "품질특성",
+    )
     quality_check = _quality_report_table_check(quality_table, context)
     raw_detail["quality_value_check"] = quality_check
     if not quality_check["passed"]:
@@ -3191,6 +3300,15 @@ def _extract_labeled_korean_period(text, label):
     )
 
 
+def _docx_last_table_with_first_cell(tables, keyword):
+    keyword_text = str(keyword or "")
+    for table in reversed(tables or []):
+        first_cell = _table_cell(table, 1, 1)
+        if keyword_text and keyword_text in first_cell:
+            return table
+    return []
+
+
 def _quality_report_table_check(table, context):
     expected_values = _context_variable(context, "품질부특성측정값")
     if not isinstance(expected_values, list):
@@ -3203,7 +3321,7 @@ def _quality_report_table_check(table, context):
     if not table:
         return {
             "passed": False,
-            "expected": "<품질특성별 세부 평가결과> 다음 표",
+            "expected": "1행 1열에 품질특성 포함 표",
             "actual": "표 없음",
             "actual_values": [],
         }
@@ -3221,11 +3339,18 @@ def _quality_report_table_check(table, context):
     ])
     mismatches = _list_mismatches(expected_values, actual_values, start_index=2)
     if mismatches:
+        total_count = max(len(expected_values), len(actual_values))
+        mismatch_message = (
+            f"품질검사표와 품질평가보고서의 품질부특성 값이 총 {total_count}개의 값 중에 "
+            f"{len(mismatches)}개의 값이 다름"
+        )
         return {
             "passed": False,
             "expected": "품질검사표 품질부특성 측정값과 동일",
-            "actual": str(mismatches[0]),
+            "actual": mismatch_message,
             "actual_values": actual_values,
+            "total_count": total_count,
+            "mismatch_count": len(mismatches),
             "mismatches": mismatches,
         }
     na_errors = []
@@ -3957,14 +4082,15 @@ def _xls_print_records(data, *, opcode):
     except Exception:
         return {}
 
+    target_opcode = opcode
     try:
         boundsheets = []
         pos = 0
         total = len(stream)
         while pos + 4 <= total:
-            opcode, length = struct.unpack("<HH", stream[pos:pos + 4])
+            record_opcode, length = struct.unpack("<HH", stream[pos:pos + 4])
             body = stream[pos + 4:pos + 4 + length]
-            if opcode == 0x0085 and len(body) >= 8:  # BOUNDSHEET
+            if record_opcode == 0x0085 and len(body) >= 8:  # BOUNDSHEET
                 ply_pos = struct.unpack("<I", body[0:4])[0]
                 name, _ = _xls_unicode_string(body, 6, 1)
                 boundsheets.append((ply_pos, name))
@@ -3972,7 +4098,7 @@ def _xls_print_records(data, *, opcode):
 
         records = {}
         for ply_pos, name in boundsheets:
-            records[name] = _xls_print_record_at(stream, ply_pos, opcode)
+            records[name] = _xls_print_record_at(stream, ply_pos, target_opcode)
         return records
     except Exception:
         return {}
