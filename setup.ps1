@@ -1,7 +1,8 @@
 ﻿<#
 .SYNOPSIS
   GSCert 초기 환경 설정 — 새 서버에서 최초 1회 실행.
-  Python, Git, VC++ Redist, nginx 설치 + 가상환경 구성 + DB 마이그레이션 + 바탕화면 단축아이콘 생성까지 일괄 처리.
+  Python, Git, VC++ Redist, nginx 다운로드·설치 + 가상환경 구성 + DB 마이그레이션 + 바탕화면 단축아이콘 생성까지 일괄 처리.
+  각 설치파일이 setup\ 폴더에 이미 있으면 다운로드를 건너뛰고 로컬 파일을 사용한다.
 .PARAMETER InstallAutomation
   pywin32, pywinauto(Windows 자동화) 패키지를 추가 설치하고 Playwright 브라우저를 다운로드한다.
 .PARAMETER InstallSearch
@@ -16,6 +17,15 @@ $ErrorActionPreference = "Stop"
 $RootDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SetupDir = Join-Path $RootDir "setup"
 
+# ── 다운로드 URL (버전 변경 시 여기만 수정) ─────────────────────────
+$PYTHON_VER   = "3.13.3"
+$PYTHON_URL   = "https://www.python.org/ftp/python/$PYTHON_VER/python-$PYTHON_VER-amd64.exe"
+$GIT_VER      = "2.54.0"
+$GIT_URL      = "https://github.com/git-for-windows/git/releases/download/v$GIT_VER.windows.1/Git-$GIT_VER-64-bit.exe"
+$VCREDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
+$NGINX_VER    = "1.29.8"
+$NGINX_URL    = "https://nginx.org/download/nginx-$NGINX_VER.zip"
+
 # ── 헬퍼 ──────────────────────────────────────────────────────────────
 function Step($msg)  { Write-Host "`n[....] $msg" -ForegroundColor Cyan }
 function OK($msg)    { Write-Host "[ OK ] $msg" -ForegroundColor Green }
@@ -23,18 +33,37 @@ function Warn($msg)  { Write-Host "[ -- ] $msg" -ForegroundColor Yellow }
 function Fail($msg)  { Write-Host "[FAIL] $msg" -ForegroundColor Red; exit 1 }
 
 function Refresh-Path {
-    $machine = [System.Environment]::GetEnvironmentVariable("Path","Machine")
-    $user    = [System.Environment]::GetEnvironmentVariable("Path","User")
-    $env:Path = "$machine;$user"
+    $m = [System.Environment]::GetEnvironmentVariable("Path","Machine")
+    $u = [System.Environment]::GetEnvironmentVariable("Path","User")
+    $env:Path = "$m;$u"
 }
 
 function Get-ServerIP {
     $ip = (Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
            Where-Object { $_.IPAddress -notlike '127.*' -and $_.IPAddress -notlike '169.*' } |
-           Sort-Object PrefixLength -Descending |
-           Select-Object -First 1).IPAddress
+           Sort-Object PrefixLength -Descending | Select-Object -First 1).IPAddress
     if (-not $ip) { $ip = "localhost" }
     return $ip
+}
+
+# 로컬 파일 우선 → 없으면 다운로드
+function Get-OrDownload($name, $url, $destPath) {
+    if (Test-Path $destPath) {
+        Warn "$name 로컬 파일 사용: $(Split-Path $destPath -Leaf)"
+        return
+    }
+    Write-Host "       다운로드 중: $name"
+    Write-Host "       URL: $url"
+    $prev = $ProgressPreference; $ProgressPreference = 'SilentlyContinue'
+    try {
+        Invoke-WebRequest -Uri $url -OutFile $destPath -UseBasicParsing
+    } catch {
+        $ProgressPreference = $prev
+        Fail "$name 다운로드 실패: $_`n`n       수동 해결: $url 에서 파일을 받아 $destPath 에 저장 후 다시 실행하세요."
+    }
+    $ProgressPreference = $prev
+    $sizeMB = [math]::Round((Get-Item $destPath).Length/1MB, 1)
+    OK "$name 다운로드 완료 (${sizeMB} MB)"
 }
 
 # ── 배너 ──────────────────────────────────────────────────────────────
@@ -53,7 +82,7 @@ if ($vcInstalled) {
     Warn "VC++ Redistributable 이미 설치되어 있습니다."
 } else {
     $vcFile = Join-Path $SetupDir "vc_redist.x64.exe"
-    if (-not (Test-Path $vcFile)) { Fail "vc_redist.x64.exe 를 setup 폴더에 넣어주세요." }
+    Get-OrDownload "VC++ Redistributable" $VCREDIST_URL $vcFile
     Write-Host "       설치 중..."
     Start-Process -FilePath $vcFile -ArgumentList "/install /quiet /norestart" -Wait
     OK "VC++ Redistributable 설치 완료"
@@ -62,17 +91,17 @@ if ($vcInstalled) {
 # ══════════════════════════════════════════════════════════════════════
 # 2. Python
 # ══════════════════════════════════════════════════════════════════════
-Step "Python 설치 확인"
+Step "Python $PYTHON_VER 설치 확인"
 Refresh-Path
 $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
 if ($pythonCmd) {
     $ver = & python --version 2>&1
     OK "$ver 확인됨 ($($pythonCmd.Source))"
 } else {
-    $pyFile = Get-ChildItem $SetupDir -Filter "python-*.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $pyFile) { Fail "python 설치파일(python-*.exe)을 setup 폴더에 넣어주세요." }
-    Write-Host "       $($pyFile.Name) 설치 중 (시간이 걸릴 수 있습니다)..."
-    Start-Process -FilePath $pyFile.FullName -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait
+    $pyFile = Join-Path $SetupDir "python-$PYTHON_VER-amd64.exe"
+    Get-OrDownload "Python $PYTHON_VER" $PYTHON_URL $pyFile
+    Write-Host "       설치 중 (시간이 걸릴 수 있습니다)..."
+    Start-Process -FilePath $pyFile -ArgumentList "/quiet InstallAllUsers=1 PrependPath=1 Include_test=0" -Wait
     Refresh-Path
     $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
     if (-not $pythonCmd) { Fail "Python 설치 후에도 찾을 수 없습니다. 재부팅 후 다시 시도하세요." }
@@ -82,78 +111,68 @@ if ($pythonCmd) {
 # ══════════════════════════════════════════════════════════════════════
 # 3. Git
 # ══════════════════════════════════════════════════════════════════════
-Step "Git 설치 확인"
+Step "Git $GIT_VER 설치 확인"
 Refresh-Path
 $gitCmd = Get-Command git -ErrorAction SilentlyContinue
 if ($gitCmd) {
     $ver = & git --version 2>&1
     OK "$ver 확인됨"
 } else {
-    # Git for Windows 설치파일: Git-*-64-bit.exe
-    $gitFile = Get-ChildItem $SetupDir -Filter "Git-*-64-bit.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-    if (-not $gitFile) {
-        Warn "Git 설치파일(Git-*-64-bit.exe)이 setup 폴더에 없습니다."
-        Warn "https://git-scm.com/download/win 에서 다운로드 후 setup 폴더에 넣고 다시 실행하세요."
-        Warn "Git 없이 계속 진행합니다 (나중에 수동 설치 가능)."
-    } else {
-        Write-Host "       $($gitFile.Name) 설치 중..."
-        Start-Process -FilePath $gitFile.FullName `
-            -ArgumentList "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /COMPONENTS=`"icons,ext\reg\shellhere,assoc,assoc_sh`"" `
-            -Wait
-        Refresh-Path
-        OK "Git 설치 완료"
-    }
+    $gitFile = Join-Path $SetupDir "Git-$GIT_VER-64-bit.exe"
+    Get-OrDownload "Git $GIT_VER" $GIT_URL $gitFile
+    Write-Host "       설치 중..."
+    Start-Process -FilePath $gitFile `
+        -ArgumentList "/VERYSILENT /NORESTART /NOCANCEL /SP- /CLOSEAPPLICATIONS /COMPONENTS=`"icons,ext\reg\shellhere,assoc,assoc_sh`"" `
+        -Wait
+    Refresh-Path
+    OK "Git 설치 완료"
 }
 
 # ══════════════════════════════════════════════════════════════════════
 # 4. nginx 설치 및 설정
 # ══════════════════════════════════════════════════════════════════════
-Step "nginx 설치 및 설정"
-$NginxInstallDir = "C:\nginx-1.29.8"
-$NginxSrcDir     = Join-Path $SetupDir "nginx-1.29.8"
+Step "nginx $NGINX_VER 설치 및 설정"
+$NginxInstallDir = "C:\nginx-$NGINX_VER"
 $NginxExe        = Join-Path $NginxInstallDir "nginx.exe"
 $NginxConf       = Join-Path $NginxInstallDir "conf\nginx.conf"
+$NginxTemplate   = Join-Path $SetupDir "nginx.conf"
 
-if (-not (Test-Path $NginxSrcDir)) {
-    Fail "setup\nginx-1.29.8 폴더가 없습니다."
-}
-
-if (-not (Test-Path $NginxInstallDir)) {
-    Write-Host "       $NginxInstallDir 로 복사 중..."
-    Copy-Item -Path $NginxSrcDir -Destination $NginxInstallDir -Recurse -Force
-    OK "nginx 복사 완료"
+if (-not (Test-Path $NginxExe)) {
+    $nginxZip = Join-Path $SetupDir "nginx-$NGINX_VER.zip"
+    Get-OrDownload "nginx $NGINX_VER" $NGINX_URL $nginxZip
+    Write-Host "       압축 해제 중: C:\"
+    Expand-Archive -Path $nginxZip -DestinationPath "C:\" -Force
+    OK "nginx 압축 해제 완료"
 } else {
-    # conf만 덮어씌워서 업데이트
-    Write-Host "       nginx 이미 존재 — conf 업데이트만 수행"
-    Copy-Item -Path (Join-Path $NginxSrcDir "conf\nginx.conf") `
-              -Destination $NginxConf -Force
+    Warn "nginx 이미 설치되어 있습니다: $NginxInstallDir"
 }
 
-# nginx.conf 플레이스홀더 치환
+# conf 업데이트 (템플릿 → 실제 경로/IP 치환)
+if (-not (Test-Path $NginxTemplate)) {
+    Fail "nginx.conf 템플릿이 없습니다: $NginxTemplate"
+}
 $serverIP   = Get-ServerIP
 $staticRoot = ($RootDir -replace '\\', '/') + '/staticfiles'
-$conf = Get-Content $NginxConf -Raw -Encoding UTF8
-$conf = $conf -replace '__SERVER_IP__', $serverIP
+$conf = Get-Content $NginxTemplate -Raw -Encoding UTF8
+$conf = $conf -replace '__SERVER_IP__',   $serverIP
 $conf = $conf -replace '__STATIC_ROOT__', $staticRoot
-# nginx는 UTF-8 BOM을 지원하지 않으므로 BOM 없이 저장
 [System.IO.File]::WriteAllText($NginxConf, $conf, [System.Text.Encoding]::ASCII)
-
 OK "nginx.conf 설정 완료 (IP: $serverIP, static: $staticRoot)"
 
-# nginx 시작 태스크 스케줄러 등록 (시스템 부팅 시 자동 시작)
+# 부팅 자동시작 스케줄러 등록
 $taskName = "GSCert-nginx"
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
 $action    = New-ScheduledTaskAction -Execute $NginxExe -WorkingDirectory $NginxInstallDir
 $trigger   = New-ScheduledTaskTrigger -AtStartup
 $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 $settings  = New-ScheduledTaskSettingsSet -StartWhenAvailable -RestartCount 3 -RestartInterval (New-TimeSpan -Minutes 1)
-Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger `
+    -Principal $principal -Settings $settings -Force | Out-Null
 OK "nginx 부팅 자동시작 태스크 등록 완료"
 
-# nginx 즉시 시작
+# nginx 즉시 시작 또는 reload
 $running = Get-Process -Name nginx -ErrorAction SilentlyContinue
 if ($running) {
-    # conf가 바뀌었으므로 reload
     & $NginxExe -s reload 2>$null
     OK "nginx conf reload 완료"
 } else {
@@ -177,8 +196,6 @@ if (Test-Path $VenvDir) {
     if ($LASTEXITCODE -ne 0) { Fail "가상환경 생성 실패" }
     OK "가상환경 생성 완료"
 }
-
-# pip 업그레이드
 & $VenvPython -m pip install --upgrade pip --quiet
 
 # ══════════════════════════════════════════════════════════════════════
@@ -238,16 +255,15 @@ OK "마이그레이션 완료"
 # 11. 바탕화면 단축아이콘 생성
 # ══════════════════════════════════════════════════════════════════════
 Step "바탕화면 단축아이콘 생성"
-$WshShell    = New-Object -ComObject WScript.Shell
-$Desktop     = [System.Environment]::GetFolderPath('Desktop')
-$ShortcutPath = "$Desktop\GSCert 서버 관리.lnk"
-$Shortcut    = $WshShell.CreateShortcut($ShortcutPath)
-$Shortcut.TargetPath      = "powershell.exe"
-$Shortcut.Arguments       = "-NoExit -ExecutionPolicy Bypass -File `"$RootDir\launcher.ps1`""
+$WshShell     = New-Object -ComObject WScript.Shell
+$ShortcutPath = "$([System.Environment]::GetFolderPath('Desktop'))\GSCert 서버 관리.lnk"
+$Shortcut     = $WshShell.CreateShortcut($ShortcutPath)
+$Shortcut.TargetPath       = "powershell.exe"
+$Shortcut.Arguments        = "-NoExit -ExecutionPolicy Bypass -File `"$RootDir\launcher.ps1`""
 $Shortcut.WorkingDirectory = $RootDir
-$Shortcut.WindowStyle     = 1
-$Shortcut.IconLocation    = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe,0"
-$Shortcut.Description     = "GSCert 서버 관리 메뉴"
+$Shortcut.WindowStyle      = 1
+$Shortcut.IconLocation     = "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe,0"
+$Shortcut.Description      = "GSCert 서버 관리 메뉴"
 $Shortcut.Save()
 OK "단축아이콘 생성: $ShortcutPath"
 
