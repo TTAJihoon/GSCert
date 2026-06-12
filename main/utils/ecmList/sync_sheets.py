@@ -2,6 +2,7 @@
 Google Sheets → SQLite 동기화 스크립트
 - 구글시트 2153행~마지막 행에서 DB에 없는 프로젝트번호만 추가
 - F열 값을 WD 컬럼으로 저장
+- H열 값을 신청일, I열 값을 계약일 컬럼으로 저장
 - 수동 실행
 """
 
@@ -44,7 +45,7 @@ def get_credentials():
 
 
 def get_sheets_data():
-    """구글시트 2153행~마지막 행에서 B, C, D, F, L, Q열 데이터를 가져온다."""
+    """구글시트 2153행~마지막 행에서 B, C, D, F, H, I, L, Q열 데이터를 가져온다."""
     if not SPREADSHEET_ID:
         raise RuntimeError("ECMLIST_SPREADSHEET_ID 환경변수를 설정해야 합니다.")
 
@@ -81,6 +82,8 @@ def get_sheets_data():
             "company": safe_get(2),      # C열
             "product": safe_get(3),      # D열
             "wd": safe_get(5),           # F열
+            "request_date": safe_get(7),  # H열 → 신청일
+            "contract_date": safe_get(8), # I열 → 계약일
             "tester": safe_get(11),      # L열
             "cert_date": safe_get(16),   # Q열 → 인증일자
         })
@@ -121,6 +124,8 @@ def ensure_table():
             제품명 TEXT,
             시험PL TEXT,
             WD TEXT DEFAULT '',
+            신청일 TEXT DEFAULT '',
+            계약일 TEXT DEFAULT '',
             점검결과 TEXT DEFAULT 'X',
             계약서 TEXT DEFAULT 'X',
             "합의서(PDF)" TEXT DEFAULT 'X',
@@ -155,10 +160,14 @@ def ensure_columns(cursor):
     columns = {row[1] for row in cursor.fetchall()}
     if "WD" not in columns:
         cursor.execute('ALTER TABLE ecm_list ADD COLUMN WD TEXT DEFAULT ""')
+    if "신청일" not in columns:
+        cursor.execute('ALTER TABLE ecm_list ADD COLUMN 신청일 TEXT DEFAULT ""')
+    if "계약일" not in columns:
+        cursor.execute('ALTER TABLE ecm_list ADD COLUMN 계약일 TEXT DEFAULT ""')
 
 
 def sync_to_db(new_data):
-    """DB에 없는 프로젝트번호만 추가한다. 번호는 빈 번호부터 순차 부여."""
+    """DB에 없는 프로젝트번호를 추가하고 기존 프로젝트의 원천 메타데이터를 갱신한다."""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -169,14 +178,42 @@ def sync_to_db(new_data):
     # 1부터 순서대로 빈 번호를 찾아 부여
     next_num = 1
     inserted = 0
+    updated = 0
     for d in new_data:
+        if project_exists(cursor, d["project_no"]):
+            cursor.execute(
+                """
+                UPDATE ecm_list
+                   SET 인증일자 = ?,
+                       회사명 = ?,
+                       제품명 = ?,
+                       시험PL = ?,
+                       WD = ?,
+                       신청일 = ?,
+                       계약일 = ?
+                 WHERE 프로젝트번호 = ?
+                """,
+                (
+                    d["cert_date"],
+                    d["company"],
+                    d["product"],
+                    d["tester"],
+                    d["wd"],
+                    d["request_date"],
+                    d["contract_date"],
+                    d["project_no"],
+                ),
+            )
+            updated += cursor.rowcount
+            continue
+
         while next_num in used_numbers:
             next_num += 1
         cursor.execute(
             """
             INSERT INTO ecm_list (
-                번호, 인증일자, 프로젝트번호, 회사명, 제품명, 시험PL, WD
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                번호, 인증일자, 프로젝트번호, 회사명, 제품명, 시험PL, WD, 신청일, 계약일
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 next_num,
@@ -186,6 +223,8 @@ def sync_to_db(new_data):
                 d["product"],
                 d["tester"],
                 d["wd"],
+                d["request_date"],
+                d["contract_date"],
             ),
         )
         used_numbers.add(next_num)
@@ -194,7 +233,12 @@ def sync_to_db(new_data):
 
     conn.commit()
     conn.close()
-    print(f"신규 {inserted}건 추가 완료 → {DB_PATH}")
+    print(f"신규 {inserted}건 추가, 기존 {updated}건 원천 메타데이터 갱신 완료 → {DB_PATH}")
+
+
+def project_exists(cursor, project_no):
+    cursor.execute("SELECT 1 FROM ecm_list WHERE 프로젝트번호 = ? LIMIT 1", (project_no,))
+    return cursor.fetchone() is not None
 
 
 def main():
@@ -209,18 +253,10 @@ def main():
 
     print(f"시트에서 {len(sheet_data)}건 읽음")
 
-    # DB에 이미 있는 프로젝트번호 조회
     existing = get_existing_project_numbers()
     print(f"DB에 기존 {len(existing)}건 존재")
 
-    # 중복 제거
-    new_data = [d for d in sheet_data if d["project_no"] not in existing]
-    print(f"신규 데이터: {len(new_data)}건")
-
-    if new_data:
-        sync_to_db(new_data)
-    else:
-        print("추가할 신규 데이터가 없습니다.")
+    sync_to_db(sheet_data)
 
 
 if __name__ == "__main__":

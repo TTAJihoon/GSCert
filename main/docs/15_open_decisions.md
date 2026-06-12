@@ -322,37 +322,25 @@ DestinyECMAgent(32비트)
 
 현재 코드 구현 완료:
 
-- 1번 계약서
-- 2번 합의서
-- 3번 수수료산정표
-- 4번 시험환경구성도
-- 5번 품질특성별제품정보기재사항
-- 구현된 규칙 타입은 `required_artifact_file`, `document_artifact_check`이다.
+- 1~18번 전체 실제 점검규칙
+- 14번 시험기록서는 PDF 존재만 자동 판정하고 원본 PDF를 다운로드형 산출물로 제공한다.
+- 구현된 주요 규칙 타입은 `required_artifact_file`, `document_artifact_check`, `downloadable_artifact_check`, `excel_feature_list_check`, `test_plan_document_check`, `image_screenshot_folder_date_check`, `test_case_check`, `defect_report_check`, `inspection_checklist_check`, `rawdata_folder_structure_check`, `test_report_document_check`, `quality_inspection_table_check`, `quality_evaluation_report_check`이다.
 - `seed_download_review_rules --only-real --enable --update-existing`로 실제 구현 규칙만 활성화할 수 있다.
 - 테스트/이관용 zip 내부 파일 경로도 검사한다.
 - 폴더 탐색, 파일명 키워드, 확장자별 개수, 문서 내용 검사 조건은 `inspection_rule.config_json`에 저장한다.
-- `C:\test`의 `TTA-26-00266` 샘플 zip에서 1~5번 모두 통과했다.
 
 현재 문서 정의 완료:
 
-- 1번 계약서
-- 2번 합의서
-- 3번 수수료산정표
-- 4번 시험환경구성도
-- 5번 품질특성별제품정보기재사항
-- 6번 기능리스트
-- 7번 시험계획서
-- 상세 조건과 실패 메시지는 `05_zip_inspection.md`에 기록했다.
+- 1~18번 전체 규칙
+- 상세 조건과 실패 메시지는 `main/docs/19_inspection_rule_manual.md`에 기록했다.
 - `{WD}`는 `ecm_list.WD`에서 읽는다.
 - 파일명 조건은 단어 순서와 관계없이 필요한 단어가 모두 포함되는지만 검사한다.
 
 확정 필요:
 
-- 8~18번 실제 규칙 정의
-- 7번 시험계획서의 `<세부사양>` 표 비교는 13번 시험결과서 규칙 정의 후 확정
-- 6, 7번 실제 구현 순서
+- 실제 정상 산출물 zip으로 1~18번 전체 규칙이 PASS 되는지 검증
 - 실제 운영 DB에서 `WD` 값이 Google Sheet F열과 일치하는지 검증
-- 아직 실제 구현되지 않은 draft 규칙을 언제 비활성화/대체할지
+- 테스트가 끝난 뒤 download-review 시작 가능 시간을 `20:00-07:00`으로 되돌릴 시점
 
 관련 문서:
 
@@ -383,11 +371,10 @@ DestinyECMAgent(32비트)
 
 ## 다음 작업 후보
 
-1. 6, 7번 실제 규칙 구현
-2. 8~18번 실제 규칙 정의
-3. 5~9단계 통합 검증: 실제 ECM 서버에서 전체 다운로드 파이프라인 테스트
-4. 실제 다운로드 산출물 기준으로 남은 점검 규칙과 `ecmlist.db` 점검 컬럼 매핑 정의
-5. 테스트가 끝나면 download-review 시작 가능 시간을 `20:00-07:00`으로 복구
+1. 실제 정상 산출물 zip으로 1~18번 전체 규칙 PASS 여부 검증
+2. 5~9단계 통합 검증: 실제 ECM 서버에서 전체 다운로드 파이프라인 테스트
+3. 실제 다운로드 산출물 기준으로 전체 점검 규칙과 `ecmlist.db` 점검 컬럼 매핑 검증
+4. 테스트가 끝나면 download-review 시작 가능 시간을 `20:00-07:00`으로 복구
 
 ## 대화 재개 시 추천 질문
 

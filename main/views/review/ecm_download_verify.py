@@ -8,6 +8,7 @@ zip 검사가 아니라 개별 파일 다운로드 확인이다.
 import logging
 import os
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import List
 
 logger = logging.getLogger("main.views.review.ecm_download_verify")
@@ -19,6 +20,7 @@ class FileInfo:
     path: str
     size: int
     extension: str
+    modified_at: datetime | None = None
 
 
 @dataclass
@@ -57,24 +59,26 @@ def verify_downloaded_files(
     empty_files = []
     has_project_number = False
 
-    for entry in os.scandir(download_dir):
-        if not entry.is_file():
-            continue
-        stat = entry.stat()
-        ext = os.path.splitext(entry.name)[1].lower()
-        fi = FileInfo(
-            name=entry.name,
-            path=entry.path,
-            size=stat.st_size,
-            extension=ext,
-        )
-        files.append(fi)
+    for root, _dirs, filenames in os.walk(download_dir):
+        for filename in filenames:
+            path = os.path.join(root, filename)
+            stat = os.stat(path)
+            ext = os.path.splitext(filename)[1].lower()
+            rel_name = os.path.relpath(path, download_dir).replace(os.sep, "/")
+            fi = FileInfo(
+                name=filename,
+                path=path,
+                size=stat.st_size,
+                extension=ext,
+                modified_at=datetime.fromtimestamp(stat.st_mtime),
+            )
+            files.append(fi)
 
-        if stat.st_size == 0:
-            empty_files.append(entry.name)
+            if stat.st_size == 0:
+                empty_files.append(rel_name)
 
-        if project_number in entry.name:
-            has_project_number = True
+            if project_number in rel_name:
+                has_project_number = True
 
     file_count = len(files)
     total_size = sum(f.size for f in files)

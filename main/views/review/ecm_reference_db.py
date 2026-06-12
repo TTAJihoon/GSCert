@@ -25,6 +25,8 @@ REQUIRED_COLUMNS = (
 )
 OPTIONAL_COLUMNS = (
     "WD",
+    "신청일",
+    "계약일",
     "점검날짜",
 )
 ARTIFACT_REVIEW_COLUMNS = (
@@ -35,10 +37,10 @@ ARTIFACT_REVIEW_COLUMNS = (
     "품질특성별제품정보기재사항",
     "기능리스트",
     "시험계획서(PDF)",
-    "점검표(PDF)",
     "최초/최종형상RawData",
     "테스트케이스",
     "결함리포트",
+    "점검표(PDF)",
     "1차/2차/성능/보안RawData",
     "시험성적서(PDF)",
     "시험기록서",
@@ -415,6 +417,8 @@ def _serialize_project(row, columns, center_code):
         "product": _row_value(row, "제품명"),
         "pl": _row_value(row, "시험PL"),
         "wd": _row_value(row, "WD") if "WD" in columns else "",
+        "request_date": _row_value(row, "신청일") if "신청일" in columns else "",
+        "contract_date": _row_value(row, "계약일") if "계약일" in columns else "",
         "review": review,
         "review_raw": review_raw,
         "inspection_date": _row_value(row, "점검날짜") if "점검날짜" in columns else "",

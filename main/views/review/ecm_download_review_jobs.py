@@ -3,11 +3,13 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import timedelta, timezone as datetime_timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db import transaction
 from django.db.utils import DatabaseError
+from django.http import FileResponse
 from django.utils import timezone
 
 from main.models import (
@@ -664,6 +666,8 @@ def serialize_project(project):
         "product": ecm_row.get("product", ""),
         "pl": ecm_row.get("pl", ""),
         "wd": ecm_row.get("wd", ""),
+        "request_date": ecm_row.get("request_date", ""),
+        "contract_date": ecm_row.get("contract_date", ""),
         "status": project.status,
         "status_label": project_status_label(project.status),
         "review_status": project.review_status,
@@ -681,6 +685,7 @@ def serialize_project(project):
 
 def serialize_rule_result(result):
     project_number = result.job_project.project_number
+    raw_detail = result.raw_detail_json or {}
     return {
         "id": str(result.id),
         "job_project_id": str(result.job_project_id),
@@ -695,9 +700,97 @@ def serialize_rule_result(result):
         "expected": result.expected,
         "actual": result.actual,
         "message": result.message,
-        "raw_detail": result.raw_detail_json or {},
+        "artifacts": _serialize_artifacts(raw_detail),
+        "raw_detail": _public_raw_detail(raw_detail),
         "created_at": _iso(result.created_at),
     }
+
+
+def get_rule_result_artifact_response(result_id, artifact_id):
+    try:
+        result = DownloadReviewRuleResult.objects.select_related("job_project").get(id=result_id)
+    except DownloadReviewRuleResult.DoesNotExist as exc:
+        raise DownloadReviewNotFoundError("점검 산출물을 찾을 수 없습니다.") from exc
+
+    artifact = _find_artifact(result.raw_detail_json or {}, artifact_id)
+    if not artifact:
+        raise DownloadReviewNotFoundError("점검 산출물을 찾을 수 없습니다.")
+
+    base_dir = _artifact_base_dir()
+    relative_path = str(artifact.get("relative_path") or "").strip()
+    if not relative_path:
+        raise DownloadReviewNotFoundError("점검 산출물을 찾을 수 없습니다.")
+
+    file_path = (base_dir / relative_path).resolve()
+    try:
+        file_path.relative_to(base_dir)
+    except ValueError as exc:
+        raise DownloadReviewNotFoundError("점검 산출물을 찾을 수 없습니다.") from exc
+    if not file_path.is_file():
+        raise DownloadReviewNotFoundError("점검 산출물 파일이 없습니다.")
+
+    response = FileResponse(
+        file_path.open("rb"),
+        content_type=artifact.get("content_type") or "application/octet-stream",
+        as_attachment=bool(artifact.get("download")),
+        filename=artifact.get("file_name") or file_path.name,
+    )
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+def _serialize_artifacts(raw_detail):
+    items = raw_detail.get("artifacts") if isinstance(raw_detail, dict) else []
+    if not isinstance(items, list):
+        return []
+
+    public_items = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        artifact_id = str(item.get("id") or "").strip()
+        if not artifact_id:
+            continue
+        public_items.append({
+            "id": artifact_id,
+            "label": str(item.get("label") or item.get("file_name") or "산출물"),
+            "kind": str(item.get("kind") or "file"),
+            "file_name": str(item.get("file_name") or ""),
+            "content_type": str(item.get("content_type") or "application/octet-stream"),
+            "download": bool(item.get("download")),
+        })
+    return public_items
+
+
+def _public_raw_detail(raw_detail):
+    if not isinstance(raw_detail, dict):
+        return {}
+    public = dict(raw_detail)
+    if "artifacts" in public:
+        public["artifacts"] = _serialize_artifacts(raw_detail)
+    return public
+
+
+def _find_artifact(raw_detail, artifact_id):
+    artifacts = raw_detail.get("artifacts") if isinstance(raw_detail, dict) else []
+    if not isinstance(artifacts, list):
+        return None
+
+    target = str(artifact_id or "").strip()
+    for item in artifacts:
+        if isinstance(item, dict) and str(item.get("id") or "").strip() == target:
+            return item
+    return None
+
+
+def _artifact_base_dir():
+    return Path(
+        getattr(
+            settings,
+            "DOWNLOAD_REVIEW_ARTIFACT_DIR",
+            Path(settings.BASE_DIR) / "main" / "data" / "download_review_artifacts",
+        )
+    ).resolve()
 
 
 def _validate_projects_found(project_numbers, projects):

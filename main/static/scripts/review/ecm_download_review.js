@@ -1379,6 +1379,7 @@ function renderLatestInspectionResult(payload) {
       <td>${escapeHtml(rule.expected || "-")}</td>
       <td>${escapeHtml(rule.actual || "-")}</td>
       <td>${escapeHtml(rule.message || "-")}</td>
+      <td>${renderRuleArtifacts(rule)}</td>
     </tr>
   `).join("");
 
@@ -1395,12 +1396,26 @@ function renderLatestInspectionResult(payload) {
             <th>기대값</th>
             <th>실제값</th>
             <th>상세</th>
+            <th>산출물</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
   `;
+}
+
+function renderRuleArtifacts(rule) {
+  const artifacts = Array.isArray(rule?.artifacts) ? rule.artifacts : [];
+  if (!artifacts.length) return "-";
+
+  return artifacts.map((artifact) => {
+    const resultId = encodeURIComponent(rule.id || "");
+    const artifactId = encodeURIComponent(artifact.id || "");
+    const href = `/api/rule-results/${resultId}/artifacts/${artifactId}/`;
+    const label = artifact.label || (artifact.download ? "다운로드" : "보기");
+    return `<a class="mini-button" href="${href}" target="_blank" rel="noopener">${escapeHtml(label)}</a>`;
+  }).join(" ");
 }
 
 function findErrorItem(source, number) {
@@ -1433,6 +1448,7 @@ async function openResultRulesModal(jobProjectId) {
         <td>${escapeHtml(rule.expected || "-")}</td>
         <td>${escapeHtml(rule.actual || "-")}</td>
         <td>${escapeHtml(rule.message || "-")}</td>
+        <td>${renderRuleArtifacts(rule)}</td>
       </tr>
     `).join("");
 
@@ -1449,6 +1465,7 @@ async function openResultRulesModal(jobProjectId) {
                 <th>기대값</th>
                 <th>실제값</th>
                 <th>상세</th>
+                <th>산출물</th>
               </tr>
             </thead>
             <tbody>${rows}</tbody>
