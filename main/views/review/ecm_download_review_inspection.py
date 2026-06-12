@@ -88,6 +88,7 @@ class ExcelSheet:
     name: str
     rows: list[list[str]]
     header_text: str = ""
+    footer_text: str = ""
 
 
 @dataclass(frozen=True)
@@ -949,6 +950,27 @@ def _evaluate_test_plan_document_check(rule, sequence, project, context, verify_
             message=footer_check["message"],
         )
 
+    forbidden_footer_check = _check_forbidden_text_terms(
+        footer_text,
+        config.get("forbidden_footer_terms") or [],
+        context,
+        subject="시험계획서 바닥글",
+        default_message="시험계획서 바닥글에 잘못된 단어가 작성됨",
+    )
+    if forbidden_footer_check["details"]:
+        raw_detail["checks"].append(forbidden_footer_check)
+    if not forbidden_footer_check["passed"]:
+        return _test_plan_failure(
+            rule,
+            sequence,
+            matched,
+            project,
+            raw_detail,
+            expected=forbidden_footer_check["expected"],
+            actual=forbidden_footer_check["actual"],
+            message=forbidden_footer_check["message"],
+        )
+
     spec_check = _test_plan_spec_table_check(plan_spec_table, config, context)
     raw_detail["checks"].append(spec_check)
     if not spec_check["passed"]:
@@ -1236,6 +1258,27 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
         )
 
     sheet = workbook.sheets[0]
+    footer_check = _check_forbidden_text_terms(
+        _clean_excel_header_text(sheet.footer_text),
+        config.get("forbidden_footer_terms") or [],
+        context,
+        subject="테스트케이스 바닥글",
+        default_message="테스트케이스 바닥글에 잘못된 단어가 작성됨",
+    )
+    if footer_check["details"]:
+        raw_detail["footer_check"] = footer_check
+    if not footer_check["passed"]:
+        return _test_case_failure(
+            rule,
+            sequence,
+            matched,
+            project,
+            raw_detail,
+            expected=footer_check["expected"],
+            actual=footer_check["actual"],
+            message=footer_check["message"],
+        )
+
     title_text = _resolve_rule_value(config.get("title_text") or "{project_number} 테스트케이스", context)
     title_cell = _find_cell_containing(sheet.rows, title_text)
     raw_detail["title_check"] = {
@@ -1700,6 +1743,46 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
                 raw_detail=raw_detail,
             )
 
+    header_forbidden_check = _check_versioned_workbook_forbidden_print_terms(
+        workbook_by_version,
+        config.get("forbidden_header_terms") or [],
+        context,
+        field="header_text",
+        subject="결함리포트 머리글",
+        default_message="결함리포트 머리글에 잘못된 단어가 작성됨",
+    )
+    footer_forbidden_check = _check_versioned_workbook_forbidden_print_terms(
+        workbook_by_version,
+        config.get("forbidden_footer_terms") or [],
+        context,
+        field="footer_text",
+        subject="결함리포트 바닥글",
+        default_message="결함리포트 바닥글에 잘못된 단어가 작성됨",
+    )
+    raw_detail["print_text_checks"] = {
+        "forbidden_headers": header_forbidden_check,
+        "forbidden_footers": footer_forbidden_check,
+    }
+    failed_print_check = next(
+        (
+            check
+            for check in (header_forbidden_check, footer_forbidden_check)
+            if not check["passed"]
+        ),
+        None,
+    )
+    if failed_print_check:
+        return _defect_report_failure(
+            rule,
+            sequence,
+            matched,
+            project,
+            raw_detail,
+            expected=failed_print_check["expected"],
+            actual=failed_print_check["actual"],
+            message=failed_print_check["message"],
+        )
+
     sheet_check = _check_defect_report_sheets(workbook_by_version, versioned_files, defect_round_count)
     raw_detail["sheet_checks"] = sheet_check["details"]
     if not sheet_check["passed"]:
@@ -2057,6 +2140,46 @@ def _evaluate_inspection_checklist_check(rule, sequence, project, context, verif
             message=config.get("header_message") or "머리글(프로젝트번호)이 잘못 작성됨",
         )
 
+    footer_forbidden_check = _check_workbook_forbidden_print_terms(
+        workbook,
+        config.get("forbidden_footer_terms") or [],
+        context,
+        field="footer_text",
+        subject="점검표 바닥글",
+        default_message="점검표 바닥글에 잘못된 단어가 작성됨",
+    )
+    footer_required_check = _check_workbook_required_print_terms(
+        workbook,
+        config.get("required_footer_terms") or [],
+        context,
+        field="footer_text",
+        subject="점검표 바닥글",
+        default_message="점검표 바닥글에 필요한 단어가 누락됨",
+    )
+    raw_detail["footer_checks"] = {
+        "forbidden": footer_forbidden_check,
+        "required": footer_required_check,
+    }
+    failed_footer_check = next(
+        (
+            check
+            for check in (footer_forbidden_check, footer_required_check)
+            if not check["passed"]
+        ),
+        None,
+    )
+    if failed_footer_check:
+        return _checklist_failure(
+            rule,
+            sequence,
+            matched,
+            project,
+            raw_detail,
+            expected=failed_footer_check["expected"],
+            actual=failed_footer_check["actual"],
+            message=failed_footer_check["message"],
+        )
+
     cover_sheet = _workbook_sheet(workbook, config.get("cover_sheet") or "표지")
     if not cover_sheet:
         return _checklist_failure(
@@ -2216,6 +2339,190 @@ def _check_checklist_headers(workbook, project_number):
         "actual": "오류 시트: " + ", ".join(failures) if failures else "정상",
         "details": details,
     }
+
+
+def _check_workbook_forbidden_print_terms(workbook, terms, context, *, field, subject, default_message):
+    if not terms:
+        return {"passed": True, "expected": "", "actual": "검사 조건 없음", "message": "", "details": []}
+
+    details = []
+    failures = []
+    for sheet in workbook.sheets:
+        text = _clean_excel_header_text(getattr(sheet, field, ""))
+        check = _check_forbidden_text_terms(
+            text,
+            terms,
+            context,
+            subject=f"{subject}({sheet.name})",
+            default_message=default_message,
+        )
+        details.append({
+            "sheet": sheet.name,
+            "text": text,
+            "passed": check["passed"],
+            "checks": check["details"],
+        })
+        if not check["passed"]:
+            failures.append({"sheet": sheet.name, "actual": check["actual"], "message": check["message"]})
+
+    return {
+        "passed": not failures,
+        "expected": f"모든 시트 {subject} 금지어 없음",
+        "actual": "오류 시트: " + ", ".join(failure["sheet"] for failure in failures) if failures else "정상",
+        "message": failures[0]["message"] if failures else "",
+        "details": details,
+    }
+
+
+def _check_workbook_required_print_terms(workbook, terms, context, *, field, subject, default_message):
+    if not terms:
+        return {"passed": True, "expected": "", "actual": "검사 조건 없음", "message": "", "details": []}
+
+    details = []
+    failures = []
+    for sheet in workbook.sheets:
+        text = _clean_excel_header_text(getattr(sheet, field, ""))
+        check = _check_required_text_terms(
+            text,
+            terms,
+            context,
+            subject=f"{subject}({sheet.name})",
+            default_message=default_message,
+        )
+        details.append({
+            "sheet": sheet.name,
+            "text": text,
+            "passed": check["passed"],
+            "checks": check["details"],
+        })
+        if not check["passed"]:
+            failures.append({"sheet": sheet.name, "actual": check["actual"], "message": check["message"]})
+
+    return {
+        "passed": not failures,
+        "expected": f"모든 시트 {subject} 필수어 포함",
+        "actual": "오류 시트: " + ", ".join(failure["sheet"] for failure in failures) if failures else "정상",
+        "message": failures[0]["message"] if failures else "",
+        "details": details,
+    }
+
+
+def _check_versioned_workbook_forbidden_print_terms(workbook_by_version, terms, context, *, field, subject, default_message):
+    if not terms:
+        return {"passed": True, "expected": "", "actual": "검사 조건 없음", "message": "", "details": []}
+
+    details = []
+    failures = []
+    for version in sorted(workbook_by_version):
+        workbook = workbook_by_version[version]
+        for sheet in workbook.sheets:
+            text = _clean_excel_header_text(getattr(sheet, field, ""))
+            check = _check_forbidden_text_terms(
+                text,
+                terms,
+                context,
+                subject=f"{subject}(v{version}.0 {sheet.name})",
+                default_message=default_message,
+            )
+            details.append({
+                "version": version,
+                "sheet": sheet.name,
+                "text": text,
+                "passed": check["passed"],
+                "checks": check["details"],
+            })
+            if not check["passed"]:
+                failures.append({
+                    "version": version,
+                    "sheet": sheet.name,
+                    "actual": check["actual"],
+                    "message": check["message"],
+                })
+
+    return {
+        "passed": not failures,
+        "expected": f"모든 파일·시트 {subject} 금지어 없음",
+        "actual": (
+            "오류 위치: "
+            + ", ".join(f"v{failure['version']}.0 {failure['sheet']}" for failure in failures)
+            if failures
+            else "정상"
+        ),
+        "message": failures[0]["message"] if failures else "",
+        "details": details,
+    }
+
+
+def _check_forbidden_text_terms(actual_text, terms, context, *, subject, default_message):
+    actual_text = str(actual_text or "")
+    term_items = _term_items(terms, context)
+    details = []
+    failures = []
+    for item in term_items:
+        term = item["text"]
+        passed = term not in actual_text
+        details.append({
+            "term": term,
+            "passed": passed,
+            "message": item["message"] or default_message,
+        })
+        if not passed:
+            failures.append(item)
+
+    return {
+        "passed": not failures,
+        "expected": f"{subject}에 금지어 없음: " + ", ".join(item["text"] for item in term_items),
+        "actual": (
+            "포함된 금지어: " + ", ".join(item["text"] for item in failures)
+            if failures
+            else "정상"
+        ),
+        "message": (failures[0]["message"] if failures else "") or default_message,
+        "details": details,
+    }
+
+
+def _check_required_text_terms(actual_text, terms, context, *, subject, default_message):
+    actual_text = str(actual_text or "")
+    term_items = _term_items(terms, context)
+    details = []
+    failures = []
+    for item in term_items:
+        term = item["text"]
+        passed = term in actual_text
+        details.append({
+            "term": term,
+            "passed": passed,
+            "message": item["message"] or default_message,
+        })
+        if not passed:
+            failures.append(item)
+
+    return {
+        "passed": not failures,
+        "expected": f"{subject}에 필수어 포함: " + ", ".join(item["text"] for item in term_items),
+        "actual": (
+            "누락된 필수어: " + ", ".join(item["text"] for item in failures)
+            if failures
+            else "정상"
+        ),
+        "message": (failures[0]["message"] if failures else "") or default_message,
+        "details": details,
+    }
+
+
+def _term_items(terms, context):
+    items = []
+    for term_config in terms or []:
+        if isinstance(term_config, dict):
+            text = _resolve_rule_value(str(term_config.get("text") or ""), context)
+            message = str(term_config.get("message") or "")
+        else:
+            text = _resolve_rule_value(str(term_config or ""), context)
+            message = ""
+        if text:
+            items.append({"text": text, "message": message})
+    return items
 
 
 def _check_checklist_cover(sheet, context, config):
@@ -3410,6 +3717,10 @@ def _run_content_check(check, file_info, context):
         return _check_pdf_first_page_label_value_contains(check, file_info, context)
     if check_type == "docx_text_contains":
         return _check_docx_text_contains(check, file_info, context)
+    if check_type == "docx_header_contains":
+        return _check_docx_part_contains(check, file_info, context, part="header")
+    if check_type == "docx_footer_contains":
+        return _check_docx_part_contains(check, file_info, context, part="footer")
     if check_type == "docx_next_paragraph_matches":
         return _check_docx_next_paragraph_matches(check, file_info, context)
     raise DownloadReviewInspectionError(f"지원하지 않는 문서 내용 검사 유형입니다: {check_type or '(비어 있음)'}")
@@ -3465,6 +3776,24 @@ def _check_docx_text_contains(check, file_info, context):
         expected=f"문서에 '{expected_text}' 포함",
         actual=matched or "일치 문장 없음",
         detail={"expected_text": expected_text, "matched_text": matched or ""},
+    )
+
+
+def _check_docx_part_contains(check, file_info, context, *, part):
+    expected_text = _resolve_rule_value(str(check.get("text") or ""), context)
+    if part == "header":
+        actual_text = _docx_header_text(file_info)
+        label = "머리글"
+    else:
+        actual_text = _docx_footer_text(file_info)
+        label = "바닥글"
+    passed = expected_text in actual_text
+    return _content_result(
+        check,
+        passed,
+        expected=f"{label}에 '{expected_text}' 포함",
+        actual=actual_text or f"{label} 없음",
+        detail={"part": part, "expected_text": expected_text, "actual_text": actual_text},
     )
 
 
@@ -3539,6 +3868,7 @@ def _read_xlsx_workbook(data):
                 name=worksheet.title,
                 rows=_trim_empty_edges(rows),
                 header_text=_worksheet_header_text(worksheet),
+                footer_text=_worksheet_footer_text(worksheet),
             )
         )
     workbook.close()
@@ -3549,6 +3879,16 @@ def _worksheet_header_text(worksheet):
     parts = []
     for header in (worksheet.oddHeader, worksheet.evenHeader, worksheet.firstHeader):
         for section in (header.left, header.center, header.right):
+            text = getattr(section, "text", "") or ""
+            if text:
+                parts.append(text)
+    return _normalize_spaces(" ".join(parts))
+
+
+def _worksheet_footer_text(worksheet):
+    parts = []
+    for footer in (worksheet.oddFooter, worksheet.evenFooter, worksheet.firstFooter):
+        for section in (footer.left, footer.center, footer.right):
             text = getattr(section, "text", "") or ""
             if text:
                 parts.append(text)
@@ -3566,8 +3906,9 @@ def _read_xls_workbook(data):
     except Exception as exc:
         raise DownloadReviewInspectionError("xls 파일을 읽을 수 없습니다.") from exc
 
-    # xlrd는 인쇄 머리글(BIFF HEADER 레코드)을 노출하지 않으므로 직접 파싱한다.
+    # xlrd는 인쇄 머리글/바닥글(BIFF HEADER/FOOTER 레코드)을 노출하지 않으므로 직접 파싱한다.
     headers_by_sheet = _xls_print_headers(data)
+    footers_by_sheet = _xls_print_footers(data)
 
     sheets = []
     for worksheet in workbook.sheets():
@@ -3582,17 +3923,26 @@ def _read_xls_workbook(data):
                 name=worksheet.name,
                 rows=_trim_empty_edges(rows),
                 header_text=headers_by_sheet.get(worksheet.name, ""),
+                footer_text=footers_by_sheet.get(worksheet.name, ""),
             )
         )
     return ExcelWorkbook(sheets=sheets)
 
 
 def _xls_print_headers(data):
-    """`.xls` 워크북 스트림을 직접 파싱해 시트별 인쇄 머리글을 추출한다.
+    return _xls_print_records(data, opcode=0x0014)
 
-    xlrd는 BIFF HEADER(0x14) 레코드를 노출하지 않으므로, OLE2 컨테이너에서
+
+def _xls_print_footers(data):
+    return _xls_print_records(data, opcode=0x0015)
+
+
+def _xls_print_records(data, *, opcode):
+    """`.xls` 워크북 스트림을 직접 파싱해 시트별 인쇄 머리글/바닥글을 추출한다.
+
+    xlrd는 BIFF HEADER/FOOTER 레코드를 노출하지 않으므로, OLE2 컨테이너에서
     Workbook 스트림을 꺼낸 뒤 BOUNDSHEET(0x85)로 시트별 substream 위치를 찾고
-    각 substream 첫 HEADER 레코드를 읽는다. 실패하면 빈 매핑을 반환한다.
+    각 substream 첫 대상 레코드를 읽는다. 실패하면 빈 매핑을 반환한다.
     """
     try:
         from io import StringIO
@@ -3620,15 +3970,15 @@ def _xls_print_headers(data):
                 boundsheets.append((ply_pos, name))
             pos += 4 + length
 
-        headers = {}
+        records = {}
         for ply_pos, name in boundsheets:
-            headers[name] = _xls_header_at(stream, ply_pos)
-        return headers
+            records[name] = _xls_print_record_at(stream, ply_pos, opcode)
+        return records
     except Exception:
         return {}
 
 
-def _xls_header_at(stream, start):
+def _xls_print_record_at(stream, start, target_opcode):
     pos = start
     total = len(stream)
     depth = 0
@@ -3641,7 +3991,7 @@ def _xls_header_at(stream, start):
             depth -= 1
             if depth <= 0:
                 return ""
-        elif opcode == 0x0014:  # HEADER
+        elif opcode == target_opcode:
             if length == 0:
                 return ""
             text, _ = _xls_unicode_string(body, 0, 2)
@@ -4290,6 +4640,28 @@ def _docx_footer_text(file_info):
                         texts.append(text)
     except (KeyError, BadZipFile, etree.XMLSyntaxError) as exc:
         raise DownloadReviewInspectionError("docx 바닥글을 읽을 수 없습니다.") from exc
+    return _normalize_spaces(" ".join(texts))
+
+
+def _docx_header_text(file_info):
+    data = _read_file_bytes(file_info)
+    ns = _word_ns()
+    texts = []
+    try:
+        with ZipFile(BytesIO(data)) as docx_file:
+            header_names = sorted(
+                name
+                for name in docx_file.namelist()
+                if name.startswith("word/header") and name.endswith(".xml")
+            )
+            for header_name in header_names:
+                root = etree.fromstring(docx_file.read(header_name))
+                for paragraph in root.xpath(".//w:p", namespaces=ns):
+                    text = _normalize_spaces("".join(paragraph.xpath(".//w:t/text()", namespaces=ns)))
+                    if text:
+                        texts.append(text)
+    except (KeyError, BadZipFile, etree.XMLSyntaxError) as exc:
+        raise DownloadReviewInspectionError("docx 머리글을 읽을 수 없습니다.") from exc
     return _normalize_spaces(" ".join(texts))
 
 

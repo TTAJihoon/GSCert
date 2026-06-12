@@ -54,7 +54,7 @@ from main.views.review.ecm_download_review_api import (
 )
 
 
-def _docx_bytes(*, paragraphs=None, tables=None, blocks=None, footer=None):
+def _docx_bytes(*, paragraphs=None, tables=None, blocks=None, header=None, footer=None):
     paragraphs = paragraphs or []
     tables = tables or []
     body_parts = []
@@ -77,6 +77,14 @@ def _docx_bytes(*, paragraphs=None, tables=None, blocks=None, footer=None):
     bytes_buffer = tempfile.SpooledTemporaryFile()
     with zipfile.ZipFile(bytes_buffer, "w") as archive:
         archive.writestr("word/document.xml", document_xml.encode("utf-8"))
+        if header is not None:
+            header_xml = (
+                '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+                '<w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+                + _docx_paragraph_xml(header)
+                + "</w:hdr>"
+            )
+            archive.writestr("word/header1.xml", header_xml.encode("utf-8"))
         if footer is not None:
             footer_xml = (
                 '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -267,6 +275,7 @@ def _inspection_checklist_xlsx(
     def sheet(name):
         worksheet = workbook.create_sheet(name)
         worksheet.oddHeader.center.text = f"프로젝트번호: {project_number}"
+        worksheet.oddFooter.center.text = "한국정보통신기술협회"
         return worksheet
 
     cover = sheet("표지")
@@ -1130,7 +1139,11 @@ class DownloadReviewJobsApiTests(TestCase):
             archive.writestr("2.계약/TTA-26-00010 계약서.pdf", b"contract")
             archive.writestr(
                 "2.계약/TTA-26-00010 시험합의서.docx",
-                _docx_bytes(tables=[[["시험신청번호", "TTA-26-00010"]]]),
+                _docx_bytes(
+                    tables=[[["시험신청번호", "TTA-26-00010"]]],
+                    header="TTA-26-00010",
+                    footer="TIS-0101-3 (00)",
+                ),
             )
             archive.writestr(
                 "2.계약/TTA-26-00010 시험합의서.pdf",
@@ -1317,6 +1330,18 @@ class DownloadReviewJobsApiTests(TestCase):
         agreement_result = results["합의서(PDF)"]
         feature_result = results["기능리스트"]
         plan_result = results["시험계획서(PDF)"]
+        self.assertTrue(
+            any(
+                check.get("part") == "header" and check["passed"]
+                for check in agreement_result.raw_detail_json["content_checks"]
+            )
+        )
+        self.assertTrue(
+            any(
+                check.get("part") == "footer" and check["passed"]
+                for check in agreement_result.raw_detail_json["content_checks"]
+            )
+        )
         self.assertEqual(results["변수 전달 테스트"].status, DownloadReviewRuleStatus.PASS)
         report_result = results["시험성적서(PDF)"]
         self.assertEqual(report_result.raw_detail_json["variables"]["결함차수"], 2)
@@ -1324,17 +1349,30 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(report_result.raw_detail_json["variables"]["2차"], "2026.05.20.")
         self.assertEqual(report_result.raw_detail_json["variables"]["시험성적서_세부사양표"], [["항목", "값"], ["OS", "Windows"]])
         self.assertEqual(get_rule_output_variables(project)["결함차수"], 2)
+        self.assertTrue(
+            any(
+                check.get("details")
+                and check["details"][0]["term"] == "TIS-"
+                and check["details"][0]["passed"]
+                for check in plan_result.raw_detail_json["checks"]
+            )
+        )
         self.assertEqual(plan_result.raw_detail_json["checks"][-1]["name"], "spec_table")
         self.assertTrue(plan_result.raw_detail_json["checks"][-1]["passed"])
         defect_result = results["결함리포트"]
         self.assertEqual(defect_result.raw_detail_json["variables"]["잔여결함수"], 2)
         self.assertEqual(defect_result.raw_detail_json["variables"]["H"], "3")
         self.assertEqual(defect_result.raw_detail_json["variables"]["R"], "7")
+        self.assertTrue(defect_result.raw_detail_json["print_text_checks"]["forbidden_headers"]["passed"])
+        self.assertTrue(defect_result.raw_detail_json["print_text_checks"]["forbidden_footers"]["passed"])
         test_case_result = results["테스트케이스"]
+        self.assertTrue(test_case_result.raw_detail_json["footer_check"]["passed"])
         self.assertEqual(test_case_result.raw_detail_json["residual_defect_check"]["expected_count"], 2)
         self.assertEqual(test_case_result.raw_detail_json["residual_defect_check"]["actual_count"], 2)
         self.assertEqual(test_case_result.raw_detail_json["residual_defect_check"]["failed_rows"], [7, 8])
         checklist_result = results["점검표(PDF)"]
+        self.assertTrue(checklist_result.raw_detail_json["footer_checks"]["forbidden"]["passed"])
+        self.assertTrue(checklist_result.raw_detail_json["footer_checks"]["required"]["passed"])
         self.assertEqual(len(checklist_result.raw_detail_json["variables"]["측정항목별점수표"]), 84)
         self.assertEqual(checklist_result.raw_detail_json["variables"]["측정항목별점수표"][0], "score-1")
         quality_result = results["품질검사표"]

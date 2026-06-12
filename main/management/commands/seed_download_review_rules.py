@@ -185,6 +185,18 @@ def _actual_rule_spec(index, column_name):
                         "line_window": 3,
                         "failure_message": "프로젝트 번호가 맞지 않습니다.",
                     },
+                    {
+                        "type": "docx_header_contains",
+                        "extensions": [".docx"],
+                        "text": "{project_number}",
+                        "failure_message": "합의서 머리말에 프로젝트 번호가 잘못 작성됨",
+                    },
+                    {
+                        "type": "docx_footer_contains",
+                        "extensions": [".docx"],
+                        "text": "TIS-0101-3 (00)",
+                        "failure_message": "합의서 바닥글에 양식번호가 잘못 작성됨",
+                    },
                 ],
                 "artifacts": [
                     {
@@ -310,6 +322,16 @@ def _actual_rule_spec(index, column_name):
                 "schedule_marker": "2.2 시험일정",
                 "schedule_header": "WD",
                 "footer_text": "Copyright {연도} TTA",
+                "forbidden_footer_terms": [
+                    {
+                        "text": "TIS-",
+                        "message": "시험계획서 바닥글에 양식번호가 잘못 작성됨",
+                    },
+                    {
+                        "text": "소프트웨어시험인증연구소",
+                        "message": "시험계획서 바닥글에 '소프트웨어시험인증연구소'라는 단어가 잘못 작성됨",
+                    },
+                ],
                 "spec_marker": "<세부사양>",
                 "report_spec_variable": "시험성적서_세부사양표",
                 "pdf_artifact_label": "시험계획서 1페이지",
@@ -358,6 +380,12 @@ def _actual_rule_spec(index, column_name):
                 "reviewer_expected": "김진영",
                 "date_text": "작성일: {시작일} ~ {종료일}",
                 "result_header": "상세 테스트 결과",
+                "forbidden_footer_terms": [
+                    {
+                        "text": "소프트웨어시험인증연구소",
+                        "message": "테스트케이스 바닥글에 '소프트웨어시험인증연구소'라는 단어가 잘못 작성됨",
+                    },
+                ],
                 "missing_message": "파일이 존재하지 않음",
                 "sheet_count_message": "테스트케이스 시트가 1개 이상임",
                 "project_number_message": "프로젝트 번호가 잘못 작성됨",
@@ -379,6 +407,18 @@ def _actual_rule_spec(index, column_name):
                 "extensions": [".xlsx", ".xls"],
                 "version_pattern": r"(?i)v(\d+)\.0",
                 "count_mismatch_message": "시험성적서의 결함 차수와 결함리포트 개수가 다름",
+                "forbidden_header_terms": [
+                    {
+                        "text": "프로젝트번호",
+                        "message": "결함리포트 머리글에 프로젝트번호 삭제",
+                    },
+                ],
+                "forbidden_footer_terms": [
+                    {
+                        "text": "소프트웨어시험인증연구소",
+                        "message": "결함리포트 바닥글에 '소프트웨어시험인증연구소'라는 단어가 잘못 작성됨",
+                    },
+                ],
                 "filename_message": "결함리포트 파일명이 잘못됨",
                 "sheet_message": "{file_name}에 시트가 잘못 작성됨",
                 "environment_message": "시험환경 정보 잘못 작성됨",
@@ -404,6 +444,18 @@ def _actual_rule_spec(index, column_name):
                 "score_sheet": "측정항목별 점수표",
                 "pdf_artifact_id": "pdf_first_page",
                 "pdf_artifact_label": "점검표 1페이지",
+                "forbidden_footer_terms": [
+                    {
+                        "text": "TIS-",
+                        "message": "점검표 바닥글에 양식번호가 잘못 작성됨",
+                    },
+                ],
+                "required_footer_terms": [
+                    {
+                        "text": "한국정보통신기술협회",
+                        "message": "점검표 바닥글에 '한국정보통신기술협회'라는 단어가 누락됨",
+                    },
+                ],
                 "missing_message": "파일이 존재하지 않음",
                 "header_message": "머리글(프로젝트번호)이 잘못 작성됨",
                 "cover_title_message": "표지 제목이 잘못 작성됨",
