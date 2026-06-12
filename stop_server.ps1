@@ -10,13 +10,13 @@ $PidFile = Join-Path $RunDir "django_runserver.pid"
 $Port    = 8000
 
 if (Test-Path $PidFile) {
-    $pid = [int](Get-Content $PidFile -Raw).Trim()
-    $proc = Get-Process -Id $pid -ErrorAction SilentlyContinue
+    $targetPid = [int](Get-Content $PidFile -Raw).Trim()
+    $proc = Get-Process -Id $targetPid -ErrorAction SilentlyContinue
     if ($proc) {
-        Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue
-        Write-Host "[OK] Django runserver 프로세스 종료 (PID $pid)"
+        Stop-Process -Id $targetPid -Force -ErrorAction SilentlyContinue
+        Write-Host "[OK] Django runserver 프로세스 종료 (PID $targetPid)"
     } else {
-        Write-Host "[INFO] PID $pid 프로세스가 이미 종료되었습니다."
+        Write-Host "[INFO] PID $targetPid 프로세스가 이미 종료되었습니다."
     }
     Remove-Item $PidFile -Force
 } else {

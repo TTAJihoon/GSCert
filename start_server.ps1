@@ -9,7 +9,15 @@ $VenvPython = Join-Path $RootDir ".venv\Scripts\python.exe"
 if (-not (Test-Path $VenvPython)) {
     $VenvPython = Join-Path $RootDir "venv\Scripts\python.exe"
 }
-if (-not (Test-Path $VenvPython)) { $VenvPython = "python" }
+if (-not (Test-Path $VenvPython)) {
+    $resolved = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $resolved) {
+        Write-Host "[ERROR] Python을 찾을 수 없습니다. Python 설치 또는 가상환경 설정이 필요합니다." -ForegroundColor Red
+        Write-Host "        launcher 메뉴의 'S. 초기 환경 설정'을 먼저 실행해 주세요." -ForegroundColor Yellow
+        exit 1
+    }
+    $VenvPython = $resolved.Source
+}
 
 $LogsDir = Join-Path $RootDir "logs"
 $RunDir  = Join-Path $RootDir "run"

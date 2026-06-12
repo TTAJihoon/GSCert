@@ -10,6 +10,10 @@ param(
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+Write-Host "=== nginx 시작 ==="
+& (Join-Path $ScriptDir "start_nginx.ps1")
+
+Write-Host ""
 Write-Host "=== Django runserver 시작 ==="
 & (Join-Path $ScriptDir "start_server.ps1")
 

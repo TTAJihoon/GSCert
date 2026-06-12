@@ -9,5 +9,9 @@ Write-Host "=== download_worker 중지 ==="
 & (Join-Path $ScriptDir "stop_worker.ps1")
 
 Write-Host ""
-Write-Host "=== Uvicorn 서버 중지 ==="
+Write-Host "=== Django 서버 중지 ==="
 & (Join-Path $ScriptDir "stop_server.ps1")
+
+Write-Host ""
+Write-Host "=== nginx 중지 ==="
+& (Join-Path $ScriptDir "stop_nginx.ps1")
