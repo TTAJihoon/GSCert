@@ -5,9 +5,10 @@
 ## 현재 기준
 
 - 작업 브랜치: `codex-job-runner-persistence`
-- 점검규칙 수정 브랜치: `download-review-inspection-fixes` (커밋 `6e699c1`, base `f5d285f`)
-  - 이 브랜치는 test.zip 샘플 검증으로 찾은 버그/폴더 매칭 수정이 들어 있다. `codex-job-runner-persistence`(27560e6)보다 base가 1커밋 뒤이므로, 메인 워크트리에서 `git merge download-review-inspection-fixes` 로 합친다.
+- 점검규칙 수정 브랜치: `download-review-inspection-fixes` (base `f5d285f`)
+  - test.zip 샘플 검증으로 찾은 버그/폴더 매칭 수정 + 14번 시험기록서 구현이 들어 있다. `codex-job-runner-persistence`(27560e6)보다 base가 1커밋 뒤이므로, 메인 워크트리에서 `git merge download-review-inspection-fixes` 로 합친다.
   - 아직 GitHub에 push되지 않았다. 원격/모바일 세션으로 이어가려면 `git push -u origin download-review-inspection-fixes` 필요.
+  - 활성 실제 규칙은 18개(1~18번 전부). `test.zip` 실행 시 PASS 7/18이며, 나머지 FAIL은 의도된 샘플 오류(5/17/18) + 엄격 유지 결정(7 버전·10 환경) + 10 cascade(9/11/16) + 14 파일없음 + 15 cascade로 모두 설명된다.
 - 다운로드 검토 페이지: `http://127.0.0.1:8000/download-review/`
 - 서버 실행 예시: `.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload`
 - 테스트용 작업 시작 가능 시간: 현재 `00:00-24:00`
@@ -49,7 +50,7 @@ Copy-Item -Recurse -Force `
 
 ## 이번 세션 변경 (`download-review-inspection-fixes`)
 
-`test.zip`(TTA-26-00266) 샘플로 활성 규칙 17개를 실제 실행 검증하고 발견한 버그를 수정했다.
+`test.zip`(TTA-26-00266) 샘플로 활성 규칙을 실제 실행 검증하고 발견한 버그를 수정했으며, 14번 시험기록서를 구현했다.
 
 - 엔진(`ecm_download_review_inspection.py`):
   - `_docx_all_text`/`_docx_footer_text`: `w:t` run을 문단 단위로 공백 없이 이어붙여 Word가 쪼갠 숫자(`2026`→`20 2 6`)로 날짜·프로젝트번호 검사가 깨지던 버그 수정.
@@ -58,15 +59,17 @@ Copy-Item -Recurse -Force `
   - `_read_xls_workbook`+`_xls_print_headers`: `.xls` 인쇄 머리글을 BIFF HEADER(0x14) 레코드 직접 파싱으로 시트별 추출(xlrd가 노출 안 함). Rule 11 머리글 검사.
   - `_numeric_sequence_last_row`: 숫자 뒤 요약행이 와도 마지막 연속 숫자 행을 반환(Rule 11 기능별 점검표).
   - `_check_checklist_cover`: 표지 날짜 정규화 비교(`_find_cell_with_date_range`), 검토자/작성자 분리 셀 허용.
-- seed(`seed_download_review_rules.py`): 15/16 폴더 `["인증관련"]`, 12번 `결함` 키워드 + 성능폴더 `min_entries=1`.
-- 문서 `19_inspection_rule_manual.md` 위 동작 반영. `xlrd` 설치 확인.
-- 검증: `test.zip` PASS 7/17. 남은 FAIL은 전부 (의도된 샘플 오류 5/17/18) + (현행 엄격 유지 결정 7 버전·10 환경) + (10 cascade로 9/11/16/15)로 설명됨.
+  - `_normalize_spaces`/`_excel_cell_text`: 정수 `0` 셀이 `str(value or "")`의 falsy 처리로 빈 문자열이 되던 버그 수정. `{R}`(수정전 결함수=0) 등 0값 비교가 정상화됨 → Rule 9·11이 입력만 있으면 PASS.
+  - 14번 `_evaluate_downloadable_artifact_check`+`_store_pdf_download_artifact`: 파일 존재만 판정하고 PDF를 `download=true` 산출물로 제공.
+- seed(`seed_download_review_rules.py`): 14번 시험기록서(`downloadable_artifact_check`) 추가, 15/16 폴더 `["인증관련"]`, 12번 `결함` 키워드 + 성능폴더 `min_entries=1`.
+- 문서 `19_inspection_rule_manual.md` 위 동작 반영. `xlrd` 설치 확인. 테스트(`main/tests.py`) 규칙 수 17→18, 시험기록서 검증 추가.
+- 검증: `test.zip` PASS 7/18, `manage.py test` 36개 통과. 남은 FAIL은 전부 (의도된 샘플 오류 5/17/18) + (현행 엄격 유지 결정 7 버전·10 환경) + (10 cascade로 9/11/16) + (14 파일없음) + (15 cascade)로 설명됨.
 
 ## 이전 완료 작업
 
 점검규칙과 산출물 조회 기반을 확장했다.
 
-- 구현된 실제 규칙: 1~13번, 15~18번
+- 구현된 실제 규칙: 1~18번 전부
 - 새 rule_type:
   - `excel_feature_list_check`
   - `test_plan_document_check`
@@ -143,19 +146,13 @@ git diff --check
 
 ## 바로 다음 작업
 
-1. 14번 시험기록서를 구현한다. (현재 `--only-real` seed에 없어 활성 규칙 17개뿐)
-   - `시험 > 종료` 폴더에서 `시험기록서`와 `{프로젝트번호}`를 포함한 PDF 1개를 찾는다.
-   - 사용자가 직접 확인할 수 있도록 다운로드형 산출물 버튼으로 제공한다.
-2. Rule 10 결함리포트의 `{R}`(수정전) 추출 버그를 조사·수정한다.
-   - `_defect_analysis_value(wbk, "수정전", offset_rows=5, offset_cols=0)`가 `test.zip` v3.0 `시험분석자료`에서 빈 값을 낸다(`{H}`는 정상). 시트 하단 요약표 레이아웃 확인 필요.
-   - Rule 10 환경 동일성 게이트 뒤라 현재 실제 실행엔 영향 없으나, 환경 검사 완화 시 노출되는 잠재 버그.
-3. 실제 샘플 zip 또는 live 다운로드 결과로 전체 규칙 순서를 다시 검증한다.
+1. `download-review-inspection-fixes` 를 `codex-job-runner-persistence` 에 합친다 (merge vs cherry-pick 결정).
+2. 실제 정상 산출물 zip(오류 없는 진짜 프로젝트)으로 전체 규칙이 PASS 18/18 되는지 확인한다. 현재 `test.zip` 은 의도된 오류가 섞인 샘플이라 PASS 7/18이 정상이다.
+3. (선택) Rule 16 품질검사표 ↔ 점검표 측정항목별점수표 불일치는 `test.zip` 샘플의 실제 데이터 차이(NA↔1 등 11곳)다. 규칙은 정상 동작하므로 코드 수정 불필요.
 
 ## 결정 필요
 
-1. 14번 시험기록서 PDF 제공 방식 확정이 필요하다.
-   - 추천: 검사 결과는 파일 존재 여부만 자동 판정하고, 산출물 버튼은 `download=true`로 제공해 브라우저에서 바로 다운로드되게 한다.
-2. `download-review-inspection-fixes` 를 `codex-job-runner-persistence` 에 언제/어떻게 합칠지 (merge vs cherry-pick).
+- 없음 (이전의 14번 PDF 제공 방식·브랜치 머지 항목은 위 "바로 다음 작업"으로 이동/반영).
 
 ## 검증 하니스 메모
 

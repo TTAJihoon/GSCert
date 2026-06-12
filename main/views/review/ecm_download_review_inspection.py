@@ -213,6 +213,8 @@ def _evaluate_rule(rule, sequence, project, context, verify_result, file_summary
         return _evaluate_required_file_name_contains(rule, sequence, project, verify_result)
     if rule_type == "required_artifact_file":
         return _evaluate_required_artifact_file(rule, sequence, project, context, verify_result)
+    if rule_type == "downloadable_artifact_check":
+        return _evaluate_downloadable_artifact_check(rule, sequence, project, context, verify_result)
     if rule_type == "document_artifact_check":
         return _evaluate_document_artifact_check(rule, sequence, project, context, verify_result)
     if rule_type == "all_files_non_empty":
@@ -392,6 +394,102 @@ def _evaluate_required_artifact_file(rule, sequence, project, context, verify_re
                 for file_info in matched[:20]
             ],
         },
+    )
+
+
+def _evaluate_downloadable_artifact_check(rule, sequence, project, context, verify_result):
+    """파일 존재 여부만 자동 판정하고, 찾은 파일을 다운로드형 산출물로 제공한다.
+
+    14번 시험기록서처럼 내용 검사 없이 사용자가 직접 받아 확인하는 규칙용이다.
+    """
+    config = rule.config_json or {}
+    name_keywords = _resolved_keywords(config.get("filename_keywords") or [], context)
+    files, selected_folder = _files_in_configured_folder(rule, verify_result)
+    extensions = _configured_extensions(config, rule.target_file_type)
+    matched = [
+        file_info
+        for file_info in files
+        if (not name_keywords or _name_contains_all(file_info.name, name_keywords))
+        and _extension_matches(file_info.extension, extensions)
+    ]
+
+    exact_count = config.get("exact_count")
+    min_count = int(config.get("min_count") or 1)
+    if exact_count is not None:
+        passed = len(matched) == int(exact_count)
+        expected_count = f"{int(exact_count)}개"
+    else:
+        passed = len(matched) >= min_count
+        expected_count = f"{min_count}개 이상"
+
+    raw_detail = {
+        "selected_folder": selected_folder,
+        "filename_keywords": name_keywords,
+        "extensions": extensions,
+        "matched_file_count": len(matched),
+        "matched_files": [_display_path(file_info.path, project.project_number) for file_info in matched[:20]],
+    }
+
+    expected_parts = []
+    if name_keywords:
+        expected_parts.append("파일명에 " + ", ".join(name_keywords) + " 포함")
+    if extensions:
+        expected_parts.append("확장자 " + ", ".join(extensions))
+    expected_parts.append(expected_count)
+    expected_text = " / ".join(expected_parts)
+
+    if not passed:
+        return RuleEvaluation(
+            rule=rule,
+            sequence=sequence,
+            status=DownloadReviewRuleStatus.FAIL,
+            expected=expected_text,
+            actual=_matched_files_actual(matched),
+            message=config.get("missing_message") or "파일 확인 불가",
+            file_path=_representative_path(matched or files, project.project_number),
+            file_name=_representative_name(matched or files),
+            raw_detail=raw_detail,
+        )
+
+    base_id = _safe_artifact_id(config.get("artifact_id") or "download")
+    base_label = config.get("artifact_label") or "다운로드 파일"
+    artifacts = []
+    try:
+        for index, file_info in enumerate(matched):
+            single = len(matched) == 1
+            artifacts.append(
+                _store_pdf_download_artifact(
+                    project,
+                    rule,
+                    file_info,
+                    artifact_id=base_id if single else f"{base_id}_{index + 1}",
+                    label=base_label if single else f"{base_label} {index + 1}",
+                )
+            )
+    except DownloadReviewInspectionError as exc:
+        return RuleEvaluation(
+            rule=rule,
+            sequence=sequence,
+            status=DownloadReviewRuleStatus.ERROR,
+            expected="다운로드 산출물 저장 가능",
+            actual=str(exc),
+            message=str(exc),
+            file_path=_representative_path(matched, project.project_number),
+            file_name=_representative_name(matched),
+            raw_detail=raw_detail,
+        )
+
+    raw_detail["artifacts"] = artifacts
+    return RuleEvaluation(
+        rule=rule,
+        sequence=sequence,
+        status=DownloadReviewRuleStatus.PASS,
+        expected=expected_text,
+        actual=_matched_files_actual(matched),
+        message=config.get("pass_message") or "파일을 확인했습니다.",
+        file_path=_representative_path(matched, project.project_number),
+        file_name=_representative_name(matched),
+        raw_detail=raw_detail,
     )
 
 
@@ -3571,8 +3669,12 @@ def _xls_unicode_string(body, offset, cch_size):
 def _excel_cell_text(value):
     if value is None:
         return ""
+    if isinstance(value, bool):
+        return "TRUE" if value else "FALSE"
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
+    if isinstance(value, int):
+        return str(value)
     return _normalize_spaces(value)
 
 
@@ -3974,6 +4076,23 @@ def _store_pdf_first_page_artifact(project, rule, file_info, *, artifact_id, lab
     )
 
 
+def _store_pdf_download_artifact(project, rule, file_info, *, artifact_id, label):
+    """PDF 원본을 그대로 저장해 사용자가 버튼으로 직접 다운로드하게 한다."""
+    data = _read_file_bytes(file_info)
+    return _store_artifact_bytes(
+        project,
+        rule,
+        artifact_id=artifact_id,
+        label=label,
+        file_suffix=".pdf",
+        content_type="application/pdf",
+        content_bytes=data,
+        kind="file",
+        source_file=_display_path(file_info.path, project.project_number),
+        download=True,
+    )
+
+
 def _store_artifact_bytes(
     project,
     rule,
@@ -4256,7 +4375,10 @@ def _normalize_label(value):
 
 
 def _normalize_spaces(value):
-    return re.sub(r"\s+", " ", str(value or "").replace("\u00a0", " ")).strip()
+    # None\ub9cc \ube48 \ubb38\uc790\uc5f4\ub85c \ubcf8\ub2e4. `value or ""`\ub97c \uc4f0\uba74 \uc815\uc218 0\u00b7False\uac00 falsy\ub77c
+    # \ube48 \ubb38\uc790\uc5f4\uc774 \ub418\uc5b4 "0"\uc774 \uc0ac\ub77c\uc9c0\ub294 \ubc84\uadf8\uac00 \uc788\uc5c8\ub2e4.
+    text = "" if value is None else str(value)
+    return re.sub(r"\s+", " ", text.replace("\u00a0", " ")).strip()
 
 
 def _first_line(value):

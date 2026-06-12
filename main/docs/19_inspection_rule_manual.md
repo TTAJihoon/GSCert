@@ -107,6 +107,7 @@
 
 - `.docx` 본문 텍스트는 문단 단위로 run(`w:t`)을 공백 없이 이어붙인 뒤 문단끼리 공백으로 합친다. Word가 한 숫자/단어를 여러 run으로 쪼개기 때문에(예: `2026`이 `20`,`2`,`6`으로 분리), run을 공백으로 합치면 날짜·프로젝트번호 검사가 깨진다.
 - `.docx` 전체 텍스트 검사(예: 프로젝트번호 등장 횟수)는 본문(`document.xml`)뿐 아니라 머리말(`header*.xml`), 바닥글(`footer*.xml`)도 포함한다.
+- Excel 셀 값이 정수 `0`일 때 빈 문자열로 읽지 않는다. 결함 개수·점수가 `0`인 셀(예: 신뢰성 `{R}`)도 `"0"`으로 정확히 비교한다.
 
 ## 저장 산출물
 
@@ -145,7 +146,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
 | 11 | 점검표 | 구현됨 | `점검표(PDF)` |
 | 12 | 1차/2차/성능/보안RawData | 구현됨 | `1차/2차/성능/보안RawData` |
 | 13 | 시험성적서 | 구현됨 | `시험성적서(PDF)` |
-| 14 | 시험기록서 | 정의 확정 | `시험기록서` |
+| 14 | 시험기록서 | 구현됨 | `시험기록서` |
 | 15 | 품질평가보고서 | 구현됨 | `품질평가보고서` |
 | 16 | 품질검사표 | 구현됨 | `품질검사표` |
 | 17 | SW저작권확인서 | 구현됨 | `SW저작권확인서` |
@@ -514,21 +515,22 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
 
 ## 14. 시험기록서
 
-- 상태: `정의 확정`
-- code: `artifact_14` 예정
-- rule_type: PDF 파일 제공 검사 유형 추가 예정
+- 상태: `구현됨`
+- code: `artifact_14`
+- rule_type: `downloadable_artifact_check`
 - 점검 대상 폴더: `시험` 단어가 포함된 폴더 하위의 `종료` 단어가 포함된 폴더
 - 파일명 조건: `시험기록서`, `{프로젝트번호}` 포함
-- 확장자/개수 조건: `.pdf` 파일
+- 확장자/개수 조건: `.pdf` 1개 이상
 - 문서 내부 검사 조건:
-  - 웹페이지에서 버튼을 클릭하면 사용자가 직접 다운로드해 확인할 수 있게 한다.
+  - 파일 존재 여부만 자동 판정한다(내용 검사 없음).
+  - 찾은 PDF를 `download=true` 산출물로 저장해, 웹페이지 버튼을 클릭하면 사용자가 직접 다운로드해 확인할 수 있게 한다.
 - 변수 사용 목록: `{프로젝트번호}`
 - 실패 메시지: `시험기록서 파일 확인 불가`
-- 저장 산출물: 다운로드 제공용 PDF 파일 메타데이터
+- 저장 산출물: 다운로드 제공용 PDF 원본 (`download=true`, `content_type=application/pdf`)
 - `ecmlist.db` write-back 컬럼: `시험기록서`
 - 구현 메모:
-  - 현재 사용자가 직접 확인하는 수동 검토 대상으로 정의한다.
-  - 대상 폴더와 실패 메시지는 샘플 또는 추가 요구사항으로 보완한다.
+  - 내용 검사 없이 존재 여부만 판정하는 수동 검토 대상이다. 통과 시 PDF 원본을 artifact 저장소에 복사하고 규칙 결과에서 다운로드 버튼으로 조회한다.
+  - 산출물 서빙 API는 `download=true`이면 `Content-Disposition: attachment`로 응답해 브라우저가 바로 내려받는다.
 
 ## 15. 품질평가보고서
 
@@ -651,6 +653,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
 | rule_type | 용도 |
 | --- | --- |
 | `required_artifact_file` | 폴더, 파일명, 확장자, 개수 조건만 검사 |
+| `downloadable_artifact_check` | 파일 존재만 판정하고 찾은 PDF를 다운로드형 산출물로 제공 (14번 시험기록서) |
 | `document_artifact_check` | 파일 조건과 docx/pdf 내부 조건을 함께 검사 |
 | `excel_feature_list_check` | 기능리스트 Excel 내부값과 표 영역 캡처 검사 |
 | `test_plan_document_check` | 시험계획서 docx/pdf 내부값, 바닥글, 세부사양 표 비교 검사 |

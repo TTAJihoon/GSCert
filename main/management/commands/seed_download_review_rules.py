@@ -464,6 +464,23 @@ def _actual_rule_spec(index, column_name):
                 "pass_message": "시험성적서를 확인했습니다.",
             },
         }
+    if column_name == "시험기록서":
+        return {
+            **common,
+            "target_file_type": "pdf",
+            "rule_type": "downloadable_artifact_check",
+            "config_json": {
+                "artifact_column": column_name,
+                "folder_keyword_chain": ["시험", "종료"],
+                "filename_keywords": ["시험기록서", "{project_number}"],
+                "extensions": [".pdf"],
+                "min_count": 1,
+                "artifact_id": "test_record_pdf",
+                "artifact_label": "시험기록서 PDF",
+                "missing_message": "시험기록서 파일 확인 불가",
+                "pass_message": "시험기록서 PDF 파일을 확인했습니다.",
+            },
+        }
     if column_name == "품질평가보고서":
         return {
             **common,

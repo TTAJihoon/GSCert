@@ -490,7 +490,7 @@ class DownloadReviewRuleSeedCommandTests(TestCase):
 
         call_command("seed_download_review_rules", "--only-real", "--enable", stdout=out)
 
-        self.assertEqual(DownloadReviewRule.objects.count(), 17)
+        self.assertEqual(DownloadReviewRule.objects.count(), 18)
         self.assertEqual(
             set(DownloadReviewRule.objects.values_list("name", flat=True)),
             {
@@ -507,6 +507,7 @@ class DownloadReviewRuleSeedCommandTests(TestCase):
                 "점검표(PDF)",
                 "1차/2차/성능/보안RawData",
                 "시험성적서(PDF)",
+                "시험기록서",
                 "품질평가보고서",
                 "품질검사표",
                 "SW저작권확인서",
@@ -1219,6 +1220,10 @@ class DownloadReviewJobsApiTests(TestCase):
                 _pdf_bytes(["TTA-26-00010 시험성적서"]),
             )
             archive.writestr(
+                "6.시험/나.종료/TTA-26-00010 시험기록서.pdf",
+                _pdf_bytes(["TTA-26-00010 시험기록서"]),
+            )
+            archive.writestr(
                 "6.시험/나.종료/v2.0 2026.05.10. 변수확인.txt",
                 b"variable probe",
             )
@@ -1302,6 +1307,7 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(outcome.artifact_results["점검표(PDF)"], "O")
         self.assertEqual(outcome.artifact_results["1차/2차/성능/보안RawData"], "O")
         self.assertEqual(outcome.artifact_results["시험성적서(PDF)"], "O")
+        self.assertEqual(outcome.artifact_results["시험기록서"], "O")
         self.assertEqual(outcome.artifact_results["품질평가보고서"], "O")
         self.assertEqual(outcome.artifact_results["품질검사표"], "O")
         self.assertEqual(outcome.artifact_results["SW저작권확인서"], "O")
@@ -1347,6 +1353,13 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(len(checklist_result.raw_detail_json["artifacts"]), 1)
         self.assertTrue(
             (artifact_dir / checklist_result.raw_detail_json["artifacts"][0]["relative_path"]).is_file()
+        )
+        test_record_result = results["시험기록서"]
+        test_record_artifact = test_record_result.raw_detail_json["artifacts"][0]
+        self.assertTrue(test_record_artifact["download"])
+        self.assertEqual(test_record_artifact["content_type"], "application/pdf")
+        self.assertTrue(
+            (artifact_dir / test_record_artifact["relative_path"]).is_file()
         )
         with self.settings(DOWNLOAD_REVIEW_ARTIFACT_DIR=artifact_dir):
             artifact_response = rule_result_artifact(
