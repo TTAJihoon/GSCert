@@ -374,7 +374,7 @@ const mockJobs = [
 const state = {
   center: "sangam",
   selected: new Set(),
-  focusedProject: mockProjects[0],
+  focusedProject: null,
   resultJobId: null,
   resultFilter: "all",
   heartbeatWarning: false,
@@ -392,7 +392,7 @@ const state = {
 };
 
 const tableColumnDefaults = {
-  projectRows: [46, 145, 105, 180, 220, 95, 105, 115, 80],
+  projectRows: [20, 120, 75, 180, 320, 155, 70, 70, 50],
   progressRows: [64, 145, 180, 220, 105, 260, 90, 240, 180],
   resultRows: [145, 180, 220, 105, 115, 80, 240, 145, 180]
 };
@@ -469,6 +469,40 @@ function ensureTableColumnGroup(table, widths) {
   table.style.width = `${widths.reduce((sum, width) => sum + width, 0)}px`;
   table.style.minWidth = table.style.width;
   return colgroup;
+}
+
+// 리사이즈 테이블은 열 너비 합으로 table 너비가 고정되어 컨테이너보다 좁으면
+// 우측에 빈 공간이 생긴다. 컨테이너 폭에 맞게 열 너비를 비례 확대해 빈 공간을 없앤다.
+function fitTableColumns(table) {
+  const colgroup = table.querySelector(":scope > colgroup");
+  if (!colgroup) return;
+  const cols = Array.from(colgroup.children);
+  if (!cols.length) return;
+  const wrap = table.parentElement; // .table-wrap
+  if (!wrap) return;
+  const available = wrap.clientWidth;
+  if (!available) return; // 숨겨진 탭 등 측정 불가
+
+  const widths = cols.map((col) => parseFloat(col.style.width) || 0);
+  const sum = widths.reduce((acc, value) => acc + value, 0);
+  if (sum <= 0) return;
+  if (sum >= available) return; // 이미 가득 차거나 넘침(가로 스크롤) → 그대로 둔다
+
+  const scale = available / sum;
+  cols.forEach((col, index) => {
+    col.style.width = `${widths[index] * scale}px`;
+  });
+  table.style.width = `${available}px`;
+  table.style.minWidth = `${available}px`;
+}
+
+// 현재 보이는 모든 리사이즈 테이블의 너비를 컨테이너에 맞춘다.
+function fitVisibleResizableTables() {
+  document.querySelectorAll(".data-table.resizable-table").forEach((table) => {
+    if (table.offsetParent !== null) {
+      fitTableColumns(table);
+    }
+  });
 }
 
 function initResizableTables() {
@@ -550,6 +584,9 @@ function initResizableTables() {
         startResize(event, { move: "mousemove", up: "mouseup" });
       });
     });
+
+    // 컨테이너 폭에 맞게 열을 확대해 우측 빈 공간을 제거한다(보이는 테이블만).
+    fitTableColumns(table);
   });
 }
 
@@ -561,6 +598,17 @@ function escapeHtml(value) {
     "\"": "&quot;",
     "'": "&#039;"
   })[char]);
+}
+
+// 점검 규칙의 기대값/실제값/상세는 하위 검사 여러 건이 " / " 로 이어 붙어
+// 한 줄로 저장된다. 이를 하위 검사별로 줄바꿈해 여러 줄로 표시한다.
+function escapeMultiline(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  // " / " 구분자와 줄바꿈(\n)을 각각 한 줄로 나눠 표시한다.
+  return String(value)
+    .split(/ \/ |\r\n|\n/)
+    .map((part) => escapeHtml(part.trim()))
+    .join("<br>");
 }
 
 function getCookie(name) {
@@ -966,12 +1014,14 @@ async function refreshActiveJob() {
   renderSelection();
 }
 
-async function loadResultJobs(preferredJobId = null) {
+async function loadResultJobs(preferredJobId = null, { silent = false } = {}) {
   state.resultLoadError = "";
-  qs("jobList").innerHTML = `<p class="muted">작업 목록을 불러오는 중입니다.</p>`;
-  qs("resultRows").innerHTML = `
-    <tr><td colspan="9" class="empty-cell">작업을 불러오는 중입니다.</td></tr>
-  `;
+  if (!silent) {
+    qs("jobList").innerHTML = `<p class="muted">작업 목록을 불러오는 중입니다.</p>`;
+    qs("resultRows").innerHTML = `
+      <tr><td colspan="9" class="empty-cell">작업을 불러오는 중입니다.</td></tr>
+    `;
+  }
 
   try {
     const payload = await requestJson(jobsUrl());
@@ -981,8 +1031,10 @@ async function loadResultJobs(preferredJobId = null) {
       || state.resultJobs[0]?.id
       || null;
     renderJobs();
-    await loadResultProjects();
+    await loadResultProjects({ silent });
   } catch (error) {
+    // 폴링(silent) 중 일시적 오류는 기존 데이터를 유지한다.
+    if (silent) return;
     state.resultJobs = [];
     state.resultProjects = [];
     state.resultJobId = null;
@@ -993,16 +1045,18 @@ async function loadResultJobs(preferredJobId = null) {
   }
 }
 
-async function loadResultProjects() {
+async function loadResultProjects({ silent = false } = {}) {
   if (!state.resultJobId) {
     state.resultProjects = [];
     renderResults();
     return;
   }
 
-  qs("resultRows").innerHTML = `
-    <tr><td colspan="9" class="empty-cell">프로젝트별 결과를 불러오는 중입니다.</td></tr>
-  `;
+  if (!silent) {
+    qs("resultRows").innerHTML = `
+      <tr><td colspan="9" class="empty-cell">프로젝트별 결과를 불러오는 중입니다.</td></tr>
+    `;
+  }
 
   try {
     const payload = await requestJson(`/api/jobs/${state.resultJobId}/projects/`);
@@ -1010,6 +1064,7 @@ async function loadResultProjects() {
     state.resultProjectLoadError = "";
     renderResults();
   } catch (error) {
+    if (silent) return;
     state.resultProjects = [];
     state.resultProjectLoadError = error.message;
     renderResults();
@@ -1017,7 +1072,7 @@ async function loadResultProjects() {
 }
 
 function renderProgress() {
-  const showEmpty = state.forceEmptyPreview || (!state.activeJob && state.emptyJob);
+  const showEmpty = state.forceEmptyPreview || !state.activeJob;
   qs("activeProgressView").hidden = showEmpty;
   qs("emptyProgressView").hidden = !showEmpty;
 
@@ -1029,8 +1084,8 @@ function renderProgress() {
     return;
   }
 
-  const activeJob = state.activeJob || mockActiveJob;
-  const activeProjects = state.activeJob ? state.activeProjects : mockActiveJob.projects;
+  const activeJob = state.activeJob;
+  const activeProjects = state.activeProjects;
   const currentProject = activeProjects.find((item) => item.status === "running") || activeProjects[0];
   const total = activeJob.requested_project_count ?? activeJob.total;
   const completed = activeJob.completed_project_count ?? activeJob.completed;
@@ -1049,9 +1104,9 @@ function renderProgress() {
   qs("progressBar").style.width = `${progressPercent}%`;
 
   const worker = {
-    ...(activeJob.worker || mockActiveJob.worker),
+    ...(activeJob.worker || {}),
     stale: state.heartbeatWarning,
-    heartbeat: state.heartbeatWarning ? "2026-05-10 14:20:03" : (activeJob.worker?.heartbeat_at || mockActiveJob.worker.heartbeat)
+    heartbeat: state.heartbeatWarning ? null : (activeJob.worker?.heartbeat_at || null)
   };
 
   qs("workerBox").className = `worker-box ${worker.stale ? "warning" : ""}`;
@@ -1296,7 +1351,15 @@ async function openInspectionModal(projectNumber) {
     const payload = await requestJson(`/api/projects/${encodeURIComponent(projectNumber)}/latest-results/?${params.toString()}`);
     renderLatestInspectionResult(payload);
   } catch (error) {
-    renderLocalInspectionFallback(project, error);
+    if (error.payload?.error_code === "not_found") {
+      qs("modalBody").innerHTML = `
+        <div class="modal-message">
+          <p>아직 이 프로젝트의 점검 이력이 없습니다. 프로젝트를 선택하고 점검을 시작하세요.</p>
+        </div>
+      `;
+    } else {
+      renderLocalInspectionFallback(project, error);
+    }
   }
 }
 
@@ -1370,22 +1433,11 @@ function renderLatestInspectionResult(payload) {
     return;
   }
 
-  const rows = payload.items.map((rule) => `
-    <tr>
-      <td>${rule.sequence}</td>
-      <td>${escapeHtml(rule.rule_name)}</td>
-      <td>${badge(rule.status_label || rule.status)}</td>
-      <td>${escapeHtml(rule.file_name || "-")}</td>
-      <td>${escapeHtml(rule.expected || "-")}</td>
-      <td>${escapeHtml(rule.actual || "-")}</td>
-      <td>${escapeHtml(rule.message || "-")}</td>
-      <td>${renderRuleArtifacts(rule)}</td>
-    </tr>
-  `).join("");
+  const rows = renderInspectionRows(payload.items);
 
   qs("modalBody").innerHTML = `
     <p class="modal-lead">최근 작업 ${escapeHtml(payload.job?.id || "-")}의 규칙 결과입니다.</p>
-    <div class="table-wrap modal-table">
+    <div class="table-wrap modal-table inspection-result-table">
       <table class="data-table">
         <thead>
           <tr>
@@ -1395,7 +1447,6 @@ function renderLatestInspectionResult(payload) {
             <th>파일명</th>
             <th>기대값</th>
             <th>실제값</th>
-            <th>상세</th>
             <th>산출물</th>
           </tr>
         </thead>
@@ -1418,10 +1469,115 @@ function renderRuleArtifacts(rule) {
   }).join(" ");
 }
 
+// 기대값/실제값 등 " / " 로 이어진 문자열을 하위 검사 단위로 분해한다.
+function splitSlash(value) {
+  if (value === null || value === undefined || value === "") return [];
+  return String(value).split(" / ").map((part) => part.trim());
+}
+
+// 규칙 결과를 하위 검사 행 목록으로 분해한다.
+// 반환: [{expected, actual, passed}] — passed는 boolean(행별 배지 가능) 또는 null(전체 배지 사용).
+// 분해 결과가 1행 이하이면 빈 배열을 반환해 호출부가 단일 행으로 렌더링하도록 한다.
+function ruleSubChecks(rule) {
+  const rd = rule.raw_detail || {};
+
+  // 1) 백엔드가 명시적으로 sub_checks를 제공하면 그대로 사용한다(각 {expected, actual, passed}).
+  //    결함리포트(차시별), 시험계획서(항목별) 등이 여기에 해당.
+  if (Array.isArray(rd.sub_checks) && rd.sub_checks.length) {
+    return rd.sub_checks.map((sub) => ({
+      expected: sub.expected !== undefined && sub.expected !== null && sub.expected !== "" ? String(sub.expected) : "-",
+      actual: sub.actual !== undefined && sub.actual !== null && sub.actual !== "" ? String(sub.actual) : "-",
+      passed: typeof sub.passed === "boolean" ? sub.passed : null,
+    }));
+  }
+
+  // 2) 폴백: expected/actual를 " / " 로 분해. document_artifact_check는 file/content_checks로 행별 배지.
+  const expParts = splitSlash(rule.expected);
+  const actParts = splitSlash(rule.actual);
+  const rowCount = Math.max(expParts.length, actParts.length);
+  if (rowCount <= 1) return [];
+
+  const fileChecks = Array.isArray(rd.file_checks) ? rd.file_checks : [];
+  const contentChecks = Array.isArray(rd.content_checks) ? rd.content_checks : [];
+  const flags = [...fileChecks, ...contentChecks]
+    .map((c) => (typeof c.passed === "boolean" ? c.passed : null));
+  const usePerRow = flags.length === rowCount && flags.every((f) => f !== null);
+
+  const rows = [];
+  for (let i = 0; i < rowCount; i += 1) {
+    rows.push({
+      expected: expParts[i] !== undefined ? expParts[i] : "-",
+      actual: actParts[i] !== undefined ? actParts[i] : "-",
+      passed: usePerRow ? flags[i] : null,
+    });
+  }
+  return rows;
+}
+
+// 규칙 결과 목록을 8열 테이블 행 HTML로 렌더링한다.
+// 하위 검사가 여러 개면 행으로 분리하고, 번호/점검항목/파일명/상세/산출물은 rowspan으로 묶는다.
+function renderInspectionRows(items) {
+  return items.map((rule) => {
+    const subs = ruleSubChecks(rule);
+    const overallBadge = badge(rule.status_label || rule.status);
+    const fileCell = escapeHtml(rule.file_name || "-");
+    const artifactCell = renderRuleArtifacts(rule);
+
+    if (subs.length <= 1) {
+      return `
+        <tr>
+          <td>${rule.sequence}</td>
+          <td>${escapeHtml(rule.rule_name)}</td>
+          <td>${overallBadge}</td>
+          <td>${fileCell}</td>
+          <td>${escapeMultiline(rule.expected)}</td>
+          <td>${escapeMultiline(rule.actual)}</td>
+          <td>${artifactCell}</td>
+        </tr>
+      `;
+    }
+
+    const n = subs.length;
+    const perRow = subs[0].passed !== null;
+
+    return subs.map((sub, i) => {
+      const expTd = `<td>${escapeMultiline(sub.expected)}</td>`;
+      const actTd = `<td>${escapeMultiline(sub.actual)}</td>`;
+      const resultTd = perRow
+        ? `<td>${badge(sub.passed ? "정상" : "부적합")}</td>`
+        : "";
+
+      if (i === 0) {
+        const firstResultTd = perRow
+          ? `<td>${badge(sub.passed ? "정상" : "부적합")}</td>`
+          : `<td rowspan="${n}">${overallBadge}</td>`;
+        return `
+        <tr>
+          <td rowspan="${n}">${rule.sequence}</td>
+          <td rowspan="${n}">${escapeHtml(rule.rule_name)}</td>
+          ${firstResultTd}
+          <td rowspan="${n}">${fileCell}</td>
+          ${expTd}
+          ${actTd}
+          <td rowspan="${n}">${artifactCell}</td>
+        </tr>
+      `;
+      }
+
+      return `
+        <tr>
+          ${resultTd}
+          ${expTd}
+          ${actTd}
+        </tr>
+      `;
+    }).join("");
+  }).join("");
+}
+
 function findErrorItem(source, number) {
   if (source === "progress") {
-    return state.activeProjects.find((item) => item.id === number || item.number === number)
-      || mockActiveJob.projects.find((item) => item.id === number || item.number === number);
+    return state.activeProjects.find((item) => item.id === number || item.number === number) || null;
   }
 
   return state.resultProjects.find((item) => item.id === number);
@@ -1439,22 +1595,11 @@ async function openResultRulesModal(jobProjectId) {
 
   try {
     const payload = await requestJson(`/api/job-projects/${jobProjectId}/results/`);
-    const rows = payload.items.map((rule) => `
-      <tr>
-        <td>${rule.sequence}</td>
-        <td>${escapeHtml(rule.rule_name)}</td>
-        <td>${badge(rule.status_label || rule.status)}</td>
-        <td>${escapeHtml(rule.file_name || "-")}</td>
-        <td>${escapeHtml(rule.expected || "-")}</td>
-        <td>${escapeHtml(rule.actual || "-")}</td>
-        <td>${escapeHtml(rule.message || "-")}</td>
-        <td>${renderRuleArtifacts(rule)}</td>
-      </tr>
-    `).join("");
+    const rows = renderInspectionRows(payload.items);
 
     qs("modalBody").innerHTML = payload.items.length
       ? `
-        <div class="table-wrap modal-table">
+        <div class="table-wrap modal-table inspection-result-table">
           <table class="data-table">
             <thead>
               <tr>
@@ -1464,7 +1609,6 @@ async function openResultRulesModal(jobProjectId) {
                 <th>파일명</th>
                 <th>기대값</th>
                 <th>실제값</th>
-                <th>상세</th>
                 <th>산출물</th>
               </tr>
             </thead>
@@ -1519,6 +1663,41 @@ function bindErrorButtons() {
   });
 }
 
+let progressPollingTimer = null;
+
+function startProgressPolling() {
+  if (progressPollingTimer) return;
+  progressPollingTimer = setInterval(async () => {
+    if (!qs("tab-progress").classList.contains("active")) return;
+    await refreshActiveJob();
+  }, 5000);
+}
+
+function stopProgressPolling() {
+  if (progressPollingTimer) {
+    clearInterval(progressPollingTimer);
+    progressPollingTimer = null;
+  }
+}
+
+let resultsPollingTimer = null;
+
+function startResultsPolling() {
+  if (resultsPollingTimer) return;
+  resultsPollingTimer = setInterval(async () => {
+    if (!qs("tab-results").classList.contains("active")) return;
+    // 선택된 작업/필터를 유지한 채 조용히(silent) 갱신한다.
+    await loadResultJobs(state.resultJobId, { silent: true });
+  }, 5000);
+}
+
+function stopResultsPolling() {
+  if (resultsPollingTimer) {
+    clearInterval(resultsPollingTimer);
+    resultsPollingTimer = null;
+  }
+}
+
 function bindControls() {
   document.querySelectorAll(".tab-button").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1526,7 +1705,26 @@ function bindControls() {
       document.querySelectorAll(".tab-panel").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
       qs(`tab-${button.dataset.tab}`).classList.add("active");
+      if (button.dataset.tab === "progress") {
+        refreshActiveJob();
+        startProgressPolling();
+        stopResultsPolling();
+      } else if (button.dataset.tab === "results") {
+        startResultsPolling();
+        stopProgressPolling();
+      } else {
+        stopProgressPolling();
+        stopResultsPolling();
+      }
+      // 탭이 보이게 된 직후 해당 테이블 너비를 컨테이너에 맞춘다.
+      fitVisibleResizableTables();
     });
+  });
+
+  let resizeFitTimer = null;
+  window.addEventListener("resize", () => {
+    if (resizeFitTimer) clearTimeout(resizeFitTimer);
+    resizeFitTimer = setTimeout(fitVisibleResizableTables, 150);
   });
 
   ["filterProject", "filterCompany", "filterProduct", "filterPl", "filterStatus"].forEach((id) => {
@@ -1592,16 +1790,6 @@ function bindControls() {
     }
   });
 
-  qs("toggleHeartbeat").addEventListener("click", () => {
-    state.heartbeatWarning = !state.heartbeatWarning;
-    renderProgress();
-  });
-
-  qs("toggleEmptyJob").addEventListener("click", () => {
-    state.forceEmptyPreview = !state.forceEmptyPreview;
-    qs("toggleEmptyJob").textContent = state.forceEmptyPreview ? "진행 작업 상태 보기" : "작업 없음 상태 보기";
-    renderProgress();
-  });
 
   document.querySelectorAll("[data-result-filter]").forEach((button) => {
     button.addEventListener("click", () => {
@@ -1650,6 +1838,8 @@ async function init() {
   populateFilters();
   renderProjects();
   await loadProjects();
+  // 행 렌더링/스크롤바 상태 확정 후 표 너비를 컨테이너에 맞춘다.
+  fitVisibleResizableTables();
   await refreshActiveJob();
   await loadResultJobs();
   setInterval(updateClock, 1000);

@@ -1,7 +1,7 @@
 ﻿<#
 .SYNOPSIS
   GSCert 초기 환경 설정 — 새 서버에서 최초 1회 실행.
-  Python, Git, VC++ Redist, nginx 다운로드·설치 + 가상환경 구성 + DB 마이그레이션 + 바탕화면 단축아이콘 생성까지 일괄 처리.
+  Python, Git, VC++ Redist, nginx, LibreOffice 다운로드·설치 + 가상환경 구성 + DB 마이그레이션 + 바탕화면 단축아이콘 생성까지 일괄 처리.
   각 설치파일이 setup\ 폴더에 이미 있으면 다운로드를 건너뛰고 로컬 파일을 사용한다.
 .PARAMETER InstallAutomation
   pywin32, pywinauto(Windows 자동화) 패키지를 추가 설치하고 Playwright 브라우저를 다운로드한다.
@@ -25,6 +25,8 @@ $GIT_URL      = "https://github.com/git-for-windows/git/releases/download/v$GIT_
 $VCREDIST_URL = "https://aka.ms/vs/17/release/vc_redist.x64.exe"
 $NGINX_VER    = "1.29.8"
 $NGINX_URL    = "https://nginx.org/download/nginx-$NGINX_VER.zip"
+$LIBREOFFICE_VER = "25.8.7"
+$LIBREOFFICE_URL = "https://download.documentfoundation.org/libreoffice/stable/$LIBREOFFICE_VER/win/x86_64/LibreOffice_${LIBREOFFICE_VER}_Win_x86-64.msi"
 
 # ── 헬퍼 ──────────────────────────────────────────────────────────────
 function Step($msg)  { Write-Host "`n[....] $msg" -ForegroundColor Cyan }
@@ -182,7 +184,27 @@ if ($running) {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# 5. Python 가상환경
+# 5. LibreOffice (.doc 등 구형 문서 변환용 — 다운로드 점검기에서 사용)
+#    setup\ 폴더에 MSI가 있으면 그것을 사용하고, 없으면 다운로드한다(오프라인 설치 지원).
+# ══════════════════════════════════════════════════════════════════════
+Step "LibreOffice $LIBREOFFICE_VER 설치 확인 (.doc 문서 점검용)"
+$LoExe = "C:\Program Files\LibreOffice\program\soffice.exe"
+if (Test-Path $LoExe) {
+    Warn "LibreOffice 이미 설치되어 있습니다: $LoExe"
+} else {
+    $loFile = Join-Path $SetupDir "LibreOffice_${LIBREOFFICE_VER}_Win_x86-64.msi"
+    Get-OrDownload "LibreOffice $LIBREOFFICE_VER" $LIBREOFFICE_URL $loFile
+    Write-Host "       설치 중 (수 분 소요될 수 있습니다)..."
+    Start-Process -FilePath "msiexec.exe" -ArgumentList "/i `"$loFile`" /quiet /norestart" -Wait
+    if (Test-Path $LoExe) {
+        OK "LibreOffice 설치 완료"
+    } else {
+        Warn "LibreOffice 설치를 확인하지 못했습니다. 수동 설치가 필요할 수 있습니다."
+    }
+}
+
+# ══════════════════════════════════════════════════════════════════════
+# 6. Python 가상환경
 # ══════════════════════════════════════════════════════════════════════
 Step "Python 가상환경 설정"
 $VenvDir    = Join-Path $RootDir ".venv"
@@ -199,7 +221,7 @@ if (Test-Path $VenvDir) {
 & $VenvPython -m pip install --upgrade pip --quiet
 
 # ══════════════════════════════════════════════════════════════════════
-# 6. 기본 패키지 설치
+# 7. 기본 패키지 설치
 # ══════════════════════════════════════════════════════════════════════
 Step "기본 패키지 설치 (requirements.txt)"
 & $VenvPip install -r (Join-Path $RootDir "requirements.txt")
@@ -210,10 +232,13 @@ OK "기본 패키지 설치 완료"
 Step "playwright 설치 (Django 앱 구동 필수)"
 & $VenvPip install "playwright>=1.59,<1.60" --quiet
 if ($LASTEXITCODE -ne 0) { Fail "playwright 설치 실패" }
+Write-Host "       Playwright Chromium 브라우저 설치 중..."
+& $VenvPython -m playwright install chromium
+if ($LASTEXITCODE -ne 0) { Fail "Playwright Chromium 설치 실패" }
 OK "playwright 설치 완료"
 
 # ══════════════════════════════════════════════════════════════════════
-# 7. Automation 패키지 (선택)
+# 8. Automation 패키지 (선택)
 # ══════════════════════════════════════════════════════════════════════
 if ($InstallAutomation) {
     Step "Automation 패키지 설치 (pywin32, pywinauto 등)"
@@ -226,7 +251,7 @@ if ($InstallAutomation) {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# 8. Search 패키지 (선택)
+# 9. Search 패키지 (선택)
 # ══════════════════════════════════════════════════════════════════════
 if ($InstallSearch) {
     Step "Search 패키지 설치 (faiss, sentence-transformers 등)"
@@ -236,7 +261,7 @@ if ($InstallSearch) {
 }
 
 # ══════════════════════════════════════════════════════════════════════
-# 9. 정적 파일 수집
+# 10. 정적 파일 수집
 # ══════════════════════════════════════════════════════════════════════
 Step "정적 파일 수집 (collectstatic)"
 & $VenvPython (Join-Path $RootDir "manage.py") collectstatic --noinput
@@ -244,15 +269,17 @@ if ($LASTEXITCODE -ne 0) { Fail "collectstatic 실패" }
 OK "정적 파일 수집 완료"
 
 # ══════════════════════════════════════════════════════════════════════
-# 10. DB 마이그레이션
+# 11. DB 마이그레이션
 # ══════════════════════════════════════════════════════════════════════
 Step "Django DB 마이그레이션"
 & $VenvPython (Join-Path $RootDir "manage.py") migrate
 if ($LASTEXITCODE -ne 0) { Fail "마이그레이션 실패 — 위 오류를 확인하세요." }
+& $VenvPython (Join-Path $RootDir "manage.py") migrate --database=workflow
+if ($LASTEXITCODE -ne 0) { Fail "workflow DB 마이그레이션 실패 — 위 오류를 확인하세요." }
 OK "마이그레이션 완료"
 
 # ══════════════════════════════════════════════════════════════════════
-# 11. 바탕화면 단축아이콘 생성
+# 12. 바탕화면 단축아이콘 생성
 # ══════════════════════════════════════════════════════════════════════
 Step "바탕화면 단축아이콘 생성"
 $WshShell     = New-Object -ComObject WScript.Shell

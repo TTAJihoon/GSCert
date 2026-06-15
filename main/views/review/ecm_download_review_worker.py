@@ -212,11 +212,22 @@ async def _run_live_job(job, *, headless=True):
                     project, DownloadReviewProjectStatus.DOWNLOADED,
                     "다운로드 파일 확인 중",
                 )
-                verify_result = await asyncio.to_thread(
-                    verify_downloaded_files,
-                    popup_result.download_dir,
-                    project.project_number,
-                )
+                # 전송 직후 파일이 아직 디스크에 기록 중일 수 있으므로
+                # 0개이면 최대 3회(3초 간격) 재시도한다.
+                verify_result = None
+                for _verify_attempt in range(4):
+                    verify_result = await asyncio.to_thread(
+                        verify_downloaded_files,
+                        popup_result.download_dir,
+                        project.project_number,
+                    )
+                    if verify_result.success or _verify_attempt >= 3:
+                        break
+                    logger.warning(
+                        "%s 파일 0개 감지 (시도 %d/3). 3초 후 재확인...",
+                        project.project_number, _verify_attempt + 1,
+                    )
+                    await asyncio.sleep(3)
                 file_summary = await asyncio.to_thread(
                     summarize_files, verify_result,
                 )

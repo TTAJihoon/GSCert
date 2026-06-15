@@ -21,14 +21,16 @@ function Show-Menu {
         Write-Host "  [경고] 가상환경이 없습니다. S를 먼저 실행하세요." -ForegroundColor Red
     }
     Write-Host "=======================================" -ForegroundColor Cyan
-    Write-Host "  1. start_all      - nginx + Django 서버 + 워커 함께 시작$venvWarn"
+    Write-Host "  1. start_all      - Django 서버 + 워커 함께 시작$venvWarn"
     Write-Host "  2. start_server   - Django 개발 서버만 시작 (백그라운드)$venvWarn"
     Write-Host "  3. start_worker   - download_worker만 시작 (백그라운드)$venvWarn"
-    Write-Host "  4. stop_all       - 서버 + 워커 + nginx 함께 중지"
+    Write-Host "  4. stop_all       - 서버 + 워커 함께 중지"
     Write-Host "  5. stop_server    - Django 서버만 중지"
     Write-Host "  6. stop_worker    - download_worker만 중지"
     Write-Host "  7. status         - 서버/워커 상태 확인"
     Write-Host "  8. run_ui_mock    - UI 목 서버 실행"
+    Write-Host "  9. collectstatic  - 정적 파일(css/js) 수집 (nginx 반영)$venvWarn"
+    Write-Host "  R. restart        - 서버/워커 재시작$venvWarn"
     $nginxColor = if ($nginxOk) { "Green" } else { "Red" }
     Write-Host "  N. nginx          - nginx 시작/중지/reload  $nginxStat" -ForegroundColor $nginxColor
     Write-Host "  S. setup          - 초기 환경 설정 (최초 1회 / 새 PC)"
@@ -95,6 +97,68 @@ while ($true) {
         '8' {
             Write-Host ""
             & (Join-Path $ScriptDir "run_ui_mock_server.ps1")
+        }
+        '9' {
+            Write-Host ""
+            Write-Host "=== 정적 파일 수집 (collectstatic) ===" -ForegroundColor Cyan
+            $VenvPython = Join-Path $ScriptDir ".venv\Scripts\python.exe"
+            if (-not (Test-Path $VenvPython)) {
+                $VenvPython = Join-Path $ScriptDir "venv\Scripts\python.exe"
+            }
+            if (-not (Test-Path $VenvPython)) {
+                Write-Host "[ERROR] 가상환경 Python을 찾을 수 없습니다. 먼저 S(초기 환경 설정)를 실행하세요." -ForegroundColor Red
+            } else {
+                & $VenvPython (Join-Path $ScriptDir "manage.py") collectstatic --noinput
+                if ($?) {
+                    Write-Host "[OK] 정적 파일 수집 완료. nginx가 새 css/js를 제공합니다." -ForegroundColor Green
+                    Write-Host "     브라우저에서 새로고침(F5)하면 반영됩니다." -ForegroundColor Yellow
+                }
+            }
+        }
+        'R' {
+            Write-Host ""
+            Write-Host "재시작 대상을 선택하세요:"
+            Write-Host "  1) 서버만 재시작 (Django runserver)"
+            Write-Host "  2) 워커만 재시작 (download_worker)"
+            Write-Host "  3) 전체 재시작   (서버 + 워커)"
+            $sub = Read-Host "선택"
+            Write-Host ""
+            switch ($sub) {
+                '1' {
+                    Write-Host "=== Django 서버 중지 ===" -ForegroundColor Yellow
+                    & (Join-Path $ScriptDir "stop_server.ps1")
+                    Write-Host ""
+                    Write-Host "=== Django 서버 시작 ===" -ForegroundColor Green
+                    & (Join-Path $ScriptDir "start_server.ps1")
+                }
+                '2' {
+                    $live = Ask-YesNo "워커를 Live 모드로 실행할까요? (No = dry-run)"
+                    Write-Host ""
+                    Write-Host "=== 워커 중지 ===" -ForegroundColor Yellow
+                    & (Join-Path $ScriptDir "stop_worker.ps1")
+                    Write-Host ""
+                    Write-Host "=== 워커 시작 ===" -ForegroundColor Green
+                    if ($live) {
+                        & (Join-Path $ScriptDir "start_worker.ps1") -Live
+                    } else {
+                        & (Join-Path $ScriptDir "start_worker.ps1")
+                    }
+                }
+                '3' {
+                    $live = Ask-YesNo "워커를 Live 모드로 실행할까요? (No = dry-run)"
+                    Write-Host ""
+                    Write-Host "=== 전체 중지 ===" -ForegroundColor Yellow
+                    & (Join-Path $ScriptDir "stop_all.ps1")
+                    Write-Host ""
+                    Write-Host "=== 전체 시작 ===" -ForegroundColor Green
+                    if ($live) {
+                        & (Join-Path $ScriptDir "start_all.ps1") -Live
+                    } else {
+                        & (Join-Path $ScriptDir "start_all.ps1")
+                    }
+                }
+                default { Write-Host "올바른 번호를 입력해 주세요." -ForegroundColor Red }
+            }
         }
         'N' {
             Write-Host ""

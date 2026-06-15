@@ -1,5 +1,6 @@
 import fnmatch
 import json
+import os
 import re
 import shutil
 import sqlite3
@@ -107,6 +108,7 @@ def run_download_inspection(project, verify_result, file_summary) -> InspectionO
     if not rules:
         raise DownloadReviewInspectionError("활성화된 점검규칙이 없습니다.")
 
+    _DOC_CONVERT_CACHE.clear()  # 프로젝트별 .doc 변환 캐시 초기화
     context = _build_rule_context(project)
     evaluations = []
     for sequence, rule in enumerate(rules, start=1):
@@ -114,33 +116,60 @@ def run_download_inspection(project, verify_result, file_summary) -> InspectionO
         evaluations.append(evaluation)
         _collect_evaluation_variables(context, evaluation)
 
-    DownloadReviewRuleResult.objects.filter(job_project=project).delete()
-    DownloadReviewRuleResult.objects.bulk_create(
-        [
-            DownloadReviewRuleResult(
-                job_project=project,
-                rule=evaluation.rule,
-                rule_code=evaluation.rule.code,
-                rule_name=evaluation.rule.name,
-                sequence=evaluation.sequence,
-                file_path=evaluation.file_path,
-                file_name=evaluation.file_name,
-                status=evaluation.status,
-                expected=evaluation.expected,
-                actual=evaluation.actual,
-                message=evaluation.message,
-                raw_detail_json=evaluation.raw_detail or {},
-            )
-            for evaluation in evaluations
-        ]
+    result_rows = [
+        DownloadReviewRuleResult(
+            job_project=project,
+            rule=evaluation.rule,
+            rule_code=evaluation.rule.code,
+            rule_name=evaluation.rule.name,
+            sequence=evaluation.sequence,
+            file_path=evaluation.file_path,
+            file_name=evaluation.file_name,
+            status=evaluation.status,
+            expected=evaluation.expected,
+            actual=evaluation.actual,
+            message=evaluation.message,
+            raw_detail_json=evaluation.raw_detail or {},
+        )
+        for evaluation in evaluations
+    ]
+
+    # 임시파일(~$) 검사 — DB 규칙과 무관한 전역 검사. 발견 시 삭제 안내를 부적합으로 표시한다.
+    temp_files = _find_temp_files(verify_result)
+    temp_failed = bool(temp_files)
+    result_rows.append(
+        DownloadReviewRuleResult(
+            job_project=project,
+            rule=None,
+            rule_code="temp_file_check",
+            rule_name="임시파일 검사",
+            sequence=len(evaluations) + 1,
+            file_path="",
+            file_name="",
+            status=DownloadReviewRuleStatus.FAIL if temp_failed else DownloadReviewRuleStatus.PASS,
+            expected="임시/잠금 파일(~$) 없음",
+            actual=("삭제 필요:\n" + "\n".join(temp_files[:20])) if temp_failed else "임시파일 없음",
+            message=(
+                "MS Office 임시파일(~$)이 포함되어 있습니다. 해당 파일을 삭제 후 다시 제출하세요."
+                if temp_failed
+                else "임시파일이 없습니다."
+            ),
+            raw_detail_json={"temp_files": temp_files},
+        )
     )
+
+    DownloadReviewRuleResult.objects.filter(job_project=project).delete()
+    DownloadReviewRuleResult.objects.bulk_create(result_rows)
 
     failed_count = sum(
         1
         for evaluation in evaluations
         if evaluation.status in (DownloadReviewRuleStatus.FAIL, DownloadReviewRuleStatus.ERROR)
     )
-    passed_count = len(evaluations) - failed_count
+    if temp_failed:
+        failed_count += 1
+    total_count = len(evaluations) + 1
+    passed_count = total_count - failed_count
     artifact_results = _artifact_results_from_evaluations(evaluations)
 
     if failed_count:
@@ -150,7 +179,7 @@ def run_download_inspection(project, verify_result, file_summary) -> InspectionO
             artifact_results=artifact_results,
             passed_count=passed_count,
             failed_count=failed_count,
-            result_count=len(evaluations),
+            result_count=total_count,
         )
 
     return InspectionOutcome(
@@ -159,7 +188,7 @@ def run_download_inspection(project, verify_result, file_summary) -> InspectionO
         artifact_results=artifact_results,
         passed_count=passed_count,
         failed_count=0,
-        result_count=len(evaluations),
+        result_count=total_count,
     )
 
 
@@ -360,14 +389,34 @@ def _evaluate_required_artifact_file(rule, sequence, project, context, verify_re
     min_count = int(config.get("min_count") or 1)
     if exact_count is not None:
         expected_count = int(exact_count)
-        passed = len(matched) == expected_count
+        count_ok = len(matched) == expected_count
         expected = f"{expected_count}개"
     else:
-        passed = len(matched) >= min_count
+        count_ok = len(matched) >= min_count
         expected = f"{min_count}개 이상"
 
+    # 금지 키워드: 파일명에 포함되면 안 되는 단어(예: '예시'). 대상은 매칭된 파일들.
+    forbidden_keywords = [
+        str(keyword).strip()
+        for keyword in (config.get("forbidden_filename_keywords") or [])
+        if str(keyword).strip()
+    ]
+    forbidden_matches = [
+        file_info
+        for file_info in matched
+        if any(keyword in file_info.name for keyword in forbidden_keywords)
+    ] if forbidden_keywords else []
+
+    passed = count_ok and not forbidden_matches
+
     status = DownloadReviewRuleStatus.PASS if passed else DownloadReviewRuleStatus.FAIL
-    message = _artifact_file_message(config, status, len(matched), exact_count)
+    if forbidden_matches:
+        message = (
+            config.get("forbidden_message")
+            or f"파일명에 {', '.join(forbidden_keywords)} 포함된 파일이 있습니다."
+        )
+    else:
+        message = _artifact_file_message(config, status, len(matched), exact_count)
     expected_parts = [
         expected,
     ]
@@ -375,13 +424,22 @@ def _evaluate_required_artifact_file(rule, sequence, project, context, verify_re
         expected_parts.insert(0, "파일명에 " + ", ".join(name_keywords) + " 포함")
     if extensions:
         expected_parts.append("확장자 " + ", ".join(extensions))
+    if forbidden_keywords:
+        expected_parts.append("파일명에 " + ", ".join(forbidden_keywords) + " 미포함")
+
+    actual_text = _matched_files_actual(matched)
+    if forbidden_matches:
+        actual_text = (
+            f"{actual_text} / 금지어 포함: "
+            + ", ".join(file_info.name for file_info in forbidden_matches[:5])
+        )
 
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
         status=status,
         expected=" / ".join(expected_parts),
-        actual=_matched_files_actual(matched),
+        actual=actual_text,
         message=message,
         file_path=_representative_path(matched or files, project.project_number),
         file_name=_representative_name(matched or files),
@@ -391,6 +449,8 @@ def _evaluate_required_artifact_file(rule, sequence, project, context, verify_re
             "selected_folder": selected_folder,
             "filename_keywords": name_keywords,
             "extensions": extensions,
+            "forbidden_filename_keywords": forbidden_keywords,
+            "forbidden_matches": [file_info.name for file_info in forbidden_matches[:20]],
             "matched_files": [
                 _display_path(file_info.path, project.project_number)
                 for file_info in matched[:20]
@@ -441,33 +501,49 @@ def _evaluate_downloadable_artifact_check(rule, sequence, project, context, veri
     expected_text = " / ".join(expected_parts)
 
     if not passed:
+        # 매칭 파일이 없을 때 무관한 파일을 대표 파일로 표시하지 않는다("... 외 N개" 방지).
         return RuleEvaluation(
             rule=rule,
             sequence=sequence,
             status=DownloadReviewRuleStatus.FAIL,
             expected=expected_text,
-            actual=_matched_files_actual(matched),
+            actual=_matched_files_actual(matched) if matched else "일치 파일 없음",
             message=config.get("missing_message") or "파일 확인 불가",
-            file_path=_representative_path(matched or files, project.project_number),
-            file_name=_representative_name(matched or files),
+            file_path=_representative_path(matched, project.project_number),
+            file_name=_representative_name(matched),
             raw_detail=raw_detail,
         )
 
     base_id = _safe_artifact_id(config.get("artifact_id") or "download")
     base_label = config.get("artifact_label") or "다운로드 파일"
+    # artifact_first_page=True 이면 PDF 1페이지 스크린샷 이미지를 산출물로 제공한다.
+    use_first_page = bool(config.get("artifact_first_page"))
     artifacts = []
     try:
         for index, file_info in enumerate(matched):
             single = len(matched) == 1
-            artifacts.append(
-                _store_pdf_download_artifact(
-                    project,
-                    rule,
-                    file_info,
-                    artifact_id=base_id if single else f"{base_id}_{index + 1}",
-                    label=base_label if single else f"{base_label} {index + 1}",
+            artifact_id = base_id if single else f"{base_id}_{index + 1}"
+            artifact_label = base_label if single else f"{base_label} {index + 1}"
+            if use_first_page and file_info.extension.lower() == ".pdf":
+                artifacts.append(
+                    _store_pdf_first_page_artifact(
+                        project,
+                        rule,
+                        file_info,
+                        artifact_id=artifact_id,
+                        label=artifact_label,
+                    )
                 )
-            )
+            else:
+                artifacts.append(
+                    _store_pdf_download_artifact(
+                        project,
+                        rule,
+                        file_info,
+                        artifact_id=artifact_id,
+                        label=artifact_label,
+                    )
+                )
     except DownloadReviewInspectionError as exc:
         return RuleEvaluation(
             rule=rule,
@@ -694,93 +770,80 @@ def _evaluate_excel_feature_list_check(rule, sequence, project, context, verify_
             raw_detail=details,
         )
 
+    # 첫 실패에서 멈추지 않고 모든 세부 점검을 수행한다.
     details["sheet_names"] = [sheet.name for sheet in workbook.sheets]
-    if len(workbook.sheets) != 1:
-        return RuleEvaluation(
-            rule=rule,
-            sequence=sequence,
-            status=DownloadReviewRuleStatus.FAIL,
-            expected="시트 1개",
-            actual=f"시트 {len(workbook.sheets)}개",
-            message=config.get("sheet_count_message") or "불필요한 시트가 존재",
-            file_path=_representative_path(matched, project.project_number),
-            file_name=file_info.name,
-            raw_detail=details,
-        )
+    sheet = workbook.sheets[0] if workbook.sheets else None
+    checks = []  # {expected, actual, passed, message}
 
-    sheet = workbook.sheets[0]
+    # 1) 시트 개수
+    checks.append({
+        "expected": "[시트] 1개",
+        "actual": f"시트 {len(workbook.sheets)}개",
+        "passed": len(workbook.sheets) == 1,
+        "message": config.get("sheet_count_message") or "불필요한 시트가 존재",
+    })
+
     title = _resolve_rule_value(config.get("title_text") or "{프로젝트번호} 기능리스트", context)
-    title_cell = _find_cell_containing(sheet.rows, title)
     author_label = str(config.get("author_label") or "작성자")
-    author_cell = _find_cell_containing(sheet.rows, author_label)
+    title_cell = _find_cell_containing(sheet.rows, title) if sheet else None
+    author_cell = _find_cell_containing(sheet.rows, author_label) if sheet else None
     author_ok = bool(author_cell and context.pl and context.pl in author_cell["value"])
-
     details.update({
         "title_text": title,
         "title_cell": title_cell or {},
         "author_label": author_label,
         "author_cell": author_cell or {},
     })
-    if not title_cell or not author_ok:
-        return RuleEvaluation(
-            rule=rule,
-            sequence=sequence,
-            status=DownloadReviewRuleStatus.FAIL,
-            expected=f"{title} 포함 / {author_label} 셀에 {context.pl} 포함",
-            actual=f"제목={'있음' if title_cell else '없음'} / 작성자={author_cell['value'] if author_cell else '없음'}",
-            message=config.get("content_message") or "시험번호 또는 작성자가 잘못 작성됨",
-            file_path=_representative_path(matched, project.project_number),
-            file_name=file_info.name,
-            raw_detail=details,
-        )
 
+    # 2) 제목(프로젝트번호)
+    checks.append({
+        "expected": f"[제목] '{title}' 포함",
+        "actual": (title_cell.get("value") if title_cell else "없음"),
+        "passed": bool(title_cell),
+        "message": config.get("content_message") or "시험번호가 잘못 작성됨",
+    })
+    # 3) 작성자
+    checks.append({
+        "expected": f"[작성자] {author_label} 셀에 {context.pl} 포함",
+        "actual": (author_cell.get("value") if author_cell else "없음"),
+        "passed": author_ok,
+        "message": config.get("content_message") or "작성자가 잘못 작성됨",
+    })
+
+    # 4) 캡처 영역 (+ 영역 이미지 산출물)
     category_label = str(config.get("capture_anchor") or "대분류")
-    capture_area = _excel_area_from_column_anchor(sheet.rows, category_label, column_index=0)
+    capture_area = _excel_area_from_column_anchor(sheet.rows, category_label, column_index=0) if sheet else None
     details["capture_area"] = capture_area or {}
-    if not capture_area:
-        return RuleEvaluation(
-            rule=rule,
-            sequence=sequence,
-            status=DownloadReviewRuleStatus.FAIL,
-            expected=f"A열에서 {category_label} 기준 영역 확인",
-            actual="캡처 기준 셀 없음",
-            message=config.get("capture_message") or "기능리스트 캡처 영역을 찾지 못했습니다.",
-            file_path=_representative_path(matched, project.project_number),
-            file_name=file_info.name,
-            raw_detail=details,
-        )
+    checks.append({
+        "expected": f"[캡처영역] A열 {category_label} 기준 영역",
+        "actual": (capture_area["range"] if capture_area else "캡처 기준 셀 없음"),
+        "passed": bool(capture_area),
+        "message": config.get("capture_message") or "기능리스트 캡처 영역을 찾지 못했습니다.",
+    })
+    if capture_area and sheet:
+        try:
+            artifact = _store_excel_area_artifact(
+                project, rule, sheet, capture_area,
+                artifact_id=config.get("capture_artifact_id") or "feature_list_area",
+                label=config.get("capture_artifact_label") or "기능리스트 영역",
+                source_file=_display_path(file_info.path, project.project_number),
+            )
+            details["artifacts"] = [artifact]
+        except DownloadReviewInspectionError:
+            pass
 
-    try:
-        artifact = _store_excel_area_artifact(
-            project,
-            rule,
-            sheet,
-            capture_area,
-            artifact_id=config.get("capture_artifact_id") or "feature_list_area",
-            label=config.get("capture_artifact_label") or "기능리스트 영역",
-            source_file=_display_path(file_info.path, project.project_number),
-        )
-    except DownloadReviewInspectionError as exc:
-        return RuleEvaluation(
-            rule=rule,
-            sequence=sequence,
-            status=DownloadReviewRuleStatus.ERROR,
-            expected="기능리스트 영역 이미지 생성 가능",
-            actual=str(exc),
-            message=str(exc),
-            file_path=_representative_path(matched, project.project_number),
-            file_name=file_info.name,
-            raw_detail=details,
-        )
-
-    details["artifacts"] = [artifact]
+    details["sub_checks"] = [
+        {"expected": c["expected"], "actual": c["actual"], "passed": c["passed"]} for c in checks
+    ]
+    all_passed = all(c["passed"] for c in checks)
+    first_fail = next((c for c in checks if not c["passed"]), None)
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
-        status=DownloadReviewRuleStatus.PASS,
-        expected=f"시트 1개 / {title} 포함 / 작성자 {context.pl} 포함",
-        actual=f"{sheet.name} / 캡처 영역 {capture_area['range']}",
-        message=config.get("pass_message") or "기능리스트를 확인했습니다.",
+        status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
+        expected=f"시트 1개 / {title} 포함 / 작성자 {context.pl} 포함 / 캡처영역",
+        actual=f"{sheet.name if sheet else '-'}",
+        message=(config.get("pass_message") or "기능리스트를 확인했습니다.") if all_passed else (first_fail["message"] if first_fail else "기능리스트 확인 필요"),
         file_path=_representative_path(matched, project.project_number),
         file_name=file_info.name,
         raw_detail=details,
@@ -850,107 +913,52 @@ def _evaluate_test_plan_document_check(rule, sequence, project, context, verify_
     raw_detail["spec_table"] = plan_spec_table or []
     raw_detail["artifacts"] = [artifact]
 
-    if len(tables) < 2:
-        return _test_plan_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected="시험계획서 docx 표 2개 이상",
-            actual=f"표 {len(tables)}개",
-            message=config.get("product_message") or "제품정보가 틀림",
-        )
+    # 첫 실패에서 멈추지 않고 모든 세부 점검을 수행한다(선행 실패가 후행 검사를 건너뛰지 않도록).
+    checks = raw_detail.setdefault("checks", [])
 
-    first_table = tables[0]
-    first_table_checks = _test_plan_first_table_checks(first_table, config, context)
-    raw_detail["checks"].extend(first_table_checks)
-    failed_first = next((check for check in first_table_checks if not check["passed"]), None)
-    if failed_first:
-        return _test_plan_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=failed_first["expected"],
-            actual=failed_first["actual"],
-            message=failed_first["message"],
-        )
+    # 1) 첫 번째 표 (시작일/담당자/PL)
+    if len(tables) >= 1:
+        checks.extend(_test_plan_first_table_checks(tables[0], config, context))
+    else:
+        checks.append({
+            "name": "first_table", "passed": False,
+            "expected": "시험계획서 첫 번째 표", "actual": "표 없음",
+            "message": config.get("date_message") or "시험계획서 표를 찾을 수 없음",
+        })
 
-    second_table = tables[1]
-    product_checks = _test_plan_product_checks(second_table, config, context)
-    raw_detail["checks"].extend(product_checks)
-    failed_product = next((check for check in product_checks if not check["passed"]), None)
-    if failed_product:
-        return _test_plan_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=failed_product["expected"],
-            actual=failed_product["actual"],
-            message=failed_product["message"],
-        )
+    # 2) 두 번째 표 (제품정보)
+    if len(tables) >= 2:
+        checks.extend(_test_plan_product_checks(tables[1], config, context))
+    else:
+        checks.append({
+            "name": "product_table", "passed": False,
+            "expected": "제품정보 표(두 번째 표)", "actual": f"표 {len(tables)}개",
+            "message": config.get("product_message") or "제품정보가 틀림",
+        })
 
+    # 3) 형상항목 ID
     configuration_table = _docx_first_table_after_text(
-        docx_file,
-        config.get("configuration_marker") or "5.1 형상항목 식별 규칙",
+        docx_file, config.get("configuration_marker") or "5.1 형상항목 식별 규칙",
     )
-    configuration_check = _test_plan_configuration_id_check(configuration_table, config, context)
-    raw_detail["checks"].append(configuration_check)
-    if not configuration_check["passed"]:
-        return _test_plan_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=configuration_check["expected"],
-            actual=configuration_check["actual"],
-            message=configuration_check["message"],
-        )
+    checks.append(_test_plan_configuration_id_check(configuration_table, config, context))
 
+    # 4) 시험일정 WD
     schedule_table = _docx_first_table_after_text(
-        docx_file,
-        config.get("schedule_marker") or "2.2 시험일정",
+        docx_file, config.get("schedule_marker") or "2.2 시험일정",
     )
-    schedule_check = _test_plan_schedule_check(schedule_table, config, context)
-    raw_detail["checks"].append(schedule_check)
-    if not schedule_check["passed"]:
-        return _test_plan_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=schedule_check["expected"],
-            actual=schedule_check["actual"],
-            message=schedule_check["message"],
-        )
+    checks.append(_test_plan_schedule_check(schedule_table, config, context))
 
+    # 5) 바닥글 Copyright
     footer_expected = _resolve_rule_value(config.get("footer_text") or "Copyright {연도} TTA", context)
-    footer_check = {
+    checks.append({
         "name": "footer_copyright",
         "passed": footer_expected in footer_text,
-        "expected": footer_expected,
+        "expected": f"바닥글에 {footer_expected} 포함",
         "actual": footer_text or "바닥글 없음",
         "message": config.get("footer_message") or "바닥글 Copyright가 잘못 작성됨",
-    }
-    raw_detail["checks"].append(footer_check)
-    if not footer_check["passed"]:
-        return _test_plan_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=footer_check["expected"],
-            actual=footer_check["actual"],
-            message=footer_check["message"],
-        )
+    })
 
+    # 6) 바닥글 금지어 (설정된 경우)
     forbidden_footer_check = _check_forbidden_text_terms(
         footer_text,
         config.get("forbidden_footer_terms") or [],
@@ -959,47 +967,46 @@ def _evaluate_test_plan_document_check(rule, sequence, project, context, verify_
         default_message="시험계획서 바닥글에 잘못된 단어가 작성됨",
     )
     if forbidden_footer_check["details"]:
-        raw_detail["checks"].append(forbidden_footer_check)
-    if not forbidden_footer_check["passed"]:
-        return _test_plan_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=forbidden_footer_check["expected"],
-            actual=forbidden_footer_check["actual"],
-            message=forbidden_footer_check["message"],
-        )
+        checks.append(forbidden_footer_check)
 
-    spec_check = _test_plan_spec_table_check(plan_spec_table, config, context)
-    raw_detail["checks"].append(spec_check)
-    if not spec_check["passed"]:
-        return _test_plan_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=spec_check["expected"],
-            actual=spec_check["actual"],
-            message=spec_check["message"],
-        )
+    # 7) 세부사양 표 (시험성적서와 비교)
+    checks.append(_test_plan_spec_table_check(plan_spec_table, config, context))
 
+    raw_detail["sub_checks"] = _checks_to_sub_checks(checks)
+    all_passed = all(check.get("passed") for check in checks)
+    first_fail = next((check for check in checks if not check.get("passed")), None)
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
-        status=DownloadReviewRuleStatus.PASS,
+        status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
         expected="시험계획서 docx/pdf / 표 값 / 형상항목 ID / WD / 바닥글 / 세부사양",
         actual=f".docx {docx_file.name} / .pdf {pdf_file.name}",
-        message=config.get("pass_message") or "시험계획서를 확인했습니다.",
+        message=(config.get("pass_message") or "시험계획서를 확인했습니다.") if all_passed else (first_fail.get("message") if first_fail else "시험계획서 확인 필요"),
         file_path=_representative_path(matched, project.project_number),
         file_name=_representative_name(matched),
         raw_detail=raw_detail,
     )
 
 
+def _checks_to_sub_checks(checks):
+    """{name,passed,expected,actual} 리스트를 팝업 표시용 sub_checks로 변환한다."""
+    sub_checks = []
+    for check in checks or []:
+        if not isinstance(check, dict):
+            continue
+        sub_checks.append({
+            "expected": check.get("expected", ""),
+            "actual": check.get("actual", ""),
+            "passed": check.get("passed"),
+        })
+    return sub_checks
+
+
 def _test_plan_failure(rule, sequence, matched, project, raw_detail, *, expected, actual, message):
+    # 지금까지 수행한 세부 점검(checks)을 항목별 적합/부적합 행으로 표시한다.
+    sub_checks = _checks_to_sub_checks(raw_detail.get("checks"))
+    if sub_checks:
+        raw_detail["sub_checks"] = sub_checks
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
@@ -1018,7 +1025,7 @@ def _test_plan_first_table_checks(table, config, context):
     return [
         {
             "name": "first_table_start_date",
-            "passed": _table_cell(table, 1, 2) == context.start_date,
+            "passed": _same_date_text(_table_cell(table, 1, 2), context.start_date),
             "expected": f"1행 2열 = {context.start_date}",
             "actual": _table_cell(table, 1, 2) or "값 없음",
             "message": config.get("date_message") or "시험계획서 날짜가 잘못 작성됨",
@@ -1038,6 +1045,32 @@ def _test_plan_first_table_checks(table, config, context):
             "message": config.get("pl_message") or "시험계획서 PL이 잘못 작성됨",
         },
     ]
+
+
+def _version_matches(expected, actual):
+    """버전 비교.
+
+    - 'v'/'V' 접두사는 있어도 없어도 같은 것으로 본다(접두사 누락은 정상).
+    - 'ver' 등 다른 접두사가 붙으면 다른 것으로 본다.
+    - 숫자 부분(예: 4.0)이 같아야 한다.
+    예) 기대 'v4.0' vs 실제 '4.0' → 정상, 실제 'ver4.0' → 부적합.
+    """
+    def split_prefix(value):
+        text = _normalize_no_space(value)
+        match = re.match(r"^([^\d]*)(.*)$", text)
+        if not match:
+            return "", text
+        return match.group(1), match.group(2)
+
+    expected_prefix, expected_core = split_prefix(expected)
+    actual_prefix, actual_core = split_prefix(actual)
+    if not expected_core or expected_core != actual_core:
+        return False
+
+    def prefix_allowed(prefix):
+        return prefix == "" or prefix.lower() == "v"
+
+    return prefix_allowed(expected_prefix) and prefix_allowed(actual_prefix)
 
 
 def _test_plan_product_checks(table, config, context):
@@ -1065,8 +1098,8 @@ def _test_plan_product_checks(table, config, context):
         },
         {
             "name": "product_version",
-            "passed": _normalize_spaces(version_actual) == context.version,
-            "expected": f"{version_label} 오른쪽 셀 = {context.version}",
+            "passed": _version_matches(context.version, version_actual),
+            "expected": f"{version_label} 오른쪽 셀 = {context.version} (v 접두사는 생략 가능, 다른 접두사는 불가)",
             "actual": version_actual or "값 없음",
             "message": product_message,
         },
@@ -1246,19 +1279,26 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
         )
 
     raw_detail["sheet_names"] = [sheet.name for sheet in workbook.sheets]
-    if len(workbook.sheets) != 1:
+    # 첫 실패에서 멈추지 않고 모든 세부 점검을 수행한 뒤 항목별 적합/부적합을 표시한다.
+    sub_checks = []  # {expected, actual, passed, message}
+
+    # 0) 시트 개수 (1개가 아니어도 멈추지 않고 첫 시트로 나머지 점검 진행)
+    sub_checks.append({
+        "expected": "[시트] 1개",
+        "actual": f"시트 {len(workbook.sheets)}개",
+        "passed": len(workbook.sheets) == 1,
+        "message": config.get("sheet_count_message") or "테스트케이스 시트가 1개 이상임",
+    })
+    sheet = workbook.sheets[0] if workbook.sheets else None
+    if sheet is None:
+        raw_detail["sub_checks"] = [dict(sub_checks[0])]
         return _test_case_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected="시트 1개",
-            actual=f"시트 {len(workbook.sheets)}개",
-            message=config.get("sheet_count_message") or "테스트케이스 시트가 1개 이상임",
+            rule, sequence, matched, project, raw_detail,
+            expected="시트 1개", actual="시트 없음",
+            message=config.get("sheet_count_message") or "테스트케이스 시트가 없음",
         )
 
-    sheet = workbook.sheets[0]
+    # 1) 바닥글 금지어 (금지어가 설정된 경우에만 점검 항목으로 추가)
     footer_check = _check_forbidden_text_terms(
         _clean_excel_header_text(sheet.footer_text),
         config.get("forbidden_footer_terms") or [],
@@ -1268,36 +1308,25 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
     )
     if footer_check["details"]:
         raw_detail["footer_check"] = footer_check
-    if not footer_check["passed"]:
-        return _test_case_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=footer_check["expected"],
-            actual=footer_check["actual"],
-            message=footer_check["message"],
-        )
+        sub_checks.append({
+            "expected": f"[바닥글] {_stringify_check_value(footer_check.get('expected', ''))}",
+            "actual": _stringify_check_value(footer_check.get("actual", "")),
+            "passed": bool(footer_check.get("passed")),
+            "message": footer_check.get("message") or "테스트케이스 바닥글에 잘못된 단어가 작성됨",
+        })
 
+    # 2) 제목(프로젝트번호)
     title_text = _resolve_rule_value(config.get("title_text") or "{project_number} 테스트케이스", context)
     title_cell = _find_cell_containing(sheet.rows, title_text)
-    raw_detail["title_check"] = {
-        "expected": title_text,
-        "matched_cell": title_cell or {},
-    }
-    if not title_cell:
-        return _test_case_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=f"문서 내 '{title_text}' 포함",
-            actual="일치 문장 없음",
-            message=config.get("project_number_message") or "프로젝트 번호가 잘못 작성됨",
-        )
+    raw_detail["title_check"] = {"expected": title_text, "matched_cell": title_cell or {}}
+    sub_checks.append({
+        "expected": f"[제목] '{title_text}' 포함",
+        "actual": (title_cell.get("value") if title_cell else "일치 문장 없음"),
+        "passed": bool(title_cell),
+        "message": config.get("project_number_message") or "프로젝트 번호가 잘못 작성됨",
+    })
 
+    # 3) 작성자 / 검토자
     author_label = str(config.get("author_label") or "작성자:")
     reviewer_label = str(config.get("reviewer_label") or "검토자:")
     reviewer_expected = _resolve_rule_value(str(config.get("reviewer_expected") or "김진영"), context)
@@ -1324,36 +1353,28 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
         "reviewer_expected": reviewer_expected,
         "reviewer_cell": reviewer_cell,
     }
-    if not author_cell or not reviewer_ok:
-        return _test_case_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=f"{author_label} {context.pl} / 아래 셀 {reviewer_label} {reviewer_expected}",
-            actual=f"작성자={author_cell['value'] if author_cell else '없음'} / 검토자={reviewer_cell.get('value') or '없음'}",
-            message=config.get("author_message") or "작성자 또는 검토자가 잘못 작성됨",
-        )
+    sub_checks.append({
+        "expected": f"[작성자/검토자] {author_label} {context.pl} / {reviewer_label} {reviewer_expected}",
+        "actual": f"작성자={author_cell['value'] if author_cell else '없음'} / 검토자={reviewer_cell.get('value') or '없음'}",
+        "passed": bool(author_cell and reviewer_ok),
+        "message": config.get("author_message") or "작성자 또는 검토자가 잘못 작성됨",
+    })
 
-    date_text = _resolve_rule_value(config.get("date_text") or "작성일: {시작일} ~ {종료일}", context)
-    date_cell = _find_cell_normalized_contains_all(sheet.rows, [date_text])
+    # 4) 작성일 — 공백 제거 후, 작성일 라벨과 시작일~종료일 날짜가 맞는지 확인(형식 무관)
+    date_label = str(config.get("date_label") or "작성일")
+    date_cell = _find_labeled_date_range_cell(sheet.rows, date_label, context.start_date, context.end_date)
     raw_detail["date_check"] = {
-        "expected": date_text,
+        "expected": f"{date_label} {context.start_date} ~ {context.end_date}",
         "matched_cell": date_cell or {},
     }
-    if not date_cell:
-        return _test_case_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=f"문서 내 '{date_text}' 포함(공백 제거 후 비교)",
-            actual="일치 작성일 없음",
-            message=config.get("date_message") or "작성일이 잘못 작성됨",
-        )
+    sub_checks.append({
+        "expected": f"[작성일] {date_label} {context.start_date} ~ {context.end_date}",
+        "actual": (date_cell.get("value") if date_cell else "일치 작성일 없음"),
+        "passed": bool(date_cell),
+        "message": config.get("date_message") or "작성일이 잘못 작성됨",
+    })
 
+    # 5) 잔여결함수 (상세 테스트 결과 열의 F 개수)
     residual_expected = _context_int(context, "잔여결함수")
     result_header = str(config.get("result_header") or "상세 테스트 결과")
     result_header_cell = _find_cell_containing(sheet.rows, result_header)
@@ -1364,39 +1385,37 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
             start_row=result_header_cell["row"] + 1,
             column=result_header_cell["column"],
         )
-    residual_check = {
+    raw_detail["residual_defect_check"] = {
         "result_header": result_header,
         "header_cell": result_header_cell or {},
         "expected_count": residual_expected,
         "actual_count": len(failed_rows),
         "failed_rows": failed_rows,
     }
-    raw_detail["residual_defect_check"] = residual_check
-    if residual_expected is None or not result_header_cell or len(failed_rows) != residual_expected:
-        actual_parts = []
-        if residual_expected is None:
-            actual_parts.append("{잔여결함수} 없음")
-        if not result_header_cell:
-            actual_parts.append("상세 테스트 결과 열 없음")
-        actual_parts.append(f"F {len(failed_rows)}개")
-        return _test_case_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=f"{result_header} 열의 F 개수 = {residual_expected if residual_expected is not None else '{잔여결함수}'}",
-            actual=" / ".join(actual_parts),
-            message=config.get("residual_message") or "잔여 결함이 작성되지 않음",
-        )
+    residual_actual_parts = []
+    if not result_header_cell:
+        residual_actual_parts.append("상세 테스트 결과 열 없음")
+    residual_actual_parts.append(f"F {len(failed_rows)}개")
+    sub_checks.append({
+        "expected": f"[잔여결함] {result_header} F 개수 = {residual_expected if residual_expected is not None else '{잔여결함수}'}",
+        "actual": " / ".join(residual_actual_parts),
+        "passed": bool(residual_expected is not None and result_header_cell and len(failed_rows) == residual_expected),
+        "message": config.get("residual_message") or "잔여 결함이 작성되지 않음",
+    })
 
+    raw_detail["sub_checks"] = [
+        {"expected": item["expected"], "actual": item["actual"], "passed": item["passed"]}
+        for item in sub_checks
+    ]
+    all_passed = all(item["passed"] for item in sub_checks)
+    first_fail = next((item for item in sub_checks if not item["passed"]), None)
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
-        status=DownloadReviewRuleStatus.PASS,
-        expected=f"시트 1개 / {title_text} / 작성자·검토자 / 작성일 / F {residual_expected}개",
-        actual=f"{sheet.name} / F {len(failed_rows)}개",
-        message=config.get("pass_message") or "테스트케이스를 확인했습니다.",
+        status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
+        expected=" / ".join(item["expected"] for item in sub_checks),
+        actual=" / ".join(item["actual"] for item in sub_checks),
+        message=(config.get("pass_message") or "테스트케이스를 확인했습니다.") if all_passed else (first_fail["message"] if first_fail else "테스트케이스 확인 필요"),
         file_path=_representative_path(matched, project.project_number),
         file_name=file_info.name,
         raw_detail=raw_detail,
@@ -1428,7 +1447,10 @@ def _test_case_failed_result_rows(sheet, *, start_row, column):
 
 def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, context, verify_result):
     config = rule.config_json or {}
-    files, selected_folder = _files_in_configured_folder(rule, verify_result)
+    # 기존 제품 zip이 아닌, 이름에 'rawdata'가 포함된 zip의 이미지만 대상으로 한다(대소문자/공백 무시).
+    all_files = _matching_files(rule, verify_result)
+    rawdata_files = [file_info for file_info in all_files if _zip_name_contains(file_info, "rawdata")]
+    files, selected_folder = _select_folder_chain_files(rawdata_files, config.get("folder_keyword_chain"))
     min_images = int(config.get("min_images_per_folder") or 5)
     required_folder_count = int(config.get("required_candidate_folder_count") or 2)
     image_files = [
@@ -1568,25 +1590,33 @@ def _join_korean_or(values):
 
 def _evaluate_rawdata_folder_structure_check(rule, sequence, project, verify_result):
     config = rule.config_json or {}
-    folders, file_folders = _inspection_folder_tree(verify_result)
-    base = _find_folder_by_keyword_chain(folders, config.get("folder_keyword_chain") or ["수행"])
-    raw_detail = {"base_folder": "/".join(base or ())}
-    if not base:
+    # 프로젝트 루트에서 'rawdata' zip을 찾아 그 안에서만 폴더 구조를 점검한다.
+    rawdata_files = [
+        file_info
+        for file_info in _inspection_files(verify_result)
+        if _zip_name_contains(file_info, "rawdata")
+    ]
+    raw_detail = {"rawdata_file_count": len(rawdata_files)}
+    if not rawdata_files:
         return RuleEvaluation(
             rule=rule,
             sequence=sequence,
             status=DownloadReviewRuleStatus.FAIL,
-            expected="수행 폴더",
-            actual="없음",
-            message=config.get("base_message") or "수행 폴더 확인 불가",
+            expected="rawdata zip 존재",
+            actual="rawdata zip 없음",
+            message=config.get("missing_zip_message") or "rawdata zip 파일을 찾을 수 없음",
             raw_detail=raw_detail,
         )
+
+    # 수행>rawdata 같은 고정 경로에 의존하지 않고, rawdata zip 안에서 각 키워드
+    # (결함/보안/성능) 폴더를 직접 찾아 그 안의 하위 폴더 구조를 점검한다.
+    folders, file_folders = _folder_tree_from_files(rawdata_files)
 
     checks = []
     passed = True
     first_message = ""
     for folder_check in config.get("folder_checks") or []:
-        result = _run_folder_check(base, folders, file_folders, folder_check)
+        result = _run_folder_check(folders, file_folders, folder_check, files=rawdata_files)
         checks.append(result)
         if not result["passed"] and passed:
             passed = False
@@ -1601,7 +1631,7 @@ def _evaluate_rawdata_folder_structure_check(rule, sequence, project, verify_res
         expected="rawdata 폴더 구조 충족",
         actual="정상" if passed else first_message,
         message=config.get("pass_message") if passed else first_message,
-        file_path="/".join(base),
+        file_path="rawdata",
         raw_detail=raw_detail,
     )
 
@@ -1615,7 +1645,7 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
         for file_info in files
         if _name_contains_all(file_info.name, name_keywords)
     ]
-    docx_files = [file_info for file_info in matched if file_info.extension.lower() == ".docx"]
+    docx_files = [file_info for file_info in matched if file_info.extension.lower() in (".docx", ".doc")]
     pdf_files = [file_info for file_info in matched if file_info.extension.lower() == ".pdf"]
     raw_detail = {
         "selected_folder": selected_folder,
@@ -1781,6 +1811,7 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
     if final_workbook:
         raw_detail["variables"] = _defect_report_variables(final_workbook)
 
+    # 첫 실패에서 멈추지 않고 모든 세부 점검을 수행한 뒤 차시별 적합/부적합을 표시한다.
     header_forbidden_check = _check_versioned_workbook_forbidden_print_terms(
         workbook_by_version,
         config.get("forbidden_header_terms") or [],
@@ -1801,82 +1832,104 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
         "forbidden_headers": header_forbidden_check,
         "forbidden_footers": footer_forbidden_check,
     }
-    failed_print_check = next(
-        (
-            check
-            for check in (header_forbidden_check, footer_forbidden_check)
-            if not check["passed"]
-        ),
-        None,
-    )
-    if failed_print_check:
-        return _defect_report_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=failed_print_check["expected"],
-            actual=failed_print_check["actual"],
-            message=failed_print_check["message"],
-        )
 
     sheet_check = _check_defect_report_sheets(workbook_by_version, versioned_files, defect_round_count)
     raw_detail["sheet_checks"] = sheet_check["details"]
-    if not sheet_check["passed"]:
-        return _defect_report_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=sheet_check["expected"],
-            actual=sheet_check["actual"],
-            message=_format_config_message(config.get("sheet_message"), file_name=sheet_check["file_name"]) or f"{sheet_check['file_name']}에 시트가 잘못 작성됨",
-        )
 
     environment_check = _check_defect_report_environment(workbook_by_version)
     raw_detail["environment_check"] = environment_check
-    if not environment_check["passed"]:
-        return _defect_report_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected="모든 시트 1~3행 시험환경 값 동일",
-            actual=environment_check["actual"],
-            message=config.get("environment_message") or "시험환경 정보 잘못 작성됨",
-        )
 
     report_date_check = _check_defect_report_dates(workbook_by_version, context, defect_round_count)
     raw_detail["report_date_checks"] = report_date_check["details"]
-    if not report_date_check["passed"]:
-        return _defect_report_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=report_date_check["expected"],
-            actual=report_date_check["actual"],
-            message=config.get("report_date_message") or "프로젝트 번호, 결함 차시, 보고일자 중 잘못된 값이 작성됨",
-        )
 
+    sub_checks = []
+
+    header_forbidden_words = _print_terms_text(config.get("forbidden_header_terms")) or "(없음)"
+    footer_forbidden_words = _print_terms_text(config.get("forbidden_footer_terms")) or "(없음)"
+
+    # 1) 머리글 금지어 (차수별로 집계)
+    for version, version_passed in _defect_print_pass_by_version(header_forbidden_check):
+        sub_checks.append({
+            "expected": f"[v{version}.0 머리글] 금지어 미포함: {header_forbidden_words}",
+            "actual": "정상" if version_passed else f"금지어 포함: {header_forbidden_words}",
+            "passed": version_passed,
+        })
+    # 2) 바닥글 금지어 (차수별)
+    for version, version_passed in _defect_print_pass_by_version(footer_forbidden_check):
+        sub_checks.append({
+            "expected": f"[v{version}.0 바닥글] 금지어 미포함: {footer_forbidden_words}",
+            "actual": "정상" if version_passed else f"금지어 포함: {footer_forbidden_words}",
+            "passed": version_passed,
+        })
+    # 3) 시트 구성 (차수별)
+    for detail in sheet_check.get("details", []):
+        sheet_ok = not detail.get("missing_sheets") and not detail.get("extra_sheets")
+        problems = []
+        if detail.get("missing_sheets"):
+            problems.append("누락: " + ", ".join(detail["missing_sheets"]))
+        if detail.get("extra_sheets"):
+            problems.append("불필요: " + ", ".join(detail["extra_sheets"]))
+        sub_checks.append({
+            "expected": f"[v{detail.get('version')}.0 시트] " + ", ".join(detail.get("expected_sheets", [])),
+            "actual": "정상" if sheet_ok else " / ".join(problems),
+            "passed": sheet_ok,
+        })
+    # 4) 시험환경 — 차수(버전)별로 한 줄씩 값을 표시해 구분할 수 있게 한다.
+    env_values = environment_check.get("values") or []
+    env_by_version = {}
+    for item in env_values:
+        env_by_version.setdefault(item.get("version"), item.get("value"))
+    if env_by_version:
+        env_actual = "\n".join(
+            f"v{version}.0: {value}" for version, value in sorted(env_by_version.items())
+        )
+    else:
+        env_actual = _stringify_check_value(environment_check.get("actual", "")) or "시험환경 없음"
+    sub_checks.append({
+        "expected": "[시험환경] 모든 시트 1~3행 값 동일",
+        "actual": env_actual,
+        "passed": bool(environment_check.get("passed")),
+    })
+    # 5) 보고일자 (차시·시트별)
+    sub_checks.extend(report_date_check.get("sub_checks", []))
+
+    raw_detail["sub_checks"] = sub_checks
     variables = raw_detail.get("variables") or _defect_report_variables(final_workbook)
     raw_detail["variables"] = variables
 
+    all_passed = all(item["passed"] for item in sub_checks)
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
-        status=DownloadReviewRuleStatus.PASS,
-        expected=f"결함리포트 파일 {expected_file_count}개 / v1.0~v{expected_file_count}.0 / 시트와 보고일자 정상",
-        actual=f"결함차수 {defect_round_count} / 잔여결함수 {variables.get('잔여결함수', '')} / H {variables.get('H', '')} / R {variables.get('R', '')}",
-        message=config.get("pass_message") or "결함리포트를 확인했습니다.",
+        status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
+        expected=" / ".join(item["expected"] for item in sub_checks),
+        actual=" / ".join(item["actual"] for item in sub_checks),
+        message=(config.get("pass_message") or "결함리포트를 확인했습니다.") if all_passed else (config.get("report_date_message") or "결함리포트 확인 필요"),
         file_path=_representative_path(matched, project.project_number),
         file_name=_representative_name(matched),
         raw_detail=raw_detail,
     )
+
+
+def _print_terms_text(terms):
+    """머리글/바닥글 금지어·필수어 설정에서 단어 목록을 사람이 읽을 문자열로 만든다."""
+    words = []
+    for term in terms or []:
+        word = str(term.get("text") if isinstance(term, dict) else term or "").strip()
+        if word:
+            words.append(word)
+    return ", ".join(words)
+
+
+def _defect_print_pass_by_version(check):
+    """차수(version)별로 머리글/바닥글 금지어 검사 통과 여부를 집계한다."""
+    by_version = {}
+    for detail in check.get("details", []) if isinstance(check, dict) else []:
+        version = detail.get("version")
+        by_version.setdefault(version, True)
+        if not detail.get("passed"):
+            by_version[version] = False
+    return sorted(by_version.items(), key=lambda item: (item[0] is None, item[0]))
 
 
 def _defect_report_failure(rule, sequence, matched, project, raw_detail, *, expected, actual, message):
@@ -1982,17 +2035,21 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
     expected_dates["최종결함리포트"] = context.end_date
     expected_dates["시험분석자료"] = context.end_date
 
+    expected_parts = []
+    actual_parts = []
+    sub_checks = []
+    all_passed = True
     for version, workbook in sorted(workbook_by_version.items()):
         required_sheets = _expected_defect_report_sheet_names(version, final_version)
         for sheet_name in required_sheets:
             sheet = _workbook_sheet(workbook, sheet_name)
-            actual_text = _sheet_top_rows_cell_containing(sheet, f"{context.project_number} {sheet_name}") if sheet else ""
-            report_date = _extract_korean_report_date(actual_text)
+            # 헤더(프로젝트번호+시트명)와 보고일자는 보통 서로 다른 셀에 있으므로 각각 찾는다.
+            header_text = _sheet_top_rows_cell_containing(sheet, f"{context.project_number} {sheet_name}") if sheet else ""
+            report_date = _sheet_top_rows_report_date(sheet) if sheet else ""
+            actual_text = (header_text + (" / 보고일자: " + report_date if report_date else "")).strip()
             expected_date = expected_dates.get(sheet_name, "")
             passed = bool(
-                actual_text
-                and context.project_number in actual_text
-                and sheet_name in actual_text
+                header_text
                 and _same_date_text(report_date, expected_date)
             )
             detail = {
@@ -2004,14 +2061,23 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
                 "passed": passed,
             }
             details.append(detail)
+            # 차시별로 한 줄씩 표시되도록 " / " 로 구분해 누적한다.
+            label = f"v{version}.0 {sheet_name}"
+            sub_expected = f"{label} 보고일자 {expected_date or '(기준없음)'}"
+            sub_actual = f"{label} 정상({report_date})" if passed else f"{label} {report_date or '문구없음'}"
+            expected_parts.append(sub_expected)
+            actual_parts.append(sub_actual)
+            sub_checks.append({"expected": sub_expected, "actual": sub_actual, "passed": passed})
             if not passed:
-                return {
-                    "passed": False,
-                    "expected": f"{context.project_number} {sheet_name} / 보고일자 {expected_date}",
-                    "actual": actual_text or f"{sheet_name} 상단 문구 없음",
-                    "details": details,
-                }
-    return {"passed": True, "details": details}
+                all_passed = False
+
+    return {
+        "passed": all_passed,
+        "expected": " / ".join(expected_parts),
+        "actual": " / ".join(actual_parts) or "결함리포트 보고일자 확인 불가",
+        "details": details,
+        "sub_checks": sub_checks,
+    }
 
 
 def _defect_report_variables(workbook):
@@ -2024,42 +2090,100 @@ def _defect_report_variables(workbook):
     return variables
 
 
-def _sheet_top_rows_cell_containing(sheet, keyword):
-    for row in sheet.rows[:3]:
+def _sheet_top_rows_cell_containing(sheet, keyword, *, limit=4):
+    """상단 행에서 keyword를 포함한 셀 값을 반환한다(공백 차이 무시)."""
+    needle = _normalize_no_space(keyword)
+    for row in sheet.rows[:limit]:
         for value in row:
-            if keyword in value:
+            if needle and needle in _normalize_no_space(value):
                 return value
     return ""
 
 
+def _sheet_top_rows_report_date(sheet, *, limit=5):
+    """상단 행에서 '보고일자'가 적힌 셀(헤더와 다른 셀일 수 있음)을 찾아 날짜를 추출한다."""
+    if not sheet:
+        return ""
+    for row in sheet.rows[:limit]:
+        for value in row:
+            date = _extract_korean_report_date(value)
+            if date:
+                return date
+    return ""
+
+
 def _workbook_sheet(workbook, sheet_name):
+    # 정확히 일치하는 시트를 우선 찾고, 없으면 공백 차이를 무시해 찾는다.
+    # 예: '최종결함리포트' = '최종 결함리포트' = '최종 결함 리포트'
     for sheet in workbook.sheets:
         if sheet.name == sheet_name:
+            return sheet
+    target = _normalize_no_space(sheet_name)
+    for sheet in workbook.sheets:
+        if _normalize_no_space(sheet.name) == target:
             return sheet
     return None
 
 
 def _extract_korean_report_date(value):
-    match = re.search(r"보고일자\s*[:：]\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일", str(value or ""))
+    # 보고일자 형식이 '2026년 4월 13일' / '2026.04.13' / '26.4.13' 등 달라도 인식한다.
+    match = re.search(r"보고일자\s*[:：]?\s*" + _FLEX_DATE_PATTERN, str(value or ""))
     if not match:
         return ""
     year, month, day = match.groups()
-    return f"{int(year):04d}.{int(month):02d}.{int(day):02d}."
+    return f"{_full_year(year):04d}.{int(month):02d}.{int(day):02d}."
+
+
+def _parse_loose_date(value):
+    """다양한 형식의 날짜를 (year|None, month, day)로 파싱한다.
+    연도가 없는 '5/7' 같은 값은 year=None으로 반환한다.
+    """
+    text = str(value or "")
+    text = (
+        text.replace("년", ".").replace("월", ".").replace("일", "")
+        .replace("/", ".").replace("-", ".")
+    )
+    # 연.월.일 (연도 2~4자리)
+    match = re.search(r"(?<!\d)(\d{2,4})\s*\.\s*(\d{1,2})\s*\.\s*(\d{1,2})(?!\d)", text)
+    if match:
+        return (_full_year(match.group(1)), int(match.group(2)), int(match.group(3)))
+    # 월.일 (연도 없음)
+    match = re.search(r"(?<!\d)(\d{1,2})\s*\.\s*(\d{1,2})(?!\d)", text)
+    if match:
+        return (None, int(match.group(1)), int(match.group(2)))
+    return None
 
 
 def _same_date_text(left, right):
-    return _format_dot_date(left) == _format_dot_date(right)
+    left_parsed = _parse_loose_date(left)
+    right_parsed = _parse_loose_date(right)
+    if not left_parsed or not right_parsed:
+        return _format_dot_date(left) == _format_dot_date(right)
+    ly, lm, ld = left_parsed
+    ry, rm, rd = right_parsed
+    if (lm, ld) != (rm, rd):
+        return False
+    # 한쪽이라도 연도가 없으면(예: ECM '5/7') 월/일만 같으면 같은 날짜로 본다.
+    if ly is None or ry is None:
+        return True
+    return ly == ry
 
 
 def _defect_residual_count(workbook):
+    """'최종결함리포트' 시트에서 G열의 '품질특성' 셀을 찾아, 그 아래로 값이 연속으로
+    작성된 셀의 개수를 잔여결함 개수로 본다. 바로 아래 셀이 비어 있으면 0개."""
     sheet = _workbook_sheet(workbook, "최종결함리포트")
     if not sheet:
         return 0
+    header = _find_cell_containing(sheet.rows, "품질특성")
+    if not header:
+        return 0
+    column = header["column"]
     count = 0
-    for row in sheet.rows[4:]:
-        value = row[1] if len(row) > 1 else ""
-        if value:
-            count += 1
+    for row in range(header["row"] + 1, len(sheet.rows) + 1):
+        if not _sheet_cell(sheet, row, column):
+            break
+        count += 1
     return count
 
 
@@ -2098,6 +2222,25 @@ def _format_config_message(template, **values):
     for key, value in values.items():
         message = message.replace("{" + key + "}", str(value))
     return message
+
+
+def _stringify_check_value(value):
+    """expected/actual 값이 dict/list 등이면 사람이 읽을 수 있는 문자열로 변환한다."""
+    if value is None:
+        return ""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        # 기능적합성 불일치 dict 등
+        if "left_cell" in value or "right_cell" in value:
+            return (
+                f"{value.get('left_cell', '')}({value.get('left', '')}) ≠ "
+                f"{value.get('right_cell', '')}({value.get('right', '')})"
+            )
+        return ", ".join(f"{k}={v}" for k, v in value.items())
+    if isinstance(value, (list, tuple)):
+        return ", ".join(_stringify_check_value(item) for item in value)
+    return str(value)
 
 
 def _evaluate_inspection_checklist_check(rule, sequence, project, context, verify_result):
@@ -2169,19 +2312,23 @@ def _evaluate_inspection_checklist_check(rule, sequence, project, context, verif
 
     raw_detail["sheet_names"] = [sheet.name for sheet in workbook.sheets]
 
+    # 측정항목별 점수표 값은 이후 점검 항목의 통과/실패와 무관하게 항상 변수로 채운다.
+    # (품질검사표 규칙이 이 변수를 사용하므로, 점검표가 다른 항목에서 실패해도 값이 있어야 한다.)
+    score_sheet = _workbook_sheet(workbook, config.get("score_sheet") or "측정항목별 점수표")
+    score_values = _checklist_score_values(score_sheet)
+    raw_detail["variables"] = {"측정항목별점수표": score_values}
+
+    # 첫 실패에서 멈추지 않고 모든 세부 점검을 수행한 뒤 항목별 적합/부적합을 표시한다.
+    # sub_results: (라벨, check_dict, expected_override, message_override)
+    sub_results = []
+
     header_check = _check_checklist_headers(workbook, context.project_number)
     raw_detail["header_check"] = header_check
-    if not header_check["passed"]:
-        return _checklist_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=f"모든 시트 머리글에 프로젝트번호: {context.project_number}",
-            actual=header_check["actual"],
-            message=config.get("header_message") or "머리글(프로젝트번호)이 잘못 작성됨",
-        )
+    sub_results.append((
+        "머리글", header_check,
+        f"모든 시트 머리글에 프로젝트번호: {context.project_number}",
+        config.get("header_message") or "머리글(프로젝트번호)이 잘못 작성됨",
+    ))
 
     footer_forbidden_check = _check_workbook_forbidden_print_terms(
         workbook,
@@ -2203,116 +2350,53 @@ def _evaluate_inspection_checklist_check(rule, sequence, project, context, verif
         "forbidden": footer_forbidden_check,
         "required": footer_required_check,
     }
-    failed_footer_check = next(
-        (
-            check
-            for check in (footer_forbidden_check, footer_required_check)
-            if not check["passed"]
-        ),
-        None,
-    )
-    if failed_footer_check:
-        return _checklist_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=failed_footer_check["expected"],
-            actual=failed_footer_check["actual"],
-            message=failed_footer_check["message"],
-        )
+    forbidden_footer_words = _print_terms_text(config.get("forbidden_footer_terms")) or "(없음)"
+    required_footer_words = _print_terms_text(config.get("required_footer_terms")) or "(없음)"
+    sub_results.append((
+        "바닥글(금지어)", footer_forbidden_check,
+        f"모든 시트 바닥글 금지어 미포함: {forbidden_footer_words}", None,
+    ))
+    sub_results.append((
+        "바닥글(필수어)", footer_required_check,
+        f"모든 시트 바닥글 필수어 포함: {required_footer_words}", None,
+    ))
 
     cover_sheet = _workbook_sheet(workbook, config.get("cover_sheet") or "표지")
     if not cover_sheet:
-        return _checklist_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected="표지 시트",
-            actual="표지 시트 없음",
-            message=config.get("cover_title_message") or "표지 제목이 잘못 작성됨",
-        )
-
-    cover_check = _check_checklist_cover(cover_sheet, context, config)
+        cover_check = {
+            "passed": False,
+            "expected": "표지 시트",
+            "actual": "표지 시트 없음",
+            "message": config.get("cover_title_message") or "표지 제목이 잘못 작성됨",
+        }
+    else:
+        cover_check = _check_checklist_cover(cover_sheet, context, config)
     raw_detail["cover_check"] = cover_check
-    if not cover_check["passed"]:
-        return _checklist_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=cover_check["expected"],
-            actual=cover_check["actual"],
-            message=cover_check["message"],
-        )
+    sub_results.append(("표지", cover_check, None, None))
 
     feature_sheet = _workbook_sheet(workbook, config.get("feature_sheet") or "기능별 점검표")
     suitability_sheet = _workbook_sheet(workbook, config.get("suitability_sheet") or "2. 기능적합성")
     reliability_sheet = _workbook_sheet(workbook, config.get("reliability_sheet") or "6. 신뢰성")
-    score_sheet = _workbook_sheet(workbook, config.get("score_sheet") or "측정항목별 점수표")
 
     feature_check = _check_checklist_feature_sheet(feature_sheet)
     raw_detail["feature_sheet_check"] = feature_check
-    if not feature_check["passed"]:
-        return _checklist_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=feature_check["expected"],
-            actual=feature_check["actual"],
-            message=config.get("feature_blank_message") or "기능별 점검표 시트에 빈 셀이 확인됨",
-        )
-
-    suitability_compare = _check_checklist_suitability_table(feature_sheet, suitability_sheet)
-    raw_detail["suitability_compare"] = suitability_compare
-    if not suitability_compare["passed"]:
-        return _checklist_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=suitability_compare["expected"],
-            actual=suitability_compare["actual"],
-            message=config.get("suitability_compare_message") or "기능적합성 시트의 2.3번 기능표 내용 확인 필요함",
-        )
+    sub_results.append((
+        "기능별 점검표 빈셀", feature_check, None,
+        config.get("feature_blank_message") or "기능별 점검표 시트에 빈 셀이 확인됨",
+    ))
 
     suitability_result = _check_checklist_suitability_results(suitability_sheet)
     raw_detail["suitability_result_check"] = suitability_result
-    if not suitability_result["passed"]:
-        return _checklist_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=suitability_result["expected"],
-            actual=suitability_result["actual"],
-            message=config.get("suitability_result_message") or "기능적합성 시트의 기능표 결과값 미작성",
-        )
+    sub_results.append((
+        "기능적합성 결과값", suitability_result, None,
+        config.get("suitability_result_message") or "기능적합성 시트의 기능표 결과값 미작성",
+    ))
 
     reliability_check = _check_checklist_reliability(reliability_sheet, context)
     raw_detail["reliability_check"] = reliability_check
-    if not reliability_check["passed"]:
-        return _checklist_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=reliability_check["expected"],
-            actual=reliability_check["actual"],
-            message=reliability_check["message"],
-        )
+    sub_results.append(("신뢰성", reliability_check, None, None))
 
-    score_values = _checklist_score_values(score_sheet)
-    raw_detail["variables"] = {"측정항목별점수표": score_values}
+    # PDF 1페이지 산출물은 통과/실패와 무관하게 저장한다.
     try:
         artifact = _store_pdf_first_page_artifact(
             project,
@@ -2321,27 +2405,38 @@ def _evaluate_inspection_checklist_check(rule, sequence, project, context, verif
             artifact_id=config.get("pdf_artifact_id") or "pdf_first_page",
             label=config.get("pdf_artifact_label") or "점검표 1페이지",
         )
-    except DownloadReviewInspectionError as exc:
-        return RuleEvaluation(
-            rule=rule,
-            sequence=sequence,
-            status=DownloadReviewRuleStatus.ERROR,
-            expected="점검표 PDF 1페이지 캡처 가능",
-            actual=str(exc),
-            message=str(exc),
-            file_path=_representative_path(matched, project.project_number),
-            file_name=pdf_file.name,
-            raw_detail=raw_detail,
-        )
-    raw_detail["artifacts"] = [artifact]
+        raw_detail["artifacts"] = [artifact]
+    except DownloadReviewInspectionError:
+        pass
+
+    sub_checks = []
+    for label, check, expected_override, _message_override in sub_results:
+        expected_value = expected_override if expected_override is not None else check.get("expected", "")
+        sub_checks.append({
+            "expected": f"[{label}] {_stringify_check_value(expected_value)}",
+            "actual": _stringify_check_value(check.get("actual", "")),
+            "passed": bool(check.get("passed")),
+        })
+    raw_detail["sub_checks"] = sub_checks
+
+    all_passed = all(item["passed"] for item in sub_checks)
+    first_fail = next(
+        ((label, check, message_override) for label, check, _e, message_override in sub_results if not check.get("passed")),
+        None,
+    )
+    if all_passed:
+        message = config.get("pass_message") or "점검표를 확인했습니다."
+    else:
+        fail_label, fail_check, fail_message = first_fail
+        message = fail_message or fail_check.get("message") or f"{fail_label} 확인 필요"
 
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
-        status=DownloadReviewRuleStatus.PASS,
-        expected="점검표 Excel/PDF, 머리글, 표지, 기능표, 신뢰성 값 정상",
-        actual=f"{excel_file.name} / {pdf_file.name} / 측정항목별점수표 {len(score_values)}개",
-        message=config.get("pass_message") or "점검표를 확인했습니다.",
+        status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
+        expected=" / ".join(item["expected"] for item in sub_checks),
+        actual=" / ".join(item["actual"] for item in sub_checks),
+        message=message,
         file_path=_representative_path(matched, project.project_number),
         file_name=_representative_name([excel_file, pdf_file]),
         raw_detail=raw_detail,
@@ -2608,12 +2703,15 @@ def _check_checklist_cover(sheet, context, config):
     return {
         "passed": True,
         "expected": f"{context.project_number} 점검표 / {period} / {author_expected}, {context.pl}",
-        "actual": {
-            "title_cell": title_cell,
-            "date_cell": date_cell,
-            "reviewer_cell": reviewer_cell,
-            "author_cell": pl_cell,
-        },
+        "actual": (
+            f"제목='{(title_cell or {}).get('value', '')}' / "
+            f"기간='{(date_cell or {}).get('value', '')}' / "
+            f"검토자·작성자='{(reviewer_cell or {}).get('value', '') or (pl_cell or {}).get('value', '')}'"
+        ),
+        "title_cell": title_cell,
+        "date_cell": date_cell,
+        "reviewer_cell": reviewer_cell,
+        "author_cell": pl_cell,
     }
 
 
@@ -2665,8 +2763,8 @@ def _check_checklist_suitability_table(feature_sheet, suitability_sheet):
     mismatches = _matrix_mismatches(feature_values, suitability_values, left_origin=(8, 2), right_origin=(16, 1))
     return {
         "passed": not mismatches,
-        "expected": f"기능별 점검표 B8:D{8 + row_count - 1}",
-        "actual": f"2. 기능적합성 A16:C{last_row}" if not mismatches else str(mismatches[0]),
+        "expected": f"기능별 점검표 B8:D{8 + row_count - 1} = 2.기능적합성 표",
+        "actual": f"2. 기능적합성 A16:C{last_row} 일치" if not mismatches else _stringify_check_value(mismatches[0]),
         "last_row": last_row,
         "mismatches": mismatches,
     }
@@ -2893,22 +2991,22 @@ def _evaluate_quality_inspection_table_check(rule, sequence, project, context, v
             raw_detail=raw_detail,
         )
 
-    expected_sheet_name = _resolve_rule_value(config.get("sheet_name") or "{프로젝트번호} 품질검사표", context)
-    actual_sheet_names = [sheet.name for sheet in workbook.sheets]
-    raw_detail["sheet_names"] = actual_sheet_names
-    if actual_sheet_names != [expected_sheet_name]:
-        return _quality_table_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=f"시트 1개: {expected_sheet_name}",
-            actual=", ".join(actual_sheet_names) or "시트 없음",
-            message=config.get("sheet_message") or "품질검사표 시트명 확인 필요",
-        )
-
+    # 첫 실패에서 멈추지 않고 모든 세부 점검을 수행한다.
     sheet = workbook.sheets[0]
+    checks = []  # {expected, actual, passed, message}
+
+    # 1) 시트명
+    expected_sheet_name = _resolve_rule_value(config.get("sheet_name") or "{프로젝트번호} 품질검사표", context)
+    actual_sheet_names = [s.name for s in workbook.sheets]
+    raw_detail["sheet_names"] = actual_sheet_names
+    checks.append({
+        "expected": f"[시트명] 시트 1개: {expected_sheet_name}",
+        "actual": ", ".join(actual_sheet_names) or "시트 없음",
+        "passed": actual_sheet_names == [expected_sheet_name],
+        "message": config.get("sheet_message") or "품질검사표 시트명 확인 필요",
+    })
+
+    # 2) 품질부특성 측정값 개수 (E4:E85)
     quality_values_raw = [_sheet_cell(sheet, row, 5) for row in range(4, 86)]
     quality_values = [value for value in quality_values_raw if value]
     raw_detail["quality_sub_characteristic_values"] = {
@@ -2917,76 +3015,67 @@ def _evaluate_quality_inspection_table_check(rule, sequence, project, context, v
         "raw_values": quality_values,
     }
     expected_quality_count = int(config.get("quality_value_count") or 33)
-    if len(quality_values) != expected_quality_count:
-        return _quality_table_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=f"E4:E85 실제 값 {expected_quality_count}개",
-            actual=f"E4:E85 실제 값 {len(quality_values)}개",
-            message=config.get("quality_value_message") or "품질검사표의 품질부특성 측정값 확인 필요",
-        )
+    checks.append({
+        "expected": f"[측정값 개수] E4:E85 {expected_quality_count}개",
+        "actual": f"E4:E85 {len(quality_values)}개",
+        "passed": len(quality_values) == expected_quality_count,
+        "message": config.get("quality_value_message") or "품질검사표의 품질부특성 측정값 확인 필요",
+    })
 
+    # 품질부특성측정값 변수는 이후 규칙(품질평가보고서)에서 쓰므로 항상 산출한다.
     excluded_indices = _quality_value_excluded_indices(config)
     rotated_values = _quality_sub_characteristic_output_values(quality_values, excluded_indices)
     raw_detail["quality_sub_characteristic_values"]["excluded_source_indices"] = sorted(excluded_indices)
     raw_detail["quality_sub_characteristic_values"]["output_value_count"] = len(rotated_values)
     raw_detail["quality_sub_characteristic_values"]["rotated_values"] = rotated_values
-    raw_detail["variables"] = {
-        "품질부특성측정값": rotated_values,
-    }
+    raw_detail["variables"] = {"품질부특성측정값": rotated_values}
 
+    # 3) 점검표 점수표(11번 산출 변수)와 비교
     expected_scores = _context_variable(context, "측정항목별점수표")
     if not isinstance(expected_scores, list):
-        return _quality_table_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected="11번 점검표 산출 변수 {측정항목별점수표}",
-            actual="{측정항목별점수표} 없음",
-            message=config.get("score_message") or "측정항목별 점수표가 점검표와 상이함",
-        )
-
-    actual_scores = [_sheet_cell(sheet, row, 4) for row in range(4, 88)]
-    mismatches = _list_mismatches(expected_scores, actual_scores, start_index=4)
-    total_score_count = max(len(expected_scores), len(actual_scores))
-    raw_detail["score_compare"] = {
-        "expected_count": len(expected_scores),
-        "actual_count": len(actual_scores),
-        "total_count": total_score_count,
-        "mismatch_count": len(mismatches),
-        "mismatches": mismatches,
-    }
-    if mismatches:
+        checks.append({
+            "expected": "[점수표 비교] 11번 점검표 D7:D90 = 품질검사표 D4:D87",
+            "actual": "{측정항목별점수표} 없음(점검표가 먼저 통과해야 비교 가능)",
+            "passed": False,
+            "message": config.get("score_message") or "측정항목별 점수표가 점검표와 상이함",
+        })
+    else:
+        actual_scores = [_sheet_cell(sheet, row, 4) for row in range(4, 88)]
+        mismatches = _list_mismatches(expected_scores, actual_scores, start_index=4)
+        total_score_count = max(len(expected_scores), len(actual_scores))
+        raw_detail["score_compare"] = {
+            "expected_count": len(expected_scores),
+            "actual_count": len(actual_scores),
+            "total_count": total_score_count,
+            "mismatch_count": len(mismatches),
+            "mismatches": mismatches,
+        }
         mismatch_message = (
-            f"점검표와 품질검사표의 품질부특성 값이 총 {total_score_count}개의 값 중에 "
-            f"{len(mismatches)}개의 값이 다름"
+            f"총 {total_score_count}개 중 {len(mismatches)}개 값이 다름"
+            if mismatches else "일치"
         )
-        return _quality_table_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected="11번 점검표 D7:D90 값과 품질검사표 D4:D87 값 동일",
-            actual=mismatch_message,
-            message=mismatch_message,
-        )
+        checks.append({
+            "expected": "[점수표 비교] 11번 점검표 D7:D90 = 품질검사표 D4:D87",
+            "actual": mismatch_message,
+            "passed": not mismatches,
+            "message": (
+                f"점검표와 품질검사표의 품질부특성 값이 총 {total_score_count}개의 값 중에 {len(mismatches)}개의 값이 다름"
+                if mismatches else (config.get("score_message") or "")
+            ),
+        })
 
+    raw_detail["sub_checks"] = [
+        {"expected": c["expected"], "actual": c["actual"], "passed": c["passed"]} for c in checks
+    ]
+    all_passed = all(c["passed"] for c in checks)
+    first_fail = next((c for c in checks if not c["passed"]), None)
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
-        status=DownloadReviewRuleStatus.PASS,
-        expected=(
-            f"{expected_sheet_name} 단일 시트 / D4:D87 점수표 일치 / "
-            f"E4:E85 원본 {expected_quality_count}개 / 품질부특성측정값 {len(rotated_values)}개"
-        ),
+        status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
+        expected=f"{expected_sheet_name} 단일 시트 / 측정값 {expected_quality_count}개 / 점수표 일치",
         actual=f"{file_info.name} / 품질부특성측정값 {len(rotated_values)}개",
-        message=config.get("pass_message") or "품질검사표를 확인했습니다.",
+        message=(config.get("pass_message") or "품질검사표를 확인했습니다.") if all_passed else (first_fail["message"] if first_fail else "품질검사표 확인 필요"),
         file_path=_representative_path(matched, project.project_number),
         file_name=file_info.name,
         raw_detail=raw_detail,
@@ -3117,50 +3206,42 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
             raw_detail=raw_detail,
         )
 
-    project_count = text.count(context.project_number)
+    # 첫 실패에서 멈추지 않고 모든 세부 점검을 수행한 뒤 항목별 적합/부적합을 표시한다.
+    sub_checks = []  # {expected, actual, passed, message}
+
+    # 0) 프로젝트번호 횟수 — 공백으로 쪼개진 'TTA-26- 00492'도 세도록 공백 제거 후 카운트
+    project_count = _normalize_no_space(text).count(_normalize_no_space(context.project_number))
     expected_count = int(config.get("project_number_count") or 6)
     raw_detail["project_number_count"] = project_count
-    if project_count != expected_count:
-        return _quality_report_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=f"{context.project_number} {expected_count}회",
-            actual=f"{context.project_number} {project_count}회",
-            message=config.get("project_number_message") or "프로젝트 번호 확인 필요",
-        )
+    sub_checks.append({
+        "expected": f"[프로젝트번호] {context.project_number} {expected_count}회",
+        "actual": f"{context.project_number} {project_count}회",
+        "passed": project_count == expected_count,
+        "message": config.get("project_number_message") or "프로젝트 번호 확인 필요",
+    })
 
+    # 1) 서명
     signature_check = _quality_report_signature_check(text, config)
     raw_detail["signature_check"] = signature_check
-    if not signature_check["passed"]:
-        return _quality_report_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=signature_check["expected"],
-            actual=signature_check["actual"],
-            message=config.get("signature_message") or "서명란 이름 확인 필요",
-        )
+    sub_checks.append({
+        "expected": f"[서명] {_stringify_check_value(signature_check.get('expected', ''))}",
+        "actual": _stringify_check_value(signature_check.get("actual", "")),
+        "passed": bool(signature_check.get("passed")),
+        "message": config.get("signature_message") or "서명란 이름 확인 필요",
+    })
 
+    # 2) 회사명
     table_rows = [row for table in tables for row in table]
     company_value = _find_next_cell_by_label(table_rows, str(config.get("company_label") or "회사(기관)명"))
     raw_detail["company_check"] = {"expected": context.company, "actual": company_value}
-    if not _same_excel_text(company_value, context.company):
-        return _quality_report_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=f"회사명 {context.company}",
-            actual=company_value or "회사명 값 없음",
-            message=config.get("company_message") or "1. 신청 회사 현황 표 값 확인 필요",
-        )
+    sub_checks.append({
+        "expected": f"[회사명] {context.company}",
+        "actual": company_value or "회사명 값 없음",
+        "passed": _same_excel_text(company_value, context.company),
+        "message": config.get("company_message") or "1. 신청 회사 현황 표 값 확인 필요",
+    })
 
+    # 3) 날짜 (신청/계약/인증위) — 형식 무관 비교
     date_checks = [
         ("request_date", "신청일자", context.request_date, config.get("request_date_message") or "신청일자가 잘못 작성됨"),
         ("contract_date", "계약일자", context.contract_date, config.get("contract_date_message") or "계약일자가 잘못 작성됨"),
@@ -3169,25 +3250,17 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
     raw_detail["date_checks"] = []
     for key, label, expected_date, message in date_checks:
         actual_date = _extract_labeled_korean_date(text, label)
-        detail = {
-            "key": key,
-            "label": label,
-            "expected": expected_date,
-            "actual": actual_date,
-        }
-        raw_detail["date_checks"].append(detail)
-        if not _same_date_text(actual_date, expected_date):
-            return _quality_report_failure(
-                rule,
-                sequence,
-                matched,
-                project,
-                raw_detail,
-                expected=f"{label}: {expected_date}",
-                actual=f"{label}: {actual_date or '날짜 없음'}",
-                message=message,
-            )
+        raw_detail["date_checks"].append({
+            "key": key, "label": label, "expected": expected_date, "actual": actual_date,
+        })
+        sub_checks.append({
+            "expected": f"[{label}] {expected_date}",
+            "actual": f"{label}: {actual_date or '날짜 없음'}",
+            "passed": _same_date_text(actual_date, expected_date),
+            "message": message,
+        })
 
+    # 4) 제품시험평가 기간
     period = _extract_labeled_korean_period(text, "제품시험평가")
     raw_detail["period_check"] = {
         "expected_start": context.start_date,
@@ -3195,47 +3268,44 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
         "actual_start": period[0],
         "actual_end": period[1],
     }
-    if not (_same_date_text(period[0], context.start_date) and _same_date_text(period[1], context.end_date)):
-        return _quality_report_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=f"제품시험평가: {context.start_date} ~ {context.end_date}",
-            actual=f"제품시험평가: {period[0] or '시작일 없음'} ~ {period[1] or '종료일 없음'}",
-            message=config.get("period_message") or "시험기간이 잘못 작성됨",
-        )
+    sub_checks.append({
+        "expected": f"[제품시험평가] {context.start_date} ~ {context.end_date}",
+        "actual": f"{period[0] or '시작일 없음'} ~ {period[1] or '종료일 없음'}",
+        "passed": bool(_same_date_text(period[0], context.start_date) and _same_date_text(period[1], context.end_date)),
+        "message": config.get("period_message") or "시험기간이 잘못 작성됨",
+    })
 
+    # 5) 품질부특성 측정값
     quality_table = _docx_last_table_with_first_cell(
         tables,
         config.get("quality_table_first_cell_keyword") or "품질특성",
     )
     quality_check = _quality_report_table_check(quality_table, context)
     raw_detail["quality_value_check"] = quality_check
-    if not quality_check["passed"]:
-        return _quality_report_failure(
-            rule,
-            sequence,
-            matched,
-            project,
-            raw_detail,
-            expected=quality_check["expected"],
-            actual=quality_check["actual"],
-            message=(
-                (config.get("na_message") or "NA 해당사항 없음 작성 오류")
-                if quality_check.get("na_error")
-                else config.get("quality_value_message") or "품질검사표의 품질부특성 측정값과 상이함"
-            ),
-        )
+    sub_checks.append({
+        "expected": f"[품질부특성] {_stringify_check_value(quality_check.get('expected', ''))}",
+        "actual": _stringify_check_value(quality_check.get("actual", "")),
+        "passed": bool(quality_check.get("passed")),
+        "message": (
+            (config.get("na_message") or "NA 해당사항 없음 작성 오류")
+            if quality_check.get("na_error")
+            else config.get("quality_value_message") or "품질검사표의 품질부특성 측정값과 상이함"
+        ),
+    })
 
+    raw_detail["sub_checks"] = [
+        {"expected": item["expected"], "actual": item["actual"], "passed": item["passed"]}
+        for item in sub_checks
+    ]
+    all_passed = all(item["passed"] for item in sub_checks)
+    first_fail = next((item for item in sub_checks if not item["passed"]), None)
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
-        status=DownloadReviewRuleStatus.PASS,
-        expected="프로젝트번호 6회 / 서명 / 회사명 / 날짜 / 품질부특성 측정값 정상",
-        actual=f"{file_info.name} / 품질부특성 측정값 {len(quality_check['actual_values'])}개",
-        message=config.get("pass_message") or "품질평가보고서를 확인했습니다.",
+        status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
+        expected=" / ".join(item["expected"] for item in sub_checks),
+        actual=" / ".join(item["actual"] for item in sub_checks),
+        message=(config.get("pass_message") or "품질평가보고서를 확인했습니다.") if all_passed else (first_fail["message"] if first_fail else "품질평가보고서 확인 필요"),
         file_path=_representative_path(matched, project.project_number),
         file_name=file_info.name,
         raw_detail=raw_detail,
@@ -3269,34 +3339,38 @@ def _quality_report_signature_check(text, config):
     }
 
 
+# 포맷/연도자리수 무관 날짜 패턴: 2026년 6월 13일 / 2026.06.13 / 26.01.27 / 26/01/27 / 2026-06-13
+_FLEX_DATE_PATTERN = r"(\d{2,4})\s*(?:년|[.\-/])\s*(\d{1,2})\s*(?:월|[.\-/])\s*(\d{1,2})\s*일?\.?"
+
+
 def _extract_labeled_korean_date(text, label):
     pattern = re.compile(
         re.escape(label)
-        + r"\s*[:：]\s*(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일"
+        + r"\s*[:：]?\s*"
+        + _FLEX_DATE_PATTERN
     )
     match = pattern.search(str(text or ""))
     if not match:
         return ""
     year, month, day = match.groups()
-    return f"{int(year):04d}.{int(month):02d}.{int(day):02d}."
+    return f"{_full_year(year):04d}.{int(month):02d}.{int(day):02d}."
 
 
 def _extract_labeled_korean_period(text, label):
-    date_pattern = r"(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일"
     pattern = re.compile(
         re.escape(label)
-        + r"\s*[:：]\s*"
-        + date_pattern
-        + r"\s*[~\-]\s*"
-        + date_pattern
+        + r"\s*[:：]?\s*"
+        + _FLEX_DATE_PATTERN
+        + r"\s*[~]\s*"
+        + _FLEX_DATE_PATTERN
     )
     match = pattern.search(str(text or ""))
     if not match:
         return "", ""
     sy, sm, sd, ey, em, ed = match.groups()
     return (
-        f"{int(sy):04d}.{int(sm):02d}.{int(sd):02d}.",
-        f"{int(ey):04d}.{int(em):02d}.{int(ed):02d}.",
+        f"{_full_year(sy):04d}.{int(sm):02d}.{int(sd):02d}.",
+        f"{_full_year(ey):04d}.{int(em):02d}.{int(ed):02d}.",
     )
 
 
@@ -3412,9 +3486,50 @@ def _matching_files(rule, verify_result, *, ignore_target_file_type=False):
     if not ignore_target_file_type and file_type and file_type != "any":
         extension = _extension_from_file_type(file_type)
         if extension:
-            files = [file_info for file_info in files if file_info.extension.lower() == extension]
+            # docx 대상은 구형 .doc도 통과시킨다(이후 .docx로 변환해 점검).
+            accepted = {extension}
+            if extension == ".docx":
+                accepted.add(".doc")
+            files = [file_info for file_info in files if file_info.extension.lower() in accepted]
 
     return files
+
+
+def _is_ignorable_file(name):
+    """점검 대상에서 제외할 파일.
+    - MS Office 임시/잠금 파일(~$ 접두사): 문서가 열린 채 압축되면 zip에 포함된다.
+    - 맥/숨김 메타파일(.DS_Store, ~ 접두사 백업).
+    """
+    base = str(name or "").strip()
+    if not base:
+        return True
+    if base.startswith("~$") or base.startswith("~"):
+        return True
+    if base.lower() in ("thumbs.db", ".ds_store"):
+        return True
+    return False
+
+
+def _find_temp_files(verify_result):
+    """다운로드물에 포함된 ~$ 임시/잠금 파일 목록을 반환한다(점검 제외 전 원본 기준).
+    삭제 안내 점검 결과 표시에 사용한다."""
+    found = []
+    for file_info in list(verify_result.files or []):
+        if _is_ignorable_file(file_info.name):
+            found.append(file_info.name)
+        if file_info.extension.lower() == ".zip":
+            try:
+                with ZipFile(file_info.path) as zip_file:
+                    for entry in zip_file.infolist():
+                        if entry.is_dir():
+                            continue
+                        inner_path = entry.filename.replace("\\", "/")
+                        if _is_ignorable_file(PurePosixPath(inner_path).name):
+                            # 경로까지 표시하기 위해 zip 내부 전체 경로를 사용한다.
+                            found.append(inner_path)
+            except (BadZipFile, OSError):
+                pass
+    return sorted(set(found))
 
 
 def _inspection_files(verify_result):
@@ -3429,7 +3544,8 @@ def _inspection_files(verify_result):
             raise DownloadReviewInspectionError(
                 f"zip 파일을 읽을 수 없습니다: {file_info.name}"
             ) from exc
-    return expanded_files
+    # ~$ 임시 파일 등 점검에 방해되는 파일 제외
+    return [file_info for file_info in expanded_files if not _is_ignorable_file(file_info.name)]
 
 
 def _zip_entry_files(zip_file_info):
@@ -3452,22 +3568,99 @@ def _zip_entry_files(zip_file_info):
     return entries
 
 
+# 구형 .doc(OLE) → .docx 변환 결과 캐시(run_download_inspection 시작 시 비움).
+_DOC_CONVERT_CACHE = {}
+
+
+def _soffice_executable():
+    """LibreOffice soffice 실행 파일 경로를 찾는다(환경변수/PATH/기본 설치 경로)."""
+    import shutil as _shutil
+    candidates = []
+    env_path = os.environ.get("AGENT_SOFFICE_PATH") or getattr(settings, "AGENT_SOFFICE_PATH", "")
+    if env_path:
+        candidates.append(env_path)
+    for name in ("soffice", "soffice.exe"):
+        found = _shutil.which(name)
+        if found:
+            candidates.append(found)
+    candidates += [
+        r"C:\Program Files\LibreOffice\program\soffice.exe",
+        r"C:\Program Files (x86)\LibreOffice\program\soffice.exe",
+    ]
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+    return ""
+
+
+def _convert_doc_to_docx_bytes(doc_bytes):
+    """구형 .doc 바이트를 LibreOffice headless로 .docx로 변환해 바이트를 반환한다."""
+    import subprocess
+    import tempfile
+    import shutil as _shutil
+
+    soffice = _soffice_executable()
+    if not soffice:
+        raise DownloadReviewInspectionError(
+            ".doc 파일은 LibreOffice가 있어야 변환·점검할 수 있습니다. "
+            "서버에 LibreOffice를 설치하거나 AGENT_SOFFICE_PATH 환경변수로 soffice 경로를 지정하세요. "
+            "(또는 .docx로 재제출 요청)"
+        )
+    tmpdir = tempfile.mkdtemp(prefix="docconv_")
+    try:
+        doc_path = os.path.join(tmpdir, "input.doc")
+        with open(doc_path, "wb") as handle:
+            handle.write(doc_bytes)
+        try:
+            proc = subprocess.run(
+                [soffice, "--headless", "--convert-to", "docx", "--outdir", tmpdir, doc_path],
+                capture_output=True,
+                timeout=180,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise DownloadReviewInspectionError(f".doc 변환 실행 실패: {exc}") from exc
+        out_path = os.path.join(tmpdir, "input.docx")
+        if not os.path.exists(out_path):
+            stderr = (proc.stderr or b"").decode("utf-8", "replace")[:200]
+            raise DownloadReviewInspectionError(f".doc → .docx 변환 실패: {stderr}")
+        with open(out_path, "rb") as handle:
+            return handle.read()
+    finally:
+        _shutil.rmtree(tmpdir, ignore_errors=True)
+
+
 def _read_file_bytes(file_info):
     raw_path = str(file_info.path or "")
     if "::" not in raw_path:
-        return Path(raw_path).read_bytes()
+        data = Path(raw_path).read_bytes()
+    else:
+        zip_path, inner_path = raw_path.split("::", 1)
+        with ZipFile(zip_path) as zip_file:
+            data = zip_file.read(inner_path)
 
-    zip_path, inner_path = raw_path.split("::", 1)
-    with ZipFile(zip_path) as zip_file:
-        return zip_file.read(inner_path)
+    # 구형 .doc(OLE)는 docx 파서가 읽을 수 있도록 .docx로 변환해 반환한다.
+    # (.doc는 Word 문서 점검 규칙에서만 읽히므로 다른 파서에는 영향이 없다.)
+    if str(getattr(file_info, "extension", "")).lower() == ".doc" and data[:2] != b"PK":
+        if raw_path not in _DOC_CONVERT_CACHE:
+            _DOC_CONVERT_CACHE[raw_path] = _convert_doc_to_docx_bytes(data)
+        return _DOC_CONVERT_CACHE[raw_path]
+    return data
 
 
 def _files_in_configured_folder(rule, verify_result):
     config = rule.config_json or {}
     files = _matching_files(rule, verify_result)
+    # rawdata zip(예: '..._RAWDATA.zip')의 파일은 rawdata 전용 규칙에서만 사용한다.
+    # 일반 규칙이 rawdata의 스크린샷 이미지 폴더를 제출물 폴더로 잘못 선택하지 않도록 제외한다.
+    # (최초/최종형상RawData 규칙은 _files_in_configured_folder를 쓰지 않고 직접 rawdata를 필터링한다.)
+    files = [file_info for file_info in files if not _zip_name_contains(file_info, "rawdata")]
+    return _select_folder_chain_files(files, config.get("folder_keyword_chain"))
+
+
+def _select_folder_chain_files(files, folder_keyword_chain_raw):
     folder_keyword_chain = [
         str(item).strip()
-        for item in config.get("folder_keyword_chain") or []
+        for item in folder_keyword_chain_raw or []
         if str(item).strip()
     ]
     if not folder_keyword_chain:
@@ -3490,6 +3683,19 @@ def _files_in_configured_folder(rule, verify_result):
         if _folder_segments(file_info.path)[: len(selected_folder_segments)] == selected_folder_segments
     ]
     return selected_files, "/".join(selected_folder_segments)
+
+
+def _zip_name_contains(file_info, keyword):
+    """파일이 이름에 keyword를 포함하는 zip에서 추출됐는지 확인한다(대소문자/공백 무시)."""
+    raw_path = str(file_info.path or "")
+    if "::" not in raw_path:
+        return False
+    zip_path = raw_path.split("::", 1)[0]
+    zip_name = PurePosixPath(zip_path.replace("\\", "/")).name
+    needle = re.sub(r"\s+", "", str(keyword or "")).lower()
+    if not needle:
+        return False
+    return needle in re.sub(r"\s+", "", zip_name).lower()
 
 
 def _folder_segments(path):
@@ -3518,6 +3724,14 @@ def _folder_keyword_chain_indices(folder_segments, keyword_chain):
     return indices
 
 
+def _first_pl_name(pl_value):
+    """시험PL 값이 '우수진, 석민경'처럼 쉼표로 구분된 경우 첫 번째 이름만 사용한다."""
+    text = str(pl_value or "").strip()
+    if not text:
+        return ""
+    return text.split(",")[0].strip()
+
+
 def _build_rule_context(project):
     ecm_row = project.ecm_row_json or {}
     product_raw = _first_line(
@@ -3533,7 +3747,7 @@ def _build_rule_context(project):
         product=product,
         version=version,
         company=_first_line(ecm_row.get("company") or ecm_row.get("회사명") or ""),
-        pl=ecm_row.get("pl") or ecm_row.get("시험PL") or "",
+        pl=_first_pl_name(ecm_row.get("pl") or ecm_row.get("시험PL") or ""),
         wd=ecm_row.get("wd") or ecm_row.get("WD") or "",
         start_date=start_date,
         end_date=end_date,
@@ -3629,17 +3843,24 @@ def _quote_sqlite_identifier(identifier):
     return '"' + str(identifier).replace('"', '""') + '"'
 
 
+def _full_year(year_text):
+    """2자리 연도(예: 26)는 2000년대(2026)로 보정한다."""
+    value = int(year_text)
+    return value + 2000 if value < 100 else value
+
+
 def _format_dot_date(value):
     text = str(value or "").strip()
     if not text:
         return ""
     normalized = text.replace("년", ".").replace("월", ".").replace("일", "")
     normalized = normalized.replace("/", ".").replace("-", ".")
-    match = re.search(r"(\d{4})\D+(\d{1,2})\D+(\d{1,2})", normalized)
+    # 연도는 2자리 또는 4자리 모두 허용 (26 → 2026)
+    match = re.search(r"(\d{2,4})\D+(\d{1,2})\D+(\d{1,2})", normalized)
     if not match:
         return text
     year, month, day = match.groups()
-    return f"{int(year):04d}.{int(month):02d}.{int(day):02d}."
+    return f"{_full_year(year):04d}.{int(month):02d}.{int(day):02d}."
 
 
 def _resolved_keywords(keywords, context):
@@ -3709,13 +3930,21 @@ def _normalize_extension(extension):
 
 
 def _name_contains_all(file_name, keywords):
-    return all(keyword in file_name for keyword in keywords)
+    # 파일명/키워드의 '-'와 '_' 차이를 무시한다(예: 'TTA_26_00492' = 'TTA-26-00492').
+    name = str(file_name).replace("_", "-")
+    return all(str(keyword).replace("_", "-") in name for keyword in keywords)
 
 
 def _extension_matches(extension, extensions):
     if not extensions:
         return True
-    return str(extension or "").lower() in extensions
+    ext = str(extension or "").lower()
+    if ext in extensions:
+        return True
+    # 구형 .doc는 변환 후 점검하므로 .docx 요구 조건을 충족하는 것으로 본다.
+    if ext == ".doc" and ".docx" in extensions:
+        return True
+    return False
 
 
 def _artifact_file_message(config, status, matched_count, exact_count):
@@ -4197,6 +4426,29 @@ def _find_cell_with_date_range(rows, start_date, end_date):
     return None
 
 
+def _find_labeled_date_range_cell(rows, label, start_date, end_date):
+    """라벨(공백 제거 후 포함)과 {시작일}~{종료일}을 함께 담은 셀을 날짜 정규화로 찾는다.
+
+    셀 텍스트의 공백을 무시하고, 날짜 형식(`.`/`-`/`/`/`년월일`, 2~4자리 연도)이 달라도
+    실제 날짜가 같으면 일치로 본다.
+    """
+    start_norm = _format_dot_date(start_date)
+    end_norm = _format_dot_date(end_date)
+    if not (start_norm and end_norm):
+        return None
+    needle = _normalize_no_space(label)
+    date_pattern = r"\d{2,4}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?\.?"
+    for row_index, row in enumerate(rows, start=1):
+        for col_index, value in enumerate(row, start=1):
+            text = str(value or "")
+            if needle and needle not in _normalize_no_space(text):
+                continue
+            found = {_format_dot_date(token) for token in re.findall(date_pattern, text)}
+            if start_norm in found and end_norm in found:
+                return {"row": row_index, "column": col_index, "value": text}
+    return None
+
+
 def _excel_area_from_column_anchor(rows, label, *, column_index):
     for row_index, row in enumerate(rows):
         if column_index >= len(row) or label not in row[column_index]:
@@ -4277,6 +4529,18 @@ def _inspection_folder_tree(verify_result):
     return folders, file_folders
 
 
+def _folder_tree_from_files(files):
+    """주어진 파일 목록만으로 폴더 트리(folders, file_folders)를 구성한다."""
+    folders = set()
+    file_folders = set()
+    for file_info in files:
+        segments = tuple(_folder_segments(file_info.path))
+        file_folders.add(segments)
+        for index in range(1, len(segments) + 1):
+            folders.add(segments[:index])
+    return folders, file_folders
+
+
 def _local_download_folders(download_dir):
     base = Path(download_dir or "")
     if not base.is_dir():
@@ -4299,10 +4563,17 @@ def _find_folder_by_keyword_chain(folders, keyword_chain):
     return ()
 
 
-def _run_folder_check(base, folders, file_folders, folder_check):
+def _folder_direct_files(folder, files):
+    """해당 폴더 바로 아래에 있는 파일 목록(FileInfo)을 반환한다."""
+    target = tuple(folder)
+    return [file_info for file_info in (files or []) if tuple(_folder_segments(file_info.path)) == target]
+
+
+def _run_folder_check(folders, file_folders, folder_check, files=None):
     keyword = str(folder_check.get("keyword") or "").strip()
     failure_message = str(folder_check.get("failure_message") or "폴더 구조 확인 불가")
-    folder = _find_immediate_descendant_folder(base, folders, keyword)
+    # rawdata zip 안 어디에 있든 키워드를 포함한 폴더를 직접 찾는다.
+    folder = _find_folder_by_keyword_chain(folders, [keyword]) if keyword else ()
     if not folder:
         return {
             "keyword": keyword,
@@ -4312,9 +4583,35 @@ def _run_folder_check(base, folders, file_folders, folder_check):
             "actual": "폴더 없음",
         }
 
+    # 쓸데없는 래퍼 폴더(예: 성능시험/주요기능)가 하나 끼어 있을 수 있다.
+    # 하위 폴더가 정확히 1개뿐이면 그 안으로 내려가 원래 기대한 구조를 찾는다.
+    if folder_check.get("unwrap_single_folder"):
+        guard = 0
+        while guard < 5:
+            children = list(_immediate_child_folders(folder, folders))
+            if len(children) == 1:
+                folder = children[0]
+                guard += 1
+            else:
+                break
+
     exact_child_folders = folder_check.get("exact_child_folders")
     child_folders = _immediate_child_folders(folder, folders)
     child_files = _immediate_child_file_folders(folder, file_folders)
+
+    # 예외: 하위 폴더 없이 txt 파일만 있으면 '수행안함' 안내로 보고 통과 처리한다.
+    # (예: 보안시험이 설치형 PC 프로그램이라 미수행 안내 txt만 존재하는 경우)
+    if folder_check.get("txt_only_pass") and not child_folders:
+        direct_files = _folder_direct_files(folder, files)
+        if direct_files and all(f.extension.lower() == ".txt" for f in direct_files):
+            return {
+                "keyword": keyword,
+                "folder": "/".join(folder),
+                "passed": True,
+                "message": "수행안함 안내(txt)만 존재하여 예외 통과",
+                "actual": "txt 안내 파일만 존재: " + ", ".join(f.name for f in direct_files[:3]),
+            }
+
     if exact_child_folders is not None and len(child_folders) != int(exact_child_folders):
         return {
             "keyword": keyword,

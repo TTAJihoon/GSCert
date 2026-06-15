@@ -14,7 +14,7 @@ _CENTER_DEFINITIONS = {
         "default_db_name": "ecmlist.db",
         "tree_root": "상암AX센터",
         "tree_root_index_setting": "ECM_TREE_ROOT_INDEX",
-        "default_tree_root_index": 1,
+        "default_tree_root_index": 0,
     },
     CENTER_YEONGNAM: {
         "label": "영남",

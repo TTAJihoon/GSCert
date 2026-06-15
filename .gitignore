@@ -52,4 +52,5 @@ main/utils/ecmList/token.json
 
 # Setup 바이너리 (setup.ps1이 자동 다운로드)
 setup/*.exe
+setup/*.msi
 setup/nginx-1.29.8/

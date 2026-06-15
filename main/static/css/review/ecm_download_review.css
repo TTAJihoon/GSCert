@@ -237,6 +237,24 @@
   min-height: 690px;
 }
 
+/* 프로젝트 목록 패널: 최대 높이 1200px로 제한하고 내부 표만 세로 스크롤한다. */
+#tab-projects .panel-main {
+  max-height: 1200px;
+  display: flex;
+  flex-direction: column;
+}
+
+#tab-projects .panel-main > .panel-header,
+#tab-projects .panel-main > .filters {
+  flex: 0 0 auto;
+}
+
+#tab-projects .panel-main > .table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  scrollbar-gutter: stable;
+}
+
 .panel-header {
   display: flex;
   align-items: flex-start;
@@ -253,6 +271,26 @@
   display: inline-flex;
   align-items: flex-end;
   gap: 8px;
+}
+
+.panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.auto-refresh-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: var(--review-primary-soft);
+  color: var(--review-primary);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .panel-header h2 {
@@ -502,12 +540,25 @@
   min-height: 38px;
   border-radius: 6px;
   font-weight: 800;
+  transition: background-color 0.15s ease, border-color 0.15s ease,
+              color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }
 
 .primary-button {
   border: 1px solid var(--review-primary);
   background: var(--review-primary);
   color: #fff;
+}
+
+.primary-button:hover:not(:disabled) {
+  background: #1d4ed8;
+  border-color: #1d4ed8;
+}
+
+.primary-button:active:not(:disabled) {
+  transform: scale(0.97);
+  background: #1e40af;
+  border-color: #1e40af;
 }
 
 .primary-button:disabled,
@@ -525,6 +576,24 @@
   border: 1px solid var(--review-line);
   background: #fff;
   color: var(--review-text);
+}
+
+.secondary-button:hover:not(:disabled),
+.icon-button:hover:not(:disabled),
+.segment:hover:not(:disabled),
+.mini-button:hover:not(:disabled) {
+  background: var(--review-soft);
+  border-color: var(--review-line-strong);
+}
+
+.secondary-button:active:not(:disabled),
+.icon-button:active:not(:disabled),
+.segment:active:not(:disabled),
+.mini-button:active:not(:disabled) {
+  transform: scale(0.96);
+  background: #edf0f4;
+  border-color: var(--review-line-strong);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.08);
 }
 
 .compact-action {
@@ -857,6 +926,75 @@
 
 .modal-table .data-table td:nth-child(4) {
   white-space: normal;
+}
+
+/* === 규칙별 점검 결과 테이블 (7열: 번호/점검항목/결과/파일명/기대값/실제값/산출물) === */
+/* 표 자체에는 스크롤을 두지 않는다. 래퍼를 inline-block으로 만들어 표의 고정 너비
+   (열 너비 합계 ≈ 1134px)에 정확히 맞춰 줄어들게 하고, 넘치는 부분은 모달 본문
+   (.modal-body, overflow:auto)이 가로/세로 스크롤로 처리한다.
+   max-content는 셀 내용을 줄바꿈 없이 펼쳐 열이 과도하게 넓어지므로 쓰지 않는다. */
+.inspection-result-table {
+  overflow: visible;
+  display: inline-block;
+  vertical-align: top;
+  max-width: none;
+}
+
+.inspection-result-table .data-table {
+  table-layout: fixed;
+  width: 1134px;
+}
+
+/* 기본: 모든 셀 자동 줄바꿈 + 위쪽 정렬 (여러 줄 표시 대비) */
+.inspection-result-table .data-table th,
+.inspection-result-table .data-table td {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  vertical-align: top;
+  line-height: 1.5;
+}
+
+/* 1. 번호 — 글자 크기만큼 좁게 */
+.inspection-result-table .data-table th:nth-child(1),
+.inspection-result-table .data-table td:nth-child(1) {
+  width: 44px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* 2. 점검항목 — 기존 너비 유지, 넘어가면 줄바꿈 */
+.inspection-result-table .data-table th:nth-child(2),
+.inspection-result-table .data-table td:nth-child(2) {
+  width: 130px;
+}
+
+/* 3. 결과 — 결과 내용(배지) 크기만큼 좁게 */
+.inspection-result-table .data-table th:nth-child(3),
+.inspection-result-table .data-table td:nth-child(3) {
+  width: 76px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+/* 4. 파일명 — 줄바꿈 */
+.inspection-result-table .data-table th:nth-child(4),
+.inspection-result-table .data-table td:nth-child(4) {
+  width: 180px;
+}
+
+/* 5~6. 기대값 / 실제값 — 넓게 + 줄바꿈 */
+.inspection-result-table .data-table th:nth-child(5),
+.inspection-result-table .data-table td:nth-child(5),
+.inspection-result-table .data-table th:nth-child(6),
+.inspection-result-table .data-table td:nth-child(6) {
+  width: 280px;
+}
+
+/* 7. 산출물 */
+.inspection-result-table .data-table th:nth-child(7),
+.inspection-result-table .data-table td:nth-child(7) {
+  width: 130px;
 }
 
 @media (max-width: 1100px) {

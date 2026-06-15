@@ -475,7 +475,6 @@ def _actual_rule_spec(index, column_name):
             "rule_type": "rawdata_folder_structure_check",
             "config_json": {
                 "artifact_column": column_name,
-                "folder_keyword_chain": ["수행"],
                 "folder_checks": [
                     {
                         "keyword": "결함",
@@ -485,11 +484,15 @@ def _actual_rule_spec(index, column_name):
                         "keyword": "보안",
                         "exact_child_folders": 2,
                         "each_child_has_entry": True,
+                        "txt_only_pass": True,
+                        "unwrap_single_folder": True,
                         "failure_message": "보안성 rawdata 확인 불가",
                     },
                     {
                         "keyword": "성능",
-                        "min_entries": 1,
+                        "exact_child_folders": 2,
+                        "each_child_has_entry": True,
+                        "unwrap_single_folder": True,
                         "failure_message": "성능 rawdata 확인 불가",
                     },
                 ],
@@ -523,12 +526,13 @@ def _actual_rule_spec(index, column_name):
             "rule_type": "downloadable_artifact_check",
             "config_json": {
                 "artifact_column": column_name,
-                "folder_keyword_chain": ["시험", "종료"],
-                "filename_keywords": ["시험기록서", "{project_number}"],
+                "folder_keyword_chain": [],
+                "filename_keywords": ["기록서"],
                 "extensions": [".pdf"],
                 "min_count": 1,
                 "artifact_id": "test_record_pdf",
-                "artifact_label": "시험기록서 PDF",
+                "artifact_label": "시험기록서 1페이지",
+                "artifact_first_page": True,
                 "missing_message": "시험기록서 파일 확인 불가",
                 "pass_message": "시험기록서 PDF 파일을 확인했습니다.",
             },
@@ -602,11 +606,13 @@ def _actual_rule_spec(index, column_name):
             "target_file_type": "any",
             "config_json": {
                 "artifact_column": column_name,
-                "folder_keyword_chain": ["홍보자료"],
+                "folder_keyword_chain": ["홍보"],
                 "filename_keywords": [],
-                "extensions": [".png", ".jpg", ".jpeg", ".bmp", ".gif"],
+                "extensions": [],
                 "min_count": 1,
+                "forbidden_filename_keywords": ["예시"],
                 "missing_message": "홍보자료 누락",
+                "forbidden_message": "홍보이미지 파일명에 '예시'가 포함되어 있습니다.",
                 "pass_message": "홍보이미지를 확인했습니다.",
             },
         }

@@ -4,8 +4,8 @@
 {% block title %}ECM 제출물 자동 점검{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}" defer></script>
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=11">
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=11" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -149,10 +149,6 @@
   </section>
 
   <section class="tab-panel" id="tab-progress">
-    <div class="progress-toolbar">
-      <button class="secondary-button compact-action" type="button" id="toggleHeartbeat">heartbeat 지연 상태 보기</button>
-      <button class="secondary-button compact-action" type="button" id="toggleEmptyJob">작업 없음 상태 보기</button>
-    </div>
 
     <div id="activeProgressView">
       <div class="summary-grid">
@@ -180,7 +176,10 @@
             <h2>현재 작업 진행 상황</h2>
             <p id="currentStep">-</p>
           </div>
-          <span class="subtle-note">재시도 정책: 프로젝트당 최대 2회</span>
+          <div class="panel-header-actions">
+            <span class="subtle-note">재시도 정책: 프로젝트당 최대 2회</span>
+            <span class="auto-refresh-note"><i class="fa-solid fa-rotate fa-spin"></i> 5초마다 자동 갱신</span>
+          </div>
         </div>
         <div class="progress-track">
           <div class="progress-bar" id="progressBar"></div>
