@@ -74,6 +74,7 @@ MAX_LIMIT = 500
 MAX_QUERY_LENGTH = 100
 COMPLETED_REVIEW_VALUES = {"O", "완료"}
 NEEDS_FIX_REVIEW_VALUES = {"X", "수정 필요"}
+FAILED_REVIEW_VALUES = {"실패"}
 HELD_REVIEW_VALUES = {"보류"}
 UNREVIEWED_REVIEW_VALUES = {"", "미점검"}
 
@@ -432,6 +433,8 @@ def review_label(value):
         return "완료"
     if cleaned in NEEDS_FIX_REVIEW_VALUES:
         return "수정 필요"
+    if cleaned in FAILED_REVIEW_VALUES:
+        return "실패"
     if cleaned in HELD_REVIEW_VALUES:
         return "보류"
     return "미점검"
@@ -447,6 +450,8 @@ def _review_filter_values(value):
         return sorted(COMPLETED_REVIEW_VALUES)
     if cleaned in NEEDS_FIX_REVIEW_VALUES:
         return sorted(NEEDS_FIX_REVIEW_VALUES)
+    if cleaned in FAILED_REVIEW_VALUES:
+        return sorted(FAILED_REVIEW_VALUES)
     if cleaned in HELD_REVIEW_VALUES:
         return sorted(HELD_REVIEW_VALUES)
     if cleaned in UNREVIEWED_REVIEW_VALUES:
@@ -460,7 +465,9 @@ def _normalize_review_write_value(value):
         return "O"
     if cleaned in NEEDS_FIX_REVIEW_VALUES or cleaned in {"부적합", "fail", "FAIL"}:
         return "X"
-    raise ReferenceQueryError("점검결과는 O 또는 X만 기록할 수 있습니다.")
+    if cleaned in FAILED_REVIEW_VALUES or cleaned in {"작업실패", "작업 실패", "error", "ERROR"}:
+        return "실패"
+    raise ReferenceQueryError("점검결과는 O, X 또는 실패만 기록할 수 있습니다.")
 
 
 def _normalize_artifact_write_value(value, column):

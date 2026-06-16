@@ -248,6 +248,7 @@ def attach_active_project_states(projects_payload):
             }
         )
 
+    _attach_latest_failed_project_states(items)
     return projects_payload
 
 
@@ -268,6 +269,53 @@ def _attach_empty_active_project_state(item):
             "active_state_label": "완료" if completed else "",
         }
     )
+
+
+def _attach_latest_failed_project_states(items):
+    project_keys = [
+        (item.get("center_code") or normalize_center_code(None), item.get("project_number"))
+        for item in items
+        if item.get("project_number")
+    ]
+    project_numbers = [project_number for _, project_number in project_keys]
+    if not project_numbers:
+        return
+
+    try:
+        finished_projects = (
+            DownloadReviewProject.objects
+            .filter(project_number__in=project_numbers)
+            .exclude(job__status__in=ACTIVE_JOB_STATUSES)
+            .exclude(job__status=DownloadReviewJobStatus.CANCELED)
+            .order_by("-completed_at", "-updated_at", "-created_at", "-id")
+        )
+        latest_by_number = {}
+        for project in finished_projects:
+            latest_by_number.setdefault((project.center_code, project.project_number), project)
+    except DatabaseError:
+        logger.info("Failed to read failed download-review project states; continuing with reference state.")
+        return
+
+    for item in items:
+        item_center = item.get("center_code") or normalize_center_code(None)
+        failed_project = latest_by_number.get((item_center, item.get("project_number")))
+        if (
+            not failed_project
+            or failed_project.status != DownloadReviewProjectStatus.FAILED
+            or failed_project.review_status != DownloadReviewProjectReviewStatus.HELD
+        ):
+            continue
+        item.update(
+            {
+                "review": "실패",
+                "review_raw": "실패",
+                "latest_failed_job_project_id": str(failed_project.id),
+                "latest_failed_job_id": str(failed_project.job_id),
+                "latest_failed_step": failed_project.current_step,
+                "latest_failed_message": failed_project.error_message,
+                "latest_failed_detail": failed_project.error_detail,
+            }
+        )
 
 
 def get_latest_project_results_payload(project_number, center_code=None):

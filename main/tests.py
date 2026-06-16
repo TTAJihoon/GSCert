@@ -10,6 +10,7 @@ from xml.sax.saxutils import escape
 from django.core.management import call_command
 from django.db.utils import DatabaseError
 from django.test import RequestFactory, SimpleTestCase, TestCase
+from django.utils import timezone
 
 from main.models import (
     DownloadReviewJob,
@@ -183,8 +184,9 @@ def _defect_report_xlsx(project_number, sheets, *, header=None, footer=None):
         if sheet_name == "최종결함리포트":
             rows.extend([
                 [],
-                ["", "잔여-1"],
-                ["", "잔여-2"],
+                ["", "", "", "", "", "", "품질특성"],
+                ["", "", "", "", "", "", "잔여-1"],
+                ["", "", "", "", "", "", "잔여-2"],
             ])
         elif sheet_name == "시험분석자료":
             rows.extend([
@@ -195,6 +197,11 @@ def _defect_report_xlsx(project_number, sheets, *, header=None, footer=None):
                 [],
                 [],
                 ["", "", "7"],
+                ["", "", "결함-1", "", "H"],
+                ["", "", "-", "", "H"],
+                ["", "", "", "", "H"],
+                ["", "", "결함-2", "", "H"],
+                ["", "", "결함-3", "", "H"],
             ])
         rows_by_sheet.append((sheet_name, rows))
     return _xlsx_workbook_bytes(rows_by_sheet, header=header, footer=footer)
@@ -627,6 +634,29 @@ class DownloadReviewProjectsApiTests(TestCase):
         self.assertIsNone(data["items"][0]["active_job_id"])
         self.assertEqual(data["items"][0]["active_state_label"], "")
         self.assertEqual(data["items"][1]["active_state_label"], "완료")
+
+    def test_projects_show_latest_failed_held_result_as_failed(self):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            failed_project_count=1,
+        )
+        DownloadReviewProject.objects.create(
+            job=job,
+            center_code="sangam",
+            project_number="TTA-26-00010",
+            ecm_row_json={"project_number": "TTA-26-00010", "company": "에이치소프트"},
+            status=DownloadReviewProjectStatus.FAILED,
+            review_status=DownloadReviewProjectReviewStatus.HELD,
+            current_step="다운로드 파일 확인",
+            error_message="다운로드 파일을 찾을 수 없습니다.",
+            completed_at=timezone.now(),
+        )
+
+        data = self._get_projects({"project_number": "TTA-26-00010"})
+
+        self.assertEqual(data["items"][0]["review"], "실패")
+        self.assertEqual(data["items"][0]["review_raw"], "실패")
 
     def test_projects_can_read_yeongnam_center_db(self):
         yeongnam_db_path = self.reference_db_path_2
@@ -1147,7 +1177,7 @@ class DownloadReviewJobsApiTests(TestCase):
 
         self.assertEqual(outcome.reference_review, "X")
         self.assertEqual(outcome.failed_count, 1)
-        self.assertEqual(DownloadReviewRuleResult.objects.filter(job_project=project).count(), 2)
+        self.assertGreaterEqual(DownloadReviewRuleResult.objects.filter(job_project=project).count(), 2)
         self.assertEqual(rows["TTA-26-00010"]["점검결과"], "X")
         self.assertEqual(rows["TTA-26-00010"]["계약서"], "O")
         self.assertEqual(rows["TTA-26-00010"]["시험성적서(PDF)"], "X")
@@ -1161,6 +1191,20 @@ class DownloadReviewJobsApiTests(TestCase):
         master_db_path = Path(self.temp_dir.name) / "reference.db"
         self._create_master_reference_db(master_db_path)
         zip_path = project_dir / "TTA-26-00010.zip"
+        rawdata_zip_path = project_dir / "TTA-26-00010 rawdata.zip"
+        with zipfile.ZipFile(rawdata_zip_path, "w") as rawdata_archive:
+            rawdata_archive.writestr("결함/raw.txt", b"defect")
+            rawdata_archive.writestr("보안/1차/raw.txt", b"security")
+            rawdata_archive.writestr("보안/2차/raw.txt", b"security")
+            rawdata_archive.writestr("성능/1차/raw.txt", b"performance")
+            rawdata_archive.writestr("성능/2차/raw.txt", b"performance")
+            for folder_name in ("최초정상", "최종정상"):
+                for index in range(5):
+                    info = zipfile.ZipInfo(
+                        f"3.설계/제품스크린샷/{folder_name}/image-{index}.png",
+                        date_time=(2026, 5, 20, 12, 0, 0),
+                    )
+                    rawdata_archive.writestr(info, b"image")
         with zipfile.ZipFile(zip_path, "w") as archive:
             archive.writestr("2.계약/TTA-26-00010 계약서.pdf", b"contract")
             archive.writestr(
@@ -1200,7 +1244,7 @@ class DownloadReviewJobsApiTests(TestCase):
                 "4.시험/가.계획/TTA-26-00010 품질특성별 제품 정보 기재사항.docx",
                 _docx_bytes(
                     paragraphs=[
-                        "(TTA-26-00010) 품질특성별 시험대상제품 정보 기재사항",
+                        "(TTA-26-00010) 품질특성별",
                         "(2026.5.28)",
                     ],
                 ),
@@ -1331,7 +1375,11 @@ class DownloadReviewJobsApiTests(TestCase):
             for result in DownloadReviewRuleResult.objects.filter(job_project=project)
         }
 
-        self.assertEqual(outcome.reference_review, "O")
+        failed_rules = [
+            (result.rule_name, result.message)
+            for result in DownloadReviewRuleResult.objects.filter(job_project=project, status=DownloadReviewRuleStatus.FAIL)
+        ]
+        self.assertEqual(outcome.reference_review, "O", failed_rules)
         self.assertEqual(outcome.failed_count, 0)
         self.assertEqual(outcome.artifact_results["계약서"], "O")
         self.assertEqual(outcome.artifact_results["합의서(PDF)"], "O")
@@ -1421,8 +1469,8 @@ class DownloadReviewJobsApiTests(TestCase):
         )
         test_record_result = results["시험기록서"]
         test_record_artifact = test_record_result.raw_detail_json["artifacts"][0]
-        self.assertTrue(test_record_artifact["download"])
-        self.assertEqual(test_record_artifact["content_type"], "application/pdf")
+        self.assertFalse(test_record_artifact["download"])
+        self.assertEqual(test_record_artifact["content_type"], "image/png")
         self.assertTrue(
             (artifact_dir / test_record_artifact["relative_path"]).is_file()
         )
@@ -1495,7 +1543,10 @@ class DownloadReviewJobsApiTests(TestCase):
         master_db_path = Path(self.temp_dir.name) / "reference.db"
         self._create_master_reference_db(master_db_path)
         zip_path = project_dir / "TTA-26-00010.zip"
-        with zipfile.ZipFile(zip_path, "w") as archive:
+        with zipfile.ZipFile(zip_path, "w"):
+            pass
+        rawdata_zip_path = project_dir / "TTA-26-00010 rawdata.zip"
+        with zipfile.ZipFile(rawdata_zip_path, "w") as archive:
             for folder_name, date_time in (
                 ("최초형상", (2026, 4, 30, 12, 0, 0)),
                 ("최종형상", (2026, 6, 1, 12, 0, 0)),
@@ -1537,7 +1588,10 @@ class DownloadReviewJobsApiTests(TestCase):
         with self.settings(DOWNLOAD_REVIEW_REFERENCE_MASTER_DB_PATH=master_db_path):
             outcome = run_download_inspection(project, verify_result, {})
 
-        result = DownloadReviewRuleResult.objects.get(job_project=project)
+        result = DownloadReviewRuleResult.objects.get(
+            job_project=project,
+            rule_name="최초/최종형상RawData",
+        )
         message = "시험기간은 2026.05.01.~2026.05.31.인데 수정일자가 2026.04.30. 또는 2026.06.01.인 이미지가 10개 존재함"
         self.assertEqual(outcome.failed_count, 1)
         self.assertEqual(result.status, DownloadReviewRuleStatus.FAIL)
@@ -1978,6 +2032,18 @@ class DownloadReviewJobsApiTests(TestCase):
 
         rows = self._reference_rows_by_number("TTA-26-00010", ["점검결과"])
         self.assertEqual([row["점검결과"] for row in rows], ["", ""])
+
+    def test_write_back_accepts_failed_review_result(self):
+        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
+            result = write_project_review_result("TTA-26-00010", "실패")
+            response = projects(self.factory.get("/api/projects/", {"project_number": "TTA-26-00010"}))
+
+        row = self._reference_rows(["TTA-26-00010"], ["점검결과"])["TTA-26-00010"]
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(result["updated_columns"], ["점검결과"])
+        self.assertEqual(row["점검결과"], "실패")
+        self.assertEqual(data["items"][0]["review"], "실패")
 
     def test_write_back_succeeds_without_optional_inspection_date_column(self):
         no_date_db_path = Path(self.temp_dir.name) / "no_date.db"

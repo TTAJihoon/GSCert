@@ -14,6 +14,7 @@ DRAFT_RULE_TYPE = "required_file_name_contains"
 DRAFT_RULE_VERSION = "draft-1"
 ACTUAL_RULE_TYPE = "required_artifact_file"
 ACTUAL_RULE_VERSION = "actual-1"
+WORD_FILE_EXTENSIONS = [".docx", ".docm"]
 
 
 class Command(BaseCommand):
@@ -166,13 +167,13 @@ def _actual_rule_spec(index, column_name):
                 "folder_keyword_chain": ["계약"],
                 "filename_keywords": ["합의서", "{project_number}"],
                 "required_files": [
-                    {"extensions": [".docx"], "exact_count": 1},
+                    {"extensions": WORD_FILE_EXTENSIONS, "exact_count": 1},
                     {"extensions": [".pdf"], "exact_count": 1},
                 ],
                 "content_checks": [
                     {
                         "type": "docx_table_next_cell_equals",
-                        "extensions": [".docx"],
+                        "extensions": WORD_FILE_EXTENSIONS,
                         "label": "시험신청번호",
                         "expected": "{project_number}",
                         "failure_message": "프로젝트 번호가 맞지 않습니다.",
@@ -187,13 +188,13 @@ def _actual_rule_spec(index, column_name):
                     },
                     {
                         "type": "docx_header_contains",
-                        "extensions": [".docx"],
+                        "extensions": WORD_FILE_EXTENSIONS,
                         "text": "{project_number}",
                         "failure_message": "합의서 머리말에 프로젝트 번호가 잘못 작성됨",
                     },
                     {
                         "type": "docx_footer_contains",
-                        "extensions": [".docx"],
+                        "extensions": WORD_FILE_EXTENSIONS,
                         "text": "TIS-0101-3 (00)",
                         "failure_message": "합의서 바닥글에 양식번호가 잘못 작성됨",
                     },
@@ -207,7 +208,7 @@ def _actual_rule_spec(index, column_name):
                     }
                 ],
                 "missing_message": "필요한 합의서 파일이 없습니다.",
-                "pass_message": "합의서 docx/pdf와 시험신청번호를 확인했습니다.",
+                "pass_message": "합의서 Word/PDF와 시험신청번호를 확인했습니다.",
             },
         }
     if column_name == "수수료산정표":
@@ -240,7 +241,7 @@ def _actual_rule_spec(index, column_name):
             },
         }
     if column_name == "품질특성별제품정보기재사항":
-        title = "({project_number}) 품질특성별 시험대상제품 정보 기재사항"
+        title_terms = ["{project_number}", "품질특성별"]
         date_regex = (
             r"^\(?\s*(?:"
             r"\d{4}\s*[-./년]\s*\d{1,2}\s*[-./월]\s*\d{1,2}\s*일?"
@@ -249,34 +250,34 @@ def _actual_rule_spec(index, column_name):
         )
         return {
             **common,
-            "target_file_type": "docx",
+            "target_file_type": "any",
             "rule_type": "document_artifact_check",
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["시험", "계획"],
                 "filename_keywords": ["품질특성별", "{project_number}"],
                 "required_files": [
-                    {"extensions": [".docx"], "exact_count": 1},
+                    {"extensions": WORD_FILE_EXTENSIONS, "exact_count": 1},
                 ],
                 "content_checks": [
                     {
                         "type": "docx_text_contains",
-                        "extensions": [".docx"],
-                        "text": title,
+                        "extensions": WORD_FILE_EXTENSIONS,
+                        "texts": title_terms,
                         "remove_whitespace": True,
-                        "failure_message": "1페이지 제목이 잘못되었습니다.",
+                        "failure_message": "1페이지 제목에 프로젝트번호와 품질특성별 문구가 필요합니다.",
                     },
                     {
                         "type": "docx_next_paragraph_matches",
-                        "extensions": [".docx"],
-                        "after_text": title,
+                        "extensions": WORD_FILE_EXTENSIONS,
+                        "after_texts": title_terms,
                         "regex": date_regex,
                         "remove_whitespace": True,
                         "failure_message": "1페이지 날짜가 잘못되었습니다.",
                     },
                 ],
                 "missing_message": "파일명이 잘못되었습니다.",
-                "pass_message": "품질특성별 제품 정보 기재사항 제목과 날짜를 확인했습니다.",
+                "pass_message": "품질특성별 문서의 프로젝트번호, 제목 문구, 날짜를 확인했습니다.",
             },
         }
     if column_name == "기능리스트":
@@ -310,7 +311,7 @@ def _actual_rule_spec(index, column_name):
                 "folder_keyword_chain": ["시험", "계획"],
                 "filename_keywords": ["계획서", "{project_number}"],
                 "required_files": [
-                    {"extensions": [".docx"], "exact_count": 1},
+                    {"extensions": WORD_FILE_EXTENSIONS, "exact_count": 1},
                     {"extensions": [".pdf"], "exact_count": 1},
                 ],
                 "manager_expected": "김진영",
@@ -462,7 +463,6 @@ def _actual_rule_spec(index, column_name):
                 "cover_date_message": "표지 날짜가 잘못 작성됨",
                 "cover_author_message": "표지 작성자가 잘못 작성됨",
                 "feature_blank_message": "기능별 점검표 시트에 빈 셀이 확인됨",
-                "suitability_compare_message": "기능적합성 시트의 2.3번 기능표 내용 확인 필요함",
                 "suitability_result_message": "기능적합성 시트의 기능표 결과값 미작성",
                 "pdf_missing_message": "점검표 pdf 파일이 없음",
                 "pass_message": "점검표를 확인했습니다.",
@@ -509,7 +509,7 @@ def _actual_rule_spec(index, column_name):
                 "folder_keyword_chain": ["시험", "종료"],
                 "filename_keywords": ["시험성적서", "{project_number}"],
                 "required_files": [
-                    {"extensions": [".docx"], "exact_count": 1},
+                    {"extensions": WORD_FILE_EXTENSIONS, "exact_count": 1},
                     {"extensions": [".pdf"], "exact_count": 1},
                 ],
                 "spec_marker": "<세부사양>",
@@ -540,13 +540,13 @@ def _actual_rule_spec(index, column_name):
     if column_name == "품질평가보고서":
         return {
             **common,
-            "target_file_type": "docx",
+            "target_file_type": "any",
             "rule_type": "quality_evaluation_report_check",
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["인증관련"],
                 "filename_keywords": ["품질평가보고서", "{project_number}"],
-                "extensions": [".docx"],
+                "extensions": WORD_FILE_EXTENSIONS,
                 "exact_count": 1,
                 "project_number_count": 6,
                 "primary_signer": "성  명 : 김  성  희",

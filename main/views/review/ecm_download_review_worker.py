@@ -345,6 +345,7 @@ def _fail_project(
         message=f"{project.project_number} 실패: {error_message}",
         detail_json={"step": error_step, "error": error_message, **(detail_json or {})},
     )
+    _write_reference_result_safely(project, "실패", inspected_at=completed_at)
 
 
 def _user_error_detail(detail_json):

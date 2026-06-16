@@ -539,7 +539,7 @@
 .mini-button {
   min-height: 38px;
   border-radius: 6px;
-  font-weight: 800;
+  font-weight: 700;
   transition: background-color 0.15s ease, border-color 0.15s ease,
               color 0.15s ease, transform 0.1s ease, box-shadow 0.15s ease;
 }

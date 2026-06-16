@@ -393,7 +393,7 @@ const state = {
 
 const tableColumnDefaults = {
   projectRows: [20, 120, 75, 180, 320, 155, 70, 70, 50],
-  progressRows: [64, 145, 180, 220, 105, 260, 90, 240, 180],
+  progressRows: [64, 145, 180, 220, 105, 260, 90, 105, 180],
   resultRows: [145, 180, 220, 105, 115, 80, 240, 145, 180]
 };
 
@@ -670,6 +670,7 @@ function normalizeReview(value) {
   if (!review || review === "미점검") return "미점검";
   if (review === "O") return "완료";
   if (review === "X") return "수정 필요";
+  if (review === "작업실패") return "실패";
   return review;
 }
 
@@ -1132,13 +1133,18 @@ function renderProgress() {
       <td>${badge(item.status)}</td>
       <td>${escapeHtml(item.step)}</td>
       <td>${item.retry} / ${maxRetryCount}</td>
-      <td>${escapeHtml(item.zip || "-")}</td>
+      <td>
+        <button class="mini-button" type="button" data-progress-rule-result="${escapeHtml(item.id)}">
+          상세
+        </button>
+      </td>
       <td>${item.error ? `<button class="link-button" type="button" data-error-detail="progress:${escapeHtml(item.id || item.number)}">${escapeHtml(item.error)}</button>` : "-"}</td>
     </tr>
   `).join("") : `
     <tr><td colspan="9" class="empty-cell">작업은 있지만 현재 작업의 프로젝트 정보가 아직 없습니다.</td></tr>
   `;
 
+  bindProgressRuleResultButtons();
   bindErrorButtons();
 }
 
@@ -1242,7 +1248,7 @@ function renderResults() {
           상세
         </button>
       </td>
-      <td>${escapeHtml(item.zip || "-")}</td>
+      <td>${escapeHtml(item.step || "-")}</td>
       <td>${escapeHtml(item.failStep || "-")}</td>
       <td>${item.error ? `<button class="link-button" type="button" data-error-detail="result:${escapeHtml(item.id)}">${escapeHtml(item.error)}</button>` : "-"}</td>
     </tr>
@@ -1469,6 +1475,68 @@ function renderRuleArtifacts(rule) {
   }).join(" ");
 }
 
+function friendlyExpected(rule) {
+  const expected = String(rule?.expected || "").trim();
+  if (!expected) return "-";
+
+  const normalized = expected.replace(/\s+/g, " ");
+  const quotedText = normalized.match(/'([^']+)'/);
+  const fileCount = normalized.match(/(.+?) 파일 (\d+)개/);
+  const minCount = normalized.match(/(.+?) (\d+)개 이상/);
+  const cellEquals = normalized.match(/(.+?) 오른쪽 셀 = (.+)/);
+  const contains = normalized.match(/문서에 '([^']+)' 포함|문서 내 '([^']+)' 포함/);
+
+  if (normalized === "다운로드 산출물 저장 가능") {
+    return "다운로드된 산출물을 열어 점검할 수 있어야 합니다.";
+  }
+  if (normalized === "모든 파일 크기 1 byte 이상") {
+    return "빈 파일 없이 실제 내용이 있는 파일이어야 합니다.";
+  }
+  if (normalized === "Word 파일 1개 / PDF 파일 1개") {
+    return "Word 파일 1개와 PDF 파일 1개가 있으면 됩니다.";
+  }
+  if (normalized.includes("Word/PDF 파싱 가능")) {
+    return "Word/PDF 파일을 열어 필요한 내용을 읽을 수 있어야 합니다.";
+  }
+  if (normalized.includes("Word 파일 표")) {
+    return "Word 파일 안에 필요한 표가 있어야 합니다.";
+  }
+  if (normalized.includes("파일명에") && normalized.includes("포함")) {
+    return `${normalized.replace("파일명에 ", "")}하도록 파일명이 작성되어야 합니다.`;
+  }
+  if (fileCount) {
+    return `${fileCount[1]} 파일이 ${fileCount[2]}개 있어야 합니다.`;
+  }
+  if (minCount) {
+    return `${minCount[1]}이 최소 ${minCount[2]}개 있어야 합니다.`;
+  }
+  if (normalized.includes("파싱 가능")) {
+    return "파일을 열어 필요한 내용을 읽을 수 있어야 합니다.";
+  }
+  if (normalized.startsWith("시트 1개")) {
+    return `엑셀 시트 구성과 주요 표기값이 기준과 맞아야 합니다. (${normalized})`;
+  }
+  if (cellEquals) {
+    return `${cellEquals[1]} 항목의 오른쪽 셀 값이 ${cellEquals[2]}이어야 합니다.`;
+  }
+  if (contains) {
+    return `문서 본문에 '${contains[1] || contains[2]}' 문구가 있어야 합니다.`;
+  }
+  if (quotedText && normalized.includes("포함")) {
+    return `점검 위치에 '${quotedText[1]}' 문구가 표시되어야 합니다.`;
+  }
+  if (normalized.includes("~") && (normalized.includes("시작일") || normalized.includes("종료일") || normalized.includes("시험기간"))) {
+    return `시험기간 또는 수정일자가 기준 기간과 일치해야 합니다. (${normalized})`;
+  }
+  if (normalized.includes("산출 변수")) {
+    return "앞 단계에서 추출한 기준값을 사용할 수 있어야 합니다.";
+  }
+  if (normalized.includes("값 동일")) {
+    return "서로 비교하는 표의 값이 동일해야 합니다.";
+  }
+  return normalized;
+}
+
 // 기대값/실제값 등 " / " 로 이어진 문자열을 하위 검사 단위로 분해한다.
 function splitSlash(value) {
   if (value === null || value === undefined || value === "") return [];
@@ -1530,7 +1598,7 @@ function renderInspectionRows(items) {
           <td>${escapeHtml(rule.rule_name)}</td>
           <td>${overallBadge}</td>
           <td>${fileCell}</td>
-          <td>${escapeMultiline(rule.expected)}</td>
+          <td>${escapeMultiline(friendlyExpected(rule))}</td>
           <td>${escapeMultiline(rule.actual)}</td>
           <td>${artifactCell}</td>
         </tr>
@@ -1541,7 +1609,7 @@ function renderInspectionRows(items) {
     const perRow = subs[0].passed !== null;
 
     return subs.map((sub, i) => {
-      const expTd = `<td>${escapeMultiline(sub.expected)}</td>`;
+      const expTd = `<td>${escapeMultiline(friendlyExpected(sub))}</td>`;
       const actTd = `<td>${escapeMultiline(sub.actual)}</td>`;
       const resultTd = perRow
         ? `<td>${badge(sub.passed ? "정상" : "부적합")}</td>`
@@ -1636,6 +1704,15 @@ function bindRuleResultButtons() {
   document.querySelectorAll("[data-rule-result]").forEach((button) => {
     button.addEventListener("click", () => {
       openResultRulesModal(button.dataset.ruleResult);
+    });
+  });
+}
+
+function bindProgressRuleResultButtons() {
+  document.querySelectorAll("[data-progress-rule-result]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const project = state.activeProjects.find((item) => item.id === button.dataset.progressRuleResult);
+      openJobProjectRulesModal(button.dataset.progressRuleResult, project);
     });
   });
 }

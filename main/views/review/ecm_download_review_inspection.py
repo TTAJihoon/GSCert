@@ -27,6 +27,7 @@ from main.views.review.ecm_reference_db import ARTIFACT_REVIEW_COLUMNS
 
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
+WORD_EXTENSIONS = (".docx", ".docm")
 
 
 class DownloadReviewInspectionError(RuntimeError):
@@ -423,7 +424,7 @@ def _evaluate_required_artifact_file(rule, sequence, project, context, verify_re
     if name_keywords:
         expected_parts.insert(0, "파일명에 " + ", ".join(name_keywords) + " 포함")
     if extensions:
-        expected_parts.append("확장자 " + ", ".join(extensions))
+        expected_parts.append("확장자 " + _extensions_label(extensions))
     if forbidden_keywords:
         expected_parts.append("파일명에 " + ", ".join(forbidden_keywords) + " 미포함")
 
@@ -496,7 +497,7 @@ def _evaluate_downloadable_artifact_check(rule, sequence, project, context, veri
     if name_keywords:
         expected_parts.append("파일명에 " + ", ".join(name_keywords) + " 포함")
     if extensions:
-        expected_parts.append("확장자 " + ", ".join(extensions))
+        expected_parts.append("확장자 " + _extensions_label(extensions))
     expected_parts.append(expected_count)
     expected_text = " / ".join(expected_parts)
 
@@ -859,30 +860,30 @@ def _evaluate_test_plan_document_check(rule, sequence, project, context, verify_
         for file_info in files
         if _name_contains_all(file_info.name, name_keywords)
     ]
-    docx_files = [file_info for file_info in matched if _extension_matches(file_info.extension, [".docx"])]
+    word_files = [file_info for file_info in matched if _is_word_file(file_info)]
     pdf_files = [file_info for file_info in matched if _extension_matches(file_info.extension, [".pdf"])]
     raw_detail = {
         "selected_folder": selected_folder,
         "filename_keywords": name_keywords,
         "matched_files": [_display_path(file_info.path, project.project_number) for file_info in matched[:20]],
-        "docx_count": len(docx_files),
+        "word_count": len(word_files),
         "pdf_count": len(pdf_files),
         "checks": [],
     }
 
-    if len(docx_files) != 1 or len(pdf_files) != 1:
+    if len(word_files) != 1 or len(pdf_files) != 1:
         return _test_plan_failure(
             rule,
             sequence,
             matched or files,
             project,
             raw_detail,
-            expected=".docx 1개 / .pdf 1개",
-            actual=f".docx {len(docx_files)}개 / .pdf {len(pdf_files)}개",
+            expected="Word 파일 1개 / PDF 파일 1개",
+            actual=f"Word 파일 {len(word_files)}개 / PDF 파일 {len(pdf_files)}개",
             message=config.get("missing_message") or "파일이 없습니다.",
         )
 
-    docx_file = docx_files[0]
+    docx_file = word_files[0]
     pdf_file = pdf_files[0]
     try:
         tables = _docx_tables(docx_file)
@@ -900,7 +901,7 @@ def _evaluate_test_plan_document_check(rule, sequence, project, context, verify_
             rule=rule,
             sequence=sequence,
             status=DownloadReviewRuleStatus.ERROR,
-            expected="시험계획서 docx/pdf 파싱 가능",
+            expected="시험계획서 Word/PDF 파싱 가능",
             actual=str(exc),
             message=str(exc),
             file_path=_representative_path(matched, project.project_number),
@@ -979,8 +980,8 @@ def _evaluate_test_plan_document_check(rule, sequence, project, context, verify_
         rule=rule,
         sequence=sequence,
         status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
-        expected="시험계획서 docx/pdf / 표 값 / 형상항목 ID / WD / 바닥글 / 세부사양",
-        actual=f".docx {docx_file.name} / .pdf {pdf_file.name}",
+        expected="시험계획서 Word/PDF / 표 값 / 형상항목 ID / WD / 바닥글 / 세부사양",
+        actual=f"Word {docx_file.name} / PDF {pdf_file.name}",
         message=(config.get("pass_message") or "시험계획서를 확인했습니다.") if all_passed else (first_fail.get("message") if first_fail else "시험계획서 확인 필요"),
         file_path=_representative_path(matched, project.project_number),
         file_name=_representative_name(matched),
@@ -1645,30 +1646,30 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
         for file_info in files
         if _name_contains_all(file_info.name, name_keywords)
     ]
-    docx_files = [file_info for file_info in matched if file_info.extension.lower() in (".docx", ".doc")]
+    word_files = [file_info for file_info in matched if _is_word_file(file_info)]
     pdf_files = [file_info for file_info in matched if file_info.extension.lower() == ".pdf"]
     raw_detail = {
         "selected_folder": selected_folder,
         "filename_keywords": name_keywords,
         "matched_files": [_display_path(file_info.path, project.project_number) for file_info in matched[:20]],
-        "docx_count": len(docx_files),
+        "word_count": len(word_files),
         "pdf_count": len(pdf_files),
     }
 
-    if len(docx_files) != 1 or len(pdf_files) != 1:
+    if len(word_files) != 1 or len(pdf_files) != 1:
         return RuleEvaluation(
             rule=rule,
             sequence=sequence,
             status=DownloadReviewRuleStatus.FAIL,
-            expected=".docx 1개 / .pdf 1개",
-            actual=f".docx {len(docx_files)}개 / .pdf {len(pdf_files)}개",
+            expected="Word 파일 1개 / PDF 파일 1개",
+            actual=f"Word 파일 {len(word_files)}개 / PDF 파일 {len(pdf_files)}개",
             message=config.get("missing_message") or "파일이 없습니다.",
             file_path=_representative_path(matched or files, project.project_number),
             file_name=_representative_name(matched or files),
             raw_detail=raw_detail,
         )
 
-    docx_file = docx_files[0]
+    docx_file = word_files[0]
     pdf_file = pdf_files[0]
     try:
         rounds = _docx_defect_report_round_dates(docx_file)
@@ -1685,7 +1686,7 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
             rule=rule,
             sequence=sequence,
             status=DownloadReviewRuleStatus.ERROR,
-            expected="시험성적서 docx/pdf 파싱 가능",
+            expected="시험성적서 Word/PDF 파싱 가능",
             actual=str(exc),
             message=str(exc),
             file_path=_representative_path(matched, project.project_number),
@@ -1719,8 +1720,8 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
         rule=rule,
         sequence=sequence,
         status=DownloadReviewRuleStatus.PASS,
-        expected=".docx 1개 / .pdf 1개 / 결함리포트 송부 날짜",
-        actual=f".docx {docx_file.name} / .pdf {pdf_file.name} / 결함차수 {len(rounds)}",
+        expected="Word 파일 1개 / PDF 파일 1개 / 결함리포트 송부 날짜",
+        actual=f"Word {docx_file.name} / PDF {pdf_file.name} / 결함차수 {len(rounds)}",
         message=config.get("pass_message") or "시험성적서를 확인했습니다.",
         file_path=_representative_path(matched, project.project_number),
         file_name=_representative_name(matched),
@@ -2085,7 +2086,7 @@ def _defect_report_variables(workbook):
     if _workbook_sheet(workbook, "최종결함리포트"):
         variables["잔여결함수"] = _defect_residual_count(workbook)
     if _workbook_sheet(workbook, "시험분석자료"):
-        variables["H"] = _defect_analysis_value(workbook, "High", offset_rows=0, offset_cols=1)
+        variables["H"] = _defect_high_count(workbook)
         variables["R"] = _defect_analysis_value(workbook, "수정전", offset_rows=5, offset_cols=0)
     return variables
 
@@ -2185,6 +2186,19 @@ def _defect_residual_count(workbook):
             break
         count += 1
     return count
+
+
+def _defect_high_count(workbook):
+    sheet = _workbook_sheet(workbook, "시험분석자료")
+    if not sheet:
+        return "0"
+    count = 0
+    for row in sheet.rows:
+        c_value = row[2] if len(row) > 2 else ""
+        e_value = row[4] if len(row) > 4 else ""
+        if e_value == "H" and c_value.strip() not in {"", "-"}:
+            count += 1
+    return str(count)
 
 
 def _defect_analysis_value(workbook, keyword, *, offset_rows, offset_cols):
@@ -3168,7 +3182,7 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
         file_info
         for file_info in files
         if _name_contains_all(file_info.name, name_keywords)
-        and _extension_matches(file_info.extension, [".docx"])
+        and _is_word_file(file_info)
     ]
     raw_detail = {
         "selected_folder": selected_folder,
@@ -3184,8 +3198,8 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
             matched or files,
             project,
             raw_detail,
-            expected="품질평가보고서 docx 파일 1개",
-            actual=f"품질평가보고서 docx 파일 {len(matched)}개",
+            expected="품질평가보고서 Word 파일 1개",
+            actual=f"품질평가보고서 Word 파일 {len(matched)}개",
             message=config.get("missing_message") or "품질평가보고서 파일 확인 불가",
         )
 
@@ -3198,7 +3212,7 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
             rule=rule,
             sequence=sequence,
             status=DownloadReviewRuleStatus.ERROR,
-            expected="품질평가보고서 docx 파싱 가능",
+            expected="품질평가보고서 Word 파일 파싱 가능",
             actual=str(exc),
             message="품질평가보고서 파일 확인 불가",
             file_path=_representative_path(matched, project.project_number),
@@ -3920,6 +3934,17 @@ def _configured_extensions(config, target_file_type):
     return extensions
 
 
+def _extensions_label(extensions):
+    normalized = {_normalize_extension(extension) for extension in extensions}
+    if normalized and normalized <= set(WORD_EXTENSIONS):
+        return "Word 파일"
+    return ", ".join(extension for extension in extensions if extension)
+
+
+def _is_word_file(file_info):
+    return _extension_matches(file_info.extension, WORD_EXTENSIONS)
+
+
 def _normalize_extension(extension):
     value = str(extension or "").strip().lower()
     if not value or value == "any":
@@ -3994,7 +4019,7 @@ def _evaluate_required_file_specs(config, matched_files):
             spec_passed = len(files) >= min_count
             count_text = f"{min_count}개 이상"
 
-        extension_text = ", ".join(extensions) if extensions else "확장자 무관"
+        extension_text = _extensions_label(extensions) if extensions else "확장자 무관"
         expected.append(f"{extension_text} {count_text}")
         actual.append(f"{extension_text} {len(files)}개")
         details.append({
@@ -4120,16 +4145,30 @@ def _check_pdf_first_page_label_value_contains(check, file_info, context):
 
 
 def _check_docx_text_contains(check, file_info, context):
+    expected_texts = [
+        _resolve_rule_value(str(text), context)
+        for text in check.get("texts") or []
+        if str(text).strip()
+    ]
     expected_text = _resolve_rule_value(str(check.get("text") or ""), context)
     paragraphs = _docx_paragraphs(file_info)
-    matched = _find_matching_paragraph(paragraphs, expected_text, check)
+    if expected_texts:
+        matched = _find_matching_paragraph_with_all(paragraphs, expected_texts, check)
+        expected = "문서에 " + ", ".join(f"'{text}'" for text in expected_texts) + " 포함"
+    else:
+        matched = _find_matching_paragraph(paragraphs, expected_text, check)
+        expected = f"문서에 '{expected_text}' 포함"
     passed = matched is not None
     return _content_result(
         check,
         passed,
-        expected=f"문서에 '{expected_text}' 포함",
+        expected=expected,
         actual=matched or "일치 문장 없음",
-        detail={"expected_text": expected_text, "matched_text": matched or ""},
+        detail={
+            "expected_text": expected_text,
+            "expected_texts": expected_texts,
+            "matched_text": matched or "",
+        },
     )
 
 
@@ -4152,10 +4191,20 @@ def _check_docx_part_contains(check, file_info, context, *, part):
 
 
 def _check_docx_next_paragraph_matches(check, file_info, context):
+    after_texts = [
+        _resolve_rule_value(str(text), context)
+        for text in check.get("after_texts") or []
+        if str(text).strip()
+    ]
     after_text = _resolve_rule_value(str(check.get("after_text") or ""), context)
     pattern = str(check.get("regex") or "").strip()
     paragraphs = _docx_paragraphs(file_info)
-    matched_index = _find_matching_paragraph_index(paragraphs, after_text, check)
+    if after_texts:
+        matched_index = _find_matching_paragraph_index_with_all(paragraphs, after_texts, check)
+        after_label = ", ".join(after_texts)
+    else:
+        matched_index = _find_matching_paragraph_index(paragraphs, after_text, check)
+        after_label = after_text
     next_text = ""
     if matched_index is not None:
         for paragraph in paragraphs[matched_index + 1:]:
@@ -4166,9 +4215,14 @@ def _check_docx_next_paragraph_matches(check, file_info, context):
     return _content_result(
         check,
         passed,
-        expected=f"'{after_text}' 다음 문단이 {pattern} 형식",
+        expected=f"'{after_label}' 다음 문단이 {pattern} 형식",
         actual=next_text or "다음 문단 없음",
-        detail={"after_text": after_text, "regex": pattern, "actual_text": next_text},
+        detail={
+            "after_text": after_text,
+            "after_texts": after_texts,
+            "regex": pattern,
+            "actual_text": next_text,
+        },
     )
 
 
@@ -4189,6 +4243,12 @@ def _content_result(check, passed, *, expected, actual, detail):
 def _content_check_expected(check, context):
     if "expected" in check:
         return _resolve_rule_value(str(check.get("expected") or ""), context)
+    if "texts" in check:
+        return ", ".join(
+            _resolve_rule_value(str(text), context)
+            for text in check.get("texts") or []
+            if str(text).strip()
+        )
     if "text" in check:
         return _resolve_rule_value(str(check.get("text") or ""), context)
     return str(check.get("type") or "")
@@ -5140,11 +5200,31 @@ def _find_matching_paragraph(paragraphs, expected_text, check):
     return paragraphs[index] if index is not None else None
 
 
+def _find_matching_paragraph_with_all(paragraphs, expected_texts, check):
+    index = _find_matching_paragraph_index_with_all(paragraphs, expected_texts, check)
+    return paragraphs[index] if index is not None else None
+
+
 def _find_matching_paragraph_index(paragraphs, expected_text, check):
     expected = _normalize_content(expected_text, check)
     for index, paragraph in enumerate(paragraphs):
         actual = _normalize_content(paragraph, check)
         if expected and expected in actual:
+            return index
+    return None
+
+
+def _find_matching_paragraph_index_with_all(paragraphs, expected_texts, check):
+    expected_values = [
+        _normalize_content(text, check)
+        for text in expected_texts
+        if _normalize_content(text, check)
+    ]
+    if not expected_values:
+        return None
+    for index, paragraph in enumerate(paragraphs):
+        actual = _normalize_content(paragraph, check)
+        if all(expected in actual for expected in expected_values):
             return index
     return None
 
