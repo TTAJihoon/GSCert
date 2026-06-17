@@ -136,6 +136,8 @@ $env:GSCERT_DB_SSLMODE = "require"
 - PostgreSQL 설정용 Django settings 모듈을 추가한다.
 - PostgreSQL 드라이버를 의존성에 추가한다.
 - 기존 SQLite 라우팅 구조와 PostgreSQL alias 연결 방식을 문서화한다.
+- 로컬 앱 배포 폴더를 `local_review_app/`로 분리한다.
+- 로컬 앱에서 사용할 health/metadata API를 추가한다.
 
 ### 2단계: PostgreSQL DB 생성 및 계정 구성
 
@@ -163,6 +165,24 @@ $env:GSCERT_DB_SSLMODE = "require"
 - UI 프레임워크는 PySide6를 우선 검토한다.
 - 기존 점검 엔진을 최대한 재사용한다.
 - 로컬 결과 저장소는 SQLite를 사용한다.
+
+현재 1차 구현 범위:
+
+- `local_review_app/` 독립 폴더 생성
+- `local_review_app/requirements.txt`로 데스크톱 앱 의존성 분리
+- PySide6 기반 앱 shell 생성
+- 로컬 폴더 선택
+- 프로젝트 번호 자동 추정
+- Django 서버 기준정보 API 조회
+- 로컬 파일 목록 스캔 및 표시
+- `local_review_app/scripts/package_windows.ps1` 패키징 스크립트 추가
+
+다음 구현 범위:
+
+- 기존 점검 엔진을 로컬 runner에서 호출할 수 있도록 공용 실행 경계 정리
+- 로컬 실행 결과를 앱 화면의 규칙별 결과 테이블로 표시
+- 점검 결과 상세 팝업 연결
+- 결과 파일 내보내기
 
 ### 6단계: `.exe` 패키징
 

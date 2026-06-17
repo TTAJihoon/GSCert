@@ -1,4 +1,5 @@
 from django.http import JsonResponse
+from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from main.views.review.ecm_download_review_jobs import (
@@ -21,6 +22,7 @@ from main.views.review.ecm_reference_db import (
     ReferenceDbMissing,
     ReferenceDbSchemaError,
     ReferenceQueryError,
+    get_projects_by_numbers,
     list_projects,
 )
 
@@ -42,6 +44,70 @@ def projects(request):
         status = 500
     except ReferenceDbError as exc:
         payload = _error_payload(exc, "기준 DB 조회 중 오류가 발생했습니다.")
+        status = 500
+
+    response = JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_GET
+def local_review_health(request):
+    payload = {
+        "success": True,
+        "ok": True,
+        "server_time": timezone.now().isoformat(),
+    }
+    response = JsonResponse(payload, json_dumps_params={"ensure_ascii": False})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_GET
+def local_review_project_metadata(request, project_number):
+    center_code = request.GET.get("center")
+    try:
+        projects_payload = get_projects_by_numbers([project_number], center_code=center_code)
+        project = projects_payload[0] if projects_payload else None
+        if not project:
+            payload = _error_payload(
+                ReferenceQueryError("Project metadata was not found."),
+                "Project metadata was not found.",
+            )
+            status = 404
+        else:
+            payload = {
+                "success": True,
+                "project": {
+                    "center_code": project.get("center_code", ""),
+                    "center_label": project.get("center_label", ""),
+                    "project_number": project.get("project_number", ""),
+                    "company_name": project.get("company", ""),
+                    "product_name": project.get("product", ""),
+                    "pl_name": project.get("pl", ""),
+                    "wd_name": project.get("wd", ""),
+                    "request_date": project.get("request_date", ""),
+                    "contract_date": project.get("contract_date", ""),
+                    "cert_date": project.get("cert_date", ""),
+                    "inspection_date": project.get("inspection_date", ""),
+                    "review": project.get("review", ""),
+                    "review_raw": project.get("review_raw", ""),
+                    "start_date": "",
+                    "end_date": "",
+                },
+            }
+            status = 200
+    except ReferenceQueryError as exc:
+        payload = _error_payload(exc, str(exc))
+        status = 400
+    except ReferenceDbMissing as exc:
+        payload = _error_payload(exc, str(exc))
+        status = 503
+    except ReferenceDbSchemaError as exc:
+        payload = _error_payload(exc, str(exc))
+        status = 500
+    except ReferenceDbError as exc:
+        payload = _error_payload(exc, "Reference DB lookup failed.")
         status = 500
 
     response = JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False})
