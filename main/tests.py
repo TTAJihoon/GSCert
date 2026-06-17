@@ -31,6 +31,9 @@ from main.views.review.ecm_reference_db import (
 )
 from main.views.review.ecm_download_review_worker import run_worker_once
 from main.views.review.ecm_download_review_inspection import (
+    ExcelSheet,
+    ExcelWorkbook,
+    _check_defect_report_environment,
     _list_mismatches,
     cleanup_download_dir,
     get_rule_output_variables,
@@ -248,6 +251,40 @@ def _defect_report_xlsx_split_title(project_number, sheets, *, header=None, foot
             ])
         rows_by_sheet.append((sheet_name, rows))
     return _xlsx_workbook_bytes(rows_by_sheet, header=header, footer=footer)
+
+
+def _defect_report_zero_residual_xlsx(project_number):
+    return _xlsx_workbook_bytes([
+        (
+            "최종결함리포트",
+            [
+                [f"{project_number} 최종결함리포트\n보고일자: 2026년 05월 31일", "", "", "", "[시험환경 : Windows 11]"],
+                [],
+                [],
+                ["차시", "순번", "시험환경\nOS", "결함요약", "결함정도", "발생빈도", "품질특성", "결함 설명"],
+            ],
+        ),
+        (
+            "시험분석자료",
+            [
+                [f"{project_number} 시험분석자료\n보고일자: 2026년 05월 31일", "", "", "", "[시험환경 : Windows 11]"],
+                [],
+                [],
+                ["", "", "High", "3"],
+                ["", "", "수정전"],
+                [],
+                [],
+                [],
+                [],
+                ["", "", "7"],
+                ["", "", "결함-1", "", "H"],
+                ["", "", "-", "", "H"],
+                ["", "", "", "", "H"],
+                ["", "", "결함-2", "", "H"],
+                ["", "", "결함-3", "", "H"],
+            ],
+        ),
+    ])
 
 
 def _test_case_xlsx(
@@ -1677,6 +1714,106 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(results["1차/2차/성능/보안RawData"].status, DownloadReviewRuleStatus.PASS)
         self.assertTrue(getattr(verify_result, "_inspection_zip_errors"))
 
+    def test_environment_diagram_accepts_png_and_pptx_together(self):
+        project_dir = Path(self.temp_dir.name) / "environment_diagram"
+        project_dir.mkdir(parents=True)
+        zip_path = project_dir / "TTA-26-00010.zip"
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            archive.writestr("4.시험/가.계획/TTA-26-00010 환경구성도.png", b"png")
+            archive.writestr("4.시험/가.계획/TTA-26-00010 환경구성도.pptx", b"pptx")
+
+        DownloadReviewRule.objects.create(
+            code="artifact_04",
+            name="시험환경구성도",
+            rule_type="required_artifact_file",
+            target_file_type="any",
+            enabled=True,
+            sort_order=40,
+            config_json={
+                "artifact_column": "시험환경구성도",
+                "folder_keyword_chain": ["시험", "계획"],
+                "filename_keywords": ["구성도", "{project_number}"],
+                "extensions": [".png", ".pptx"],
+                "min_count": 1,
+            },
+        )
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={"project_number": "TTA-26-00010"},
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+
+        outcome = run_download_inspection(project, verify_result, {})
+        result = DownloadReviewRuleResult.objects.get(job_project=project, rule_name="시험환경구성도")
+
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS)
+        self.assertEqual(outcome.artifact_results["시험환경구성도"], "O")
+        self.assertEqual(result.raw_detail_json["matched_file_count"], 2)
+
+    def test_performance_rawdata_passes_when_folder_has_any_entry(self):
+        project_dir = Path(self.temp_dir.name) / "rawdata_performance"
+        project_dir.mkdir(parents=True)
+        rawdata_zip_path = project_dir / "TTA-26-00010 rawdata.zip"
+        with zipfile.ZipFile(rawdata_zip_path, "w") as archive:
+            archive.writestr("결함/raw.txt", b"defect")
+            archive.writestr("보안/1차/raw.txt", b"security")
+            archive.writestr("보안/2차/raw.txt", b"security")
+            archive.writestr("성능시험/측정자료/raw.txt", b"performance")
+
+        DownloadReviewRule.objects.create(
+            code="artifact_12",
+            name="1차/2차/성능/보안RawData",
+            rule_type="rawdata_folder_structure_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=120,
+            config_json={
+                "artifact_column": "1차/2차/성능/보안RawData",
+                "folder_checks": [
+                    {"keyword": "결함", "failure_message": "결함리포트 rawdata 확인 불가"},
+                    {
+                        "keyword": "보안",
+                        "exact_child_folders": 2,
+                        "each_child_has_entry": True,
+                        "txt_only_pass": True,
+                        "unwrap_single_folder": True,
+                        "failure_message": "보안성 rawdata 확인 불가",
+                    },
+                    {
+                        "keyword": "성능",
+                        "min_entries": 1,
+                        "failure_message": "성능 rawdata 확인 불가",
+                    },
+                ],
+                "pass_message": "rawdata 폴더 구조를 확인했습니다.",
+            },
+        )
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={"project_number": "TTA-26-00010"},
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+
+        outcome = run_download_inspection(project, verify_result, {})
+        result = DownloadReviewRuleResult.objects.get(job_project=project, rule_name="1차/2차/성능/보안RawData")
+
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS, result.raw_detail_json)
+        self.assertEqual(outcome.artifact_results["1차/2차/성능/보안RawData"], "O")
+
     def test_image_screenshot_date_failure_lists_period_dates_and_count(self):
         project_dir = Path(self.temp_dir.name) / "downloads"
         project_dir.mkdir(parents=True)
@@ -1919,6 +2056,109 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(result.status, DownloadReviewRuleStatus.PASS, result.raw_detail_json["report_date_checks"])
         self.assertEqual(result.raw_detail_json["report_date_checks"][0]["sheet_text"], "1차 결함리포트")
         self.assertEqual(result.raw_detail_json["report_date_checks"][0]["actual_date"], "2026.04.14.")
+
+    def test_zero_residual_defect_variable_is_available_when_defect_count_missing(self):
+        project_dir = Path(self.temp_dir.name) / "downloads"
+        project_dir.mkdir(parents=True)
+        master_db_path = Path(self.temp_dir.name) / "reference.db"
+        self._create_master_reference_db(master_db_path)
+        zip_path = project_dir / "TTA-26-00010.zip"
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            archive.writestr(
+                "5.수행/TTA-26-00010 결함리포트 v3.0.xlsx",
+                _defect_report_zero_residual_xlsx("TTA-26-00010"),
+            )
+            archive.writestr(
+                "3.설계/TTA-26-00010 테스트케이스.xlsx",
+                _test_case_xlsx("TTA-26-00010", pl="김준호", residual_count=0),
+            )
+
+        DownloadReviewRule.objects.create(
+            code="artifact_10",
+            name="결함리포트",
+            rule_type="defect_report_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=100,
+            config_json={
+                "artifact_column": "결함리포트",
+                "folder_keyword_chain": ["수행"],
+                "filename_keywords": ["결함리포트", "{project_number}"],
+                "extensions": [".xlsx", ".xls"],
+                "count_mismatch_message": "시험성적서의 결함 차수와 결함리포트 개수가 다름",
+            },
+        )
+        DownloadReviewRule.objects.create(
+            code="artifact_09",
+            name="테스트케이스",
+            rule_type="test_case_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=105,
+            config_json={
+                "artifact_column": "테스트케이스",
+                "folder_keyword_chain": ["설계"],
+                "filename_keywords": ["테스트케이스", "{project_number}"],
+                "extensions": [".xlsx", ".xls"],
+                "exact_count": 1,
+                "title_text": "{project_number} 테스트케이스",
+                "author_label": "작성자",
+                "reviewer_label": "검토자:",
+                "reviewer_expected": "김진영",
+                "date_label": "작성일",
+                "result_header": "상세 테스트 결과",
+                "residual_message": "잔여 결함이 작성되지 않음",
+            },
+        )
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={
+                "project_number": "TTA-26-00010",
+                "pl": "김준호",
+            },
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+
+        with self.settings(DOWNLOAD_REVIEW_REFERENCE_MASTER_DB_PATH=master_db_path):
+            run_download_inspection(project, verify_result, {})
+
+        defect_result = DownloadReviewRuleResult.objects.get(job_project=project, rule_name="결함리포트")
+        test_case_result = DownloadReviewRuleResult.objects.get(job_project=project, rule_name="테스트케이스")
+        self.assertEqual(defect_result.raw_detail_json["variables"]["잔여결함수"], 0)
+        self.assertEqual(test_case_result.raw_detail_json["residual_defect_check"]["expected_count"], 0)
+        self.assertEqual(test_case_result.raw_detail_json["residual_defect_check"]["actual_count"], 0)
+        self.assertTrue(
+            next(
+                item for item in test_case_result.raw_detail_json["sub_checks"]
+                if item["expected"].startswith("[잔여결함]")
+            )["passed"]
+        )
+
+    def test_defect_report_environment_uses_value_in_right_cell(self):
+        workbook_by_version = {
+            1: ExcelWorkbook(sheets=[
+                ExcelSheet("1차 결함리포트", [["", "", "", "[시험환경 :", "관리자 PC : Windows 11]"]]),
+            ]),
+            2: ExcelWorkbook(sheets=[
+                ExcelSheet("2차 결함리포트", [["", "", "", "[시험환경 :", "관리자 PC : Windows 11]"]]),
+            ]),
+            3: ExcelWorkbook(sheets=[
+                ExcelSheet("최종결함리포트", [["", "", "", "[시험환경 :", "관리자 PC : Windows 11]"]]),
+                ExcelSheet("시험분석자료", [["", "", "", "", "[ 시험환경: 관리자 PC : Windows 11]"]]),
+            ]),
+        }
+
+        result = _check_defect_report_environment(workbook_by_version)
+
+        self.assertTrue(result["passed"], result)
+        self.assertIn("관리자 PC : Windows 11", result["actual"])
 
     def test_defect_report_variables_are_kept_when_print_text_check_fails(self):
         project_dir = Path(self.temp_dir.name) / "downloads"

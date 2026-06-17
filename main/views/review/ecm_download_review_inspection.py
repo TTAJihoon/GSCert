@@ -503,13 +503,16 @@ def _evaluate_downloadable_artifact_check(rule, sequence, project, context, veri
 
     if not passed:
         # 매칭 파일이 없을 때 무관한 파일을 대표 파일로 표시하지 않는다("... 외 N개" 방지).
+        failure_message = config.get("missing_message") or "파일 확인 불가"
+        if exact_count is not None and len(matched) > int(exact_count):
+            failure_message = config.get("multiple_message") or "대상 파일이 여러개 존재합니다."
         return RuleEvaluation(
             rule=rule,
             sequence=sequence,
             status=DownloadReviewRuleStatus.FAIL,
             expected=expected_text,
             actual=_matched_files_actual(matched) if matched else "일치 파일 없음",
-            message=config.get("missing_message") or "파일 확인 불가",
+            message=failure_message,
             file_path=_representative_path(matched, project.project_number),
             file_name=_representative_name(matched),
             raw_detail=raw_detail,
@@ -1745,6 +1748,12 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
         "matched_file_count": len(matched),
         "matched_files": [_display_path(file_info.path, project.project_number) for file_info in matched[:20]],
     }
+    versioned_files = _defect_report_versioned_files(matched, config)
+    raw_detail["versions"] = {
+        str(version): _display_path(file_info.path, project.project_number)
+        for version, file_info in versioned_files.items()
+    }
+    _collect_defect_report_variables_from_latest_file(raw_detail, versioned_files)
 
     defect_round_count = _context_int(context, "결함차수")
     if defect_round_count is None:
@@ -1773,11 +1782,6 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
             message=config.get("count_mismatch_message") or "시험성적서의 결함 차수와 결함리포트 개수가 다름",
         )
 
-    versioned_files = _defect_report_versioned_files(matched, config)
-    raw_detail["versions"] = {
-        str(version): _display_path(file_info.path, project.project_number)
-        for version, file_info in versioned_files.items()
-    }
     expected_versions = set(range(1, expected_file_count + 1))
     if set(versioned_files) != expected_versions:
         return _defect_report_failure(
@@ -2007,7 +2011,7 @@ def _check_defect_report_environment(workbook_by_version):
     values = []
     for version, workbook in sorted(workbook_by_version.items()):
         for sheet in workbook.sheets:
-            value = _sheet_top_rows_cell_containing(sheet, "시험환경")
+            value = _sheet_top_rows_label_value(sheet, "시험환경")
             if not value:
                 return {
                     "passed": False,
@@ -2088,6 +2092,21 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
     }
 
 
+def _collect_defect_report_variables_from_latest_file(raw_detail, versioned_files):
+    versions = [version for version in versioned_files if version > 0]
+    if not versions:
+        return
+    latest_version = max(versions)
+    try:
+        workbook = _read_excel_workbook(versioned_files[latest_version])
+    except DownloadReviewInspectionError as exc:
+        raw_detail["variable_error"] = str(exc)
+        return
+    variables = _defect_report_variables(workbook)
+    if variables:
+        raw_detail["variables"] = variables
+
+
 def _defect_report_variables(workbook):
     variables = {}
     if _workbook_sheet(workbook, "최종결함리포트"):
@@ -2106,6 +2125,29 @@ def _sheet_top_rows_cell_containing(sheet, keyword, *, limit=4):
             if needle and needle in _normalize_no_space(value):
                 return value
     return ""
+
+
+def _sheet_top_rows_label_value(sheet, keyword, *, limit=4):
+    """상단 행의 라벨 셀 오른쪽에 실제 값이 적힌 양식도 함께 읽는다."""
+    needle = _normalize_no_space(keyword)
+    if not sheet or not needle:
+        return ""
+    for row_index, row in enumerate(sheet.rows[:limit], start=1):
+        for column_index, value in enumerate(row, start=1):
+            if needle not in _normalize_no_space(value):
+                continue
+            right_value = _sheet_cell(sheet, row_index, column_index + 1)
+            if right_value and _is_label_only_cell(value, keyword):
+                return _normalize_spaces(f"{value} {right_value}")
+            return value
+    return ""
+
+
+def _is_label_only_cell(value, keyword):
+    text = str(value or "")
+    remainder = text.replace(str(keyword or ""), "")
+    remainder = re.sub(r"[\s\[\]\(\):：]+", "", remainder)
+    return not remainder
 
 
 def _sheet_top_rows_report_date(sheet, *, limit=5):

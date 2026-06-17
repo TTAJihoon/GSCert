@@ -59,6 +59,8 @@ Copy-Item -Recurse -Force `
 - 기준 규칙 문서 `main/docs/19_inspection_rule_manual.md`를 최신 구현 기준으로 갱신했다.
 - rawdata zip만 다운로드된 경우에도 rawdata 전용 규칙은 계속 검사한다. 일부 zip이 깨져도 읽을 수 있는 다른 zip의 규칙 검사는 계속 진행하며, `raw_data.zip`/`raw-data.zip`/중첩 zip도 rawdata로 인식한다.
 - 결함리포트 보고일자는 프로젝트번호, 시트명, 보고일자 셀이 분리된 양식도 정상으로 인정한다. 날짜가 맞는데도 `보고일자` 표시 문구 차이처럼 보이며 부적합 처리되는 문제를 보정했다.
+- 결함차수 산출이 실패해도 최종 결함리포트에서 `{잔여결함수}`를 먼저 산출해 테스트케이스 잔여 F 개수 비교에 사용한다. 결함리포트 `시험환경 :` 라벨의 오른쪽 셀 값도 함께 비교한다.
+- 시험환경구성도는 `{프로젝트번호}`와 `구성도`가 포함된 `.png` 또는 `.pptx`가 1개 이상 있으면 통과한다. rawdata의 `성능` 폴더는 하위 폴더나 파일이 하나라도 있으면 통과하고, 완전히 비어 있을 때만 실패한다.
 
 ## test.zip 현재 결과
 
@@ -106,8 +108,8 @@ git diff --check
 
 예상/최근 결과:
 
-- Django test: 45개 통과
-- seed dry-run: `created=0 updated=9 unchanged=9`
+- Django test: 49개 통과
+- seed dry-run: `created=0 updated=10 unchanged=8`
 - `git diff --check`: whitespace 오류 없음
 
 ## 실제 사용 시 주의점

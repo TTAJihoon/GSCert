@@ -233,10 +233,9 @@ def _actual_rule_spec(index, column_name):
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["시험", "계획"],
                 "filename_keywords": ["구성도", "{project_number}"],
-                "extensions": [],
-                "exact_count": 1,
+                "extensions": [".png", ".pptx"],
+                "min_count": 1,
                 "missing_message": "파일이 없습니다.",
-                "multiple_message": "시험환경구성도 파일이 여러개 존재함",
                 "pass_message": "시험환경구성도 파일을 확인했습니다.",
             },
         }
@@ -490,9 +489,7 @@ def _actual_rule_spec(index, column_name):
                     },
                     {
                         "keyword": "성능",
-                        "exact_child_folders": 2,
-                        "each_child_has_entry": True,
-                        "unwrap_single_folder": True,
+                        "min_entries": 1,
                         "failure_message": "성능 rawdata 확인 불가",
                     },
                 ],
