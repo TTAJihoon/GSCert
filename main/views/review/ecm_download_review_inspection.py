@@ -2044,13 +2044,18 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
         required_sheets = _expected_defect_report_sheet_names(version, final_version)
         for sheet_name in required_sheets:
             sheet = _workbook_sheet(workbook, sheet_name)
-            # 헤더(프로젝트번호+시트명)와 보고일자는 보통 서로 다른 셀에 있으므로 각각 찾는다.
-            header_text = _sheet_top_rows_cell_containing(sheet, f"{context.project_number} {sheet_name}") if sheet else ""
+            # 프로젝트번호, 시트명, 보고일자는 서로 다른 셀에 작성되는 양식도 허용한다.
+            project_text = _sheet_top_rows_cell_containing(sheet, context.project_number) if sheet and context.project_number else ""
+            sheet_text = _sheet_top_rows_cell_containing(sheet, sheet_name) if sheet else ""
+            combined_text = _sheet_top_rows_cell_containing(sheet, f"{context.project_number} {sheet_name}") if sheet and context.project_number else ""
+            header_text = combined_text or " / ".join(
+                text for text in (project_text, sheet_text) if text
+            )
             report_date = _sheet_top_rows_report_date(sheet) if sheet else ""
             actual_text = (header_text + (" / 보고일자: " + report_date if report_date else "")).strip()
             expected_date = expected_dates.get(sheet_name, "")
             passed = bool(
-                header_text
+                sheet_text
                 and _same_date_text(report_date, expected_date)
             )
             detail = {
@@ -2059,13 +2064,15 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
                 "expected_date": expected_date,
                 "actual_text": actual_text,
                 "actual_date": report_date,
+                "project_text": project_text,
+                "sheet_text": sheet_text,
                 "passed": passed,
             }
             details.append(detail)
             # 차시별로 한 줄씩 표시되도록 " / " 로 구분해 누적한다.
             label = f"v{version}.0 {sheet_name}"
             sub_expected = f"{label} 보고일자 {expected_date or '(기준없음)'}"
-            sub_actual = f"{label} 정상({report_date})" if passed else f"{label} {report_date or '문구없음'}"
+            sub_actual = f"{label} 정상({report_date})" if passed else f"{label} 보고일자 {report_date or '문구없음'}"
             expected_parts.append(sub_expected)
             actual_parts.append(sub_actual)
             sub_checks.append({"expected": sub_expected, "actual": sub_actual, "passed": passed})

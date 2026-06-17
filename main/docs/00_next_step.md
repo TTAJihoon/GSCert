@@ -58,6 +58,7 @@ Copy-Item -Recurse -Force `
 - 제품 스크린샷 수정일자 오류 메시지는 시험기간, 범위 밖 수정일자 목록, 총 이미지 개수를 함께 표시한다.
 - 기준 규칙 문서 `main/docs/19_inspection_rule_manual.md`를 최신 구현 기준으로 갱신했다.
 - rawdata zip만 다운로드된 경우에도 rawdata 전용 규칙은 계속 검사한다. 일부 zip이 깨져도 읽을 수 있는 다른 zip의 규칙 검사는 계속 진행하며, `raw_data.zip`/`raw-data.zip`/중첩 zip도 rawdata로 인식한다.
+- 결함리포트 보고일자는 프로젝트번호, 시트명, 보고일자 셀이 분리된 양식도 정상으로 인정한다. 날짜가 맞는데도 `보고일자` 표시 문구 차이처럼 보이며 부적합 처리되는 문제를 보정했다.
 
 ## test.zip 현재 결과
 
@@ -105,7 +106,7 @@ git diff --check
 
 예상/최근 결과:
 
-- Django test: 44개 통과
+- Django test: 45개 통과
 - seed dry-run: `created=0 updated=9 unchanged=9`
 - `git diff --check`: whitespace 오류 없음
 

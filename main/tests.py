@@ -207,6 +207,49 @@ def _defect_report_xlsx(project_number, sheets, *, header=None, footer=None):
     return _xlsx_workbook_bytes(rows_by_sheet, header=header, footer=footer)
 
 
+def _defect_report_xlsx_split_title(project_number, sheets, *, header=None, footer=None):
+    rows_by_sheet = []
+    for sheet_name in sheets:
+        if sheet_name in ("최종결함리포트", "시험분석자료"):
+            date_text = "2026.05.31."
+        elif sheet_name.startswith("1차"):
+            date_text = "2026.04.14."
+        else:
+            date_text = "2026.04.20."
+
+        rows = [
+            [project_number, "시험환경 Windows 11"],
+            [sheet_name],
+            [f"보고일자: {date_text}"],
+            [],
+            [],
+        ]
+        if sheet_name == "최종결함리포트":
+            rows.extend([
+                [],
+                ["", "", "", "", "", "", "잔여특성"],
+                ["", "", "", "", "", "", "잔여-1"],
+                ["", "", "", "", "", "", "잔여-2"],
+            ])
+        elif sheet_name == "시험분석자료":
+            rows.extend([
+                ["", "", "High", "3"],
+                ["", "", "수정전"],
+                [],
+                [],
+                [],
+                [],
+                ["", "", "7"],
+                ["", "", "결함-1", "", "H"],
+                ["", "", "-", "", "H"],
+                ["", "", "", "", "H"],
+                ["", "", "결함-2", "", "H"],
+                ["", "", "결함-3", "", "H"],
+            ])
+        rows_by_sheet.append((sheet_name, rows))
+    return _xlsx_workbook_bytes(rows_by_sheet, header=header, footer=footer)
+
+
 def _test_case_xlsx(
     project_number,
     *,
@@ -1781,6 +1824,101 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(result.status, DownloadReviewRuleStatus.FAIL)
         self.assertEqual(result.message, "시험성적서의 결함 차수와 결함리포트 개수가 다름")
         self.assertEqual(result.actual, "결함리포트 Excel 파일 2개")
+
+    def test_defect_report_dates_accept_split_title_and_report_date_cells(self):
+        project_dir = Path(self.temp_dir.name) / "downloads"
+        project_dir.mkdir(parents=True)
+        master_db_path = Path(self.temp_dir.name) / "reference.db"
+        self._create_master_reference_db(master_db_path)
+        zip_path = project_dir / "TTA-26-00010.zip"
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            archive.writestr(
+                "5.수행/TTA-26-00010 결함리포트 v1.0.xlsx",
+                _defect_report_xlsx_split_title("TTA-26-00010", ["1차 결함리포트"]),
+            )
+            archive.writestr(
+                "5.수행/TTA-26-00010 결함리포트 v2.0.xlsx",
+                _defect_report_xlsx_split_title("TTA-26-00010", ["1차 결함리포트", "2차 결함리포트"]),
+            )
+            archive.writestr(
+                "5.수행/TTA-26-00010 결함리포트 v3.0.xlsx",
+                _defect_report_xlsx_split_title(
+                    "TTA-26-00010",
+                    ["1차 결함리포트", "2차 결함리포트", "최종결함리포트", "시험분석자료"],
+                ),
+            )
+            archive.writestr(
+                "6.시험/다.종료/TTA-26-00010 시험성적서.docx",
+                _docx_bytes(
+                    tables=[
+                        [["결함리포트 송부 1차: 2026.04.14 2차: 2026.04.20"]],
+                    ],
+                ),
+            )
+            archive.writestr(
+                "6.시험/다.종료/TTA-26-00010 시험성적서.pdf",
+                _pdf_bytes(["TTA-26-00010 시험성적서"]),
+            )
+
+        DownloadReviewRule.objects.create(
+            code="artifact_13",
+            name="시험성적서(PDF)",
+            rule_type="test_report_document_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=95,
+            config_json={
+                "artifact_column": "시험성적서(PDF)",
+                "folder_keyword_chain": ["시험", "종료"],
+                "filename_keywords": ["시험성적서", "{project_number}"],
+                "required_files": [
+                    {"extensions": [".docx"], "exact_count": 1},
+                    {"extensions": [".pdf"], "exact_count": 1},
+                ],
+                "spec_marker": "<일반사항>",
+                "pdf_artifact_label": "시험성적서 1페이지",
+            },
+        )
+        DownloadReviewRule.objects.create(
+            code="artifact_10",
+            name="결함리포트",
+            rule_type="defect_report_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=100,
+            config_json={
+                "artifact_column": "결함리포트",
+                "folder_keyword_chain": ["수행"],
+                "filename_keywords": ["결함리포트", "{project_number}"],
+                "extensions": [".xlsx", ".xls"],
+                "count_mismatch_message": "시험성적서의 결함 차수와 결함리포트 개수가 다름",
+                "report_date_message": "프로젝트 번호, 결함 차시, 보고일자 중 잘못된 값이 작성됨",
+            },
+        )
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={"project_number": "TTA-26-00010"},
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+        artifact_dir = Path(self.temp_dir.name) / "artifacts"
+
+        with self.settings(
+            DOWNLOAD_REVIEW_REFERENCE_MASTER_DB_PATH=master_db_path,
+            DOWNLOAD_REVIEW_ARTIFACT_DIR=artifact_dir,
+        ):
+            run_download_inspection(project, verify_result, {})
+
+        result = DownloadReviewRuleResult.objects.get(job_project=project, rule_name="결함리포트")
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS, result.raw_detail_json["report_date_checks"])
+        self.assertEqual(result.raw_detail_json["report_date_checks"][0]["sheet_text"], "1차 결함리포트")
+        self.assertEqual(result.raw_detail_json["report_date_checks"][0]["actual_date"], "2026.04.14.")
 
     def test_defect_report_variables_are_kept_when_print_text_check_fails(self):
         project_dir = Path(self.temp_dir.name) / "downloads"
