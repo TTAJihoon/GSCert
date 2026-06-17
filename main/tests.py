@@ -1537,6 +1537,103 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(agreement_payload["artifacts"][0]["label"], "합의서 1페이지")
         self.assertEqual(feature_payload["artifacts"][0]["id"], "feature_list_area")
 
+    def _write_valid_rawdata_zip(self, rawdata_zip_path):
+        with zipfile.ZipFile(rawdata_zip_path, "w") as archive:
+            archive.writestr("결함/raw.txt", b"defect")
+            archive.writestr("보안/1차/raw.txt", b"security")
+            archive.writestr("보안/2차/raw.txt", b"security")
+            archive.writestr("성능/1차/raw.txt", b"performance")
+            archive.writestr("성능/2차/raw.txt", b"performance")
+            for folder_name in ("최초정상", "최종정상"):
+                for index in range(5):
+                    info = zipfile.ZipInfo(
+                        f"3.설계/제품스크린샷/{folder_name}/image-{index}.png",
+                        date_time=(2026, 5, 20, 12, 0, 0),
+                    )
+                    archive.writestr(info, b"image")
+
+    def _rawdata_only_project(self, project_dir):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        return DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={
+                "project_number": "TTA-26-00010",
+                "company": "에이치소프트",
+                "product": "테스트제품 v1.0",
+                "pl": "김준수",
+                "wd": "10",
+                "신청일": "2026.05.02.",
+                "계약일": "2026.05.03.",
+                "인증일자": "2026.06.01.",
+            },
+        )
+
+    def test_rawdata_rules_run_when_only_rawdata_zip_exists(self):
+        project_dir = Path(self.temp_dir.name) / "rawdata_only"
+        project_dir.mkdir(parents=True)
+        master_db_path = Path(self.temp_dir.name) / "reference_rawdata_only.db"
+        self._create_master_reference_db(master_db_path)
+        self._write_valid_rawdata_zip(project_dir / "raw_data.zip")
+
+        call_command("seed_download_review_rules", "--only-real", "--enable", stdout=StringIO())
+        project = self._rawdata_only_project(project_dir)
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+
+        artifact_dir = Path(self.temp_dir.name) / "artifacts_rawdata_only"
+        with self.settings(
+            DOWNLOAD_REVIEW_REFERENCE_MASTER_DB_PATH=master_db_path,
+            DOWNLOAD_REVIEW_ARTIFACT_DIR=artifact_dir,
+        ):
+            outcome = run_download_inspection(project, verify_result, {})
+
+        results = {
+            result.rule_name: result
+            for result in DownloadReviewRuleResult.objects.filter(job_project=project)
+        }
+        self.assertTrue(verify_result.success)
+        self.assertFalse(verify_result.has_project_number_files)
+        self.assertEqual(outcome.artifact_results["최초/최종형상RawData"], "O")
+        self.assertEqual(outcome.artifact_results["1차/2차/성능/보안RawData"], "O")
+        self.assertEqual(outcome.artifact_results["계약서"], "X")
+        self.assertEqual(results["최초/최종형상RawData"].status, DownloadReviewRuleStatus.PASS)
+        self.assertEqual(results["1차/2차/성능/보안RawData"].status, DownloadReviewRuleStatus.PASS)
+
+    def test_rawdata_rules_continue_when_submission_zip_is_unreadable(self):
+        project_dir = Path(self.temp_dir.name) / "corrupt_submission_with_rawdata"
+        project_dir.mkdir(parents=True)
+        master_db_path = Path(self.temp_dir.name) / "reference_corrupt_submission.db"
+        self._create_master_reference_db(master_db_path)
+        (project_dir / "TTA-26-00010.zip").write_bytes(b"not a zip")
+        self._write_valid_rawdata_zip(project_dir / "TTA-26-00010 raw-data.zip")
+
+        call_command("seed_download_review_rules", "--only-real", "--enable", stdout=StringIO())
+        project = self._rawdata_only_project(project_dir)
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+
+        artifact_dir = Path(self.temp_dir.name) / "artifacts_corrupt_submission"
+        with self.settings(
+            DOWNLOAD_REVIEW_REFERENCE_MASTER_DB_PATH=master_db_path,
+            DOWNLOAD_REVIEW_ARTIFACT_DIR=artifact_dir,
+        ):
+            outcome = run_download_inspection(project, verify_result, {})
+
+        results = {
+            result.rule_name: result
+            for result in DownloadReviewRuleResult.objects.filter(job_project=project)
+        }
+        self.assertTrue(verify_result.success)
+        self.assertEqual(outcome.artifact_results["최초/최종형상RawData"], "O")
+        self.assertEqual(outcome.artifact_results["1차/2차/성능/보안RawData"], "O")
+        self.assertEqual(results["최초/최종형상RawData"].status, DownloadReviewRuleStatus.PASS)
+        self.assertEqual(results["1차/2차/성능/보안RawData"].status, DownloadReviewRuleStatus.PASS)
+        self.assertTrue(getattr(verify_result, "_inspection_zip_errors"))
+
     def test_image_screenshot_date_failure_lists_period_dates_and_count(self):
         project_dir = Path(self.temp_dir.name) / "downloads"
         project_dir.mkdir(parents=True)

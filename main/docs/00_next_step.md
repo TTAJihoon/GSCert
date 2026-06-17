@@ -57,6 +57,7 @@ Copy-Item -Recurse -Force `
 - `{품질부특성측정값}` 산출 순서는 원본 33개 중 27번째 값을 제외하고 `4~26, 28~33, 1~3`으로 확정했다.
 - 제품 스크린샷 수정일자 오류 메시지는 시험기간, 범위 밖 수정일자 목록, 총 이미지 개수를 함께 표시한다.
 - 기준 규칙 문서 `main/docs/19_inspection_rule_manual.md`를 최신 구현 기준으로 갱신했다.
+- rawdata zip만 다운로드된 경우에도 rawdata 전용 규칙은 계속 검사한다. 일부 zip이 깨져도 읽을 수 있는 다른 zip의 규칙 검사는 계속 진행하며, `raw_data.zip`/`raw-data.zip`/중첩 zip도 rawdata로 인식한다.
 
 ## test.zip 현재 결과
 
@@ -104,8 +105,8 @@ git diff --check
 
 예상/최근 결과:
 
-- Django test: 40개 통과
-- seed dry-run: `created=0 updated=0 unchanged=18`
+- Django test: 44개 통과
+- seed dry-run: `created=0 updated=9 unchanged=9`
 - `git diff --check`: whitespace 오류 없음
 
 ## 실제 사용 시 주의점

@@ -3547,24 +3547,47 @@ def _find_temp_files(verify_result):
 
 
 def _inspection_files(verify_result):
+    cached_files = getattr(verify_result, "_inspection_files_cache", None)
+    if cached_files is not None:
+        return cached_files
+
     files = list(verify_result.files or [])
     expanded_files = list(files)
-    for file_info in files:
+    zip_errors = []
+    pending_files = list(files)
+    expanded_zip_paths = set()
+    while pending_files:
+        file_info = pending_files.pop(0)
         if file_info.extension.lower() != ".zip":
             continue
+        raw_path = str(file_info.path or "")
+        if raw_path in expanded_zip_paths:
+            continue
+        expanded_zip_paths.add(raw_path)
         try:
-            expanded_files.extend(_zip_entry_files(file_info))
-        except (BadZipFile, OSError) as exc:
-            raise DownloadReviewInspectionError(
-                f"zip 파일을 읽을 수 없습니다: {file_info.name}"
-            ) from exc
+            zip_entries = _zip_entry_files(file_info)
+        except (BadZipFile, KeyError, OSError, RuntimeError) as exc:
+            zip_errors.append({
+                "file_name": file_info.name,
+                "path": raw_path,
+                "message": str(exc),
+            })
+            continue
+        expanded_files.extend(zip_entries)
+        pending_files.extend(zip_entries)
     # ~$ 임시 파일 등 점검에 방해되는 파일 제외
-    return [file_info for file_info in expanded_files if not _is_ignorable_file(file_info.name)]
+    inspection_files = [
+        file_info for file_info in expanded_files if not _is_ignorable_file(file_info.name)
+    ]
+    setattr(verify_result, "_inspection_files_cache", inspection_files)
+    setattr(verify_result, "_inspection_zip_errors", zip_errors)
+    return inspection_files
 
 
 def _zip_entry_files(zip_file_info):
     entries = []
-    with ZipFile(zip_file_info.path) as zip_file:
+    zip_bytes = _read_path_bytes(str(zip_file_info.path or ""))
+    with ZipFile(BytesIO(zip_bytes)) as zip_file:
         for entry in zip_file.infolist():
             if entry.is_dir():
                 continue
@@ -3645,12 +3668,7 @@ def _convert_doc_to_docx_bytes(doc_bytes):
 
 def _read_file_bytes(file_info):
     raw_path = str(file_info.path or "")
-    if "::" not in raw_path:
-        data = Path(raw_path).read_bytes()
-    else:
-        zip_path, inner_path = raw_path.split("::", 1)
-        with ZipFile(zip_path) as zip_file:
-            data = zip_file.read(inner_path)
+    data = _read_path_bytes(raw_path)
 
     # 구형 .doc(OLE)는 docx 파서가 읽을 수 있도록 .docx로 변환해 반환한다.
     # (.doc는 Word 문서 점검 규칙에서만 읽히므로 다른 파서에는 영향이 없다.)
@@ -3658,6 +3676,17 @@ def _read_file_bytes(file_info):
         if raw_path not in _DOC_CONVERT_CACHE:
             _DOC_CONVERT_CACHE[raw_path] = _convert_doc_to_docx_bytes(data)
         return _DOC_CONVERT_CACHE[raw_path]
+    return data
+
+
+def _read_path_bytes(raw_path):
+    path_parts = str(raw_path or "").split("::")
+    if not path_parts or not path_parts[0]:
+        raise OSError("파일 경로가 비어 있습니다.")
+    data = Path(path_parts[0]).read_bytes()
+    for inner_path in path_parts[1:]:
+        with ZipFile(BytesIO(data)) as zip_file:
+            data = zip_file.read(inner_path)
     return data
 
 
@@ -3704,18 +3733,32 @@ def _zip_name_contains(file_info, keyword):
     raw_path = str(file_info.path or "")
     if "::" not in raw_path:
         return False
-    zip_path = raw_path.split("::", 1)[0]
-    zip_name = PurePosixPath(zip_path.replace("\\", "/")).name
-    needle = re.sub(r"\s+", "", str(keyword or "")).lower()
+    needle = _normalize_zip_keyword(keyword)
     if not needle:
         return False
-    return needle in re.sub(r"\s+", "", zip_name).lower()
+    return any(
+        needle in _normalize_zip_keyword(zip_name)
+        for zip_name in _source_zip_names(raw_path)
+    )
+
+
+def _source_zip_names(raw_path):
+    zip_names = []
+    for path_part in str(raw_path or "").split("::")[:-1]:
+        zip_name = PurePosixPath(path_part.replace("\\", "/")).name
+        if zip_name.lower().endswith(".zip"):
+            zip_names.append(zip_name)
+    return zip_names
+
+
+def _normalize_zip_keyword(value):
+    return re.sub(r"[\s_-]+", "", str(value or "")).lower()
 
 
 def _folder_segments(path):
     normalized = str(path or "").replace("\\", "/")
     if "::" in normalized:
-        normalized = normalized.split("::", 1)[1]
+        normalized = normalized.rsplit("::", 1)[1]
     parts = [part for part in normalized.split("/") if part]
     if not parts:
         return []
