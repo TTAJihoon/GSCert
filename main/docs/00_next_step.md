@@ -1,5 +1,14 @@
 # GSCert Next Step
 
+## 2026-06-17: 로컬 Windows 점검 앱 및 PostgreSQL 전환
+
+- 결정사항과 전환 설계는 `main/docs/23_local_desktop_postgresql_design.md`에 정리했다.
+- 권장 구조는 Windows `.exe` 앱이 로컬 파일 점검을 수행하고, 프로젝트 기준정보는 Django API를 통해 서버 PostgreSQL에서 조회하는 방식이다.
+- PostgreSQL DB 이름은 `gscert_prod`, 앱 계정은 `gscert_app`으로 진행한다.
+- 데스크톱 앱은 DB에 직접 접속하지 않고 API만 호출한다.
+- 서버용 PostgreSQL settings 모듈은 `myproject/postgres_settings.py`로 추가했다.
+- 다음 구현 순서는 PostgreSQL DB/계정 생성, 기존 SQLite 데이터 이전, 프로젝트 기준정보 API 추가, 데스크톱 앱 shell 개발이다.
+
 이 문서는 누적 이력 문서가 아니라 다른 PC에서 바로 이어받기 위한 최신 인수인계 문서다. 전체 목차는 `main/docs/18_manual_index.md`를 먼저 본다.
 
 ## 현재 기준
