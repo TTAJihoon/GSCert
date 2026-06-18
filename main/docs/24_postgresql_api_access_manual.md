@@ -1,5 +1,79 @@
 # PostgreSQL 및 서버 API 조회 매뉴얼
 
+## 빠른 사용 가이드
+
+PostgreSQL에 직접 접속해서 `SELECT` 쿼리를 실행하는 대신, 아래 API 주소를 호출해서 같은 목적의 데이터를 조회한다.
+
+기본 서버 주소 예시:
+
+```text
+http://210.96.71.241:8000
+```
+
+실제 운영 포트가 다르면 서버 배포 포트에 맞춰 바꾼다.
+
+| 목적 | API 주소 | 주요 파라미터 | 호출 예시 |
+| --- | --- | --- | --- |
+| 서버 연결 확인 | `GET /api/local-review/health/` | 없음 | `Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/health/" -Method Get` |
+| 프로젝트 1건 기준정보 조회 | `GET /api/local-review/projects/{project_number}/metadata/` | `center`: `sangam` 또는 `yeongnam` | `Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/projects/TTA-26-00727/metadata/?center=sangam" -Method Get` |
+| 프로젝트 목록 조회 | `GET /api/projects/` | `center`, `limit`, `offset`, `sort` | `Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&limit=100&offset=0&sort=cert_date_desc" -Method Get` |
+| 프로젝트 검색 | `GET /api/projects/` | `q`, `project_number`, `company`, `product`, `pl` | `Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&q=TTA-26-00727" -Method Get` |
+| 점검결과별 조회 | `GET /api/projects/` | `review`: `완료`, `실패`, `보류`, `미점검` | `Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&review=실패" -Method Get` |
+
+가장 자주 쓰는 조회는 프로젝트 1건 기준정보 조회다.
+
+```powershell
+$response = Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/projects/TTA-26-00727/metadata/?center=sangam" -Method Get
+$response.project
+```
+
+응답에서 자주 쓰는 필드는 다음과 같다.
+
+| 필요한 값 | 응답 필드 |
+| --- | --- |
+| 프로젝트 번호 | `project.project_number` |
+| 회사명 | `project.company_name` |
+| 제품명 | `project.product_name` |
+| 시험 PL | `project.pl_name` |
+| WD | `project.wd_name` |
+| 신청일 | `project.request_date` |
+| 계약일 | `project.contract_date` |
+| 인증일 | `project.cert_date` |
+| 점검결과 | `project.review` |
+
+목록 조회 결과는 `items`에 들어 있다.
+
+```powershell
+$response = Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&limit=100" -Method Get
+$response.items
+```
+
+## 파라미터 요약
+
+`/api/projects/`에서 사용할 수 있는 주요 파라미터는 다음과 같다.
+
+| 파라미터 | 설명 | 예시 |
+| --- | --- | --- |
+| `center` | 센터 구분 | `sangam`, `yeongnam` |
+| `project_number` | 프로젝트 번호 검색 | `TTA-26-00727` |
+| `company` | 회사명 일부 검색 | `테스트회사` |
+| `product` | 제품명 일부 검색 | `제품명` |
+| `pl` | PL명 검색 | `홍길동` |
+| `q` | 프로젝트번호/회사명/제품명/PL 통합 검색 | `TTA-26` |
+| `review` | 점검결과 필터 | `완료`, `실패`, `보류`, `미점검` |
+| `cert_date` | 인증일자 필터 | `6/18` |
+| `limit` | 한 번에 가져올 개수 | `100` |
+| `offset` | 건너뛸 개수 | `0`, `100` |
+| `sort` | 정렬 | `cert_date_desc`, `cert_date_asc`, `project_number_desc`, `project_number_asc` |
+
+초기 사용자는 보통 아래 3개만 알면 된다.
+
+```text
+center=sangam
+project_number=TTA-26-00727
+q=검색어
+```
+
 ## 현재 결론
 
 현재 상태에서 외부 PC가 PostgreSQL에 직접 접속해서 데이터를 조회하는 구조는 아니다.
