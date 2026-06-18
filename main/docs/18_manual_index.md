@@ -1,5 +1,10 @@
 # GSCert 문서 목차와 사용 가이드
 
+## 2026-06-18 추가 매뉴얼
+
+- `24_postgresql_api_access_manual.md`: PostgreSQL 직접 접속 여부, 서버 API 조회 방법, PostgreSQL 전환 절차.
+- `25_local_windows_app_test_manual.md`: Windows 로컬 점검 앱 설치, 실행, 폴더 스캔, `.exe` 패키징 테스트 방법.
+
 ## 이 문서의 목적
 
 이 문서는 흩어진 Markdown 문서를 사용자 친화적으로 찾아가기 위한 입구다.

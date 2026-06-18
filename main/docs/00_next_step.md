@@ -1,5 +1,12 @@
 # GSCert Next Step
 
+## 2026-06-18: PostgreSQL/API 및 Windows 앱 테스트 매뉴얼
+
+- PostgreSQL/API 조회 매뉴얼은 `main/docs/24_postgresql_api_access_manual.md`에 정리했다.
+- Windows 로컬 앱 테스트 매뉴얼은 `main/docs/25_local_windows_app_test_manual.md`에 정리했다.
+- 현재 외부 PC에서 PostgreSQL에 직접 접속하는 구조는 아니며, 외부 조회는 Django API를 통해 수행하는 것으로 정리했다.
+- 현재 Windows 앱은 폴더 선택, 프로젝트번호 추정, 서버 기준정보 조회, 로컬 파일 스캔까지 테스트할 수 있고, 실제 점검 규칙 엔진 연결은 다음 구현 단계다.
+
 ## 2026-06-17: 로컬 Windows 점검 앱 및 PostgreSQL 전환
 
 - 결정사항과 전환 설계는 `main/docs/23_local_desktop_postgresql_design.md`에 정리했다.
