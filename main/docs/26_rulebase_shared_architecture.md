@@ -22,7 +22,7 @@
 | 규칙 초기값/갱신 | `main/management/commands/seed_download_review_rules.py` | 코드에 정의된 기본 규칙을 DB에 seed |
 | 규칙 결과 | `DownloadReviewRuleResult`, DB 테이블 `inspection_result` | 규칙별 통과/부적합/오류 결과 저장 |
 | 웹 실행 흐름 | `ecm_download_review_worker.py` | 다운로드 후 `run_download_inspection()` 호출 |
-| Windows 앱 | `local_review_app/` | 현재는 폴더 선택, 기준정보 조회, 파일 스캔까지만 구현 |
+| Windows 앱 | `local_review_app/` | 폴더 선택, 기준정보 조회, 파일 스캔, 규칙 캐시, 파일/폴더 기반 1차 점검 실행 |
 
 ## 현재 웹 점검규칙 동작 구조
 
@@ -63,17 +63,21 @@ flowchart TD
     App --> MetadataAPI[서버 기준정보 API 호출]
     MetadataAPI --> Server[Django 서버]
     Server --> ReferenceDB[(기준정보 DB)]
-    App --> Scanner[로컬 파일 스캔]
+    App --> RuleAPI[서버 규칙 API 호출]
+    RuleAPI --> RuleDB[(inspection_rule 테이블)]
+    App --> Cache[로컬 규칙 캐시]
+    App --> Scanner[로컬 파일/폴더 스캔]
     Scanner --> FileTable[파일 목록 화면 표시]
+    Cache --> LocalRunner[local_runner.py]
+    Scanner --> LocalRunner
+    LocalRunner --> ResultTable[규칙별 결과 화면 표시]
 
-    RuleDB[(inspection_rule 테이블)]
     RuleCode[점검규칙 실행 코드]
 
-    RuleDB -. 아직 미연결 .-> App
-    RuleCode -. 아직 미연결 .-> App
+    RuleCode -. 문서 내용 규칙은 아직 서버 전용 .-> App
 ```
 
-현재 Windows 프로그램은 아직 실제 점검규칙 실행까지 연결되어 있지 않다. 즉, 지금은 서버 기준정보 조회와 파일 스캔까지만 가능하다.
+현재 Windows 프로그램은 서버 규칙 bundle을 내려받아 로컬 캐시에 저장하고, 파일/폴더 목록만으로 판단 가능한 규칙을 1차 runner에서 실행한다. Word/PDF/Excel 내부 내용을 읽어 비교하는 문서 규칙은 아직 서버 점검 엔진 전용이며, Windows 앱에서는 `미지원`으로 표시된다.
 
 ## 현재 구조의 중요한 한계
 
@@ -287,7 +291,9 @@ Windows 프로그램은 다음 정책을 권장한다.
 - `규칙 버전 확인` 버튼은 서버 manifest를 조회한다.
 - `규칙 업데이트` 버튼은 서버 bundle을 내려받아 로컬 JSON 캐시에 저장한다.
 - 로컬 캐시 위치는 기본적으로 `%LOCALAPPDATA%\GSCertLocalReview\rules_bundle.json`이다.
-- 아직 캐시된 규칙을 실제 점검 runner에 연결하지는 않았다.
+- `점검 실행` 버튼은 캐시된 규칙과 로컬 파일/폴더 스캔 결과를 `local_runner.py`에 전달한다.
+- `required_artifact_file`, `required_file_name_contains`, `downloadable_artifact_check`, `rawdata_folder_structure_check`는 로컬에서 1차 판단한다.
+- 문서 내부 값 비교가 필요한 규칙은 현재 `미지원`으로 표시한다.
 
 ## 추천 구현 단계
 
@@ -303,9 +309,25 @@ Windows 프로그램은 다음 정책을 권장한다.
 - `GET /api/local-review/rules/bundle/`
 - 응답에 `engine_min_version`, `rulebase_version`, `checksum` 포함
 
-### 3단계: 공용 점검 엔진 경계 분리
+### 3단계: 로컬 1차 runner 연결
 
-현재 `run_download_inspection()`은 Django ORM에 강하게 묶여 있다. Windows 앱에서도 쓰려면 다음 경계를 분리하는 것이 좋다.
+캐시된 규칙을 로컬 파일 스캔 결과와 비교하는 1차 runner를 둔다.
+
+```text
+입력:
+  - 로컬 파일/폴더 목록
+  - 규칙 목록 JSON
+
+출력:
+  - 규칙별 결과 목록
+  - 전체 통과/부적합/미지원 요약
+```
+
+이 단계는 `local_review_app/gscert_local_review/local_runner.py`로 구현되었다. 다만 문서 내부 값 비교 규칙은 아직 서버 엔진 전용이다.
+
+### 4단계: 공용 문서 검사 엔진 경계 분리
+
+현재 `run_download_inspection()`은 Django ORM과 서버 파일 분석 흐름에 강하게 묶여 있다. Windows 앱에서도 문서 내용 규칙을 실행하려면 다음 경계를 분리하는 것이 좋다.
 
 ```text
 입력:
@@ -320,17 +342,17 @@ Windows 프로그램은 다음 정책을 권장한다.
 
 이 공용 엔진은 DB에 직접 저장하지 않고 결과 객체만 반환해야 한다. 웹은 반환된 결과를 `DownloadReviewRuleResult`에 저장하고, Windows 앱은 로컬 SQLite 또는 파일로 저장한다.
 
-### 4단계: 웹 runner 연결
+### 5단계: 웹 runner 연결
 
 - 웹 worker는 중앙 DB에서 규칙을 읽는다.
 - 공용 엔진을 호출한다.
 - 결과를 서버 DB에 저장한다.
 
-### 5단계: Windows runner 연결
+### 6단계: Windows 문서 runner 연결
 
 - 앱이 서버에서 규칙 bundle을 받는다.
 - 로컬 캐시에 저장한다.
-- 공용 엔진으로 로컬 폴더를 점검한다.
+- 공용 문서 검사 엔진으로 Word/PDF/Excel 내부 규칙까지 점검한다.
 - 결과를 앱 화면에 표시한다.
 
 ## 최종 목표 구조

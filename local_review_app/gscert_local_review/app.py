@@ -24,8 +24,9 @@ from PySide6.QtWidgets import (
 )
 
 from .api_client import ApiClientError, GSCertApiClient, ProjectMetadata
+from .local_runner import ERROR, FAIL, PASS, UNSUPPORTED, LocalRunSummary, run_cached_rules
 from .project import infer_project_number
-from .rule_cache import RuleCacheSummary, load_rule_cache, save_rule_cache
+from .rule_cache import RuleCacheSummary, load_rule_bundle, load_rule_cache, save_rule_cache
 from .scanner import FolderScan, scan_folder
 
 
@@ -48,6 +49,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self._build_folder_box())
         layout.addWidget(self._build_metadata_box())
         layout.addWidget(self._build_file_table(), stretch=1)
+        layout.addWidget(self._build_result_table(), stretch=1)
         self.setCentralWidget(root)
 
     def _build_connection_box(self) -> QGroupBox:
@@ -100,6 +102,8 @@ class MainWindow(QMainWindow):
         metadata_button.clicked.connect(self.fetch_metadata)
         scan_button = QPushButton("파일 스캔")
         scan_button.clicked.connect(self.scan_files)
+        run_button = QPushButton("점검 실행")
+        run_button.clicked.connect(self.run_local_review)
 
         layout.addWidget(QLabel("폴더"), 0, 0)
         layout.addWidget(self.folder_path, 0, 1)
@@ -108,6 +112,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.project_number, 1, 1)
         layout.addWidget(metadata_button, 1, 2)
         layout.addWidget(scan_button, 1, 3)
+        layout.addWidget(run_button, 1, 4)
         layout.setColumnStretch(1, 1)
         return box
 
@@ -144,6 +149,16 @@ class MainWindow(QMainWindow):
         self.file_table.horizontalHeader().setStretchLastSection(True)
         self.file_table.setSortingEnabled(True)
         return self.file_table
+
+    def _build_result_table(self) -> QGroupBox:
+        box = QGroupBox("Local Review Results")
+        layout = QVBoxLayout(box)
+        self.result_table = QTableWidget(0, 5)
+        self.result_table.setHorizontalHeaderLabels(["상태", "규칙", "기대값", "실제값", "메시지"])
+        self.result_table.horizontalHeader().setStretchLastSection(True)
+        self.result_table.setSortingEnabled(True)
+        layout.addWidget(self.result_table)
+        return box
 
     def check_health(self):
         try:
@@ -230,6 +245,39 @@ class MainWindow(QMainWindow):
             f"폴더: {folder}\n파일 수: {self.scan.file_count}\n전체 크기: {self.scan.total_size_mb} MB"
         )
 
+    def run_local_review(self):
+        if self.scan is None:
+            self.scan_files()
+        if self.scan is None:
+            return
+
+        rule_bundle = load_rule_bundle()
+        if not rule_bundle:
+            self._show_error("먼저 Rulebase에서 규칙 업데이트를 실행하세요.")
+            return
+
+        summary = run_cached_rules(
+            self.scan,
+            rule_bundle,
+            self.project_number.text().strip(),
+        )
+        self._set_result_rows(summary)
+        self.summary.setPlainText(
+            "\n".join(
+                [
+                    f"폴더: {self.scan.folder}",
+                    f"파일 수: {self.scan.file_count}",
+                    f"전체 크기: {self.scan.total_size_mb} MB",
+                    "",
+                    f"점검 규칙: {summary.total_count}",
+                    f"적합: {summary.passed_count}",
+                    f"부적합: {summary.failed_count}",
+                    f"미지원: {summary.unsupported_count}",
+                    f"오류: {summary.error_count}",
+                ]
+            )
+        )
+
     def _client(self) -> GSCertApiClient:
         return GSCertApiClient(self.server_url.text().strip() or DEFAULT_SERVER_URL)
 
@@ -274,6 +322,31 @@ class MainWindow(QMainWindow):
                 self.file_table.setItem(row, column, item)
         self.file_table.resizeColumnsToContents()
         self.file_table.setSortingEnabled(True)
+
+    def _set_result_rows(self, summary: LocalRunSummary):
+        labels = {
+            PASS: "적합",
+            FAIL: "부적합",
+            UNSUPPORTED: "미지원",
+            ERROR: "오류",
+        }
+        self.result_table.setSortingEnabled(False)
+        self.result_table.setRowCount(len(summary.results))
+        for row, result in enumerate(summary.results):
+            values = [
+                labels.get(result.status, result.status),
+                result.rule_name,
+                result.expected,
+                result.actual,
+                result.message,
+            ]
+            for column, value in enumerate(values):
+                item = QTableWidgetItem(value)
+                if column == 0:
+                    item.setTextAlignment(Qt.AlignCenter)
+                self.result_table.setItem(row, column, item)
+        self.result_table.resizeColumnsToContents()
+        self.result_table.setSortingEnabled(True)
 
     def _show_error(self, message: str):
         QMessageBox.warning(self, "GSCert Local Review", message)

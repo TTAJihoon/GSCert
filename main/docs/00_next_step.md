@@ -1,5 +1,13 @@
 # GSCert Next Step
 
+## 2026-06-19: Windows 로컬 규칙 실행기 1차 연결
+
+- Windows 앱이 서버에서 받은 규칙 bundle 캐시를 읽어 로컬 폴더 스캔 결과와 비교하도록 `local_review_app/gscert_local_review/local_runner.py`를 추가했다.
+- 앱 화면에 `점검 실행` 버튼과 규칙별 결과 테이블을 추가했다.
+- 현재 로컬에서 직접 판단하는 규칙 유형은 `required_artifact_file`, `required_file_name_contains`, `downloadable_artifact_check`, `rawdata_folder_structure_check`이다.
+- Word/PDF/Excel 내부 내용을 읽어야 하는 규칙은 아직 서버 엔진 전용이며, 로컬 앱에서는 `미지원`으로 표시한다.
+- 다음 단계는 서버의 문서 파서/결과 생성 로직을 Django ORM 의존 없이 호출 가능한 공용 문서 검사 엔진 경계로 분리하는 것이다.
+
 ## 2026-06-18: PostgreSQL/API 및 Windows 앱 테스트 매뉴얼
 
 - PostgreSQL/API 조회 매뉴얼은 `main/docs/24_postgresql_api_access_manual.md`에 정리했다.

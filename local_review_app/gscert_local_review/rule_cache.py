@@ -44,6 +44,17 @@ def load_rule_cache(cache_dir: Path | None = None) -> RuleCacheSummary:
     return _summary_from_payload(path, payload, exists=True)
 
 
+def load_rule_bundle(cache_dir: Path | None = None) -> dict[str, Any] | None:
+    path = cache_file_path(cache_dir)
+    if not path.exists():
+        return None
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
 def save_rule_cache(payload: dict[str, Any], cache_dir: Path | None = None) -> RuleCacheSummary:
     path = cache_file_path(cache_dir)
     path.parent.mkdir(parents=True, exist_ok=True)
