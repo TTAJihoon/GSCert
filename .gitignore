@@ -5,6 +5,8 @@ __pycache__/
 
 # Virtual Envs
 .venv/
+local_review_app/build/
+local_review_app/dist/
 venv/
 env/
 django/
