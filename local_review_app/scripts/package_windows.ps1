@@ -6,8 +6,21 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
-& $Python -m pip install -r requirements.txt
-& $Python -m PyInstaller `
+function Invoke-Native {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$FilePath,
+        [Parameter(ValueFromRemainingArguments = $true)]
+        [string[]]$Arguments
+    )
+    & $FilePath @Arguments
+    if ($LASTEXITCODE -ne 0) {
+        throw "Command failed with exit code ${LASTEXITCODE}: $FilePath $($Arguments -join ' ')"
+    }
+}
+
+Invoke-Native $Python -m pip install -r requirements.txt
+Invoke-Native $Python -m PyInstaller `
     --name GSCertLocalReview `
     --noconfirm `
     --windowed `
