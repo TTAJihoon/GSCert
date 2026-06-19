@@ -77,7 +77,7 @@ flowchart TD
     RuleCode -. 문서 내용 규칙은 아직 서버 전용 .-> App
 ```
 
-현재 Windows 프로그램은 서버 규칙 bundle을 내려받아 로컬 캐시에 저장하고, 파일/폴더 목록만으로 판단 가능한 규칙을 1차 runner에서 실행한다. Word/PDF/Excel 내부 내용을 읽어 비교하는 문서 규칙은 아직 서버 점검 엔진 전용이며, Windows 앱에서는 `미지원`으로 표시된다.
+현재 Windows 프로그램은 서버 규칙 bundle을 내려받아 로컬 캐시에 저장하고, 파일/폴더 목록만으로 판단 가능한 규칙을 1차 runner에서 실행한다. `document_artifact_check` 중 Word 기본 내용 검사 일부는 로컬에서도 실행한다. PDF/Excel 내부 내용을 읽거나 복잡한 산출물 간 비교가 필요한 문서 규칙은 아직 서버 점검 엔진 전용이며, Windows 앱에서는 `미지원`으로 표시된다.
 
 ## 현재 구조의 중요한 한계
 
@@ -293,7 +293,8 @@ Windows 프로그램은 다음 정책을 권장한다.
 - 로컬 캐시 위치는 기본적으로 `%LOCALAPPDATA%\GSCertLocalReview\rules_bundle.json`이다.
 - `점검 실행` 버튼은 캐시된 규칙과 로컬 파일/폴더 스캔 결과를 `local_runner.py`에 전달한다.
 - `required_artifact_file`, `required_file_name_contains`, `downloadable_artifact_check`, `rawdata_folder_structure_check`는 로컬에서 1차 판단한다.
-- 문서 내부 값 비교가 필요한 규칙은 현재 `미지원`으로 표시한다.
+- `document_artifact_check`는 필요한 파일 개수와 Word 기본 내용 검사 일부를 로컬에서 판단한다.
+- PDF/Excel 내부 값 비교와 복잡한 산출물 간 비교가 필요한 규칙은 현재 `미지원`으로 표시한다.
 
 ## 추천 구현 단계
 

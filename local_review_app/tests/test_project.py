@@ -1,6 +1,7 @@
 import tempfile
 import unittest
 from pathlib import Path
+from zipfile import ZipFile
 
 from gscert_local_review.project import infer_project_number
 from gscert_local_review.local_runner import FAIL, PASS, UNSUPPORTED, run_cached_rules
@@ -101,14 +102,27 @@ class LocalReviewProjectTests(unittest.TestCase):
 
     def test_run_cached_rules_marks_document_rule_unsupported(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            scan = scan_folder(Path(temp_dir))
+            root = Path(temp_dir)
+            (root / "TTA-26-00727 합의서.pdf").write_bytes(b"pdf")
+            scan = scan_folder(root)
             bundle = {
                 "rules": [
                     {
                         "code": "artifact_02",
                         "name": "합의서",
                         "rule_type": "document_artifact_check",
-                        "config_json": {},
+                        "config_json": {
+                            "filename_keywords": ["합의서", "{project_number}"],
+                            "extensions": [".pdf"],
+                            "required_files": [{"extensions": [".pdf"], "exact_count": 1}],
+                            "content_checks": [
+                                {
+                                    "type": "pdf_first_page_label_value_contains",
+                                    "label": "시험신청번호",
+                                    "expected": "{project_number}",
+                                }
+                            ],
+                        },
                     }
                 ]
             }
@@ -117,6 +131,42 @@ class LocalReviewProjectTests(unittest.TestCase):
 
             self.assertEqual(summary.unsupported_count, 1)
             self.assertEqual(summary.results[0].status, UNSUPPORTED)
+
+    def test_run_cached_rules_checks_docx_table_next_cell(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_docx_with_table(
+                root / "TTA-26-00727 합의서.docx",
+                [["시험신청번호", "TTA-26-00727"]],
+            )
+            scan = scan_folder(root)
+            bundle = {
+                "rules": [
+                    {
+                        "code": "artifact_02",
+                        "name": "합의서",
+                        "rule_type": "document_artifact_check",
+                        "config_json": {
+                            "filename_keywords": ["합의서", "{project_number}"],
+                            "extensions": [".docx"],
+                            "required_files": [{"extensions": [".docx"], "exact_count": 1}],
+                            "content_checks": [
+                                {
+                                    "type": "docx_table_next_cell_equals",
+                                    "extensions": [".docx"],
+                                    "label": "시험신청번호",
+                                    "expected": "{project_number}",
+                                }
+                            ],
+                        },
+                    }
+                ]
+            }
+
+            summary = run_cached_rules(scan, bundle, "TTA-26-00727")
+
+            self.assertEqual(summary.passed_count, 1)
+            self.assertEqual(summary.results[0].status, PASS)
 
     def test_run_cached_rules_accepts_rawdata_zip_presence(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -142,6 +192,24 @@ class LocalReviewProjectTests(unittest.TestCase):
 
             self.assertEqual(summary.passed_count, 1)
             self.assertEqual(summary.results[0].status, PASS)
+
+def _write_docx_with_table(path: Path, rows: list[list[str]]) -> None:
+    cells_xml = []
+    for row in rows:
+        row_cells = "".join(
+            f"<w:tc><w:p><w:r><w:t>{cell}</w:t></w:r></w:p></w:tc>"
+            for cell in row
+        )
+        cells_xml.append(f"<w:tr>{row_cells}</w:tr>")
+    document_xml = (
+        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+        "<w:body><w:tbl>"
+        + "".join(cells_xml)
+        + "</w:tbl></w:body></w:document>"
+    )
+    with ZipFile(path, "w") as archive:
+        archive.writestr("word/document.xml", document_xml)
 
 
 if __name__ == "__main__":

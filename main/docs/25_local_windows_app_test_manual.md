@@ -22,7 +22,7 @@
 - 점검 결과 Excel/HTML 내보내기
 - 로컬 실행 결과 서버 업로드
 
-즉, 지금 앱은 “규칙 공유 구조와 로컬 실행기 1차 연결 단계”이다. 파일명, 확장자, 개수, 단순 rawdata 폴더/파일 존재 여부처럼 로컬 파일 목록만으로 판단할 수 있는 규칙은 테스트할 수 있다. Word/PDF/Excel 내부 내용을 읽어 비교하는 규칙은 아직 서버 점검 엔진 전용이며, 로컬 앱에서는 `미지원`으로 표시된다.
+즉, 지금 앱은 “규칙 공유 구조와 로컬 실행기 1차 연결 단계”이다. 파일명, 확장자, 개수, 단순 rawdata 폴더/파일 존재 여부처럼 로컬 파일 목록만으로 판단할 수 있는 규칙은 테스트할 수 있다. Word 문서의 기본 텍스트/표/머리글/바닥글 검사 일부도 로컬에서 실행한다. PDF/Excel 내부 내용과 복잡한 문서 비교 규칙은 아직 서버 점검 엔진 전용이며, 로컬 앱에서는 `미지원`으로 표시된다.
 
 ## 폴더 구조
 
@@ -154,12 +154,23 @@ Windows 앱은 서버의 규칙 bundle을 내려받아 로컬 JSON 파일로 저
 | `required_file_name_contains` | 파일명/경로 키워드 포함 여부 확인 |
 | `downloadable_artifact_check` | 다운로드 파일 존재, 확장자, 개수 조건 확인 |
 | `rawdata_folder_structure_check` | rawdata 관련 폴더 또는 파일 존재 여부 확인 |
+| `document_artifact_check` | 필요한 Word/PDF 파일 개수 확인, Word 기본 내용 검사 일부 실행 |
 
-다음처럼 문서 내부 내용을 읽어야 하는 규칙은 아직 로컬 앱에서 `미지원`으로 표시된다.
+`document_artifact_check`에서 현재 로컬 앱이 실행하는 Word 내용 검사는 다음과 같다.
+
+| 검사 유형 | 로컬 앱 처리 |
+| --- | --- |
+| `docx_table_next_cell_equals` | Word 표에서 라벨 오른쪽 셀 값 비교 |
+| `docx_text_contains` | Word 전체 텍스트 포함 여부 확인 |
+| `docx_header_contains` | Word 머리글 포함 여부 확인 |
+| `docx_footer_contains` | Word 바닥글 포함 여부 확인 |
+| `docx_next_paragraph_matches` | 지정 문구 다음 문단의 정규식 형식 확인 |
+
+다음처럼 복잡한 문서 내부 내용을 읽어야 하는 규칙은 아직 로컬 앱에서 `미지원`으로 표시된다.
 
 | 규칙 유형 | 이유 |
 | --- | --- |
-| `document_artifact_check` | Word/PDF 내부 값 비교 필요 |
+| `document_artifact_check`의 PDF 내용 검사 | PDF 텍스트 추출 엔진 미연결 |
 | `excel_feature_list_check` | Excel 시트/셀 내용 분석 필요 |
 | `test_plan_document_check` | 시험계획서 본문/머리글/바닥글 분석 필요 |
 | `test_case_check` | 테스트케이스 Excel 내용 분석 필요 |
