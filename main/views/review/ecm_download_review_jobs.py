@@ -3,13 +3,15 @@ import logging
 import re
 from dataclasses import dataclass
 from datetime import timedelta, timezone as datetime_timezone
+from io import BytesIO
 from pathlib import Path
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db import transaction
 from django.db.utils import DatabaseError
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 
 from main.models import (
@@ -432,6 +434,37 @@ def get_project_results_payload(job_project_id):
     }
 
 
+def get_project_results_excel_response(job_project_id):
+    try:
+        project = (
+            DownloadReviewProject.objects
+            .select_related("job")
+            .get(id=job_project_id)
+        )
+    except DownloadReviewProject.DoesNotExist as exc:
+        raise DownloadReviewNotFoundError("작업 프로젝트를 찾을 수 없습니다.") from exc
+
+    results = list(project.rule_results.order_by("sequence", "id"))
+    rows = _project_excel_rows(project, results)
+    filename = f"{project.project_number}_점검결과.xlsx"
+    return _xlsx_response(filename, "점검결과", rows)
+
+
+def get_job_results_excel_response(job_id):
+    job = get_job_or_raise(job_id)
+    projects = (
+        job.projects
+        .order_by("created_at", "id")
+        .prefetch_related("rule_results")
+    )
+    rows = [_project_summary_excel_header()]
+    for project in projects:
+        project_results = sorted(project.rule_results.all(), key=lambda item: (item.sequence, str(item.id)))
+        rows.extend(_project_summary_excel_rows(project, project_results))
+    filename = f"download_review_{job.id}_전체점검결과.xlsx"
+    return _xlsx_response(filename, "전체점검결과", rows)
+
+
 def find_active_job():
     running = (
         DownloadReviewJob.objects
@@ -752,6 +785,148 @@ def serialize_rule_result(result):
         "raw_detail": _public_raw_detail(raw_detail),
         "created_at": _iso(result.created_at),
     }
+
+
+def _project_excel_rows(project, results):
+    rows = [
+        ["프로젝트번호", project.project_number],
+        ["회사명", (project.ecm_row_json or {}).get("company", "")],
+        ["제품명", (project.ecm_row_json or {}).get("product", "")],
+        ["작업상태", project_status_label(project.status)],
+        ["점검결과", review_status_label(project.review_status)],
+        ["현재단계", project.current_step],
+        ["오류", project.error_message],
+        [],
+        _rule_result_excel_header(),
+    ]
+    for result in results:
+        rows.append(_rule_result_excel_row(project, result))
+    if not results:
+        rows.append(["", "", "", "", "", "", "", "생성된 규칙 결과가 없습니다.", ""])
+    return rows
+
+
+def _project_summary_excel_header():
+    return [
+        "프로젝트번호",
+        "회사명",
+        "제품명",
+        "작업상태",
+        "점검결과",
+        "현재단계",
+        "규칙번호",
+        "점검항목",
+        "결과",
+        "파일명",
+        "기대값",
+        "실제값",
+        "메시지",
+    ]
+
+
+def _rule_result_excel_header():
+    return [
+        "규칙번호",
+        "점검항목",
+        "결과",
+        "파일명",
+        "기대값",
+        "실제값",
+        "메시지",
+        "파일경로",
+        "생성일시",
+    ]
+
+
+def _project_summary_excel_rows(project, results):
+    ecm_row = project.ecm_row_json or {}
+    base = [
+        project.project_number,
+        ecm_row.get("company", ""),
+        ecm_row.get("product", ""),
+        project_status_label(project.status),
+        review_status_label(project.review_status),
+        project.current_step,
+    ]
+    if not results:
+        return [base + ["", "", "", "", "", "", project.error_message or "생성된 규칙 결과가 없습니다."]]
+    return [
+        base + [
+            result.sequence,
+            result.rule_name,
+            rule_status_label(result.status),
+            result.file_name,
+            result.expected,
+            result.actual,
+            result.message,
+        ]
+        for result in results
+    ]
+
+
+def _rule_result_excel_row(project, result):
+    return [
+        result.sequence,
+        result.rule_name,
+        rule_status_label(result.status),
+        result.file_name,
+        result.expected,
+        result.actual,
+        result.message,
+        _display_path(result.file_path, project.project_number),
+        _iso(result.created_at) or "",
+    ]
+
+
+def _xlsx_response(filename, sheet_title, rows):
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except Exception as exc:
+        raise DownloadReviewJobRequestError("엑셀 파일 생성을 위해 openpyxl이 필요합니다.") from exc
+
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    worksheet.title = str(sheet_title or "점검결과")[:31]
+    for row in rows:
+        worksheet.append(row)
+
+    header_fill = PatternFill("solid", fgColor="E7EEF8")
+    header_font = Font(bold=True)
+    for row in worksheet.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+        if _is_header_row(row):
+            for cell in row:
+                cell.fill = header_fill
+                cell.font = header_font
+
+    for column_cells in worksheet.columns:
+        column_letter = get_column_letter(column_cells[0].column)
+        max_length = max(len(str(cell.value or "")) for cell in column_cells)
+        worksheet.column_dimensions[column_letter].width = min(max(max_length + 2, 10), 60)
+    worksheet.freeze_panes = "A2"
+
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    content = output.getvalue()
+    response = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    ascii_filename = "download_review_results.xlsx"
+    response["Content-Disposition"] = (
+        f"attachment; filename=\"{ascii_filename}\"; filename*=UTF-8''{quote(filename)}"
+    )
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+def _is_header_row(row):
+    values = [str(cell.value or "") for cell in row]
+    return "점검항목" in values and "결과" in values
 
 
 def get_rule_result_artifact_response(result_id, artifact_id):

@@ -231,10 +231,16 @@
             <h2>작업 상세 결과</h2>
             <p id="resultCaption">작업을 선택하면 프로젝트별 결과를 표시합니다.</p>
           </div>
-          <div class="segmented" aria-label="결과 필터">
-            <button class="segment active" type="button" data-result-filter="all">전체</button>
-            <button class="segment" type="button" data-result-filter="success">처리 완료</button>
-            <button class="segment" type="button" data-result-filter="failed">실패</button>
+          <div class="result-toolbar">
+            <button class="secondary-button compact-action" type="button" id="downloadJobResults" disabled>
+              <i class="fa-solid fa-file-excel"></i>
+              전체 엑셀 다운로드
+            </button>
+            <div class="segmented" aria-label="결과 필터">
+              <button class="segment active" type="button" data-result-filter="all">전체</button>
+              <button class="segment" type="button" data-result-filter="success">처리 완료</button>
+              <button class="segment" type="button" data-result-filter="failed">실패</button>
+            </div>
           </div>
         </div>
         <div class="table-wrap">
@@ -267,9 +273,15 @@
         <p class="eyebrow" id="modalEyebrow">상세</p>
         <h2 id="modalTitle">상세 정보</h2>
       </div>
-      <button class="icon-button" type="button" id="closeModal" aria-label="닫기">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
+      <div class="modal-header-actions">
+        <a class="mini-button modal-download-button" id="modalDownload" href="#" download hidden>
+          <i class="fa-solid fa-file-excel"></i>
+          엑셀 다운로드
+        </a>
+        <button class="icon-button" type="button" id="closeModal" aria-label="닫기">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
     </div>
     <div class="modal-body" id="modalBody"></div>
   </section>

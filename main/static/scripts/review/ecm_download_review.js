@@ -1206,6 +1206,11 @@ function renderJobs() {
 
 function renderResults() {
   const job = state.resultJobs.find((item) => item.id === state.resultJobId);
+  const downloadButton = qs("downloadJobResults");
+  if (downloadButton) {
+    downloadButton.disabled = !job;
+  }
+
   if (!job) {
     qs("resultCaption").textContent = "작업을 선택하면 프로젝트별 결과를 표시합니다.";
     qs("resultRows").innerHTML = `
@@ -1258,15 +1263,36 @@ function renderResults() {
   bindErrorButtons();
 }
 
-function openModal({ eyebrow, title, body }) {
+function openModal({ eyebrow, title, body, downloadHref = "" }) {
   qs("modalEyebrow").textContent = eyebrow;
   qs("modalTitle").textContent = title;
   qs("modalBody").innerHTML = body;
+  setModalDownload(downloadHref);
   qs("detailModal").hidden = false;
 }
 
 function closeModal() {
   qs("detailModal").hidden = true;
+  setModalDownload("");
+}
+
+function setModalDownload(href) {
+  const link = qs("modalDownload");
+  if (!link) return;
+
+  if (href) {
+    link.href = href;
+    link.hidden = false;
+    return;
+  }
+
+  link.href = "#";
+  link.hidden = true;
+}
+
+function downloadJobResults() {
+  if (!state.resultJobId) return;
+  window.location.href = `/api/jobs/${encodeURIComponent(state.resultJobId)}/results.xlsx`;
 }
 
 function openRequestCompleteModal(payload, requestedCount) {
@@ -1422,6 +1448,10 @@ function renderLocalInspectionFallback(project, error) {
 
 function renderLatestInspectionResult(payload) {
   const project = normalizeApiJobProject(payload.project);
+  if (project.id) {
+    setModalDownload(`/api/job-projects/${encodeURIComponent(project.id)}/results.xlsx`);
+  }
+
   if (!payload.items.length) {
     qs("modalBody").innerHTML = `
       <div class="modal-message warning">
@@ -1651,6 +1681,55 @@ function findErrorItem(source, number) {
   return state.resultProjects.find((item) => item.id === number);
 }
 
+async function openJobProjectRulesModal(jobProjectId, project = null) {
+  const titleNumber = project?.number || jobProjectId;
+
+  openModal({
+    eyebrow: "점검 결과",
+    title: `${titleNumber} 규칙별 점검 결과`,
+    body: `<p class="modal-lead">점검 결과를 불러오는 중입니다.</p>`
+  });
+
+  try {
+    const payload = await requestJson(`/api/job-projects/${jobProjectId}/results/`);
+    const rows = renderInspectionRows(payload.items);
+    setModalDownload(`/api/job-projects/${encodeURIComponent(jobProjectId)}/results.xlsx`);
+
+    qs("modalBody").innerHTML = payload.items.length
+      ? `
+        <div class="table-wrap modal-table inspection-result-table">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>번호</th>
+                <th>점검항목</th>
+                <th>결과</th>
+                <th>파일명</th>
+                <th>기대값</th>
+                <th>실제값</th>
+                <th>산출물</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+      `
+      : `
+        <div class="modal-message warning">
+          <strong>생성된 규칙 결과가 없습니다.</strong>
+          <p>작업 자체가 실패했거나 아직 규칙 검사가 실행되지 않은 프로젝트입니다.</p>
+        </div>
+      `;
+  } catch (error) {
+    qs("modalBody").innerHTML = `
+      <div class="modal-message warning">
+        <strong>${escapeHtml(error.message)}</strong>
+        <p>규칙 결과를 다시 조회해 주세요.</p>
+      </div>
+    `;
+  }
+}
+
 async function openResultRulesModal(jobProjectId) {
   const project = state.resultProjects.find((item) => item.id === jobProjectId);
   if (!project) return;
@@ -1664,6 +1743,7 @@ async function openResultRulesModal(jobProjectId) {
   try {
     const payload = await requestJson(`/api/job-projects/${jobProjectId}/results/`);
     const rows = renderInspectionRows(payload.items);
+    setModalDownload(`/api/job-projects/${encodeURIComponent(jobProjectId)}/results.xlsx`);
 
     qs("modalBody").innerHTML = payload.items.length
       ? `
@@ -1867,6 +1947,7 @@ function bindControls() {
     }
   });
 
+  qs("downloadJobResults").addEventListener("click", downloadJobResults);
 
   document.querySelectorAll("[data-result-filter]").forEach((button) => {
     button.addEventListener("click", () => {

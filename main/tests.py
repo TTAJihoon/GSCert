@@ -50,7 +50,9 @@ from main.views.review.ecm_download_review_api import (
     active_job,
     job_cancel,
     job_detail,
+    job_project_results_excel,
     job_project_results,
+    job_results_excel,
     job_projects,
     jobs,
     latest_project_results,
@@ -1154,6 +1156,57 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(projects_data["items"][0]["status_label"], "검사중")
         self.assertEqual(results_response.status_code, 200)
         self.assertEqual(results_data["items"][0]["status_label"], "정상")
+
+    def test_result_excel_endpoints_return_workbooks(self):
+        from openpyxl import load_workbook
+
+        created = json.loads(self._post_job(["TTA-26-00010"]).content.decode("utf-8"))
+        project = DownloadReviewProject.objects.get(project_number="TTA-26-00010")
+        DownloadReviewRuleResult.objects.create(
+            job_project=project,
+            rule_code="required-report",
+            rule_name="시험성적서 PDF 존재",
+            sequence=1,
+            file_path="TTA-26-00010/report.pdf",
+            file_name="report.pdf",
+            status=DownloadReviewRuleStatus.PASS,
+            expected="파일 존재",
+            actual="파일 존재",
+            message="정상 확인",
+        )
+
+        project_response = job_project_results_excel(
+            self.factory.get(f"/api/job-projects/{project.id}/results.xlsx"),
+            project.id,
+        )
+        job_response = job_results_excel(
+            self.factory.get(f"/api/jobs/{created['job_id']}/results.xlsx"),
+            created["job_id"],
+        )
+
+        self.assertEqual(project_response.status_code, 200)
+        self.assertIn("spreadsheetml.sheet", project_response["Content-Type"])
+        self.assertIn("filename*=UTF-8''", project_response["Content-Disposition"])
+        project_workbook = load_workbook(BytesIO(project_response.content))
+        project_values = [
+            cell
+            for row in project_workbook.active.iter_rows(values_only=True)
+            for cell in row
+            if cell is not None
+        ]
+        self.assertIn("TTA-26-00010", project_values)
+        self.assertIn("시험성적서 PDF 존재", project_values)
+
+        self.assertEqual(job_response.status_code, 200)
+        job_workbook = load_workbook(BytesIO(job_response.content))
+        job_values = [
+            cell
+            for row in job_workbook.active.iter_rows(values_only=True)
+            for cell in row
+            if cell is not None
+        ]
+        self.assertIn("TTA-26-00010", job_values)
+        self.assertIn("시험성적서 PDF 존재", job_values)
 
     def test_latest_project_results_endpoint_returns_most_recent_finished_project(self):
         job = DownloadReviewJob.objects.create(

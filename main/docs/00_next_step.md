@@ -1,5 +1,13 @@
 # GSCert Next Step
 
+## 2026-06-19: 점검 결과 엑셀 다운로드 UI/API
+
+- `/download-review/` 점검 결과 상세 팝업 크기를 기존 대비 약 1.2배로 확대했다.
+- 프로젝트별 상세 팝업 안에 `엑셀 다운로드` 버튼을 추가하고, `GET /api/job-projects/<job_project_id>/results.xlsx`로 현재 팝업 내용을 다운로드하도록 연결했다.
+- 작업 조회 탭의 프로젝트 목록 상단에 `전체 엑셀 다운로드` 버튼을 추가하고, `GET /api/jobs/<job_id>/results.xlsx`로 선택 작업의 전체 프로젝트/규칙 결과를 한 번에 다운로드하도록 연결했다.
+- 진행 상황 탭의 상세 버튼에서 사용하던 규칙 결과 팝업 함수가 누락된 상태였으므로, 동일 API와 엑셀 다운로드 버튼을 사용하는 팝업 흐름으로 보완했다.
+- 관련 Excel 응답 테스트는 `main.tests.DownloadReviewJobsApiTests.test_result_excel_endpoints_return_workbooks`에 추가했다.
+
 ## 2026-06-19: 점검규칙 DB 수정 빠른 가이드
 
 - 점검규칙 저장 DB/테이블/컬럼과 실무 수정 예시는 `main/docs/27_rule_db_edit_quick_guide.md`에 정리했다.

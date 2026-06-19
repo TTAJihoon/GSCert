@@ -280,6 +280,14 @@
   flex-shrink: 0;
 }
 
+.result-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .auto-refresh-note {
   display: inline-flex;
   align-items: center;
@@ -856,8 +864,8 @@
 }
 
 .modal-panel {
-  width: min(920px, 100%);
-  max-height: min(760px, calc(100vh - 48px));
+  width: min(1104px, 100%);
+  max-height: min(912px, calc(100vh - 48px));
   overflow: hidden;
   border-radius: 8px;
   background: #fff;
@@ -879,8 +887,24 @@
   font-weight: 800;
 }
 
+.modal-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.modal-download-button {
+  gap: 6px;
+  min-height: 34px;
+}
+
+.modal-download-button[hidden] {
+  display: none;
+}
+
 .modal-body {
-  max-height: 640px;
+  max-height: min(768px, calc(100vh - 144px));
   overflow: auto;
   padding: 18px 20px 20px;
 }
