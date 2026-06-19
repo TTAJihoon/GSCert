@@ -8,6 +8,12 @@
 - `SELECT` 쿼리를 API 호출로 대체하는 방식과 SQL/API 매핑 예시는 `24_postgresql_api_access_manual.md`에 추가했다.
 - 현재 Windows 앱은 폴더 선택, 프로젝트번호 추정, 서버 기준정보 조회, 로컬 파일 스캔까지 테스트할 수 있고, 실제 점검 규칙 엔진 연결은 다음 구현 단계다.
 
+## 2026-06-19: 점검규칙 공유 아키텍처
+
+- 현재 점검규칙 저장/실행 구조와 웹/Windows 앱 공유 목표 구조는 `main/docs/26_rulebase_shared_architecture.md`에 구성도로 정리했다.
+- 현재 웹은 `inspection_rule` DB와 `ecm_download_review_inspection.py` 실행 코드를 사용하고, Windows 앱은 아직 규칙 실행 엔진에 연결되지 않았다.
+- 권장 구조는 중앙 rulebase DB + 규칙 배포 API + 공용 점검 엔진이며, Windows 앱은 규칙 정의 업데이트와 프로그램 업데이트를 분리해서 적용한다.
+
 ## 2026-06-17: 로컬 Windows 점검 앱 및 PostgreSQL 전환
 
 - 결정사항과 전환 설계는 `main/docs/23_local_desktop_postgresql_design.md`에 정리했다.

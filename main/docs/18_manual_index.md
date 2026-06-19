@@ -4,6 +4,7 @@
 
 - `24_postgresql_api_access_manual.md`: PostgreSQL 직접 접속 여부, 서버 API 조회 방법, PostgreSQL 전환 절차.
 - `25_local_windows_app_test_manual.md`: Windows 로컬 점검 앱 설치, 실행, 폴더 스캔, `.exe` 패키징 테스트 방법.
+- `26_rulebase_shared_architecture.md`: 점검규칙 저장/실행 구조, 웹/Windows 공유 구조, 업데이트 적용 방안.
 
 ## 이 문서의 목적
 
