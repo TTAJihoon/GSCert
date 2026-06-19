@@ -5,6 +5,7 @@
 - `24_postgresql_api_access_manual.md`: PostgreSQL 직접 접속 여부, 서버 API 조회 방법, PostgreSQL 전환 절차.
 - `25_local_windows_app_test_manual.md`: Windows 로컬 점검 앱 설치, 실행, 폴더 스캔, `.exe` 패키징 테스트 방법.
 - `26_rulebase_shared_architecture.md`: 점검규칙 저장/실행 구조, 웹/Windows 공유 구조, 업데이트 적용 방안.
+- `27_rule_db_edit_quick_guide.md`: 점검규칙이 저장되는 DB/테이블/컬럼과 실무 수정 예시.
 
 ## 이 문서의 목적
 
@@ -17,7 +18,7 @@
 | 상황 | 먼저 볼 문서 | 이어서 볼 문서 |
 | --- | --- | --- |
 | 다른 PC에서 바로 이어받기 | `00_next_step.md` | `20_download_review_operations_manual.md` |
-| 점검규칙 JSON을 수정하기 | `19_inspection_rule_manual.md` | `05_zip_inspection.md`, `02_database_design.md` |
+| 점검규칙 JSON을 수정하기 | `27_rule_db_edit_quick_guide.md` | `19_inspection_rule_manual.md`, `05_zip_inspection.md` |
 | 서버/worker를 실행하거나 상태 확인하기 | `20_download_review_operations_manual.md` | `10_operations_scripts.md`, `09_worker_process_design.md` |
 | Google Sheet 동기화와 WD 컬럼 확인하기 | `20_download_review_operations_manual.md` | `main/utils/ecmList/readme.md`, `02_database_design.md` |
 | API나 화면을 수정하기 | `21_developer_change_manual.md` | `08_ui_api_design.md`, `13_ui_mockup_design.md` |
@@ -36,6 +37,7 @@
 ### 2. 점검규칙
 
 - `19_inspection_rule_manual.md`: 점검규칙 JSON 구조, 수정 방법, 테스트 방법.
+- `27_rule_db_edit_quick_guide.md`: 규칙 DB 위치, 테이블/컬럼, 예시 JSON, 실제 수정 체크리스트.
 - `05_zip_inspection.md`: 산출물 점검 설계 원문과 구현 상태.
 - `02_database_design.md`: `inspection_rule`, `inspection_result`, `ecm_list` 관계.
 - `main/docs/codex_skills/gscert-download-review-maintainer/references/rules.md`: Codex skill에 포함되는 규칙 요약본.

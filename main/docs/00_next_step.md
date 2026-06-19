@@ -1,5 +1,10 @@
 # GSCert Next Step
 
+## 2026-06-19: 점검규칙 DB 수정 빠른 가이드
+
+- 점검규칙 저장 DB/테이블/컬럼과 실무 수정 예시는 `main/docs/27_rule_db_edit_quick_guide.md`에 정리했다.
+- 규칙 수정이 필요하면 먼저 해당 문서에서 `inspection_rule.config_json` 예시와 seed 반영 절차를 확인한다.
+
 ## 2026-06-19: Windows 로컬 규칙 실행기 1차 연결
 
 - Windows 앱이 서버에서 받은 규칙 bundle 캐시를 읽어 로컬 폴더 스캔 결과와 비교하도록 `local_review_app/gscert_local_review/local_runner.py`를 추가했다.
