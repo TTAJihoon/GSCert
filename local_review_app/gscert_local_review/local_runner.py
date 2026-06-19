@@ -5,7 +5,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from .document_reader import DocumentReadError, WordDocument, read_word_document
+from .document_reader import (
+    DocumentReadError,
+    ExcelWorkbook,
+    WordDocument,
+    read_excel_workbook,
+    read_pdf_text,
+    read_word_document,
+)
 from .scanner import FileRecord, FolderScan
 
 
@@ -91,7 +98,7 @@ def _evaluate_rule(scan: FolderScan, rule: dict[str, Any], project_number: str) 
     if rule_type == "rawdata_folder_structure_check":
         return _evaluate_rawdata_rule(scan, rule)
     if rule_type in DOCUMENT_RULE_TYPES:
-        return _unsupported_result(rule, "이 규칙은 문서 내용 검사 엔진 연결 후 로컬 앱에서 지원됩니다.")
+        return _evaluate_complex_document_rule(scan, rule, project_number)
     return _unsupported_result(rule, f"아직 로컬 앱에서 지원하지 않는 규칙 유형입니다: {rule_type or '-'}")
 
 
@@ -121,7 +128,8 @@ def _evaluate_document_artifact_rule(scan: FolderScan, rule: dict[str, Any], pro
             message=str(config.get("pass_message") or "필요한 문서 파일을 확인했습니다."),
         )
 
-    documents: dict[str, WordDocument] = {}
+    word_documents: dict[str, WordDocument] = {}
+    pdf_texts: dict[str, str] = {}
     failures: list[dict[str, str]] = []
     for check in supported_checks:
         check_extensions = _extensions(check) or [".docx", ".docm"]
@@ -137,12 +145,19 @@ def _evaluate_document_artifact_rule(scan: FolderScan, rule: dict[str, Any], pro
             continue
         file = candidates[0]
         try:
-            document = documents.setdefault(file.relative_path, read_word_document(Path(scan.folder) / file.relative_path))
-            result = _run_word_content_check(check, document, project_number)
+            if _content_check_type(check).startswith("pdf_"):
+                text = pdf_texts.setdefault(file.relative_path, read_pdf_text(Path(scan.folder) / file.relative_path, page_limit=1))
+                result = _run_pdf_content_check(check, text, project_number)
+            else:
+                document = word_documents.setdefault(
+                    file.relative_path,
+                    read_word_document(Path(scan.folder) / file.relative_path),
+                )
+                result = _run_word_content_check(check, document, project_number)
         except DocumentReadError as exc:
             result = {
                 "passed": False,
-                "expected": "Word 파일 파싱 가능",
+                "expected": "문서 파일 파싱 가능",
                 "actual": str(exc),
                 "message": str(exc),
             }
@@ -181,6 +196,49 @@ def _evaluate_document_artifact_rule(scan: FolderScan, rule: dict[str, Any], pro
         expected=required_result["expected"],
         actual=required_result["actual"],
         message=str(config.get("pass_message") or "문서 파일과 Word 내용을 확인했습니다."),
+        file_path=first.relative_path if first else "",
+        file_name=first.name if first else "",
+    )
+
+
+def _evaluate_complex_document_rule(scan: FolderScan, rule: dict[str, Any], project_number: str) -> LocalRuleResult:
+    config = _config(rule)
+    keywords = _keyword_list(config, rule, project_number)
+    matched_files = _matching_files(scan.files, keywords, _extensions(config))
+    required_result = _check_required_file_specs(config, matched_files)
+    if not required_result["passed"]:
+        return LocalRuleResult(
+            rule_code=str(rule.get("code") or ""),
+            rule_name=str(rule.get("name") or ""),
+            status=FAIL,
+            expected=required_result["expected"],
+            actual=required_result["actual"],
+            message=str(config.get("missing_message") or "필요한 파일을 찾지 못했습니다."),
+        )
+
+    simple_failures = _run_simple_complex_checks(scan, config, matched_files, project_number)
+    if simple_failures:
+        failure = simple_failures[0]
+        first = matched_files[0] if matched_files else None
+        return LocalRuleResult(
+            rule_code=str(rule.get("code") or ""),
+            rule_name=str(rule.get("name") or ""),
+            status=FAIL,
+            expected=failure["expected"],
+            actual=failure["actual"],
+            message=failure["message"],
+            file_path=first.relative_path if first else "",
+            file_name=first.name if first else "",
+        )
+
+    first = matched_files[0] if matched_files else None
+    return LocalRuleResult(
+        rule_code=str(rule.get("code") or ""),
+        rule_name=str(rule.get("name") or ""),
+        status=UNSUPPORTED,
+        expected="파일 존재 확인 후 세부 문서 검사",
+        actual=required_result["actual"],
+        message="파일은 확인했지만 이 규칙의 세부 내용 비교는 아직 로컬 앱에서 지원하지 않습니다.",
         file_path=first.relative_path if first else "",
         file_name=first.name if first else "",
     )
@@ -308,6 +366,67 @@ def _matching_files(files: list[FileRecord], keywords: list[str], extensions: li
     return matches
 
 
+def _run_simple_complex_checks(
+    scan: FolderScan,
+    config: dict[str, Any],
+    matched_files: list[FileRecord],
+    project_number: str,
+) -> list[dict[str, str]]:
+    failures: list[dict[str, str]] = []
+    sheet_name = _resolve_text(str(config.get("sheet_name") or ""), project_number)
+    title_text = _resolve_text(str(config.get("title_text") or ""), project_number)
+    if not sheet_name and not title_text:
+        return failures
+
+    excel_files = [file for file in matched_files if file.extension.lower() == ".xlsx"]
+    if not excel_files:
+        return failures
+
+    workbook = _read_first_excel_workbook(scan, excel_files[0])
+    if isinstance(workbook, dict):
+        failures.append(workbook)
+        return failures
+
+    if sheet_name and sheet_name not in workbook.sheet_names:
+        failures.append(
+            {
+                "expected": f"시트명: {sheet_name}",
+                "actual": ", ".join(workbook.sheet_names) or "시트 없음",
+                "message": str(config.get("sheet_message") or "필요한 시트를 찾지 못했습니다."),
+            }
+        )
+    if title_text and not _workbook_contains_text(workbook, title_text):
+        failures.append(
+            {
+                "expected": f"문서 내 제목: {title_text}",
+                "actual": "제목 문구 없음",
+                "message": str(config.get("content_message") or config.get("project_number_message") or "필요한 제목 문구를 찾지 못했습니다."),
+            }
+        )
+    return failures
+
+
+def _read_first_excel_workbook(scan: FolderScan, file: FileRecord) -> ExcelWorkbook | dict[str, str]:
+    try:
+        return read_excel_workbook(Path(scan.folder) / file.relative_path)
+    except DocumentReadError as exc:
+        return {
+            "expected": "Excel 파일 파싱 가능",
+            "actual": str(exc),
+            "message": str(exc),
+        }
+
+
+def _workbook_contains_text(workbook: ExcelWorkbook, expected: str) -> bool:
+    expected_normalized = _normalize(expected)
+    for sheet in workbook.sheets:
+        for row in sheet.rows:
+            for cell in row:
+                if expected_normalized in _normalize(cell):
+                    return True
+    return False
+
+
 def _check_required_file_specs(config: dict[str, Any], matched_files: list[FileRecord]) -> dict[str, Any]:
     specs = config.get("required_files") or []
     if not specs:
@@ -351,21 +470,26 @@ def _split_supported_content_checks(checks: list[Any]) -> tuple[list[dict[str, A
         "docx_header_contains",
         "docx_footer_contains",
         "docx_next_paragraph_matches",
+        "pdf_first_page_label_value_contains",
     }
     supported: list[dict[str, Any]] = []
     unsupported: list[dict[str, Any]] = []
     for check in checks:
         if not isinstance(check, dict):
             continue
-        if str(check.get("type") or "") in supported_types:
+        if _content_check_type(check) in supported_types:
             supported.append(check)
         else:
             unsupported.append(check)
     return supported, unsupported
 
 
+def _content_check_type(check: dict[str, Any]) -> str:
+    return str(check.get("type") or "")
+
+
 def _run_word_content_check(check: dict[str, Any], document: WordDocument, project_number: str) -> dict[str, Any]:
-    check_type = str(check.get("type") or "")
+    check_type = _content_check_type(check)
     if check_type == "docx_table_next_cell_equals":
         return _check_word_table_next_cell_equals(check, document, project_number)
     if check_type == "docx_text_contains":
@@ -407,6 +531,31 @@ def _run_word_content_check(check: dict[str, Any], document: WordDocument, proje
         expected=str(check.get("type") or "문서 검사"),
         actual="미지원",
         default_message="아직 지원하지 않는 문서 검사입니다.",
+    )
+
+
+def _run_pdf_content_check(check: dict[str, Any], text: str, project_number: str) -> dict[str, Any]:
+    check_type = _content_check_type(check)
+    if check_type == "pdf_first_page_label_value_contains":
+        label = str(check.get("label") or "")
+        expected = _resolve_text(str(check.get("expected") or ""), project_number)
+        label_index = _normalize_for_compare(text, check).find(_normalize_for_compare(label, check))
+        comparable_text = _normalize_for_compare(text, check)
+        expected_text = _normalize_for_compare(expected, check)
+        passed = label_index >= 0 and expected_text in comparable_text[label_index:]
+        return _content_result(
+            check,
+            passed,
+            expected=f"PDF 1페이지 {label} 주변에 {expected} 포함",
+            actual="포함" if passed else "누락",
+            default_message=f"PDF 1페이지에서 {label} 값을 확인하지 못했습니다.",
+        )
+    return _content_result(
+        check,
+        False,
+        expected=str(check.get("type") or "PDF 검사"),
+        actual="미지원",
+        default_message="아직 지원하지 않는 PDF 검사입니다.",
     )
 
 

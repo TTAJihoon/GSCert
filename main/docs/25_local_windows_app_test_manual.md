@@ -22,7 +22,7 @@
 - 점검 결과 Excel/HTML 내보내기
 - 로컬 실행 결과 서버 업로드
 
-즉, 지금 앱은 “규칙 공유 구조와 로컬 실행기 1차 연결 단계”이다. 파일명, 확장자, 개수, 단순 rawdata 폴더/파일 존재 여부처럼 로컬 파일 목록만으로 판단할 수 있는 규칙은 테스트할 수 있다. Word 문서의 기본 텍스트/표/머리글/바닥글 검사 일부도 로컬에서 실행한다. PDF/Excel 내부 내용과 복잡한 문서 비교 규칙은 아직 서버 점검 엔진 전용이며, 로컬 앱에서는 `미지원`으로 표시된다.
+즉, 지금 앱은 “규칙 공유 구조와 로컬 실행기 1차 연결 단계”이다. 파일명, 확장자, 개수, 단순 rawdata 폴더/파일 존재 여부처럼 로컬 파일 목록만으로 판단할 수 있는 규칙은 테스트할 수 있다. Word 문서의 기본 텍스트/표/머리글/바닥글 검사, PDF 1페이지 라벨 주변 텍스트 검사, `.xlsx` 시트명/제목 기초 검사도 로컬에서 실행한다. 복잡한 산출물 간 비교 규칙은 아직 서버 점검 엔진 전용이며, 로컬 앱에서는 `미지원`으로 표시된다.
 
 ## 폴더 구조
 
@@ -154,7 +154,8 @@ Windows 앱은 서버의 규칙 bundle을 내려받아 로컬 JSON 파일로 저
 | `required_file_name_contains` | 파일명/경로 키워드 포함 여부 확인 |
 | `downloadable_artifact_check` | 다운로드 파일 존재, 확장자, 개수 조건 확인 |
 | `rawdata_folder_structure_check` | rawdata 관련 폴더 또는 파일 존재 여부 확인 |
-| `document_artifact_check` | 필요한 Word/PDF 파일 개수 확인, Word 기본 내용 검사 일부 실행 |
+| `document_artifact_check` | 필요한 Word/PDF 파일 개수 확인, Word/PDF 기본 내용 검사 일부 실행 |
+| 기타 문서 규칙 | 필요한 파일 개수와 `.xlsx` 시트명/제목 기초 조건 확인 후 세부 비교는 미지원 표시 |
 
 `document_artifact_check`에서 현재 로컬 앱이 실행하는 Word 내용 검사는 다음과 같다.
 
@@ -165,20 +166,20 @@ Windows 앱은 서버의 규칙 bundle을 내려받아 로컬 JSON 파일로 저
 | `docx_header_contains` | Word 머리글 포함 여부 확인 |
 | `docx_footer_contains` | Word 바닥글 포함 여부 확인 |
 | `docx_next_paragraph_matches` | 지정 문구 다음 문단의 정규식 형식 확인 |
+| `pdf_first_page_label_value_contains` | PDF 1페이지에서 라벨 이후 기대값 포함 여부 확인 |
 
 다음처럼 복잡한 문서 내부 내용을 읽어야 하는 규칙은 아직 로컬 앱에서 `미지원`으로 표시된다.
 
 | 규칙 유형 | 이유 |
 | --- | --- |
-| `document_artifact_check`의 PDF 내용 검사 | PDF 텍스트 추출 엔진 미연결 |
-| `excel_feature_list_check` | Excel 시트/셀 내용 분석 필요 |
+| `excel_feature_list_check` | `.xlsx` 시트/제목 기초 확인 후 세부 Excel 내용 분석 필요 |
 | `test_plan_document_check` | 시험계획서 본문/머리글/바닥글 분석 필요 |
 | `test_case_check` | 테스트케이스 Excel 내용 분석 필요 |
 | `defect_report_check` | 결함리포트 Excel 내용 분석 필요 |
 | `inspection_checklist_check` | 점검표 Excel/PDF 내용 분석 필요 |
 | `test_report_document_check` | 시험성적서 Word/PDF 내용 분석 필요 |
 | `quality_evaluation_report_check` | 품질평가보고서 Word 내용 분석 필요 |
-| `quality_inspection_table_check` | 품질검사표 Excel 내용 분석 필요 |
+| `quality_inspection_table_check` | `.xlsx` 시트명 기초 확인 후 품질검사표 세부 값 비교 필요 |
 
 따라서 현재 로컬 결과에서 `미지원`은 부적합이 아니라 “프로그램 업데이트로 문서 검사 엔진 연결이 필요한 규칙”이라는 뜻이다.
 
@@ -264,16 +265,16 @@ TTA-26-00727_test/
 
 ## 현재 제한사항
 
-현재 앱은 기존 서버 점검 규칙 엔진 전체를 그대로 실행하지 않는다. 1차 로컬 runner는 파일/폴더 목록만으로 판단 가능한 규칙을 먼저 실행한다.
+현재 앱은 기존 서버 점검 규칙 엔진 전체를 그대로 실행하지 않는다. 1차 로컬 runner는 파일/폴더 목록, Word/PDF 기본 텍스트, `.xlsx` 기초 조건으로 판단 가능한 규칙을 먼저 실행한다.
 
 아직 없는 기능은 다음과 같다.
 
 - 점검 결과 상세 팝업
-- Word/PDF/Excel 내부 내용 검사
+- 산출물 간 복잡 비교 규칙의 완전한 로컬 실행
 - 점검 결과 저장/내보내기
 - 로컬 실행 결과 서버 업로드
 
-다음 구현 단계에서 기존 `main/views/review/ecm_download_review_inspection.py`의 문서 파서와 결과 생성 로직을 공용 엔진 경계로 분리해야 한다.
+다음 구현 단계에서 기존 `main/views/review/ecm_download_review_inspection.py`의 세부 비교 로직과 결과 생성 로직을 공용 엔진 경계로 분리해야 한다.
 
 ## 문제 해결
 
@@ -315,8 +316,7 @@ cd local_review_app
 
 ## 다음 구현 체크리스트
 
-1. 문서 검사 엔진이 Django ORM 의존 없이 실행될 수 있는 경계를 분리한다.
-2. Word/PDF/Excel 파서를 로컬 앱에서도 사용할 수 있도록 패키징한다.
-3. 상세 팝업을 연결한다.
-4. 결과 파일 저장 기능을 추가한다.
-5. PyInstaller 빌드 결과를 실제 Windows PC에서 실행 검증한다.
+1. 서버의 산출물 간 세부 비교 로직이 Django ORM 의존 없이 실행될 수 있는 경계를 분리한다.
+2. 상세 팝업을 연결한다.
+3. 결과 파일 저장 기능을 추가한다.
+4. PyInstaller 빌드 결과를 실제 Windows PC에서 실행 검증한다.

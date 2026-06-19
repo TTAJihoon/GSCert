@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
 
@@ -31,6 +32,21 @@ class WordDocument:
         return _normalize_spaces(" ".join([*self.paragraphs, table_text, self.header_text, self.footer_text]))
 
 
+@dataclass(frozen=True)
+class ExcelSheet:
+    name: str
+    rows: list[list[str]]
+
+
+@dataclass(frozen=True)
+class ExcelWorkbook:
+    sheets: list[ExcelSheet]
+
+    @property
+    def sheet_names(self) -> list[str]:
+        return [sheet.name for sheet in self.sheets]
+
+
 def read_word_document(path: Path) -> WordDocument:
     try:
         with ZipFile(path) as archive:
@@ -53,6 +69,40 @@ def read_word_document(path: Path) -> WordDocument:
         header_text=header_text,
         footer_text=footer_text,
     )
+
+
+def read_pdf_text(path: Path, *, page_limit: int | None = None) -> str:
+    try:
+        import fitz
+
+        texts: list[str] = []
+        with fitz.open(stream=path.read_bytes(), filetype="pdf") as document:
+            limit = document.page_count if page_limit is None else min(page_limit, document.page_count)
+            for page_index in range(limit):
+                texts.append(document[page_index].get_text("text"))
+        return _normalize_spaces(" ".join(texts))
+    except Exception as exc:
+        raise DocumentReadError(f"PDF 파일을 읽을 수 없습니다: {path.name}") from exc
+
+
+def read_excel_workbook(path: Path) -> ExcelWorkbook:
+    if path.suffix.lower() != ".xlsx":
+        raise DocumentReadError(f"현재 로컬 앱은 .xlsx Excel 파일만 읽을 수 있습니다: {path.name}")
+    try:
+        import openpyxl
+
+        workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        sheets: list[ExcelSheet] = []
+        for worksheet in workbook.worksheets:
+            rows = [
+                [_excel_cell_text(cell) for cell in row]
+                for row in worksheet.iter_rows(values_only=True)
+            ]
+            sheets.append(ExcelSheet(name=worksheet.title, rows=_trim_empty_edges(rows)))
+        workbook.close()
+        return ExcelWorkbook(sheets=sheets)
+    except Exception as exc:
+        raise DocumentReadError(f"Excel 파일을 읽을 수 없습니다: {path.name}") from exc
 
 
 def _read_required_xml(archive: ZipFile, name: str) -> bytes:
@@ -88,3 +138,24 @@ def _element_text(element: ElementTree.Element) -> str:
 
 def _normalize_spaces(value: str) -> str:
     return " ".join(str(value or "").split())
+
+
+def _excel_cell_text(value: Any) -> str:
+    if value is None:
+        return ""
+    return _normalize_spaces(str(value))
+
+
+def _trim_empty_edges(rows: list[list[str]]) -> list[list[str]]:
+    trimmed = [list(row) for row in rows]
+    while trimmed and not any(cell for cell in trimmed[0]):
+        trimmed.pop(0)
+    while trimmed and not any(cell for cell in trimmed[-1]):
+        trimmed.pop()
+    if not trimmed:
+        return []
+    max_width = max((len(row) for row in trimmed), default=0)
+    right = max_width
+    while right > 0 and all(right > len(row) or not row[right - 1] for row in trimmed):
+        right -= 1
+    return [row[:right] for row in trimmed]

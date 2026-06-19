@@ -5,9 +5,10 @@
 - Windows 앱이 서버에서 받은 규칙 bundle 캐시를 읽어 로컬 폴더 스캔 결과와 비교하도록 `local_review_app/gscert_local_review/local_runner.py`를 추가했다.
 - 앱 화면에 `점검 실행` 버튼과 규칙별 결과 테이블을 추가했다.
 - 현재 로컬에서 직접 판단하는 규칙 유형은 `required_artifact_file`, `required_file_name_contains`, `downloadable_artifact_check`, `rawdata_folder_structure_check`이다.
-- `document_artifact_check`는 필요한 파일 개수와 Word 기본 내용 검사 일부를 로컬에서 판단한다.
-- PDF/Excel 내부 내용을 읽거나 복잡한 산출물 간 비교가 필요한 규칙은 아직 서버 엔진 전용이며, 로컬 앱에서는 `미지원`으로 표시한다.
-- 다음 단계는 PDF 텍스트 추출 또는 Excel 파서 중 하나를 로컬 앱에 안전하게 패키징해 미지원 규칙을 줄이는 것이다.
+- `document_artifact_check`는 필요한 파일 개수와 Word/PDF 기본 내용 검사 일부를 로컬에서 판단한다.
+- `.xlsx` 문서는 시트명/제목 같은 기초 조건을 확인한다.
+- 복잡한 산출물 간 비교가 필요한 규칙은 아직 서버 엔진 전용이며, 로컬 앱에서는 `미지원`으로 표시한다.
+- 다음 단계는 서버의 세부 산출물 비교 로직을 공용 엔진으로 더 작게 분리해 로컬 앱의 `미지원` 범위를 줄이는 것이다.
 
 ## 2026-06-18: PostgreSQL/API 및 Windows 앱 테스트 매뉴얼
 

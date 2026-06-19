@@ -12,6 +12,8 @@ Set-Location $Root
     --noconfirm `
     --windowed `
     --clean `
+    --hidden-import fitz `
+    --hidden-import openpyxl `
     --distpath dist `
     --workpath build `
     --specpath build `

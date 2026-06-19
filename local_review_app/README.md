@@ -10,9 +10,11 @@ This folder is intentionally separated from the Django server package so the des
 - Infer a project number from the folder or file names.
 - Fetch project metadata from the Django server API.
 - Scan local files and show a file summary.
+- Download and cache the shared server rulebase.
+- Run local file/folder checks and a first set of Word/PDF/Excel document checks.
 - Provide a packaging script for Windows `.exe` builds.
 
-The full rule engine will be connected in the next implementation step. The app structure is already prepared so that the local runner can call the shared inspection engine without mixing desktop-only packaging files into the server deployment.
+Some server-side deep comparison rules are still reported as unsupported in the local app when they require complex cross-document extraction. The app still checks required files first, then clearly separates unsupported deep checks from missing-file failures.
 
 ## Install for Development
 

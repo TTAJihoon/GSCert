@@ -100,10 +100,10 @@ class LocalReviewProjectTests(unittest.TestCase):
             self.assertEqual(summary.failed_count, 1)
             self.assertEqual(summary.results[0].status, FAIL)
 
-    def test_run_cached_rules_marks_document_rule_unsupported(self):
+    def test_run_cached_rules_checks_pdf_first_page_text(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "TTA-26-00727 합의서.pdf").write_bytes(b"pdf")
+            _write_pdf(root / "TTA-26-00727 agreement.pdf", "ApplicationNo TTA-26-00727")
             scan = scan_folder(root)
             bundle = {
                 "rules": [
@@ -112,13 +112,14 @@ class LocalReviewProjectTests(unittest.TestCase):
                         "name": "합의서",
                         "rule_type": "document_artifact_check",
                         "config_json": {
-                            "filename_keywords": ["합의서", "{project_number}"],
+                            "filename_keywords": ["agreement", "{project_number}"],
                             "extensions": [".pdf"],
                             "required_files": [{"extensions": [".pdf"], "exact_count": 1}],
                             "content_checks": [
                                 {
                                     "type": "pdf_first_page_label_value_contains",
-                                    "label": "시험신청번호",
+                                    "extensions": [".pdf"],
+                                    "label": "ApplicationNo",
                                     "expected": "{project_number}",
                                 }
                             ],
@@ -129,8 +130,8 @@ class LocalReviewProjectTests(unittest.TestCase):
 
             summary = run_cached_rules(scan, bundle, "TTA-26-00727")
 
-            self.assertEqual(summary.unsupported_count, 1)
-            self.assertEqual(summary.results[0].status, UNSUPPORTED)
+            self.assertEqual(summary.passed_count, 1)
+            self.assertEqual(summary.results[0].status, PASS)
 
     def test_run_cached_rules_checks_docx_table_next_cell(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -193,6 +194,32 @@ class LocalReviewProjectTests(unittest.TestCase):
             self.assertEqual(summary.passed_count, 1)
             self.assertEqual(summary.results[0].status, PASS)
 
+    def test_complex_excel_rule_checks_title_then_marks_unsupported(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            _write_xlsx(root / "TTA-26-00727 기능리스트.xlsx", "Sheet1", [["TTA-26-00727 기능리스트"]])
+            scan = scan_folder(root)
+            bundle = {
+                "rules": [
+                    {
+                        "code": "artifact_06",
+                        "name": "기능리스트",
+                        "rule_type": "excel_feature_list_check",
+                        "config_json": {
+                            "filename_keywords": ["기능", "{project_number}"],
+                            "extensions": [".xlsx"],
+                            "exact_count": 1,
+                            "title_text": "{project_number} 기능리스트",
+                        },
+                    }
+                ]
+            }
+
+            summary = run_cached_rules(scan, bundle, "TTA-26-00727")
+
+            self.assertEqual(summary.unsupported_count, 1)
+            self.assertEqual(summary.results[0].status, UNSUPPORTED)
+
 def _write_docx_with_table(path: Path, rows: list[list[str]]) -> None:
     cells_xml = []
     for row in rows:
@@ -210,6 +237,28 @@ def _write_docx_with_table(path: Path, rows: list[list[str]]) -> None:
     )
     with ZipFile(path, "w") as archive:
         archive.writestr("word/document.xml", document_xml)
+
+
+def _write_pdf(path: Path, text: str) -> None:
+    import fitz
+
+    document = fitz.open()
+    page = document.new_page()
+    page.insert_text((72, 72), text)
+    document.save(path)
+    document.close()
+
+
+def _write_xlsx(path: Path, sheet_name: str, rows: list[list[str]]) -> None:
+    import openpyxl
+
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    worksheet.title = sheet_name
+    for row in rows:
+        worksheet.append(row)
+    workbook.save(path)
+    workbook.close()
 
 
 if __name__ == "__main__":
