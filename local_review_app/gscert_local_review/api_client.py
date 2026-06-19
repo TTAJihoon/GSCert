@@ -63,6 +63,14 @@ class GSCertApiClient:
         payload = self._get_json(f"/api/local-review/projects/{quoted_number}/metadata/{suffix}")
         return ProjectMetadata.from_payload(payload)
 
+    def rule_manifest(self) -> dict[str, Any]:
+        return self._get_json("/api/local-review/rules/manifest/")
+
+    def rule_bundle(self, version: str = "") -> dict[str, Any]:
+        query = urlencode({"version": version}) if version else ""
+        suffix = f"?{query}" if query else ""
+        return self._get_json(f"/api/local-review/rules/bundle/{suffix}")
+
     def _get_json(self, path: str) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
         request = Request(url, headers={"Accept": "application/json"})

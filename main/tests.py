@@ -54,6 +54,8 @@ from main.views.review.ecm_download_review_api import (
     job_projects,
     jobs,
     latest_project_results,
+    local_review_rules_bundle,
+    local_review_rules_manifest,
     projects,
     rule_result_artifact,
 )
@@ -2734,3 +2736,45 @@ class DownloadReviewJobsApiTests(TestCase):
             conn.commit()
         finally:
             conn.close()
+
+
+class LocalReviewRulebaseApiTests(TestCase):
+    databases = {"default", "workflow"}
+
+    def test_rulebase_manifest_and_bundle_return_enabled_rules(self):
+        DownloadReviewRule.objects.create(
+            code="artifact_01",
+            name="Contract",
+            rule_type="required_artifact_file",
+            config_json={"artifact_column": "Contract"},
+            enabled=True,
+            sort_order=1,
+        )
+        DownloadReviewRule.objects.create(
+            code="artifact_disabled",
+            name="Disabled",
+            rule_type="required_artifact_file",
+            enabled=False,
+            sort_order=2,
+        )
+
+        manifest_response = local_review_rules_manifest(
+            RequestFactory().get("/api/local-review/rules/manifest/")
+        )
+        manifest = json.loads(manifest_response.content.decode("utf-8"))
+
+        self.assertEqual(manifest_response.status_code, 200)
+        self.assertTrue(manifest["success"])
+        self.assertEqual(manifest["rule_count"], 1)
+        self.assertTrue(manifest["checksum"].startswith("sha256:"))
+
+        bundle_response = local_review_rules_bundle(
+            RequestFactory().get("/api/local-review/rules/bundle/")
+        )
+        bundle = json.loads(bundle_response.content.decode("utf-8"))
+
+        self.assertEqual(bundle_response.status_code, 200)
+        self.assertTrue(bundle["success"])
+        self.assertEqual(bundle["rule_count"], 1)
+        self.assertEqual(bundle["rules"][0]["code"], "artifact_01")
+        self.assertEqual(bundle["rules"][0]["config_json"]["artifact_column"], "Contract")

@@ -25,6 +25,10 @@ from main.views.review.ecm_reference_db import (
     get_projects_by_numbers,
     list_projects,
 )
+from main.views.review.ecm_rulebase import (
+    get_rulebase_bundle_payload,
+    get_rulebase_manifest_payload,
+)
 
 
 @require_GET
@@ -110,6 +114,22 @@ def local_review_project_metadata(request, project_number):
         payload = _error_payload(exc, "Reference DB lookup failed.")
         status = 500
 
+    response = JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_GET
+def local_review_rules_manifest(request):
+    payload = get_rulebase_manifest_payload()
+    response = JsonResponse(payload, json_dumps_params={"ensure_ascii": False})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_GET
+def local_review_rules_bundle(request):
+    payload, status = get_rulebase_bundle_payload(request.GET.get("version"))
     response = JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False})
     response["Cache-Control"] = "no-store"
     return response

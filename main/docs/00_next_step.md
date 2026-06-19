@@ -13,6 +13,7 @@
 - 현재 점검규칙 저장/실행 구조와 웹/Windows 앱 공유 목표 구조는 `main/docs/26_rulebase_shared_architecture.md`에 구성도로 정리했다.
 - 현재 웹은 `inspection_rule` DB와 `ecm_download_review_inspection.py` 실행 코드를 사용하고, Windows 앱은 아직 규칙 실행 엔진에 연결되지 않았다.
 - 권장 구조는 중앙 rulebase DB + 규칙 배포 API + 공용 점검 엔진이며, Windows 앱은 규칙 정의 업데이트와 프로그램 업데이트를 분리해서 적용한다.
+- 1차 구현으로 `GET /api/local-review/rules/manifest/`, `GET /api/local-review/rules/bundle/` API를 추가하고 Windows 앱에서 규칙 버전 확인/다운로드/로컬 캐시 저장까지 연결했다.
 
 ## 2026-06-17: 로컬 Windows 점검 앱 및 PostgreSQL 전환
 

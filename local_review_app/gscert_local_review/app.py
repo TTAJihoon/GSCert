@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 from .api_client import ApiClientError, GSCertApiClient, ProjectMetadata
 from .project import infer_project_number
+from .rule_cache import RuleCacheSummary, load_rule_cache, save_rule_cache
 from .scanner import FolderScan, scan_folder
 
 
@@ -38,10 +39,12 @@ class MainWindow(QMainWindow):
         self.resize(1120, 760)
         self.selected_folder: Path | None = None
         self.scan: FolderScan | None = None
+        self.rule_cache = load_rule_cache()
 
         root = QWidget()
         layout = QVBoxLayout(root)
         layout.addWidget(self._build_connection_box())
+        layout.addWidget(self._build_rulebase_box())
         layout.addWidget(self._build_folder_box())
         layout.addWidget(self._build_metadata_box())
         layout.addWidget(self._build_file_table(), stretch=1)
@@ -63,6 +66,23 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel("센터"), 0, 2)
         layout.addWidget(self.center, 0, 3)
         layout.addWidget(health_button, 0, 4)
+        layout.setColumnStretch(1, 1)
+        return box
+
+    def _build_rulebase_box(self) -> QGroupBox:
+        box = QGroupBox("Rulebase")
+        layout = QGridLayout(box)
+
+        self.rulebase_status = QLabel(self._rule_cache_text(self.rule_cache))
+        manifest_button = QPushButton("규칙 버전 확인")
+        manifest_button.clicked.connect(self.check_rule_manifest)
+        update_button = QPushButton("규칙 업데이트")
+        update_button.clicked.connect(self.update_rules)
+
+        layout.addWidget(QLabel("현재 규칙"), 0, 0)
+        layout.addWidget(self.rulebase_status, 0, 1)
+        layout.addWidget(manifest_button, 0, 2)
+        layout.addWidget(update_button, 0, 3)
         layout.setColumnStretch(1, 1)
         return box
 
@@ -133,6 +153,44 @@ class MainWindow(QMainWindow):
             return
         QMessageBox.information(self, "연결 확인", f"서버 연결 정상\n{payload.get('server_time', '')}")
 
+    def check_rule_manifest(self):
+        try:
+            manifest = self._client().rule_manifest()
+        except ApiClientError as exc:
+            self._show_error(str(exc))
+            return
+        cached_version = self.rule_cache.rulebase_version or "(없음)"
+        server_version = manifest.get("rulebase_version") or "(없음)"
+        QMessageBox.information(
+            self,
+            "규칙 버전 확인",
+            "\n".join(
+                [
+                    f"서버 규칙 버전: {server_version}",
+                    f"로컬 규칙 버전: {cached_version}",
+                    f"규칙 개수: {manifest.get('rule_count', 0)}",
+                    f"필요 엔진 버전: {manifest.get('engine_min_version', '')}",
+                ]
+            ),
+        )
+
+    def update_rules(self):
+        try:
+            bundle = self._client().rule_bundle()
+            self.rule_cache = save_rule_cache(bundle)
+        except ApiClientError as exc:
+            self._show_error(str(exc))
+            return
+        except OSError as exc:
+            self._show_error(f"규칙 캐시 저장에 실패했습니다: {exc}")
+            return
+        self.rulebase_status.setText(self._rule_cache_text(self.rule_cache))
+        QMessageBox.information(
+            self,
+            "규칙 업데이트",
+            f"규칙을 업데이트했습니다.\n버전: {self.rule_cache.rulebase_version}\n규칙 수: {self.rule_cache.rule_count}",
+        )
+
     def choose_folder(self):
         folder_name = QFileDialog.getExistingDirectory(self, "점검 대상 폴더 선택")
         if not folder_name:
@@ -174,6 +232,11 @@ class MainWindow(QMainWindow):
 
     def _client(self) -> GSCertApiClient:
         return GSCertApiClient(self.server_url.text().strip() or DEFAULT_SERVER_URL)
+
+    def _rule_cache_text(self, summary: RuleCacheSummary) -> str:
+        if not summary.exists:
+            return "로컬 규칙 없음"
+        return f"{summary.rulebase_version} / {summary.rule_count}개 / {summary.path}"
 
     def _set_metadata(self, metadata: ProjectMetadata):
         self.company.setText(metadata.company_name or "-")

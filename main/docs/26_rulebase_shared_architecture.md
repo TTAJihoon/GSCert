@@ -173,6 +173,8 @@ Windows 프로그램 업데이트를 위해 다음 API를 추가하는 것을 �
 | 규칙 bundle 다운로드 | `GET /api/local-review/rules/bundle/` | 활성 규칙 목록과 config JSON 다운로드 |
 | 특정 버전 다운로드 | `GET /api/local-review/rules/bundle/?version=2026.06.19.1` | 지정 버전 규칙 다운로드 |
 
+현재 1차 구현으로 위 세 API가 추가되었다. 규칙 원본은 현재 `DownloadReviewRule`/`inspection_rule`이며, 응답에는 활성화된 규칙만 포함된다.
+
 manifest 응답 예시는 다음과 같다.
 
 ```json
@@ -278,6 +280,14 @@ Windows 프로그램은 다음 정책을 권장한다.
 6. 로컬 캐시도 없으면 점검 실행을 막고 서버 연결을 안내한다.
 
 이 방식이면 대부분의 규칙 수정은 서버에서 관리하고, 프로그램 업데이트는 실행 엔진 변경이 있을 때만 필요하다.
+
+현재 1차 구현 상태:
+
+- 앱 화면에 `Rulebase` 영역을 추가했다.
+- `규칙 버전 확인` 버튼은 서버 manifest를 조회한다.
+- `규칙 업데이트` 버튼은 서버 bundle을 내려받아 로컬 JSON 캐시에 저장한다.
+- 로컬 캐시 위치는 기본적으로 `%LOCALAPPDATA%\GSCertLocalReview\rules_bundle.json`이다.
+- 아직 캐시된 규칙을 실제 점검 runner에 연결하지는 않았다.
 
 ## 추천 구현 단계
 

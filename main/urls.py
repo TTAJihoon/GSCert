@@ -24,6 +24,8 @@ from main.views.review.ecm_download_review_api import (
     latest_project_results as download_review_latest_project_results,
     local_review_health,
     local_review_project_metadata,
+    local_review_rules_bundle,
+    local_review_rules_manifest,
     projects as download_review_projects,
     rule_result_artifact as download_review_rule_result_artifact,
 )
@@ -61,4 +63,6 @@ urlpatterns = [
     path('api/projects/<str:project_number>/latest-results/', download_review_latest_project_results, name='download_review_latest_project_results'),
     path('api/local-review/health/', local_review_health, name='local_review_health'),
     path('api/local-review/projects/<str:project_number>/metadata/', local_review_project_metadata, name='local_review_project_metadata'),
+    path('api/local-review/rules/manifest/', local_review_rules_manifest, name='local_review_rules_manifest'),
+    path('api/local-review/rules/bundle/', local_review_rules_bundle, name='local_review_rules_bundle'),
 ]
