@@ -451,8 +451,15 @@
 }
 
 .check-col {
-  width: 46px;
+  width: 40px;
   text-align: center;
+}
+
+.check-col input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  cursor: pointer;
+  accent-color: var(--review-primary);
 }
 
 .check-col input:disabled {
@@ -1007,12 +1014,15 @@
   width: 180px;
 }
 
-/* 5~6. 기대값 / 실제값 — 넓게 + 줄바꿈 */
+/* 5~6. 기대값 / 실제값 — 넓게 + 줄바꿈 (nowrap 전역 규칙을 명시적으로 덮어씀) */
 .inspection-result-table .data-table th:nth-child(5),
 .inspection-result-table .data-table td:nth-child(5),
 .inspection-result-table .data-table th:nth-child(6),
 .inspection-result-table .data-table td:nth-child(6) {
   width: 280px;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 /* 7. 산출물 */

@@ -1,6 +1,7 @@
 import json
 import logging
 import re
+import zipfile
 from dataclasses import dataclass
 from datetime import timedelta, timezone as datetime_timezone
 from io import BytesIO
@@ -347,6 +348,235 @@ def get_latest_project_results_payload(project_number, center_code=None):
     }
 
 
+def get_bulk_projects_zip_response(project_numbers, center_code=None):
+    center_code = parse_center_code(center_code)
+    valid_numbers = [
+        n for n in project_numbers
+        if PROJECT_NUMBER_RE.match(str(n or "").strip())
+    ]
+    if not valid_numbers:
+        raise DownloadReviewJobRequestError("유효한 프로젝트번호가 없습니다.")
+
+    projects = (
+        DownloadReviewProject.objects
+        .select_related("job")
+        .exclude(job__status__in=ACTIVE_JOB_STATUSES)
+        .exclude(job__status=DownloadReviewJobStatus.CANCELED)
+        .filter(center_code=center_code, project_number__in=valid_numbers)
+        .order_by("project_number", "-completed_at", "-updated_at", "-created_at", "-id")
+    )
+
+    latest_by_number = {}
+    for project in projects:
+        if project.project_number not in latest_by_number:
+            latest_by_number[project.project_number] = project
+
+    zip_buffer = BytesIO()
+    with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for number in valid_numbers:
+            project = latest_by_number.get(number)
+            if project is None:
+                continue
+            results = list(project.rule_results.order_by("sequence", "id"))
+            xlsx_bytes = _xlsx_project_bytes(project, results)
+            zf.writestr(f"{number}_점검결과.xlsx", xlsx_bytes)
+
+    zip_buffer.seek(0)
+    content = zip_buffer.getvalue()
+    response = HttpResponse(content, content_type="application/zip")
+    zip_filename = "점검결과_일괄다운로드.zip"
+    response["Content-Disposition"] = (
+        f"attachment; filename=\"bulk_inspection_results.zip\"; filename*=UTF-8''{quote(zip_filename)}"
+    )
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+def _xlsx_bytes(rows, sheet_title):
+    try:
+        import openpyxl
+        from openpyxl.styles import Alignment, Font, PatternFill
+        from openpyxl.utils import get_column_letter
+    except Exception as exc:
+        raise DownloadReviewJobRequestError("엑셀 파일 생성을 위해 openpyxl이 필요합니다.") from exc
+
+    workbook = openpyxl.Workbook()
+    worksheet = workbook.active
+    worksheet.title = str(sheet_title or "점검결과")[:31]
+    for row in rows:
+        worksheet.append(row)
+
+    header_fill = PatternFill("solid", fgColor="E7EEF8")
+    header_font = Font(bold=True)
+    for row in worksheet.iter_rows():
+        for cell in row:
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+        if _is_header_row(row):
+            for cell in row:
+                cell.fill = header_fill
+                cell.font = header_font
+
+    for column_cells in worksheet.columns:
+        column_letter = get_column_letter(column_cells[0].column)
+        max_length = max(len(str(cell.value or "")) for cell in column_cells)
+        worksheet.column_dimensions[column_letter].width = min(max(max_length + 2, 10), 60)
+    worksheet.freeze_panes = "A2"
+
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    return output.getvalue()
+
+
+def _split_slash(value):
+    if not value:
+        return []
+    return [p.strip() for p in str(value).split(" / ")]
+
+
+def _rule_result_sub_rows(result):
+    """Return [(expected, actual, passed_or_None), ...] for sub-rows, or [] for a single row."""
+    raw_detail = result.raw_detail_json or {}
+    subs = raw_detail.get("sub_checks")
+    if isinstance(subs, list) and len(subs) > 1:
+        return [
+            (str(s.get("expected") or ""), str(s.get("actual") or ""), s.get("passed"))
+            for s in subs
+        ]
+    exp_parts = _split_slash(result.expected)
+    act_parts = _split_slash(result.actual)
+    count = max(len(exp_parts), len(act_parts))
+    if count <= 1:
+        return []
+    return [
+        (
+            exp_parts[i] if i < len(exp_parts) else "",
+            act_parts[i] if i < len(act_parts) else "",
+            None,
+        )
+        for i in range(count)
+    ]
+
+
+def _write_project_to_ws(ws, project, results):
+    """Write project inspection results to worksheet, splitting ' / ' values into merged sub-rows."""
+    from openpyxl.styles import Alignment, Font, PatternFill
+
+    top_wrap = Alignment(vertical="top", wrap_text=True)
+    header_fill = PatternFill("solid", fgColor="E7EEF8")
+    header_font = Font(bold=True)
+
+    ecm_row = project.ecm_row_json or {}
+    for row_data in [
+        ["프로젝트번호", project.project_number],
+        ["회사명", ecm_row.get("company", "")],
+        ["제품명", ecm_row.get("product", "")],
+        ["작업상태", project_status_label(project.status)],
+        ["점검결과", review_status_label(project.review_status)],
+        ["현재단계", project.current_step],
+        ["오류", project.error_message],
+        [],
+    ]:
+        ws.append(row_data)
+        for cell in ws[ws.max_row]:
+            cell.alignment = top_wrap
+
+    ws.append(_rule_result_excel_header())
+    for cell in ws[ws.max_row]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = top_wrap
+
+    if not results:
+        ws.append(["", "", "", "", "", "", "", "생성된 규칙 결과가 없습니다.", ""])
+        for cell in ws[ws.max_row]:
+            cell.alignment = top_wrap
+        return
+
+    for result in results:
+        subs = _rule_result_sub_rows(result)
+        base_status = rule_status_label(result.status)
+        display_path = _display_path(result.file_path, project.project_number)
+        created = _iso(result.created_at) or ""
+
+        if not subs:
+            ws.append([
+                result.sequence, result.rule_name, base_status, result.file_name,
+                result.expected, result.actual, result.message, display_path, created,
+            ])
+            for cell in ws[ws.max_row]:
+                cell.alignment = top_wrap
+            continue
+
+        per_row_status = all(passed is not None for _, _, passed in subs)
+        first_row_idx = ws.max_row + 1
+
+        for i, (exp, act, passed) in enumerate(subs):
+            if per_row_status:
+                row_status = "정상" if passed is True else ("부적합" if passed is False else base_status)
+            else:
+                row_status = base_status if i == 0 else ""
+
+            if i == 0:
+                row_data = [
+                    result.sequence, result.rule_name, row_status, result.file_name,
+                    exp, act, result.message, display_path, created,
+                ]
+            else:
+                row_data = ["", "", row_status, "", exp, act, "", "", ""]
+
+            ws.append(row_data)
+            for cell in ws[ws.max_row]:
+                cell.alignment = top_wrap
+
+        last_row_idx = ws.max_row
+        # col indices: 1=규칙번호, 2=점검항목, 3=결과, 4=파일명, 5=기대값, 6=실제값, 7=메시지, 8=파일경로, 9=생성일시
+        merge_cols = [1, 2, 4, 7, 8, 9] if per_row_status else [1, 2, 3, 4, 7, 8, 9]
+        for col in merge_cols:
+            ws.merge_cells(start_row=first_row_idx, start_column=col, end_row=last_row_idx, end_column=col)
+            ws.cell(row=first_row_idx, column=col).alignment = top_wrap
+
+
+def _xlsx_project_bytes(project, results):
+    try:
+        import openpyxl
+        from openpyxl.utils import get_column_letter
+    except Exception as exc:
+        raise DownloadReviewJobRequestError("엑셀 파일 생성을 위해 openpyxl이 필요합니다.") from exc
+
+    workbook = openpyxl.Workbook()
+    ws = workbook.active
+    ws.title = "점검결과"
+    _write_project_to_ws(ws, project, results)
+
+    for col_cells in ws.columns:
+        col_letter = get_column_letter(col_cells[0].column)
+        max_len = max(
+            (len(str(cell.value or "")) for cell in col_cells if cell.value is not None),
+            default=10,
+        )
+        ws.column_dimensions[col_letter].width = min(max(max_len + 2, 10), 60)
+    ws.freeze_panes = "A10"
+
+    output = BytesIO()
+    workbook.save(output)
+    workbook.close()
+    return output.getvalue()
+
+
+def _xlsx_project_response(filename, project, results):
+    content = _xlsx_project_bytes(project, results)
+    response = HttpResponse(
+        content,
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+    response["Content-Disposition"] = (
+        f"attachment; filename=\"download_review_results.xlsx\"; filename*=UTF-8''{quote(filename)}"
+    )
+    response["Cache-Control"] = "no-store"
+    return response
+
+
 def cancel_download_review_job(job_id):
     workflow_alias = getattr(settings, "WORKFLOW_DATABASE_ALIAS", "workflow")
     with transaction.atomic(using=workflow_alias):
@@ -445,9 +675,8 @@ def get_project_results_excel_response(job_project_id):
         raise DownloadReviewNotFoundError("작업 프로젝트를 찾을 수 없습니다.") from exc
 
     results = list(project.rule_results.order_by("sequence", "id"))
-    rows = _project_excel_rows(project, results)
     filename = f"{project.project_number}_점검결과.xlsx"
-    return _xlsx_response(filename, "점검결과", rows)
+    return _xlsx_project_response(filename, project, results)
 
 
 def get_job_results_excel_response(job_id):

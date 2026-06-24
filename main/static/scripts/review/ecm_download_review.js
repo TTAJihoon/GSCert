@@ -388,7 +388,8 @@ const state = {
   resultJobs: [],
   resultProjects: [],
   resultLoadError: "",
-  resultProjectLoadError: ""
+  resultProjectLoadError: "",
+  lastCheckedIndex: -1
 };
 
 const tableColumnDefaults = {
@@ -771,7 +772,11 @@ function badge(status) {
 }
 
 function isProjectLocked(item) {
-  return item.review === "완료" || Boolean(item.activeJobId);
+  return Boolean(item.activeJobId);
+}
+
+function hasInspectionResult(item) {
+  return item.review === "완료" || item.review === "수정 필요" || item.review === "보류";
 }
 
 function isProjectSelectable(item) {
@@ -877,7 +882,7 @@ function renderProjects() {
     const disabled = locked ? "disabled" : "";
     const selected = state.focusedProject?.number === item.number ? "selected" : "";
     const lockedClass = locked ? "completed-locked" : "";
-    const hasDetail = item.review === "완료" || item.review === "수정 필요" || item.review === "보류";
+    const hasDetail = hasInspectionResult(item);
     const activeLabel = projectWorkStatusLabel(item);
     const checkboxLabel = activeLabel !== "요청 가능"
       ? `${item.number} ${activeLabel} 상태`
@@ -912,17 +917,32 @@ function renderProjects() {
 }
 
 function bindProjectRows() {
-  document.querySelectorAll("[data-project-check]").forEach((checkbox) => {
+  const checkboxes = Array.from(document.querySelectorAll("[data-project-check]"));
+  checkboxes.forEach((checkbox, idx) => {
     checkbox.addEventListener("click", (event) => {
       event.stopPropagation();
       const number = checkbox.dataset.projectCheck;
       const item = mockProjects.find((project) => project.number === number);
       if (!item || isProjectLocked(item)) return;
       state.selectionMessage = "";
-      if (checkbox.checked) {
-        state.selected.add(number);
+
+      if (event.shiftKey && state.lastCheckedIndex >= 0) {
+        const lo = Math.min(state.lastCheckedIndex, idx);
+        const hi = Math.max(state.lastCheckedIndex, idx);
+        checkboxes.slice(lo, hi + 1).forEach((cb) => {
+          if (cb.disabled) return;
+          const n = cb.dataset.projectCheck;
+          const it = mockProjects.find((p) => p.number === n);
+          if (!it || isProjectLocked(it)) return;
+          state.selected.add(n);
+        });
       } else {
-        state.selected.delete(number);
+        if (checkbox.checked) {
+          state.selected.add(number);
+        } else {
+          state.selected.delete(number);
+        }
+        state.lastCheckedIndex = idx;
       }
       renderProjects();
     });
@@ -965,7 +985,11 @@ function renderSelection() {
     : activeCenter && activeCenter !== state.center
       ? "다른 센터 작업이 진행 중입니다. 요청하면 예약됨 상태로 등록됩니다."
       : "현재 작업이 진행 중입니다. 요청하면 예약됨 상태로 등록됩니다.");
-  qs("requestJob").disabled = !hasSelection;
+  const hasJobTarget = [...state.selected].some((number) => {
+    const item = mockProjects.find((project) => project.number === number);
+    return item && item.review !== "완료";
+  });
+  qs("requestJob").disabled = !hasJobTarget;
 }
 
 function renderDetail() {
@@ -1293,6 +1317,31 @@ function setModalDownload(href) {
 function downloadJobResults() {
   if (!state.resultJobId) return;
   window.location.href = `/api/jobs/${encodeURIComponent(state.resultJobId)}/results.xlsx`;
+}
+
+function bulkDownloadSelected() {
+  const downloadable = [...state.selected].filter((number) => {
+    const item = mockProjects.find((project) => project.number === number);
+    return item && hasInspectionResult(item) && item.review !== "보류";
+  });
+
+  if (!downloadable.length) {
+    openModal({
+      eyebrow: "일괄 다운로드",
+      title: "다운로드할 항목 없음",
+      body: `
+        <div class="modal-message warning">
+          <strong>점검 결과(완료·수정 필요)가 있는 항목이 선택되지 않았습니다.</strong>
+          <p>목록에서 완료 또는 수정 필요 상태의 프로젝트를 선택한 뒤 다시 시도하세요.</p>
+        </div>
+      `
+    });
+    return;
+  }
+
+  const params = new URLSearchParams({ center: state.center });
+  downloadable.forEach((number) => params.append("pn", number));
+  window.location.href = `/api/projects/bulk-download/?${params.toString()}`;
 }
 
 function openRequestCompleteModal(payload, requestedCount) {
@@ -1922,7 +1971,11 @@ function bindControls() {
   });
 
   qs("requestJob").addEventListener("click", async () => {
-    const count = state.selected.size;
+    const jobNumbers = [...state.selected].filter((number) => {
+      const item = mockProjects.find((project) => project.number === number);
+      return item && item.review !== "완료";
+    });
+    const count = jobNumbers.length;
     if (count === 0) return;
 
     qs("requestJob").disabled = true;
@@ -1932,7 +1985,7 @@ function bindControls() {
     try {
       const payload = await requestJson(apiEndpoints.jobs, {
         method: "POST",
-        body: JSON.stringify({ center: state.center, project_numbers: [...state.selected] })
+        body: JSON.stringify({ center: state.center, project_numbers: jobNumbers })
       });
       state.selectionMessage = payload.message || `${count}개 프로젝트가 등록되었습니다.`;
       state.resultJobId = payload.job_id || state.resultJobId;
@@ -1948,6 +2001,7 @@ function bindControls() {
   });
 
   qs("downloadJobResults").addEventListener("click", downloadJobResults);
+  qs("bulkDownload").addEventListener("click", bulkDownloadSelected);
 
   document.querySelectorAll("[data-result-filter]").forEach((button) => {
     button.addEventListener("click", () => {

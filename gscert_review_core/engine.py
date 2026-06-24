@@ -7,7 +7,9 @@
 진입점: evaluate_rules(rules, context, files, project=None, sink=None)
 """
 
+import contextvars
 import fnmatch
+import json
 import os
 import re
 import struct
@@ -43,8 +45,14 @@ class FileInfo:
     modified_at: "datetime | None" = None
 
 
-# 산출물 sink (어댑터가 set_artifact_sink 로 주입). 기본은 no-op.
-_ARTIFACT_SINK = NoOpArtifactSink()
+# 산출물 sink — 동시 점검 안전을 위해 contextvar 사용(스레드/컨텍스트별 격리).
+# 어댑터가 set_artifact_sink 로 주입. 기본은 no-op.
+_ARTIFACT_SINK_VAR = contextvars.ContextVar("gscert_artifact_sink", default=None)
+
+
+def _current_sink():
+    sink = _ARTIFACT_SINK_VAR.get()
+    return sink if sink is not None else NoOpArtifactSink()
 
 
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".gif"}
@@ -4940,26 +4948,25 @@ def _display_path(path, project_number):
 
 # ── 산출물 저장: 어댑터 sink 위임 ───────────────────────────────────────────────
 def _store_pdf_first_page_artifact(project, rule, file_info, *, artifact_id, label):
-    return _ARTIFACT_SINK.store_pdf_first_page(
+    return _current_sink().store_pdf_first_page(
         project, rule, file_info, artifact_id=artifact_id, label=label
     )
 
 
 def _store_pdf_download_artifact(project, rule, file_info, *, artifact_id, label):
-    return _ARTIFACT_SINK.store_pdf_download(
+    return _current_sink().store_pdf_download(
         project, rule, file_info, artifact_id=artifact_id, label=label
     )
 
 
 def _store_excel_area_artifact(project, rule, sheet, area, *, artifact_id, label, source_file):
-    return _ARTIFACT_SINK.store_excel_area(
+    return _current_sink().store_excel_area(
         project, rule, sheet, area, artifact_id=artifact_id, label=label, source_file=source_file
     )
 
 
 def set_artifact_sink(sink):
-    global _ARTIFACT_SINK
-    _ARTIFACT_SINK = sink if sink is not None else NoOpArtifactSink()
+    _ARTIFACT_SINK_VAR.set(sink if sink is not None else NoOpArtifactSink())
 
 
 class _VerifyResult:
@@ -5005,8 +5012,9 @@ def evaluate_rules(rules, context, files, *, project=None, sink=None):
     rules: rule_type/code/name/config_json/target_file_type/target_file_pattern
            속성을 가진 객체 목록(웹=DownloadReviewRule, 로컬=RuleSpec).
     context: RuleContext (build_context 로 생성).
-    files: 최상위 파일(FileInfo 등 .name/.path/.size/.extension/.modified_at) 목록.
-           zip 은 엔진이 내부적으로 확장한다.
+    files: 최상위 파일(FileInfo 등 .name/.path/.size/.extension/.modified_at) 목록,
+           또는 .files 속성을 가진 verify_result 류 객체. 후자를 넘기면 zip 확장
+           캐시·오류 정보가 그 객체에 그대로 누적된다(웹 호환). zip 은 엔진이 확장한다.
     project: .project_number/.id 를 가진 객체. 없으면 context 로 스텁 생성.
     sink: ArtifactSink. 없으면 no-op(산출물 미생성).
     """
@@ -5014,7 +5022,7 @@ def evaluate_rules(rules, context, files, *, project=None, sink=None):
     _DOC_CONVERT_CACHE.clear()
     if project is None:
         project = _ProjectStub(context.project_number)
-    verify_result = _VerifyResult(files)
+    verify_result = files if hasattr(files, "files") else _VerifyResult(files)
     evaluations = []
     for sequence, rule in enumerate(rules, start=1):
         evaluation = _evaluate_rule(rule, sequence, project, context, verify_result, None)

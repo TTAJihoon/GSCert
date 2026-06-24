@@ -181,10 +181,10 @@ body {
   background: white;
 }
 
-/* 내부 래퍼: 최소 가로폭을 강제하여 가로 스크롤 유도 */
+/* 내부 래퍼: 페이지 너비를 채우되, 다른 컬럼 합산보다 좁아지지 않도록 최소폭 유지 */
 .scrollable-table-wrapper {
-  min-width: 1470px;     /* 요구사항: 최소 width 1470px */
-  /* 높이는 내용에 따라, 부모(.table-container)가 스크롤 */
+  min-width: 1300px;
+  width: 100%;
 }
 
 /* 테이블 */
@@ -314,7 +314,7 @@ body {
 .results-table col.col-test-no   { width: 110px; }
 .results-table col.col-cmp-name  { width: 200px; }
 .results-table col.col-prd-name  { width: 200px; }
-.results-table col.col-overview  { width: 170px; }
+.results-table col.col-overview  { /* auto-expand to fill remaining width */ }
 .results-table col.col-sw-type   { width: 80px; }
 .results-table col.col-date      { width: 100px; }
 .results-table col.col-tester    { width: 110px; }
@@ -329,7 +329,7 @@ body {
 .results-table th.col-test-no    { width: 110px; }
 .results-table th.col-cmp-name   { width: 200px; }
 .results-table th.col-prd-name   { width: 200px; }
-.results-table th.col-overview   { width: 170px; }
+.results-table th.col-overview   { /* auto-expand */ }
 .results-table th.col-sw-type    { width: 80px; }
 .results-table th.col-date       { width: 100px; }
 .results-table th.col-tester     { width: 110px; }

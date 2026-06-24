@@ -387,7 +387,7 @@ def _emit_table(matrix: List[List[Optional[Dict[str, Any]]]]) -> Dict[str, Any]:
 
 # ------------- Label detection / TOC handling -------------
 _re_label = re.compile(r"^(?:\d+(?:\.\d+)*)\s+")
-_re_attach = re.compile(r"^<\s*첨부\s*\d+\s*>")
+_re_attach = re.compile(r"^<\s*[^>]+\s*>")
 _re_pure_toc_line = re.compile(r".+\s+\d+$")  # "제목 ... 7" 형태
 
 def _is_label_line(text: str) -> bool:

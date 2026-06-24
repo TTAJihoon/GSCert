@@ -82,7 +82,7 @@ gscert_review_core/
 |---|---|---|
 | Phase 1 | 코어 토대: `types.py` / `documents.py` / `artifacts.py` | ✅ 완료 |
 | Phase 2 | `engine.py`로 평가 로직 이식 + Django 의존 제거 | ✅ 완료 |
-| Phase 3 | 웹 파일을 코어 위임 thin-adapter로 전환 + **회귀 검증** | ⏳ 예정 |
+| Phase 3 | 웹 파일을 코어 위임 thin-adapter로 전환 + **회귀 검증** | ✅ 완료 |
 | Phase 4 | 로컬 `local_runner.py`를 코어 위임으로 전환 | ⏳ 예정 |
 | Phase 5 | 로컬 앱 패키징에 코어 + deps(lxml/xlrd/fitz) 번들 | ⏳ 예정 |
 
@@ -122,3 +122,12 @@ gscert_review_core/
 10. import 경로/배포(repo 루트 `sys.path`, 코어가 배포 산출물에 포함)
 
 **Phase 3 통과 기준**: 동일 프로젝트 before/after `DownloadReviewRuleResult`(status/expected/actual/message/raw_detail) **0 diff**. → 검증용 실제 다운로드 프로젝트 1건 필요.
+
+#### Phase 3 (완료)
+웹 `ecm_download_review_inspection.py`(약 5,400줄)를 thin-adapter(약 480줄)로 교체, `engine.evaluate_rules` 위임. 위험 방어 모두 반영:
+- 🔴1 `_reference_start_end_dates`: `DOWNLOAD_REVIEW_REFERENCE_MASTER_DB_PATH` 설정 시 SQLite(테스트/레거시), 미설정 시 PostgreSQL `SwData`(운영). settings 미정의 → 운영은 PG, stale reference.db 미사용.
+- 🔴2 코어 산출물 sink를 `contextvars.ContextVar` 로 변경 → 동시 점검 시 스레드/컨텍스트별 격리.
+- 🔴3 `_ensure_soffice_env()` 로 `settings.AGENT_SOFFICE_PATH` 를 환경변수로 전달(.doc 변환 보존).
+- 🟡5 `evaluate_rules` 가 `verify_result` 객체를 그대로 받아 `_inspection_zip_errors` 등 부작용이 원본에 전파.
+- 예외 클래스(`DownloadReviewInspectionError` 등)는 엔진에서 재노출해 평가기 `except` 와 동일 객체 보장.
+- **회귀 검증: `manage.py test main.tests` 51개 전부 통과.**

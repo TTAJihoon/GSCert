@@ -9,6 +9,7 @@ from main.views.review.ecm_download_review_jobs import (
     cancel_download_review_job,
     create_download_review_job,
     get_active_job_payload,
+    get_bulk_projects_zip_response,
     get_job_detail_payload,
     get_job_projects_payload,
     get_job_results_excel_response,
@@ -235,6 +236,22 @@ def job_results_excel(request, job_id):
 @require_GET
 def latest_project_results(request, project_number):
     return _json_or_not_found(lambda: get_latest_project_results_payload(project_number, request.GET.get("center")))
+
+
+@require_GET
+def bulk_download_projects_zip(request):
+    project_numbers = request.GET.getlist("pn")
+    center_code = request.GET.get("center") or ""
+    try:
+        return get_bulk_projects_zip_response(project_numbers, center_code=center_code)
+    except DownloadReviewJobRequestError as exc:
+        response = JsonResponse(
+            {"success": False, "message": str(exc)},
+            status=exc.status_code,
+            json_dumps_params={"ensure_ascii": False},
+        )
+        response["Cache-Control"] = "no-store"
+        return response
 
 
 @require_GET

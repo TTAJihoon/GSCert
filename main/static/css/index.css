@@ -351,6 +351,28 @@ body {
   border: 1px solid rgba(237, 137, 54, 0.2);
 }
 
+.admin-section::before {
+  box-shadow: inset 0 0 70px rgba(100, 116, 139, 0.2);
+  border: 1px solid rgba(100, 116, 139, 0.2);
+}
+
+.admin::before {
+  background-color: #64748b;
+}
+
+.admin-card:before {
+  background-color: #64748b;
+}
+
+.admin-icon {
+  background-color: rgba(100, 116, 139, 0.15);
+  color: #64748b;
+}
+
+.admin-card:hover .card-title {
+  color: #64748b;
+}
+
 /* 모바일 반응형 */
 @media (max-width: 768px) {
   .hero-title {

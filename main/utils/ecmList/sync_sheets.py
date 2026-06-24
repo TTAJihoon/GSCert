@@ -126,7 +126,7 @@ def ensure_table():
             WD TEXT DEFAULT '',
             신청일 TEXT DEFAULT '',
             계약일 TEXT DEFAULT '',
-            점검결과 TEXT DEFAULT 'X',
+            점검결과 TEXT DEFAULT '',
             계약서 TEXT DEFAULT 'X',
             "합의서(PDF)" TEXT DEFAULT 'X',
             수수료산정표 TEXT DEFAULT 'X',
