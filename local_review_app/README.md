@@ -11,10 +11,10 @@ This folder is intentionally separated from the Django server package so the des
 - Fetch project metadata from the Django server API.
 - Scan local files and show a file summary.
 - Download and cache the shared server rulebase.
-- Run local file/folder checks and a first set of Word/PDF/Excel document checks.
+- Run checks through the shared `gscert_review_core` engine used by the web review flow.
 - Provide a packaging script for Windows `.exe` builds.
 
-Some server-side deep comparison rules are still reported as unsupported in the local app when they require complex cross-document extraction. The app still checks required files first, then clearly separates unsupported deep checks from missing-file failures.
+Rules whose `rule_type` is not supported by the bundled shared engine are reported as unsupported. Those cases require a program update, not only a rule bundle update.
 
 ## Install for Development
 
@@ -38,4 +38,6 @@ The default server URL is `http://127.0.0.1:8000`. It can be changed in the app 
 .\scripts\package_windows.ps1
 ```
 
-The executable is created under `local_review_app/dist/`.
+The executable folder is created under `local_review_app/dist/GSCertLocalReview/`.
+
+The packaging script runs `GSCertLocalReview.exe --self-check` after the build. This validates that the packaged app can import the shared engine and parser dependencies (`gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`, `openpyxl`) before the folder is distributed.

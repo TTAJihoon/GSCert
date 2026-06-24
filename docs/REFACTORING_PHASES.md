@@ -84,7 +84,7 @@ gscert_review_core/
 | Phase 2 | `engine.py`로 평가 로직 이식 + Django 의존 제거 | ✅ 완료 |
 | Phase 3 | 웹 파일을 코어 위임 thin-adapter로 전환 + **회귀 검증** | ✅ 완료 |
 | Phase 4 | 로컬 `local_runner.py`를 코어 위임으로 전환 | ✅ 완료 |
-| Phase 5 | 로컬 앱 패키징에 코어 + deps(lxml/xlrd/fitz) 번들 | ⏳ 예정 |
+| Phase 5 | 로컬 앱 패키징에 코어 + deps(lxml/xlrd/fitz) 번들 | ✅ 완료 |
 
 #### Phase 1 (완료)
 - `types.py`: 상태상수(`PASS/FAIL/UNSUPPORTED/ERROR`), `EngineFile`(reader 콜백·경로 세그먼트), `RuleSpec`(`config_json` 호환), `RuleContext`, `RuleEvaluation`
@@ -140,3 +140,11 @@ gscert_review_core/
 - 규칙별 예외는 로컬 UI 경계에서 `ERROR` 결과로 격리하고, 아직 코어에서 처리하지 않는 `rule_type`은 `UNSUPPORTED`로 표시한다.
 - 로컬 앱 의존성에 공용 엔진 문서 파서 실행에 필요한 `lxml`, `xlrd`를 추가했다.
 - 검증: `python -m unittest discover local_review_app\tests` 9개 통과.
+
+#### Phase 5 (완료)
+로컬 앱 PyInstaller 패키징에 공용 엔진과 문서 파서 의존성이 포함되도록 정리했다.
+- `local_review_app/scripts/package_windows.ps1`에서 저장소 루트를 `--paths`에 추가해 `gscert_review_core`를 분석 경로에 포함한다.
+- `--collect-submodules gscert_review_core`와 hidden import(`fitz`, `lxml.etree`, `openpyxl`, `xlrd`, `xlrd.compdoc`)를 지정했다.
+- `local_review_app/run.py --self-check`를 추가해 GUI 실행 없이 공용 엔진, lxml, xlrd, PyMuPDF, openpyxl import와 최소 엔진 호출을 확인한다.
+- 패키징 스크립트는 빌드 직후 `GSCertLocalReview.exe --self-check`를 `Start-Process -Wait -PassThru`로 실행해 배포 exe의 exit code를 검증한다.
+- 검증: Python 3.13 venv에서 `.\scripts\package_windows.ps1` 실행 성공, `dist\GSCertLocalReview\GSCertLocalReview.exe` 생성 및 self-check 통과.

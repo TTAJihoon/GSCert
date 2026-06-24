@@ -244,6 +244,20 @@ local_review_app/dist/GSCertLocalReview/
 local_review_app/dist/GSCertLocalReview/GSCertLocalReview.exe
 ```
 
+패키징 스크립트는 빌드 후 자동으로 다음 검사를 실행한다.
+
+```powershell
+local_review_app\dist\GSCertLocalReview\GSCertLocalReview.exe --self-check
+```
+
+이 검사는 GUI를 띄우지 않고 `gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`, `openpyxl` import와 최소 공용 엔진 호출이 가능한지 확인한다. 이 단계가 실패하면 배포 폴더를 전달하지 말고 패키징 의존성을 먼저 수정한다.
+
+다른 PC에 배포할 때는 `GSCertLocalReview.exe` 파일 하나만 복사하지 말고 아래 폴더 전체를 복사한다.
+
+```text
+local_review_app/dist/GSCertLocalReview/
+```
+
 ## 테스트 데이터 준비
 
 현재 앱 단계에서는 실제 ECM 제출물 전체가 아니어도 테스트할 수 있다.

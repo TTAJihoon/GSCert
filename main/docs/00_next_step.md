@@ -1,12 +1,20 @@
 # GSCert Next Step
 
+## 2026-06-24: Phase 5 로컬 exe 패키징 검증
+
+- `local_review_app/scripts/package_windows.ps1`가 저장소 루트를 PyInstaller `--paths`에 추가해 `gscert_review_core`를 포함하도록 수정했다.
+- 공용 엔진과 문서 파서 누락을 막기 위해 `gscert_review_core` submodule collect와 `fitz`, `lxml.etree`, `openpyxl`, `xlrd`, `xlrd.compdoc` hidden import를 추가했다.
+- `local_review_app/run.py --self-check`를 추가해 GUI를 띄우지 않고 공용 엔진, lxml, xlrd, PyMuPDF, openpyxl import와 최소 엔진 호출을 검증한다.
+- 패키징 스크립트가 빌드 직후 `GSCertLocalReview.exe --self-check`를 실행해 배포 exe의 실행 가능 상태를 자동 확인한다.
+- Python 3.13 venv에서 `.\scripts\package_windows.ps1` 실행을 완료했고, `local_review_app/dist/GSCertLocalReview/GSCertLocalReview.exe` 생성 및 self-check 통과를 확인했다.
+
 ## 2026-06-24: Phase 4 로컬 runner 공용 엔진 전환
 
 - `local_review_app/gscert_local_review/local_runner.py`를 자체 로컬 규칙 구현에서 `gscert_review_core.engine.evaluate_rules`를 호출하는 thin-adapter로 전환했다.
 - 로컬 스캔 파일은 `engine.FileInfo`, 서버 rule bundle은 `RuleSpec`, 프로젝트 기준정보는 `engine.build_context(...)`로 변환해 웹과 Windows 앱이 같은 점검 엔진을 사용한다.
 - Windows 앱에서 조회/선택한 `ProjectMetadata`를 `run_cached_rules(..., metadata=...)`로 넘기도록 연결해 회사명, 제품명, 시험기간, 인증일 기준값을 로컬 점검에서도 사용할 수 있게 했다.
 - 코어 타입에 `target_file_pattern`을 추가해 서버 rule bundle 필드와 공용 엔진의 파일 매칭 로직을 맞췄다.
-- 로컬 앱 의존성에 `lxml`, `xlrd`를 추가했다. Phase 5에서는 exe 패키징에 `gscert_review_core`와 새 의존성이 안정적으로 포함되는지 검증한다.
+- 로컬 앱 의존성에 `lxml`, `xlrd`를 추가했다. 이후 Phase 5에서 exe 패키징 포함 검증까지 완료했다.
 
 ## 2026-06-19: 점검 결과 엑셀 다운로드 UI/API
 
@@ -163,6 +171,8 @@ Copy-Item -Recurse -Force `
 .\.venv\Scripts\python.exe manage.py seed_download_review_rules --only-real --enable --update-existing --dry-run --settings=myproject.ui_mock_settings
 python -m py_compile local_review_app\gscert_local_review\local_runner.py local_review_app\gscert_local_review\app.py gscert_review_core\types.py local_review_app\tests\test_project.py
 $env:PYTHONPATH='D:\ECM_Review\local_review_app'; python -m unittest discover local_review_app\tests
+cd local_review_app
+.\scripts\package_windows.ps1
 git diff --check
 ```
 
@@ -171,6 +181,7 @@ git diff --check
 - Django test: 49개 통과
 - seed dry-run: `created=0 updated=10 unchanged=8`
 - 로컬 앱 unittest: 9개 통과
+- 로컬 앱 PyInstaller 빌드 및 exe self-check: 통과
 - `git diff --check`: whitespace 오류 없음
 
 ## 실제 사용 시 주의점
@@ -183,8 +194,8 @@ git diff --check
 
 ## 바로 다음 작업
 
-1. Phase 5로 로컬 exe 패키징을 검증한다. `gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`가 패키징 결과물에 포함되어야 한다.
-2. 패키징된 `GSCertLocalReview.exe`로 실제 ECM 제출물 폴더를 선택해 웹과 같은 규칙 결과가 나오는지 비교한다.
+1. 패키징된 `GSCertLocalReview.exe`로 실제 ECM 제출물 폴더를 선택해 웹과 같은 규칙 결과가 나오는지 비교한다.
+2. 실제 PC 배포 절차를 정리한다. 현재 배포 대상은 `local_review_app/dist/GSCertLocalReview/` 폴더 전체다.
 3. `test.zip`의 남은 9개 실패 항목은 실제 산출물 수정 후 `/download-review/` 또는 직접 검사 스크립트로 18개 전체 통과 여부를 확인한다.
 
 ## 결정 필요
