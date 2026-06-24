@@ -4,8 +4,10 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from django.conf import settings
+from django.db import DatabaseError
 from django.utils import timezone
 
+from main.models import ReferenceProject
 from main.views.review.ecm_download_review_centers import (
     DownloadReviewCenterError,
     center_label,
@@ -106,6 +108,9 @@ class ProjectQuery:
 
 def list_projects(query_params):
     query = parse_project_query(query_params)
+    if _use_postgres_projects():
+        return _list_projects_pg(query)
+
     db_path = Path(reference_db_path(query.center_code))
 
     if not db_path.exists():
@@ -140,6 +145,9 @@ def list_projects(query_params):
 
 def get_projects_by_numbers(project_numbers, center_code=None):
     center_code = normalize_center_code(center_code)
+    if _use_postgres_projects():
+        return _get_projects_by_numbers_pg(project_numbers, center_code)
+
     db_path = Path(reference_db_path(center_code))
 
     if not db_path.exists():
@@ -178,6 +186,15 @@ def write_project_review_result(project_number, review, artifact_results=None, i
     if unknown_columns:
         raise ReferenceQueryError(
             "수정할 수 없는 점검 컬럼이 포함되어 있습니다: " + ", ".join(unknown_columns)
+        )
+
+    if _use_postgres_projects():
+        return _write_project_review_result_pg(
+            number,
+            review_value,
+            artifact_results,
+            inspected_at,
+            center_code,
         )
 
     db_path = Path(reference_db_path(center_code))
@@ -238,6 +255,126 @@ def parse_project_query(query_params):
         raise ReferenceQueryError(f"지원하지 않는 정렬 방식입니다: {sort}")
 
     return ProjectQuery(center_code=center_code, filters=filters, limit=limit, offset=offset, sort=sort)
+
+
+def _use_postgres_projects():
+    return str(getattr(settings, "DOWNLOAD_REVIEW_PROJECT_SOURCE", "sqlite")).lower() == "postgres"
+
+
+def _reference_db_alias():
+    return getattr(settings, "REFERENCE_DATABASE_ALIAS", "reference")
+
+
+def _list_projects_pg(query):
+    try:
+        qs = _apply_pg_filters(
+            ReferenceProject.objects.using(_reference_db_alias()).filter(center_code=query.center_code),
+            query.filters,
+        )
+        total = qs.count()
+        rows = list(_apply_pg_order(qs, query.sort)[query.offset : query.offset + query.limit])
+    except DatabaseError as exc:
+        raise ReferenceDbError("기준 DB 조회 중 오류가 발생했습니다.") from exc
+
+    return {
+        "success": True,
+        "items": [_serialize_pg_project(row) for row in rows],
+        "pagination": {
+            "total": total,
+            "limit": query.limit,
+            "offset": query.offset,
+            "has_more": query.offset + len(rows) < total,
+        },
+        "sort": query.sort,
+    }
+
+
+def _get_projects_by_numbers_pg(project_numbers, center_code):
+    if not project_numbers:
+        return []
+
+    try:
+        rows = ReferenceProject.objects.using(_reference_db_alias()).filter(
+            center_code=center_code,
+            project_number__in=project_numbers,
+        )
+        rows_by_number = {row.project_number: _serialize_pg_project(row) for row in rows}
+    except DatabaseError as exc:
+        raise ReferenceDbError("기준 DB 조회 중 오류가 발생했습니다.") from exc
+
+    return [rows_by_number.get(number) for number in project_numbers]
+
+
+def _write_project_review_result_pg(project_number, review_value, artifact_results, inspected_at, center_code):
+    alias = _reference_db_alias()
+    updates = {
+        "review_result": review_value,
+    }
+    if inspected_at:
+        updates["inspection_date"] = _format_inspection_date(inspected_at)
+
+    try:
+        project = ReferenceProject.objects.using(alias).get(
+            center_code=center_code,
+            project_number=project_number,
+        )
+        merged_artifacts = dict(project.artifact_results_json or {})
+        for column, value in artifact_results.items():
+            merged_artifacts[column] = _normalize_artifact_write_value(value, column)
+        updates["artifact_results_json"] = merged_artifacts
+        for field, value in updates.items():
+            setattr(project, field, value)
+        project.save(using=alias, update_fields=[*updates.keys(), "updated_at"])
+    except ReferenceProject.DoesNotExist as exc:
+        raise ReferenceDbError("reference_project에서 프로젝트번호를 찾을 수 없습니다.") from exc
+    except DatabaseError as exc:
+        raise ReferenceDbError("기준 DB 갱신 중 오류가 발생했습니다.") from exc
+
+    return {
+        "success": True,
+        "project_number": project_number,
+        "updated_columns": ["점검결과", *artifact_results.keys()],
+    }
+
+
+def _apply_pg_filters(qs, filters):
+    if filters.get("project_number"):
+        qs = qs.filter(project_number__icontains=filters["project_number"])
+    if filters.get("company"):
+        qs = qs.filter(company__icontains=filters["company"])
+    if filters.get("product"):
+        qs = qs.filter(product__icontains=filters["product"])
+    if filters.get("pl"):
+        qs = qs.filter(pl__icontains=filters["pl"])
+    if filters.get("review"):
+        review_values = _review_filter_values(filters["review"])
+        if review_values is not None:
+            qs = qs.filter(review_result__in=review_values)
+        else:
+            qs = qs.filter(review_result=filters["review"])
+    if filters.get("cert_date"):
+        qs = qs.filter(cert_date=filters["cert_date"])
+    if filters.get("q"):
+        from django.db.models import Q
+
+        q = filters["q"]
+        qs = qs.filter(
+            Q(project_number__icontains=q)
+            | Q(company__icontains=q)
+            | Q(product__icontains=q)
+            | Q(pl__icontains=q)
+        )
+    return qs
+
+
+def _apply_pg_order(qs, sort):
+    if sort == "project_number_desc":
+        return qs.order_by("-project_number")
+    if sort == "project_number_asc":
+        return qs.order_by("project_number")
+    if sort == "cert_date_asc":
+        return qs.order_by("cert_committee_date", "project_number")
+    return qs.order_by("-cert_committee_date", "-project_number")
 
 
 def _connect_readonly(db_path):
@@ -423,6 +560,34 @@ def _serialize_project(row, columns, center_code):
         "review": review,
         "review_raw": review_raw,
         "inspection_date": _row_value(row, "점검날짜") if "점검날짜" in columns else "",
+        "selectable": not is_completed_review_value(review_raw),
+    }
+
+
+def _serialize_pg_project(project):
+    review_raw = project.review_result or ""
+    review = review_label(review_raw)
+    center_code = project.center_code or normalize_center_code(None)
+    try:
+        label = center_label(center_code)
+    except DownloadReviewCenterError:
+        label = project.center_label or center_code
+    return {
+        "center_code": center_code,
+        "center_label": project.center_label or label,
+        "project_number": project.project_number,
+        "cert_date": project.cert_date,
+        "company": project.company,
+        "product": project.product,
+        "pl": project.pl,
+        "wd": project.wd,
+        "request_date": project.request_date,
+        "contract_date": project.contract_date,
+        "start_date": project.start_date,
+        "end_date": project.expected_end_date,
+        "review": review,
+        "review_raw": review_raw,
+        "inspection_date": project.inspection_date,
         "selectable": not is_completed_review_value(review_raw),
     }
 

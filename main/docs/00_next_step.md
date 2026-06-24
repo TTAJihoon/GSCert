@@ -1,5 +1,17 @@
 # GSCert Next Step
 
+## 2026-06-24: Google Sheet 프로젝트 목록 PostgreSQL 적재 준비
+
+- 인증위 Google Sheet를 CSV export로 읽어 `reference_project` PostgreSQL 테이블에 적재하는 `sync_reference_projects_from_sheet` 관리 명령을 추가했다.
+- 센터별 PL 이름 매핑은 `reference_center_pl`에 저장하며, 전화번호는 저장하지 않는다.
+- 회사명/제품명은 괄호와 괄호 안 내용을 제거한 뒤 `-` 기준 1회 분리한다.
+- B열의 `yyyy년 m월 d일(요일)` 날짜 블록은 뒤에 시간이 붙어도 인식하고, 해당 날짜를 인증위 날짜로 저장한다.
+- 실제 프로젝트 목록은 `reference_project` 한 테이블에 저장하고, 센터별 조회 편의를 위해 `reference_project_sangam`, `reference_project_bundang`, `reference_project_yeongnam` view를 생성한다.
+- `/api/projects/`와 Windows 메타데이터 API는 `DOWNLOAD_REVIEW_PROJECT_SOURCE=postgres` 설정일 때 PostgreSQL `reference_project`를 우선 조회한다.
+- `/download-review/` 센터 탭에 분당을 추가했고, 센터 정의에도 `bundang`을 추가했다.
+- dry-run 결과 현재 Google Sheet에서 프로젝트 144건을 파싱했다. 제공된 PL 목록 기준 분당 33건, 상암 52건, 영남 22건, 미분류 37건이다.
+- 실제 DB 적재는 PostgreSQL 서버가 현재 접속 IP `210.96.71.254`를 `pg_hba.conf`에서 허용하지 않아 차단됐다. 서버에서 접속 허용 후 `main/docs/28_reference_project_sheet_sync.md`의 명령으로 다시 실행하면 된다.
+
 ## 2026-06-24: Windows 앱 점검 실행 버튼 반응 개선
 
 - 기존 배포 exe는 `점검 실행` 클릭 후 공용 점검 엔진을 UI 스레드에서 바로 실행해, 큰 zip을 점검하는 동안 창이 멈춘 것처럼 보일 수 있었다.

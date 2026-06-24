@@ -99,8 +99,8 @@ def local_review_project_metadata(request, project_number):
                     "inspection_date": project.get("inspection_date", ""),
                     "review": project.get("review", ""),
                     "review_raw": project.get("review_raw", ""),
-                    "start_date": "",
-                    "end_date": "",
+                    "start_date": project.get("start_date", ""),
+                    "end_date": project.get("end_date", ""),
                 },
             }
             status = 200

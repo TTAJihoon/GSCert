@@ -61,6 +61,7 @@ from main.views.review.ecm_download_review_api import (
     projects,
     rule_result_artifact,
 )
+from main.utils.ecm_reference_sheet import parse_sheet_projects, read_csv_rows, split_company_product
 
 
 def _docx_bytes(*, paragraphs=None, tables=None, blocks=None, header=None, footer=None):
@@ -471,6 +472,34 @@ def _quality_evaluation_report_docx(project_number, *, company="에이치소프�
     return _docx_bytes(
         blocks=blocks,
     )
+
+
+class EcmReferenceSheetParserTests(SimpleTestCase):
+    def test_split_company_product_removes_parentheses_and_splits_once(self):
+        company, product = split_company_product("주식회사 테스트(상암)-제품명-v1.0")
+
+        self.assertEqual(company, "주식회사 테스트")
+        self.assertEqual(product, "제품명-v1.0")
+
+    def test_parse_sheet_projects_uses_date_block_and_pl_center(self):
+        csv_text = "\n".join([
+            ",2026년 6월 22일(월),,,,,,,",
+            ",,,,,,,,",
+            ",,,,,,,,",
+            ",회사A(비고)-제품A,18,2026.06.01,2026.06.02,2026.06.03,2026.06.30,박지훈, TTA-26-00001",
+            ",회사B(비고)-제품B,12,2026.06.04,2026.06.05,2026.06.06,2026.07.01,임우섭, TTA-26-00002",
+            ",,,,,,,,",
+        ])
+
+        rows = parse_sheet_projects(read_csv_rows(csv_text))
+
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(rows[0].project_number, "TTA-26-00001")
+        self.assertEqual(rows[0].cert_date, "6/22")
+        self.assertEqual(rows[0].company, "회사A")
+        self.assertEqual(rows[0].product, "제품A")
+        self.assertEqual(rows[0].center_code, "sangam")
+        self.assertEqual(rows[1].center_code, "bundang")
 
 
 class DownloadVerifyTests(SimpleTestCase):

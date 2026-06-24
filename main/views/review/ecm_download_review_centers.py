@@ -4,6 +4,7 @@ from django.conf import settings
 
 
 CENTER_SANGAM = "sangam"
+CENTER_BUNDANG = "bundang"
 CENTER_YEONGNAM = "yeongnam"
 DEFAULT_CENTER_CODE = CENTER_SANGAM
 
@@ -14,6 +15,14 @@ _CENTER_DEFINITIONS = {
         "default_db_name": "ecmlist.db",
         "tree_root": "상암AX센터",
         "tree_root_index_setting": "ECM_TREE_ROOT_INDEX",
+        "default_tree_root_index": 0,
+    },
+    CENTER_BUNDANG: {
+        "label": "분당",
+        "reference_db_setting": "REFERENCE_DB_PATH_BUNDANG",
+        "default_db_name": "ecmlist_bundang.db",
+        "tree_root": "분당AX센터",
+        "tree_root_index_setting": "ECM_TREE_ROOT_INDEX_BUNDANG",
         "default_tree_root_index": 0,
     },
     CENTER_YEONGNAM: {
@@ -45,6 +54,8 @@ def normalize_center_code(value=None):
     aliases = {
         "상암": CENTER_SANGAM,
         "sangam": CENTER_SANGAM,
+        "bundang": CENTER_BUNDANG,
+        "분당": CENTER_BUNDANG,
         "yeongnam": CENTER_YEONGNAM,
         "영남": CENTER_YEONGNAM,
     }

@@ -7,6 +7,7 @@ const apiEndpoints = {
 
 const centerLabels = {
   sangam: "상암",
+  bundang: "분당",
   yeongnam: "영남"
 };
 

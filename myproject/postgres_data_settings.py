@@ -1,6 +1,6 @@
 import os
 
-from .settings import *  # noqa: F401,F403
+from .ui_mock_settings import *  # noqa: F401,F403
 
 
 def _postgres_database_config():
@@ -16,7 +16,6 @@ def _postgres_database_config():
     sslmode = os.environ.get("GSCERT_DB_SSLMODE")
     if sslmode:
         config["OPTIONS"] = {"sslmode": sslmode}
-
     return config
 
 
@@ -24,10 +23,13 @@ _POSTGRES_DATABASE = _postgres_database_config()
 
 DATABASES = {
     "default": _POSTGRES_DATABASE.copy(),
-    "workflow": _POSTGRES_DATABASE.copy(),
     "reference": _POSTGRES_DATABASE.copy(),
 }
 
-WORKFLOW_DATABASE_ALIAS = "workflow"
+DATABASE_ROUTERS = [
+    "main.db_routers.ReferenceDatabaseRouter",
+]
+
 REFERENCE_DATABASE_ALIAS = "reference"
+REFERENCE_MODEL_NAMES = {"swdata", "referencecenterpl", "referenceproject"}
 DOWNLOAD_REVIEW_PROJECT_SOURCE = os.environ.get("DOWNLOAD_REVIEW_PROJECT_SOURCE", "postgres")

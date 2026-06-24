@@ -289,6 +289,66 @@ class SwData(models.Model):
         return f"{self.cert_number} {self.company} {self.product}"
 
 
+class ReferenceCenterPl(models.Model):
+    center_code = models.CharField(max_length=20, db_index=True)
+    center_label = models.CharField(max_length=20)
+    name = models.CharField(max_length=50, unique=True)
+    display_order = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'main'
+        db_table = 'reference_center_pl'
+        ordering = ['center_code', 'display_order', 'name']
+        indexes = [
+            models.Index(fields=['center_code', 'name'], name='ref_center_pl_code_name_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.center_label} {self.name}"
+
+
+class ReferenceProject(models.Model):
+    project_number = models.CharField(max_length=32, unique=True, db_index=True)
+    center_code = models.CharField(max_length=20, db_index=True)
+    center_label = models.CharField(max_length=20, blank=True, default='')
+    cert_date = models.CharField(max_length=20, blank=True, default='')
+    cert_committee_date = models.DateField(blank=True, null=True, db_index=True)
+    company = models.TextField(blank=True, default='')
+    product = models.TextField(blank=True, default='')
+    pl = models.TextField(blank=True, default='')
+    primary_tester = models.CharField(max_length=50, blank=True, default='', db_index=True)
+    wd = models.TextField(blank=True, default='')
+    request_date = models.TextField(blank=True, default='')
+    contract_date = models.TextField(blank=True, default='')
+    start_date = models.TextField(blank=True, default='')
+    expected_end_date = models.TextField(blank=True, default='')
+    review_result = models.CharField(max_length=20, blank=True, default='')
+    inspection_date = models.TextField(blank=True, default='')
+    artifact_results_json = models.JSONField(default=dict, blank=True)
+    raw_company_product = models.TextField(blank=True, default='')
+    source_spreadsheet_id = models.CharField(max_length=120, blank=True, default='')
+    source_gid = models.CharField(max_length=40, blank=True, default='')
+    source_row_number = models.PositiveIntegerField(blank=True, null=True)
+    source_payload_json = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'main'
+        db_table = 'reference_project'
+        ordering = ['-cert_committee_date', 'project_number']
+        indexes = [
+            models.Index(fields=['center_code', 'cert_committee_date'], name='ref_project_center_date_idx'),
+            models.Index(fields=['center_code', 'project_number'], name='ref_project_center_number_idx'),
+            models.Index(fields=['primary_tester'], name='ref_project_primary_tester_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.project_number} {self.company} {self.product}"
+
+
 class DownloadReviewLock(models.Model):
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
     locked = models.BooleanField(default=False)
