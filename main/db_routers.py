@@ -1,6 +1,52 @@
 from django.conf import settings
 
 
+class ReferenceDatabaseRouter:
+    reference_app_label = "main"
+
+    def _reference_alias(self):
+        return getattr(settings, "REFERENCE_DATABASE_ALIAS", "reference")
+
+    def _reference_model_names(self):
+        return {
+            name.lower()
+            for name in getattr(settings, "REFERENCE_MODEL_NAMES", set())
+        }
+
+    def _is_reference_model(self, app_label, model_name):
+        return (
+            app_label == self.reference_app_label
+            and model_name
+            and model_name.lower() in self._reference_model_names()
+        )
+
+    def db_for_read(self, model, **hints):
+        if self._is_reference_model(model._meta.app_label, model._meta.model_name):
+            return self._reference_alias()
+        return None
+
+    def db_for_write(self, model, **hints):
+        if self._is_reference_model(model._meta.app_label, model._meta.model_name):
+            return self._reference_alias()
+        return None
+
+    def allow_relation(self, obj1, obj2, **hints):
+        model1 = self._is_reference_model(obj1._meta.app_label, obj1._meta.model_name)
+        model2 = self._is_reference_model(obj2._meta.app_label, obj2._meta.model_name)
+        if model1 or model2:
+            return model1 and model2
+        return None
+
+    def allow_migrate(self, db, app_label, model_name=None, **hints):
+        reference_alias = self._reference_alias()
+        is_ref = self._is_reference_model(app_label, model_name)
+        if is_ref:
+            return db == reference_alias
+        if db == reference_alias:
+            return False
+        return None
+
+
 class WorkflowDatabaseRouter:
     workflow_app_label = "main"
 

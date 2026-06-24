@@ -5,6 +5,10 @@
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# 환경 변수 로드 (PostgreSQL 자격증명 등)
+$EnvFile = Join-Path $ScriptDir "env.ps1"
+if (Test-Path $EnvFile) { . $EnvFile }
+
 function Show-Menu {
     $venvOk = (Test-Path (Join-Path $ScriptDir ".venv\Scripts\python.exe")) -or
               (Test-Path (Join-Path $ScriptDir "venv\Scripts\python.exe"))
@@ -34,6 +38,8 @@ function Show-Menu {
     $nginxColor = if ($nginxOk) { "Green" } else { "Red" }
     Write-Host "  N. nginx          - nginx 시작/중지/reload  $nginxStat" -ForegroundColor $nginxColor
     Write-Host "  S. setup          - 초기 환경 설정 (최초 1회 / 새 PC)"
+    Write-Host "  W. weekly 동기화  - ECM xlsx 다운로드 → PostgreSQL reference DB 적재$venvWarn"
+    Write-Host "  I. FAISS 임베딩   - reference DB 신규 데이터 증분 임베딩$venvWarn"
     Write-Host "  0. 종료"
     Write-Host "=======================================" -ForegroundColor Cyan
 }
@@ -186,6 +192,31 @@ while ($true) {
             if ($automation) { $setupParams['InstallAutomation'] = $true }
             if ($search)     { $setupParams['InstallSearch'] = $true }
             & (Join-Path $ScriptDir "setup.ps1") @setupParams
+        }
+        'W' {
+            Write-Host ""
+            Write-Host "=== weekly 동기화 (ECM 다운로드 → PostgreSQL) ===" -ForegroundColor Cyan
+            $VenvPython = Join-Path $ScriptDir ".venv\Scripts\python.exe"
+            if (-not (Test-Path $VenvPython)) { $VenvPython = Join-Path $ScriptDir "venv\Scripts\python.exe" }
+            if (-not (Test-Path $VenvPython)) {
+                Write-Host "[ERROR] 가상환경 Python을 찾을 수 없습니다. 먼저 S(초기 환경 설정)를 실행하세요." -ForegroundColor Red
+            } else {
+                & $VenvPython (Join-Path $ScriptDir "main\utils\weekly.py")
+            }
+        }
+        'I' {
+            Write-Host ""
+            Write-Host "=== FAISS 증분 임베딩 (신규 데이터만) ===" -ForegroundColor Cyan
+            $VenvPython = Join-Path $ScriptDir ".venv\Scripts\python.exe"
+            if (-not (Test-Path $VenvPython)) { $VenvPython = Join-Path $ScriptDir "venv\Scripts\python.exe" }
+            if (-not (Test-Path $VenvPython)) {
+                Write-Host "[ERROR] 가상환경 Python을 찾을 수 없습니다. 먼저 S(초기 환경 설정)를 실행하세요." -ForegroundColor Red
+            } else {
+                & $VenvPython (Join-Path $ScriptDir "manage.py") embed_db
+                if ($?) {
+                    Write-Host "[OK] 임베딩 완료" -ForegroundColor Green
+                }
+            }
         }
         '0' {
             Write-Host "`n종료합니다." -ForegroundColor Yellow

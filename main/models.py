@@ -262,6 +262,33 @@ class DownloadReviewLog(models.Model):
         return f"{self.level}: {self.message[:80]}"
 
 
+class SwData(models.Model):
+    """GS 인증 이력 참조 데이터 (reference.db sw_data)."""
+    serial_number = models.IntegerField(primary_key=True)
+    cert_number = models.TextField(blank=True, default='')
+    cert_date = models.TextField(blank=True, default='')
+    company = models.TextField(blank=True, default='')
+    product = models.TextField(blank=True, default='')
+    grade = models.TextField(blank=True, default='')
+    test_number = models.TextField(blank=True, default='')
+    sw_category = models.TextField(blank=True, default='')
+    product_desc = models.TextField(blank=True, default='')
+    total_wd = models.TextField(blank=True, default='')
+    renewal = models.TextField(blank=True, default='')
+    notes = models.TextField(blank=True, default='')
+    date_range = models.TextField(blank=True, default='')
+    test_lab = models.TextField(blank=True, default='')
+    start_date = models.TextField(blank=True, default='')
+    end_date = models.TextField(blank=True, default='')
+
+    class Meta:
+        app_label = 'main'
+        db_table = 'sw_data'
+
+    def __str__(self):
+        return f"{self.cert_number} {self.company} {self.product}"
+
+
 class DownloadReviewLock(models.Model):
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
     locked = models.BooleanField(default=False)

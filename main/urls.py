@@ -13,9 +13,20 @@ from main.views.certy.prdinfo_URL import source_excel_view
 from main.views.certy.prdinfo_download import download_filled_prdinfo
 from main.views.certy.prdinfo_db import lookup_cert_info
 
+from main.views.server_console import (
+    server_console,
+    api_run_embedding,
+    api_run_weekly,
+    api_run_sync_sheets,
+    api_task_status,
+)
+
 from main.views.review.checkreport import parse_view
+from main.views.reference_search import reference_search
+
 from main.views.review.ecm_download_review_api import (
     active_job as download_review_active_job,
+    bulk_download_projects_zip as download_review_bulk_download,
     job_cancel as download_review_job_cancel,
     job_detail as download_review_job_detail,
     job_project_results as download_review_job_project_results,
@@ -64,9 +75,17 @@ urlpatterns = [
     path('api/job-projects/<uuid:job_project_id>/results/', download_review_job_project_results, name='download_review_job_project_results'),
     path('api/job-projects/<uuid:job_project_id>/results.xlsx', download_review_job_project_results_excel, name='download_review_job_project_results_excel'),
     path('api/rule-results/<uuid:result_id>/artifacts/<str:artifact_id>/', download_review_rule_result_artifact, name='download_review_rule_result_artifact'),
+    path('api/projects/bulk-download/', download_review_bulk_download, name='download_review_bulk_download'),
     path('api/projects/<str:project_number>/latest-results/', download_review_latest_project_results, name='download_review_latest_project_results'),
     path('api/local-review/health/', local_review_health, name='local_review_health'),
     path('api/local-review/projects/<str:project_number>/metadata/', local_review_project_metadata, name='local_review_project_metadata'),
     path('api/local-review/rules/manifest/', local_review_rules_manifest, name='local_review_rules_manifest'),
     path('api/local-review/rules/bundle/', local_review_rules_bundle, name='local_review_rules_bundle'),
+    path('api/reference/search/', reference_search, name='reference_search'),
+
+    path('server-console/', server_console, name='server_console'),
+    path('api/server/embedding/', api_run_embedding, name='api_server_embedding'),
+    path('api/server/weekly/', api_run_weekly, name='api_server_weekly'),
+    path('api/server/sync-sheets/', api_run_sync_sheets, name='api_server_sync_sheets'),
+    path('api/server/tasks/<str:task_id>/', api_task_status, name='api_server_task_status'),
 ]

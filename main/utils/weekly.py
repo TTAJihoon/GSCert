@@ -73,12 +73,10 @@ class Config:
     # 로그인 세션 저장(최초 1회 로그인 후 자동 재사용)
     storage_state: Path = _env_path("GSCERT_EDM_STORAGE_STATE", DATA_DIR / "edm_storage_state.json")
 
-    # reference.xlsx -> reference.db 적재
+    # reference.xlsx -> PostgreSQL 적재
     python_executable: Path = _env_path("GSCERT_PYTHON", _default_python_executable())
     manage_py: Path = _env_path("GSCERT_MANAGE_PY", PROJECT_ROOT / "manage.py")
-    reference_db: Path = _env_path("GSCERT_REFERENCE_DB", DATA_DIR / "reference.db")
     django_settings: str = os.environ.get("GSCERT_DJANGO_SETTINGS", "myproject.settings")
-    sqlite_no_git_sync: bool = os.environ.get("GSCERT_SQLITE_NO_GIT_SYNC", "").lower() in {"1", "true", "yes", "y"}
 
     # 타임아웃/대기
     pw_timeout_ms: int = 30_000
@@ -495,21 +493,18 @@ def sync_reference_db():
     cmd = [
         str(CFG.python_executable),
         str(CFG.manage_py),
-        "sqlite",
+        "import_reference_db",
+        "--source-xlsx",
         str(CFG.master_xlsx),
-        str(CFG.reference_db),
-        "--force",
         "--settings",
         CFG.django_settings,
     ]
-    if CFG.sqlite_no_git_sync:
-        cmd.append("--no-git-sync")
 
     env = os.environ.copy()
     env.setdefault("PYTHONIOENCODING", "utf-8")
     env.setdefault("PYTHONUTF8", "1")
 
-    logging.info("reference DB 적재 실행: %s", " ".join(cmd))
+    logging.info("reference PostgreSQL 적재 실행: %s", " ".join(cmd))
     completed = subprocess.run(
         cmd,
         cwd=str(CFG.project_root),
@@ -527,16 +522,7 @@ def sync_reference_db():
     if completed.returncode != 0:
         raise RuntimeError(f"reference DB 적재 실패: exit_code={completed.returncode}")
 
-    if not CFG.reference_db.exists():
-        raise FileNotFoundError(f"reference DB 파일이 생성되지 않았습니다: {CFG.reference_db}")
-    stat = CFG.reference_db.stat()
-    updated_at = datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-    logging.info(
-        "reference DB 갱신 확인: %s size=%s updated_at=%s",
-        CFG.reference_db,
-        stat.st_size,
-        updated_at,
-    )
+    logging.info("reference PostgreSQL DB 적재 완료")
 
 
 # =========================

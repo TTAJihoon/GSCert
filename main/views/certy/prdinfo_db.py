@@ -1,7 +1,7 @@
-import sqlite3
 from django.http import JsonResponse
-from pathlib import Path
-import os
+
+from main.models import SwData
+
 
 def lookup_cert_info(request):
     cert_no = request.GET.get('cert_no')
@@ -10,20 +10,18 @@ def lookup_cert_info(request):
         return JsonResponse({'success': False, 'message': '제품 번호가 필요합니다.'}, status=400)
 
     try:
-        db_path = 'main/data/reference.db'
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        query = "SELECT 인증번호, 제품, 총WD FROM sw_data WHERE 시험번호 = ?"
-        cursor.execute(query, (cert_no,))
-        
-        result = cursor.fetchone()
-        conn.close()
+        obj = (
+            SwData.objects.using('reference')
+            .filter(test_number=cert_no)
+            .values('cert_number', 'product', 'total_wd')
+            .first()
+        )
 
-        if result:
+        if obj:
             data = {
-                'cert_id': result[0],
-                'product_name': result[1],
-                'total_wd': result[2]
+                'cert_id': obj['cert_number'],
+                'product_name': obj['product'],
+                'total_wd': obj['total_wd'],
             }
             return JsonResponse({'success': True, 'data': data})
         else:

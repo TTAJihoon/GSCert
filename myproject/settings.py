@@ -85,11 +85,20 @@ DATABASES = {
     'workflow': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'main' / 'data' / 'workflow.db',
-    }
+    },
+    'reference': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': os.environ.get('REFERENCE_PG_NAME', 'gscert_reference'),
+        'USER': os.environ.get('REFERENCE_PG_USER', 'postgres'),
+        'PASSWORD': os.environ.get('REFERENCE_PG_PASSWORD', ''),
+        'HOST': os.environ.get('REFERENCE_PG_HOST', 'localhost'),
+        'PORT': os.environ.get('REFERENCE_PG_PORT', '5432'),
+    },
 }
 
 DATABASE_ROUTERS = [
     'main.db_routers.WorkflowDatabaseRouter',
+    'main.db_routers.ReferenceDatabaseRouter',
 ]
 
 WORKFLOW_DATABASE_ALIAS = 'workflow'
@@ -101,6 +110,9 @@ WORKFLOW_MODEL_NAMES = {
     'downloadreviewlog',
     'downloadreviewlock',
 }
+
+REFERENCE_DATABASE_ALIAS = 'reference'
+REFERENCE_MODEL_NAMES = {'swdata'}
 
 ECM_AGENT_LOCK_PATH = BASE_DIR / 'main' / 'data' / 'ecm_agent.lock'
 ECM_AGENT_LOCK_TIMEOUT_SECONDS = 600
@@ -120,7 +132,7 @@ DOWNLOAD_REVIEW_MAX_PROJECTS_PER_JOB = 100
 
 # --- ECM 다운로드 자동화 설정 ---
 ECM_BASE_URL = os.environ.get('ECM_BASE_URL', 'http://210.96.71.85')
-ECM_BROWSER_CHANNEL = os.environ.get('ECM_BROWSER_CHANNEL', 'chrome')
+ECM_BROWSER_CHANNEL = os.environ.get('ECM_BROWSER_CHANNEL', '')
 ECM_BROWSER_ARGS = [
     arg.strip()
     for arg in os.environ.get(
@@ -129,11 +141,11 @@ ECM_BROWSER_ARGS = [
     ).split()
     if arg.strip()
 ]
-ECM_TREE_ROOT_INDEX = int(os.environ.get('ECM_TREE_ROOT_INDEX', '1'))
+ECM_TREE_ROOT_INDEX = int(os.environ.get('ECM_TREE_ROOT_INDEX', '0'))
 ECM_TREE_ROOT_INDEX_YEONGNAM = int(os.environ.get('ECM_TREE_ROOT_INDEX_YEONGNAM', '0'))
 AGENT_DOWNLOAD_BASE_DIR = os.environ.get(
     'AGENT_DOWNLOAD_BASE_DIR',
-    str(Path.home() / 'Downloads'),
+    str(Path.home() / 'ecm'),
 )
 ECM_DOWNLOAD_TIMEOUTS = {
     'GOTO': 15_000,

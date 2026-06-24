@@ -1,7 +1,27 @@
-import json
-import sqlite3
 from django.shortcuts import render
+
+from main.models import SwData
 from main.request_logging import set_request_log_context
+
+_FIELD_TO_KR = {
+    'serial_number': '일련번호',
+    'cert_number': '인증번호',
+    'cert_date': '인증일자',
+    'company': '회사명',
+    'product': '제품',
+    'grade': '등급',
+    'test_number': '시험번호',
+    'sw_category': 'SW분류',
+    'product_desc': '제품설명',
+    'total_wd': '총WD',
+    'renewal': '재계약',
+    'notes': '특이사항',
+    'date_range': '시작날짜종료날짜',
+    'test_lab': '시험원',
+    'start_date': '시작일자',
+    'end_date': '종료일자',
+}
+
 
 def history(request):
     if request.method == 'POST':
@@ -45,21 +65,20 @@ def history(request):
 
         tables = GS_history(gsnum, project, company, product, sw_type, tester, comment, startDate, endDate)
         set_request_log_context(request, result_count=len(tables))
-            
+
         clean_tables = []
         for table in tables:
             clean_table = {
                 key.strip().replace(" ", "_").replace("/", "_").replace("\n", "_"): str(value).strip().replace("None", "-")
                 for key, value in table.items()
-                if not key.startswith('Unnamed')  # 불필요한 Unnamed 컬럼 제거
+                if not key.startswith('Unnamed')
             }
             clean_tables.append(clean_table)
-                
+
         context['response_tables'] = clean_tables[::-1]
-            
+
         return render(request, 'testing/history.html', context)
-               
-    # GET 요청 또는 POST 실패 시
+
     return render(request, 'testing/history.html')
 
 
@@ -70,50 +89,30 @@ def _search_terms(**terms):
         if isinstance(value, str) and value.strip()
     }
 
-def GS_history(gsnum='', project='', company='', product='', sw_type='', tester='', comment='', startDate='', endDate='', db_path='main/data/reference.db'):
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row  # 컬럼명을 사용해서 결과를 가져올 수 있게 설정
-    cursor = conn.cursor()
-    columns = _table_columns(cursor, "sw_data")
 
-    # 기본 쿼리 생성
-    query = "SELECT * FROM sw_data WHERE 1=1"
-    params = []
+def GS_history(gsnum='', project='', company='', product='', sw_type='', tester='', comment='', startDate='', endDate=''):
+    qs = SwData.objects.using('reference')
 
-    query = _add_like_filter(query, params, columns, "인증번호", gsnum)
-    query = _add_like_filter(query, params, columns, "시험번호", project)
-    query = _add_like_filter(query, params, columns, "회사명", company)
-    query = _add_like_filter(query, params, columns, "제품", product)
-    query = _add_like_filter(query, params, columns, "SW분류", sw_type)
-    query = _add_like_filter(query, params, columns, "시험원", tester)
-    query = _add_like_filter(query, params, columns, "제품설명", comment)
+    if gsnum.strip():
+        qs = qs.filter(cert_number__icontains=gsnum)
+    if project.strip():
+        qs = qs.filter(test_number__icontains=project)
+    if company.strip():
+        qs = qs.filter(company__icontains=company)
+    if product.strip():
+        qs = qs.filter(product__icontains=product)
+    if sw_type.strip():
+        qs = qs.filter(sw_category__icontains=sw_type)
+    if tester.strip():
+        qs = qs.filter(test_lab__icontains=tester)
+    if comment.strip():
+        qs = qs.filter(product_desc__icontains=comment)
     if startDate.strip():
-        query += ' AND "시작일자" >= ?'
-        params.append(startDate)
+        qs = qs.filter(start_date__gte=startDate)
     if endDate.strip():
-        query += ' AND "종료일자" <= ?'
-        params.append(endDate)
+        qs = qs.filter(end_date__lte=endDate)
 
-    # 쿼리 실행
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-
-    # 결과를 딕셔너리 형태로 변환
-    result = [dict(row) for row in rows]
-
-    conn.close()
-
-    return result
-
-
-def _table_columns(cursor, table_name):
-    return {row["name"] for row in cursor.execute(f'PRAGMA table_info("{table_name}")').fetchall()}
-
-
-def _add_like_filter(query, params, columns, column, value):
-    if not value.strip():
-        return query
-    if column not in columns:
-        return query + " AND 1=0"
-    params.append(f"%{value}%")
-    return query + f' AND "{column}" LIKE ?'
+    return [
+        {_FIELD_TO_KR[k]: v for k, v in obj.items() if k in _FIELD_TO_KR}
+        for obj in qs.values()
+    ]

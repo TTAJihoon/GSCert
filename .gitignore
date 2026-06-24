@@ -31,7 +31,6 @@ Thumbs.db
 main/data/*
 !main/data/README.md
 !main/data/prdinfo.xlsx
-!main/data/reference.db
 !main/data/reference.xlsx
 !main/data/security.xlsx
 !main/data/ecmlist.db
@@ -47,6 +46,9 @@ main/data/ngram_table.npz
 # Local tooling
 .tmp/
 run/
+
+# Local environment variables (DB 비밀번호 등 민감 정보)
+env.ps1
 
 # Local Google OAuth credentials
 main/utils/ecmList/credentials.json

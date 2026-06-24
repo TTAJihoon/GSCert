@@ -13,6 +13,35 @@ class ApiClientError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class ReferenceItem:
+    serial_number: int = 0
+    cert_number: str = ""
+    cert_date: str = ""
+    company: str = ""
+    product: str = ""
+    grade: str = ""
+    test_number: str = ""
+    sw_category: str = ""
+    start_date: str = ""
+    end_date: str = ""
+
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> "ReferenceItem":
+        return cls(
+            serial_number=int(d.get("serial_number") or 0),
+            cert_number=str(d.get("cert_number") or ""),
+            cert_date=str(d.get("cert_date") or ""),
+            company=str(d.get("company") or ""),
+            product=str(d.get("product") or ""),
+            grade=str(d.get("grade") or ""),
+            test_number=str(d.get("test_number") or ""),
+            sw_category=str(d.get("sw_category") or ""),
+            start_date=str(d.get("start_date") or ""),
+            end_date=str(d.get("end_date") or ""),
+        )
+
+
+@dataclass(frozen=True)
 class ProjectMetadata:
     project_number: str = ""
     company_name: str = ""
@@ -65,6 +94,11 @@ class GSCertApiClient:
 
     def rule_manifest(self) -> dict[str, Any]:
         return self._get_json("/api/local-review/rules/manifest/")
+
+    def search_reference(self, q: str, limit: int = 20) -> list[ReferenceItem]:
+        query = urlencode({"q": q.strip(), "limit": limit})
+        payload = self._get_json(f"/api/reference/search/?{query}")
+        return [ReferenceItem.from_dict(item) for item in (payload.get("items") or [])]
 
     def rule_bundle(self, version: str = "") -> dict[str, Any]:
         query = urlencode({"version": version}) if version else ""

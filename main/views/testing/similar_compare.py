@@ -1,10 +1,10 @@
-import sqlite3
 import numpy as np
 from pathlib import Path
 from threading import Lock
 
+from main.models import SwData
+
 BASE_DIR = Path(__file__).resolve().parents[3]
-DB_PATH = BASE_DIR / "main" / "data" / "reference.db"
 INDEX_PATH = BASE_DIR / "main" / "data" / "faiss_bge_m3_ko.idmap.index"
 MODEL_NAME = "upskyy/bge-m3-korean"
 
@@ -12,6 +12,25 @@ _cache_lock = Lock()
 _cached_index = None
 _cached_index_mtime = None
 _cached_model = None
+
+_FIELD_TO_KR = {
+    'serial_number': '일련번호',
+    'cert_number': '인증번호',
+    'cert_date': '인증일자',
+    'company': '회사명',
+    'product': '제품',
+    'grade': '등급',
+    'test_number': '시험번호',
+    'sw_category': 'SW분류',
+    'product_desc': '제품설명',
+    'total_wd': '총WD',
+    'renewal': '재계약',
+    'notes': '특이사항',
+    'date_range': '시작날짜종료날짜',
+    'test_lab': '시험원',
+    'start_date': '시작일자',
+    'end_date': '종료일자',
+}
 
 
 class SimilarSearchDependencyError(RuntimeError):
@@ -43,7 +62,7 @@ def _get_index():
 
     if not INDEX_PATH.exists():
         raise SimilarSearchDependencyError(
-            "유사도 검색 인덱스가 없습니다. manage.py embed_db main/data/reference.db 명령으로 인덱스를 생성하세요."
+            "유사도 검색 인덱스가 없습니다. manage.py embed_db 명령으로 인덱스를 생성하세요."
         )
 
     mtime = INDEX_PATH.stat().st_mtime
@@ -64,21 +83,17 @@ def _get_model():
             _cached_model = SentenceTransformer(MODEL_NAME)
         return _cached_model
 
+
 def select_data_from_db(indices):
     if not indices:
         return []
 
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    cursor = conn.cursor()
+    qs = SwData.objects.using('reference').filter(serial_number__in=indices)
+    return [
+        {_FIELD_TO_KR[k]: v for k, v in obj.items() if k in _FIELD_TO_KR}
+        for obj in qs.values()
+    ]
 
-    placeholders = ','.join('?' for _ in indices)
-    query = f"SELECT * FROM sw_data WHERE 일련번호 IN ({placeholders})"
-    cursor.execute(query, indices)
-    rows = cursor.fetchall()
-    conn.close()
-
-    return [dict(row) for row in rows]
 
 def compare_from_index(text, k=30):
     # 1) 인덱스 + 모델 로드

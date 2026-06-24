@@ -19,6 +19,11 @@ param(
 $ErrorActionPreference = "Stop"
 
 $RootDir    = Split-Path -Parent $MyInvocation.MyCommand.Path
+
+# 환경 변수 로드 (env.ps1 존재 시)
+$EnvFile = Join-Path $RootDir "env.ps1"
+if (Test-Path $EnvFile) { . $EnvFile }
+
 $VenvPython = Join-Path $RootDir ".venv\Scripts\python.exe"
 if (-not (Test-Path $VenvPython)) {
     $VenvPython = Join-Path $RootDir "venv\Scripts\python.exe"
