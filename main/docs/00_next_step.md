@@ -1,5 +1,14 @@
 # GSCert Next Step
 
+## 2026-06-24: test.zip 서버/Windows 프로그램 재검증
+
+- `C:\Users\jh910\Documents\New project 2\test.zip`을 임시 폴더에 단독 복사해 실제 ECM 다운로드 결과가 zip 1개인 조건으로 점검했다.
+- 서버 점검 경로는 활성 규칙 18개 기준 `pass=7`, `fail=11`이며, 별도 임시파일 검사는 `pass`라 전체 저장 결과는 19개 중 `pass=8`, `fail=11`이다.
+- Windows 프로그램 경로는 HTTP API에서 프로젝트 메타데이터와 규칙 bundle을 받아 같은 `test.zip`으로 실행했으며 `total=18`, `pass=7`, `fail=11`, `unsupported=0`, `error=0`이었다.
+- 서버 코어 규칙 결과와 Windows 프로그램 결과의 상태 불일치는 0개다.
+- 로컬 프로그램에서 PDF/Excel 산출물 캡처를 만들지 않는 `NoOpArtifactSink`의 호출 시그니처가 공용 엔진과 맞지 않아 5개 규칙이 `error`로 떨어지던 문제를 수정했다.
+- `local_review_app/dist/GSCertLocalReview/GSCertLocalReview.exe`를 다시 패키징했고 `--self-check`를 통과했다.
+
 ## 2026-06-24: 서버/Windows 프로그램 실사용 스모크 확인
 
 - 서버용 루트 `.venv`를 Python 3.13으로 구성하고 `requirements.txt` 설치 후 `manage.py check --settings=myproject.ui_mock_settings`를 통과했다.
@@ -142,8 +151,10 @@ Copy-Item -Recurse -Force `
 
 최종 재점검 결과:
 
-- 통과: 9개
-- 실패: 9개
+- 서버 코어 규칙: 통과 7개, 실패 11개
+- 서버 저장 결과: 통과 8개, 실패 11개 (`temp_file_check` 통과 포함)
+- Windows 프로그램/API 경로: 통과 7개, 실패 11개, 미지원 0개, 오류 0개
+- 서버/Windows 프로그램 상태 불일치: 0개
 
 통과:
 
@@ -153,24 +164,24 @@ Copy-Item -Recurse -Force `
 - 시험환경구성도
 - 기능리스트
 - 시험성적서(PDF)
-- 점검표(PDF)
 - 1차/2차/성능/보안RawData
-- 품질평가보고서
 
 남은 실패 분류:
 
 - 실제 문서 내용 수정 필요
   - 품질특성별제품정보기재사항: 제목/프로젝트번호 문구 불일치
-  - 시험계획서(PDF): 기대 버전 `v1.0`, 실제 `1.0`
+  - 시험계획서(PDF): 날짜 작성값 불일치
   - 결함리포트: 바닥글 금지어 `소프트웨어시험인증연구소`
   - 테스트케이스: 바닥글 금지어 `소프트웨어시험인증연구소`
+  - 점검표(PDF): 표지 날짜 불일치
   - 품질검사표: 점검표와 비교 시 총 84개 중 11개 값 다름
+  - 품질평가보고서: 시험기간 불일치
 - 파일 누락
   - 시험기록서 PDF 없음
   - SW저작권확인서 PDF 없음
-  - 홍보이미지 없음
+  - 홍보이미지 파일명에 `예시` 포함
 - 메타데이터/날짜 문제
-  - 최초/최종형상RawData: `시험기간은 2026.04.17.~2026.05.14.인데 수정일자가 2026.04.16.인 이미지가 28개 존재함`
+  - 최초/최종형상RawData: 제품 스크린샷 폴더를 찾을 수 없음
 
 ## 검증 완료
 
@@ -183,15 +194,17 @@ python -m py_compile local_review_app\gscert_local_review\local_runner.py local_
 $env:PYTHONPATH='D:\ECM_Review\local_review_app'; python -m unittest discover local_review_app\tests
 cd local_review_app
 .\scripts\package_windows.ps1
+.\dist\GSCertLocalReview\GSCertLocalReview.exe --self-check
 git diff --check
 ```
 
 예상/최근 결과:
 
-- Django test: 49개 통과
-- seed dry-run: `created=0 updated=10 unchanged=8`
+- Django test: 51개 통과
+- seed dry-run: `created=0 updated=0 unchanged=18`
 - 로컬 앱 unittest: 9개 통과
 - 로컬 앱 PyInstaller 빌드 및 exe self-check: 통과
+- `test.zip` 서버/Windows 프로그램 재검증: `unsupported=0`, `error=0`, 상태 불일치 0개
 - `git diff --check`: whitespace 오류 없음
 
 ## 실제 사용 시 주의점
@@ -200,17 +213,17 @@ git diff --check
 - Word/Excel 머리글/바닥글이 이미지나 필드 코드로만 들어간 경우 텍스트 추출이 되지 않아 실패할 수 있다. 운영 템플릿은 텍스트 머리글/바닥글을 유지하는 것이 좋다.
 - Excel 숨김 시트도 현재 파서 기준으로 검사 대상이다.
 - zip 내부 파일의 실제 생성일은 안정적으로 보존되지 않으므로 제품 스크린샷 날짜 검사는 zip entry 수정일자를 기준으로 한다.
-- `test.zip`의 남은 실패는 현재 기준으로 코드 문제가 아니라 테스트 문서/파일 수정 대상으로 본다.
+- `test.zip`의 남은 11개 실패는 현재 기준으로 코드 문제가 아니라 테스트 문서/파일 수정 대상으로 본다.
 
 ## 바로 다음 작업
 
-1. 패키징된 `GSCertLocalReview.exe`로 실제 ECM 제출물 폴더를 선택해 웹과 같은 규칙 결과가 나오는지 비교한다.
+1. `test.zip`의 남은 11개 실패 항목은 실제 산출물 수정 후 `/download-review/` 또는 직접 검사 스크립트로 18개 전체 통과 여부를 확인한다.
 2. 실제 PC 배포 절차를 정리한다. 현재 배포 대상은 `local_review_app/dist/GSCertLocalReview/` 폴더 전체다.
-3. `test.zip`의 남은 9개 실패 항목은 실제 산출물 수정 후 `/download-review/` 또는 직접 검사 스크립트로 18개 전체 통과 여부를 확인한다.
+3. ECM 실제 다운로드 자동화는 이번에 수정하지 않았으므로, 별도 라이브 다운로드 테스트가 필요하면 worker 경로로 다시 확인한다.
 
 ## 결정 필요
 
-1. 남은 9개 실패를 규칙 완화 없이 문서/파일 수정으로 처리할지 유지 결정한다.
+1. 남은 11개 실패를 규칙 완화 없이 문서/파일 수정으로 처리할지 유지 결정한다.
    - 추천: 규칙은 유지한다. 현재 실패 항목은 앞서 확정한 규칙과 직접 연결되어 있어 완화하면 검증력이 떨어진다.
 2. `test.zip` 수정 후 전체 통과 기준을 언제 운영 시간 복구 시점으로 볼지 정한다.
    - 추천: 샘플 zip 18개 전체 통과와 UI 결과 확인이 끝난 직후 `20:00-07:00`으로 복구한다.

@@ -14,17 +14,25 @@ class ArtifactSink(Protocol):
     """엔진이 산출물을 넘기는 대상. 반환값은 raw_detail에 들어갈 dict."""
 
     def store_pdf_first_page(
-        self, file: Any, *, artifact_id: str, label: str
+        self, project: Any, rule: Any, file: Any, *, artifact_id: str, label: str
     ) -> dict[str, Any]:
         ...
 
     def store_pdf_download(
-        self, file: Any, *, artifact_id: str, label: str
+        self, project: Any, rule: Any, file: Any, *, artifact_id: str, label: str
     ) -> dict[str, Any]:
         ...
 
     def store_excel_area(
-        self, sheet: Any, area: Any, *, artifact_id: str, label: str, source_file: str
+        self,
+        project: Any,
+        rule: Any,
+        sheet: Any,
+        area: Any,
+        *,
+        artifact_id: str,
+        label: str,
+        source_file: str,
     ) -> dict[str, Any]:
         ...
 
@@ -35,11 +43,11 @@ class NoOpArtifactSink:
     엔진이 산출물 생성을 시도해도 메타데이터만 돌려주고 파일은 만들지 않는다.
     """
 
-    def store_pdf_first_page(self, file, *, artifact_id, label):
+    def store_pdf_first_page(self, project, rule, file, *, artifact_id, label):
         return {"id": artifact_id, "label": label, "skipped": True}
 
-    def store_pdf_download(self, file, *, artifact_id, label):
+    def store_pdf_download(self, project, rule, file, *, artifact_id, label):
         return {"id": artifact_id, "label": label, "skipped": True}
 
-    def store_excel_area(self, sheet, area, *, artifact_id, label, source_file):
+    def store_excel_area(self, project, rule, sheet, area, *, artifact_id, label, source_file):
         return {"id": artifact_id, "label": label, "skipped": True}
