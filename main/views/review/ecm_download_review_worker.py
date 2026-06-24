@@ -29,6 +29,7 @@ from main.views.review.ecm_download_review_inspection import (
     cleanup_download_dir,
     run_download_inspection,
 )
+from main.views.review.ecm_download_review_centers import worker_allowed_centers
 from main.utils.ecm_agent_lock import async_ecm_agent_lock
 
 
@@ -663,9 +664,11 @@ def release_worker_lock(job):
 
 
 def _next_startable_job(now):
+    allowed_centers = worker_allowed_centers()
     queued = (
         DownloadReviewJob.objects
         .filter(status=DownloadReviewJobStatus.QUEUED)
+        .filter(center_code__in=allowed_centers)
         .order_by("queued_at", "requested_at", "id")
         .first()
     )
@@ -675,6 +678,7 @@ def _next_startable_job(now):
     return (
         DownloadReviewJob.objects
         .filter(status=DownloadReviewJobStatus.SCHEDULED, available_after__lte=now)
+        .filter(center_code__in=allowed_centers)
         .order_by("available_after", "requested_at", "id")
         .first()
     )

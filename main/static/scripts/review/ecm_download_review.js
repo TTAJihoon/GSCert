@@ -11,6 +11,20 @@ const centerLabels = {
   yeongnam: "영남"
 };
 
+function readJsonScript(id, fallback) {
+  const node = document.getElementById(id);
+  if (!node) return fallback;
+  try {
+    return JSON.parse(node.textContent || "");
+  } catch (error) {
+    return fallback;
+  }
+}
+
+const centerRoutes = readJsonScript("downloadReviewCenterRoutes", {});
+const allowedCenters = new Set(readJsonScript("downloadReviewAllowedCenters", Object.keys(centerLabels)));
+const initialCenter = readJsonScript("downloadReviewDefaultCenter", "sangam");
+
 const ruleNames = [
   "프로젝트번호 파일명 포함",
   "zip 파일 손상 여부",
@@ -373,7 +387,7 @@ const mockJobs = [
 ];
 
 const state = {
-  center: "sangam",
+  center: initialCenter,
   selected: new Set(),
   focusedProject: null,
   resultJobId: null,
@@ -2024,6 +2038,12 @@ function bindControls() {
 
 async function switchCenter(center) {
   if (!center || center === state.center) return;
+  const remoteUrl = centerRoutes[center];
+  if (remoteUrl) {
+    window.location.assign(buildCenterRouteUrl(remoteUrl, center));
+    return;
+  }
+  if (!allowedCenters.has(center)) return;
   state.center = center;
   state.selectionMessage = "";
   state.selected.clear();
@@ -2035,6 +2055,12 @@ async function switchCenter(center) {
     refreshActiveJob(),
     loadResultJobs()
   ]);
+}
+
+function buildCenterRouteUrl(baseUrl, center) {
+  const url = new URL(baseUrl, window.location.href);
+  url.searchParams.set("center", center);
+  return url.toString();
 }
 
 function syncCenterTabs() {

@@ -787,6 +787,29 @@ class DownloadReviewProjectsApiTests(TestCase):
         self.assertEqual(data["items"][0]["center_label"], "영남")
         self.assertEqual(data["items"][0]["project_number"], "TTA-26-09999")
 
+    def test_projects_default_to_bundang_on_bundang_server_host(self):
+        request = self.factory.get("/api/projects/", {"limit": "1"}, HTTP_HOST="210.96.71.194")
+        with self.settings(
+            REFERENCE_DB_PATH_BUNDANG=self.reference_db_path,
+            REFERENCE_DB_TABLE="ecm_list",
+        ):
+            response = projects(request)
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["items"][0]["center_code"], "bundang")
+        self.assertEqual(data["items"][0]["center_label"], "분당")
+
+    def test_projects_reject_other_center_on_bundang_server_host(self):
+        request = self.factory.get("/api/projects/", {"center": "sangam"}, HTTP_HOST="210.96.71.194")
+        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
+            response = projects(request)
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(data["error_code"], "invalid_query")
+        self.assertIn("이 서버에서 처리하지 않는 센터", data["message"])
+
     def _get_projects(self, params=None):
         response = self._request(params or {})
         self.assertEqual(response.status_code, 200)

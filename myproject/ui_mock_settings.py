@@ -5,7 +5,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = "django-insecure-ui-mock-local-only"
 DEBUG = True
-ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+ALLOWED_HOSTS = ["127.0.0.1", "localhost", "210.96.71.194", "210.96.71.241"]
 
 ROOT_URLCONF = "myproject.ui_mock_urls"
 
@@ -67,6 +67,31 @@ REFERENCE_DB_PATH_2 = BASE_DIR / "main" / "data" / "ecmlist2.db"
 DOWNLOAD_REVIEW_ARTIFACT_DIR = BASE_DIR / "main" / "data" / "download_review_artifacts"
 REFERENCE_DB_TABLE = "ecm_list"
 DOWNLOAD_REVIEW_DEFAULT_CENTER = "sangam"
+DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_HOST = {
+    "210.96.71.194": "bundang",
+    "210.96.71.241": "sangam",
+}
+DOWNLOAD_REVIEW_ALLOWED_CENTERS_BY_HOST = {
+    "210.96.71.194": {"bundang"},
+    "210.96.71.241": {"sangam", "yeongnam"},
+}
+DOWNLOAD_REVIEW_WORKER_CENTERS = {
+    value.strip()
+    for value in os.environ.get("DOWNLOAD_REVIEW_WORKER_CENTERS", "").split(",")
+    if value.strip()
+}
+DOWNLOAD_REVIEW_CENTER_ROUTES_BY_HOST = {
+    "210.96.71.194": {
+        "bundang": "",
+        "sangam": "http://210.96.71.241/download-review/",
+        "yeongnam": "http://210.96.71.241/download-review/",
+    },
+    "210.96.71.241": {
+        "bundang": "http://210.96.71.194/download-review/",
+        "sangam": "",
+        "yeongnam": "",
+    },
+}
 DOWNLOAD_REVIEW_TIME_ZONE = "Asia/Seoul"
 # TODO(TEST_ONLY_DOWNLOAD_REVIEW_TIME_WINDOW):
 # 라이브 검증 중에는 0~24 전체 시간 허용. 테스트 완료 즉시 START_HOUR=20, END_HOUR=7로 되돌린다.

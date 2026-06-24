@@ -1,5 +1,16 @@
 # GSCert Next Step
 
+## 2026-06-24: 분당/상암·영남 split-server 운영 라우팅
+
+- `/download-review/` 화면이 현재 Host를 보고 기본 센터와 원격 센터 탭 URL을 결정하도록 수정했다.
+- `210.96.71.194`는 분당 담당 서버로 보고 기본 센터를 `bundang`으로 설정했다.
+- `210.96.71.241`은 상암/영남 담당 서버로 보고 기본 센터를 `sangam`으로 설정했다.
+- 194 서버에서 상암/영남 탭을 클릭하면 241 서버의 `/download-review/?center=sangam|yeongnam`으로 이동한다.
+- 241 서버에서 분당 탭을 클릭하면 194 서버의 `/download-review/?center=bundang`으로 이동한다.
+- API는 현재 서버에서 처리하지 않는 센터 요청을 400으로 거절한다.
+- worker는 서버 IP 또는 `DOWNLOAD_REVIEW_WORKER_CENTERS` 환경변수를 기준으로 허용 센터 작업만 claim한다.
+- 운영 확인 절차는 `main/docs/29_download_review_split_server_deployment.md`에 정리했다.
+
 ## 2026-06-24: Google Sheet 프로젝트 목록 PostgreSQL 적재 준비
 
 - 인증위 Google Sheet를 CSV export로 읽어 `reference_project` PostgreSQL 테이블에 적재하는 `sync_reference_projects_from_sheet` 관리 명령을 추가했다.

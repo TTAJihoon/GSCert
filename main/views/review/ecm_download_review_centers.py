@@ -1,4 +1,6 @@
 from pathlib import Path
+import socket
+from urllib.parse import urlparse
 
 from django.conf import settings
 
@@ -45,6 +47,50 @@ def center_choices():
         {"code": code, "label": definition["label"]}
         for code, definition in _CENTER_DEFINITIONS.items()
     ]
+
+
+def default_center_for_host(host=None):
+    configured = getattr(settings, "DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_HOST", {})
+    host_key = _host_key(host)
+    if host_key and host_key in configured:
+        return normalize_center_code(configured[host_key])
+    return normalize_center_code(None)
+
+
+def allowed_centers_for_host(host=None):
+    configured = getattr(settings, "DOWNLOAD_REVIEW_ALLOWED_CENTERS_BY_HOST", {})
+    host_key = _host_key(host)
+    values = configured.get(host_key) if host_key else None
+    if not values:
+        return set(_CENTER_DEFINITIONS)
+    return {normalize_center_code(value) for value in values}
+
+
+def is_center_allowed_for_host(center_code, host=None):
+    return normalize_center_code(center_code) in allowed_centers_for_host(host)
+
+
+def center_routes_for_host(host=None):
+    configured = getattr(settings, "DOWNLOAD_REVIEW_CENTER_ROUTES_BY_HOST", {})
+    host_key = _host_key(host)
+    routes = configured.get(host_key, {}) if host_key else {}
+    return {
+        normalize_center_code(center): str(url or "")
+        for center, url in routes.items()
+    }
+
+
+def worker_allowed_centers():
+    configured = getattr(settings, "DOWNLOAD_REVIEW_WORKER_CENTERS", None)
+    if configured:
+        return {normalize_center_code(value) for value in configured}
+
+    host_map = getattr(settings, "DOWNLOAD_REVIEW_ALLOWED_CENTERS_BY_HOST", {})
+    local_hosts = _local_host_keys()
+    for host in local_hosts:
+        if host in host_map:
+            return {normalize_center_code(value) for value in host_map[host]}
+    return set(_CENTER_DEFINITIONS)
 
 
 def normalize_center_code(value=None):
@@ -95,3 +141,31 @@ def ecm_tree_root_index(center_code):
 def _definition(center_code):
     normalized = normalize_center_code(center_code)
     return _CENTER_DEFINITIONS[normalized]
+
+
+def _host_key(host=None):
+    if not host:
+        return ""
+    raw = str(host).strip().lower()
+    if not raw:
+        return ""
+    if "://" in raw:
+        parsed = urlparse(raw)
+        raw = parsed.netloc or parsed.path
+    if raw.startswith("[") and "]" in raw:
+        return raw[1:raw.index("]")]
+    return raw.split(":", 1)[0]
+
+
+def _local_host_keys():
+    hosts = {"localhost", "127.0.0.1"}
+    try:
+        hostname = socket.gethostname()
+        hosts.add(hostname.lower())
+        for info in socket.getaddrinfo(hostname, None):
+            address = info[4][0]
+            if address:
+                hosts.add(_host_key(address))
+    except OSError:
+        pass
+    return hosts

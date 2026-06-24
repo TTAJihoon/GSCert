@@ -5,7 +5,7 @@
 
 {% block head %}
 <link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=13">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=13" defer></script>
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=14" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -17,15 +17,15 @@
     </div>
     <div class="status-side">
       <nav class="center-tabs" aria-label="센터 선택">
-        <button class="center-tab-button active" type="button" data-center-tab="sangam">
+        <button class="center-tab-button{% if download_review_default_center == 'sangam' %} active{% endif %}" type="button" data-center-tab="sangam">
           <i class="fa-solid fa-building"></i>
           상암
         </button>
-        <button class="center-tab-button" type="button" data-center-tab="bundang">
+        <button class="center-tab-button{% if download_review_default_center == 'bundang' %} active{% endif %}" type="button" data-center-tab="bundang">
           <i class="fa-solid fa-building-columns"></i>
           분당
         </button>
-        <button class="center-tab-button" type="button" data-center-tab="yeongnam">
+        <button class="center-tab-button{% if download_review_default_center == 'yeongnam' %} active{% endif %}" type="button" data-center-tab="yeongnam">
           <i class="fa-solid fa-building-user"></i>
           영남
         </button>
@@ -55,6 +55,10 @@
       </div>
     </div>
   </section>
+
+  {{ download_review_default_center|json_script:"downloadReviewDefaultCenter" }}
+  {{ download_review_allowed_centers|json_script:"downloadReviewAllowedCenters" }}
+  {{ download_review_center_routes|json_script:"downloadReviewCenterRoutes" }}
 
   <nav class="tabs" aria-label="화면 탭">
     <button class="tab-button active" type="button" data-tab="projects">

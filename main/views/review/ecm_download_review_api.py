@@ -28,6 +28,11 @@ from main.views.review.ecm_reference_db import (
     get_projects_by_numbers,
     list_projects,
 )
+from main.views.review.ecm_download_review_centers import (
+    default_center_for_host,
+    is_center_allowed_for_host,
+    normalize_center_code,
+)
 from main.views.review.ecm_rulebase import (
     get_rulebase_bundle_payload,
     get_rulebase_manifest_payload,
@@ -37,7 +42,9 @@ from main.views.review.ecm_rulebase import (
 @require_GET
 def projects(request):
     try:
-        payload = list_projects(request.GET)
+        query_params = _query_params_with_host_default_center(request)
+        _ensure_request_center_allowed(request, query_params.get("center"))
+        payload = list_projects(query_params)
         payload = attach_active_project_states(payload)
         status = 200
     except ReferenceQueryError as exc:
@@ -72,8 +79,9 @@ def local_review_health(request):
 
 @require_GET
 def local_review_project_metadata(request, project_number):
-    center_code = request.GET.get("center")
+    center_code = request.GET.get("center") or default_center_for_host(request.get_host())
     try:
+        _ensure_request_center_allowed(request, center_code)
         projects_payload = get_projects_by_numbers([project_number], center_code=center_code)
         project = projects_payload[0] if projects_payload else None
         if not project:
@@ -147,8 +155,13 @@ def jobs(request):
 
 def _jobs_list(request):
     try:
-        payload = get_jobs_payload(request.GET)
+        query_params = _query_params_with_host_default_center(request)
+        _ensure_request_center_allowed(request, query_params.get("center"))
+        payload = get_jobs_payload(query_params)
         status = 200
+    except ReferenceQueryError as exc:
+        payload = _error_payload(exc, str(exc))
+        status = 400
     except DownloadReviewJobRequestError as exc:
         payload = _error_payload(exc, str(exc), details=exc.details)
         status = exc.status_code
@@ -161,11 +174,17 @@ def _jobs_list(request):
 def _jobs_create(request):
     try:
         payload = parse_json_body(request)
+        if not payload.get("center"):
+            payload["center"] = default_center_for_host(request.get_host())
+        _ensure_request_center_allowed(request, payload.get("center"))
         response_payload = create_download_review_job(
             payload,
             request_ip=_client_ip(request),
         )
         status = 201
+    except ReferenceQueryError as exc:
+        response_payload = _error_payload(exc, str(exc))
+        status = 400
     except DownloadReviewJobRequestError as exc:
         response_payload = _error_payload(exc, str(exc), details=exc.details)
         status = exc.status_code
@@ -235,15 +254,31 @@ def job_results_excel(request, job_id):
 
 @require_GET
 def latest_project_results(request, project_number):
-    return _json_or_not_found(lambda: get_latest_project_results_payload(project_number, request.GET.get("center")))
+    center_code = request.GET.get("center") or default_center_for_host(request.get_host())
+    try:
+        _ensure_request_center_allowed(request, center_code)
+    except ReferenceQueryError as exc:
+        response = JsonResponse(_error_payload(exc, str(exc)), status=400, json_dumps_params={"ensure_ascii": False})
+        response["Cache-Control"] = "no-store"
+        return response
+    return _json_or_not_found(lambda: get_latest_project_results_payload(project_number, center_code))
 
 
 @require_GET
 def bulk_download_projects_zip(request):
     project_numbers = request.GET.getlist("pn")
-    center_code = request.GET.get("center") or ""
+    center_code = request.GET.get("center") or default_center_for_host(request.get_host())
     try:
+        _ensure_request_center_allowed(request, center_code)
         return get_bulk_projects_zip_response(project_numbers, center_code=center_code)
+    except ReferenceQueryError as exc:
+        response = JsonResponse(
+            _error_payload(exc, str(exc)),
+            status=400,
+            json_dumps_params={"ensure_ascii": False},
+        )
+        response["Cache-Control"] = "no-store"
+        return response
     except DownloadReviewJobRequestError as exc:
         response = JsonResponse(
             {"success": False, "message": str(exc)},
@@ -302,6 +337,23 @@ def _file_or_not_found(factory):
         response = JsonResponse(_error_payload(exc, str(exc)), status=exc.status_code, json_dumps_params={"ensure_ascii": False})
         response["Cache-Control"] = "no-store"
         return response
+
+
+def _query_params_with_host_default_center(request):
+    query_params = request.GET.copy()
+    if not query_params.get("center"):
+        query_params["center"] = default_center_for_host(request.get_host())
+    return query_params
+
+
+def _ensure_request_center_allowed(request, center_code):
+    try:
+        normalized = normalize_center_code(center_code)
+    except ValueError as exc:
+        raise ReferenceQueryError(str(exc)) from exc
+    if not is_center_allowed_for_host(normalized, request.get_host()):
+        raise ReferenceQueryError("이 서버에서 처리하지 않는 센터입니다.")
+    return normalized
 
 
 def _client_ip(request):
