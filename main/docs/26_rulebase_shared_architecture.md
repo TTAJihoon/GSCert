@@ -292,10 +292,9 @@ Windows 프로그램은 다음 정책을 권장한다.
 - `규칙 업데이트` 버튼은 서버 bundle을 내려받아 로컬 JSON 캐시에 저장한다.
 - 로컬 캐시 위치는 기본적으로 `%LOCALAPPDATA%\GSCertLocalReview\rules_bundle.json`이다.
 - `점검 실행` 버튼은 캐시된 규칙과 로컬 파일/폴더 스캔 결과를 `local_runner.py`에 전달한다.
-- `required_artifact_file`, `required_file_name_contains`, `downloadable_artifact_check`, `rawdata_folder_structure_check`는 로컬에서 1차 판단한다.
-- `document_artifact_check`는 필요한 파일 개수와 Word/PDF 기본 내용 검사 일부를 로컬에서 판단한다.
-- `.xlsx` 문서는 시트명/제목 같은 기초 조건을 확인한다.
-- 복잡한 산출물 간 비교가 필요한 규칙은 현재 `미지원`으로 표시한다.
+- `local_runner.py`는 현재 자체 판단 로직 대신 `gscert_review_core.engine.evaluate_rules`를 호출한다.
+- 웹 자동 점검과 Windows 앱은 같은 공용 엔진을 사용하며, Windows 앱은 로컬 파일 경로와 API에서 조회한 프로젝트 기준정보를 엔진 입력으로 변환한다.
+- 공용 엔진에 아직 없는 새 `rule_type`이 추가되면 Windows 앱은 해당 규칙을 `미지원`으로 표시하고 프로그램 업데이트가 필요하다.
 
 ## 추천 구현 단계
 
@@ -325,11 +324,11 @@ Windows 프로그램은 다음 정책을 권장한다.
   - 전체 통과/부적합/미지원 요약
 ```
 
-이 단계는 `local_review_app/gscert_local_review/local_runner.py`로 구현되었다. 다만 문서 내부 값 비교 규칙은 아직 서버 엔진 전용이다.
+이 단계는 `local_review_app/gscert_local_review/local_runner.py`로 구현되었고, 이후 공용 엔진 위임 방식으로 전환되었다.
 
 ### 4단계: 공용 문서 검사 엔진 경계 분리
 
-현재 `run_download_inspection()`은 Django ORM과 서버 파일 분석 흐름에 강하게 묶여 있다. Windows 앱에서도 문서 내용 규칙을 실행하려면 다음 경계를 분리하는 것이 좋다.
+현재 공용 엔진은 `gscert_review_core.engine.evaluate_rules(...)`로 분리되어 웹과 Windows 앱이 함께 사용한다.
 
 ```text
 입력:

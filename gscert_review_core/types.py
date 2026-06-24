@@ -54,6 +54,7 @@ class RuleSpec:
     name: str
     config: dict[str, Any] = field(default_factory=dict)
     target_file_type: str = ""
+    target_file_pattern: str = ""
 
     @property
     def config_json(self) -> dict[str, Any]:

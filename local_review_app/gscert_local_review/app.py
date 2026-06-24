@@ -411,6 +411,7 @@ class MainWindow(QMainWindow):
         self.selected_folder: Path | None = None
         self.scan: FolderScan | None = None
         self._scan_worker: ScanWorker | None = None
+        self.current_metadata: ProjectMetadata | None = None
         self.rule_cache = load_rule_cache()
 
         root = QWidget()
@@ -874,6 +875,7 @@ class MainWindow(QMainWindow):
             self.scan,
             rule_bundle,
             self.project_number.text().strip(),
+            metadata=self.current_metadata,
         )
         self._set_result_rows(summary)
 
@@ -883,6 +885,14 @@ class MainWindow(QMainWindow):
         dialog = ReferenceSearchDialog(self._client(), parent=self)
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.selected:
             item = dialog.selected
+            self.current_metadata = ProjectMetadata(
+                project_number=self.project_number.text().strip(),
+                company_name=item.company,
+                product_name=item.product,
+                cert_date=item.cert_date,
+                start_date=item.start_date,
+                end_date=item.end_date,
+            )
             self.company.setText(item.company or "—")
             self.product.setText(item.product or "—")
             self.cert_date.setText(item.cert_date or "—")
@@ -901,6 +911,7 @@ class MainWindow(QMainWindow):
         return f"v{summary.rulebase_version} · {summary.rule_count}개 규칙"
 
     def _set_metadata(self, metadata: ProjectMetadata):
+        self.current_metadata = metadata
         self.company.setText(metadata.company_name or "—")
         self.product.setText(metadata.product_name or "—")
         self.pl.setText(metadata.pl_name or "—")

@@ -83,7 +83,7 @@ gscert_review_core/
 | Phase 1 | 코어 토대: `types.py` / `documents.py` / `artifacts.py` | ✅ 완료 |
 | Phase 2 | `engine.py`로 평가 로직 이식 + Django 의존 제거 | ✅ 완료 |
 | Phase 3 | 웹 파일을 코어 위임 thin-adapter로 전환 + **회귀 검증** | ✅ 완료 |
-| Phase 4 | 로컬 `local_runner.py`를 코어 위임으로 전환 | ⏳ 예정 |
+| Phase 4 | 로컬 `local_runner.py`를 코어 위임으로 전환 | ✅ 완료 |
 | Phase 5 | 로컬 앱 패키징에 코어 + deps(lxml/xlrd/fitz) 번들 | ⏳ 예정 |
 
 #### Phase 1 (완료)
@@ -131,3 +131,12 @@ gscert_review_core/
 - 🟡5 `evaluate_rules` 가 `verify_result` 객체를 그대로 받아 `_inspection_zip_errors` 등 부작용이 원본에 전파.
 - 예외 클래스(`DownloadReviewInspectionError` 등)는 엔진에서 재노출해 평가기 `except` 와 동일 객체 보장.
 - **회귀 검증: `manage.py test main.tests` 51개 전부 통과.**
+
+#### Phase 4 (완료)
+로컬 `local_runner.py`를 자체 구현 규칙 엔진에서 공용 `gscert_review_core.engine.evaluate_rules` 위임 어댑터로 전환했다.
+- 로컬 `FolderScan.files`를 `engine.FileInfo`로 변환해 선택 폴더의 실제 파일 경로를 공용 엔진에 전달한다.
+- 서버 rule bundle의 규칙 dict를 `RuleSpec`으로 변환하고, `target_file_pattern` 필드를 코어 타입에 추가했다.
+- 로컬 앱이 API에서 조회한 `ProjectMetadata`를 `engine.build_context(...)`로 전달해 프로젝트명/회사명/시험기간/인증일 기준값을 공용 엔진에서 사용할 수 있게 했다.
+- 규칙별 예외는 로컬 UI 경계에서 `ERROR` 결과로 격리하고, 아직 코어에서 처리하지 않는 `rule_type`은 `UNSUPPORTED`로 표시한다.
+- 로컬 앱 의존성에 공용 엔진 문서 파서 실행에 필요한 `lxml`, `xlrd`를 추가했다.
+- 검증: `python -m unittest discover local_review_app\tests` 9개 통과.

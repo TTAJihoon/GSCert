@@ -146,42 +146,38 @@ Windows 앱은 서버의 규칙 bundle을 내려받아 로컬 JSON 파일로 저
 
 ## 로컬 점검 실행 기준
 
-현재 로컬 runner가 직접 판단하는 규칙은 다음과 같다.
+현재 로컬 runner는 서버와 같은 공용 엔진 `gscert_review_core.engine.evaluate_rules`를 호출한다. 앱은 서버에서 받은 rule bundle과 선택 폴더의 파일 목록, API에서 조회한 프로젝트 기준정보를 공용 엔진 입력으로 변환한다.
 
 | 규칙 유형 | 로컬 앱 처리 |
 | --- | --- |
-| `required_artifact_file` | 파일명/경로 키워드, 확장자, 개수 조건 확인 |
-| `required_file_name_contains` | 파일명/경로 키워드 포함 여부 확인 |
-| `downloadable_artifact_check` | 다운로드 파일 존재, 확장자, 개수 조건 확인 |
-| `rawdata_folder_structure_check` | rawdata 관련 폴더 또는 파일 존재 여부 확인 |
-| `document_artifact_check` | 필요한 Word/PDF 파일 개수 확인, Word/PDF 기본 내용 검사 일부 실행 |
-| 기타 문서 규칙 | 필요한 파일 개수와 `.xlsx` 시트명/제목 기초 조건 확인 후 세부 비교는 미지원 표시 |
+| 서버 공용 엔진 지원 규칙 | 공용 엔진 결과를 그대로 표시 |
+| 서버 공용 엔진 미지원 규칙 | `미지원`으로 표시 |
+| 실행 중 예외가 난 규칙 | `오류`로 표시하고 다음 규칙은 계속 실행 |
 
-`document_artifact_check`에서 현재 로컬 앱이 실행하는 Word 내용 검사는 다음과 같다.
+현재 연결된 주요 규칙 유형은 다음과 같다.
 
-| 검사 유형 | 로컬 앱 처리 |
-| --- | --- |
-| `docx_table_next_cell_equals` | Word 표에서 라벨 오른쪽 셀 값 비교 |
-| `docx_text_contains` | Word 전체 텍스트 포함 여부 확인 |
-| `docx_header_contains` | Word 머리글 포함 여부 확인 |
-| `docx_footer_contains` | Word 바닥글 포함 여부 확인 |
-| `docx_next_paragraph_matches` | 지정 문구 다음 문단의 정규식 형식 확인 |
-| `pdf_first_page_label_value_contains` | PDF 1페이지에서 라벨 이후 기대값 포함 여부 확인 |
+```text
+min_file_count
+filename_contains_project_number
+required_extension
+required_file_name_contains
+required_artifact_file
+downloadable_artifact_check
+document_artifact_check
+all_files_non_empty
+excel_feature_list_check
+test_plan_document_check
+image_screenshot_folder_date_check
+test_case_check
+rawdata_folder_structure_check
+test_report_document_check
+defect_report_check
+inspection_checklist_check
+quality_inspection_table_check
+quality_evaluation_report_check
+```
 
-다음처럼 복잡한 문서 내부 내용을 읽어야 하는 규칙은 아직 로컬 앱에서 `미지원`으로 표시된다.
-
-| 규칙 유형 | 이유 |
-| --- | --- |
-| `excel_feature_list_check` | `.xlsx` 시트/제목 기초 확인 후 세부 Excel 내용 분석 필요 |
-| `test_plan_document_check` | 시험계획서 본문/머리글/바닥글 분석 필요 |
-| `test_case_check` | 테스트케이스 Excel 내용 분석 필요 |
-| `defect_report_check` | 결함리포트 Excel 내용 분석 필요 |
-| `inspection_checklist_check` | 점검표 Excel/PDF 내용 분석 필요 |
-| `test_report_document_check` | 시험성적서 Word/PDF 내용 분석 필요 |
-| `quality_evaluation_report_check` | 품질평가보고서 Word 내용 분석 필요 |
-| `quality_inspection_table_check` | `.xlsx` 시트명 기초 확인 후 품질검사표 세부 값 비교 필요 |
-
-따라서 현재 로컬 결과에서 `미지원`은 부적합이 아니라 “프로그램 업데이트로 문서 검사 엔진 연결이 필요한 규칙”이라는 뜻이다.
+`미지원`은 부적합이 아니라 “현재 프로그램에 포함된 공용 엔진이 아직 모르는 새 규칙 유형”이라는 뜻이다. 이 경우 규칙 정의만 업데이트해서는 해결되지 않고 Windows 프로그램 업데이트가 필요하다.
 
 ## 프로젝트 번호 자동 추정 기준
 
@@ -265,16 +261,15 @@ TTA-26-00727_test/
 
 ## 현재 제한사항
 
-현재 앱은 기존 서버 점검 규칙 엔진 전체를 그대로 실행하지 않는다. 1차 로컬 runner는 파일/폴더 목록, Word/PDF 기본 텍스트, `.xlsx` 기초 조건으로 판단 가능한 규칙을 먼저 실행한다.
+현재 앱은 공용 점검 엔진을 사용한다. 다만 웹과 달리 로컬 앱은 서버 DB에 결과를 저장하지 않고 화면에만 표시하며, 산출물 캡처 저장은 하지 않는다.
 
 아직 없는 기능은 다음과 같다.
 
 - 점검 결과 상세 팝업
-- 산출물 간 복잡 비교 규칙의 완전한 로컬 실행
 - 점검 결과 저장/내보내기
 - 로컬 실행 결과 서버 업로드
 
-다음 구현 단계에서 기존 `main/views/review/ecm_download_review_inspection.py`의 세부 비교 로직과 결과 생성 로직을 공용 엔진 경계로 분리해야 한다.
+다음 구현 단계는 `.exe` 패키징 결과물에 `gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`가 안정적으로 포함되는지 검증하는 것이다.
 
 ## 문제 해결
 

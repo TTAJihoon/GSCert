@@ -172,7 +172,8 @@ class LocalReviewProjectTests(unittest.TestCase):
     def test_run_cached_rules_accepts_rawdata_zip_presence(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
-            (root / "rawdata.zip").write_bytes(b"zip")
+            with ZipFile(root / "rawdata.zip", "w") as archive:
+                archive.writestr("성능/result.txt", "ok")
             scan = scan_folder(root)
             bundle = {
                 "rules": [
@@ -194,7 +195,7 @@ class LocalReviewProjectTests(unittest.TestCase):
             self.assertEqual(summary.passed_count, 1)
             self.assertEqual(summary.results[0].status, PASS)
 
-    def test_complex_excel_rule_checks_title_then_marks_unsupported(self):
+    def test_complex_excel_rule_uses_shared_engine(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             root = Path(temp_dir)
             _write_xlsx(root / "TTA-26-00727 기능리스트.xlsx", "Sheet1", [["TTA-26-00727 기능리스트"]])
@@ -217,8 +218,9 @@ class LocalReviewProjectTests(unittest.TestCase):
 
             summary = run_cached_rules(scan, bundle, "TTA-26-00727")
 
-            self.assertEqual(summary.unsupported_count, 1)
-            self.assertEqual(summary.results[0].status, UNSUPPORTED)
+            self.assertEqual(summary.unsupported_count, 0)
+            self.assertEqual(summary.failed_count, 1)
+            self.assertEqual(summary.results[0].status, FAIL)
 
 def _write_docx_with_table(path: Path, rows: list[list[str]]) -> None:
     cells_xml = []

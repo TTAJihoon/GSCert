@@ -1,5 +1,13 @@
 # GSCert Next Step
 
+## 2026-06-24: Phase 4 로컬 runner 공용 엔진 전환
+
+- `local_review_app/gscert_local_review/local_runner.py`를 자체 로컬 규칙 구현에서 `gscert_review_core.engine.evaluate_rules`를 호출하는 thin-adapter로 전환했다.
+- 로컬 스캔 파일은 `engine.FileInfo`, 서버 rule bundle은 `RuleSpec`, 프로젝트 기준정보는 `engine.build_context(...)`로 변환해 웹과 Windows 앱이 같은 점검 엔진을 사용한다.
+- Windows 앱에서 조회/선택한 `ProjectMetadata`를 `run_cached_rules(..., metadata=...)`로 넘기도록 연결해 회사명, 제품명, 시험기간, 인증일 기준값을 로컬 점검에서도 사용할 수 있게 했다.
+- 코어 타입에 `target_file_pattern`을 추가해 서버 rule bundle 필드와 공용 엔진의 파일 매칭 로직을 맞췄다.
+- 로컬 앱 의존성에 `lxml`, `xlrd`를 추가했다. Phase 5에서는 exe 패키징에 `gscert_review_core`와 새 의존성이 안정적으로 포함되는지 검증한다.
+
 ## 2026-06-19: 점검 결과 엑셀 다운로드 UI/API
 
 - `/download-review/` 점검 결과 상세 팝업 크기를 기존 대비 약 1.2배로 확대했다.
@@ -20,8 +28,8 @@
 - 현재 로컬에서 직접 판단하는 규칙 유형은 `required_artifact_file`, `required_file_name_contains`, `downloadable_artifact_check`, `rawdata_folder_structure_check`이다.
 - `document_artifact_check`는 필요한 파일 개수와 Word/PDF 기본 내용 검사 일부를 로컬에서 판단한다.
 - `.xlsx` 문서는 시트명/제목 같은 기초 조건을 확인한다.
-- 복잡한 산출물 간 비교가 필요한 규칙은 아직 서버 엔진 전용이며, 로컬 앱에서는 `미지원`으로 표시한다.
-- 다음 단계는 서버의 세부 산출물 비교 로직을 공용 엔진으로 더 작게 분리해 로컬 앱의 `미지원` 범위를 줄이는 것이다.
+- 복잡한 산출물 간 비교가 필요한 규칙은 이후 Phase 4에서 공용 엔진 위임으로 전환했다.
+- 다음 단계는 로컬 exe 패키징에 공용 엔진과 문서 파서 의존성을 안정적으로 포함하는 것이다.
 
 ## 2026-06-18: PostgreSQL/API 및 Windows 앱 테스트 매뉴얼
 
@@ -153,6 +161,8 @@ Copy-Item -Recurse -Force `
 .\.venv\Scripts\python.exe manage.py check --settings=myproject.ui_mock_settings
 .\.venv\Scripts\python.exe manage.py test main.tests --settings=myproject.ui_mock_settings
 .\.venv\Scripts\python.exe manage.py seed_download_review_rules --only-real --enable --update-existing --dry-run --settings=myproject.ui_mock_settings
+python -m py_compile local_review_app\gscert_local_review\local_runner.py local_review_app\gscert_local_review\app.py gscert_review_core\types.py local_review_app\tests\test_project.py
+$env:PYTHONPATH='D:\ECM_Review\local_review_app'; python -m unittest discover local_review_app\tests
 git diff --check
 ```
 
@@ -160,6 +170,7 @@ git diff --check
 
 - Django test: 49개 통과
 - seed dry-run: `created=0 updated=10 unchanged=8`
+- 로컬 앱 unittest: 9개 통과
 - `git diff --check`: whitespace 오류 없음
 
 ## 실제 사용 시 주의점
@@ -172,9 +183,9 @@ git diff --check
 
 ## 바로 다음 작업
 
-1. `test.zip`의 남은 9개 실패 항목을 실제 산출물에서 수정한다.
-2. 수정한 zip으로 `/download-review/` 또는 직접 검사 스크립트를 다시 실행해 18개 전체 통과 여부를 확인한다.
-3. 실제 테스트가 끝나면 download-review 시작 가능 시간을 운영 기준 `20:00-07:00`으로 복구한다.
+1. Phase 5로 로컬 exe 패키징을 검증한다. `gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`가 패키징 결과물에 포함되어야 한다.
+2. 패키징된 `GSCertLocalReview.exe`로 실제 ECM 제출물 폴더를 선택해 웹과 같은 규칙 결과가 나오는지 비교한다.
+3. `test.zip`의 남은 9개 실패 항목은 실제 산출물 수정 후 `/download-review/` 또는 직접 검사 스크립트로 18개 전체 통과 여부를 확인한다.
 
 ## 결정 필요
 
