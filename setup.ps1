@@ -17,6 +17,10 @@ $ErrorActionPreference = "Stop"
 $RootDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
 $SetupDir = Join-Path $RootDir "setup"
 
+# reference(PostgreSQL) 접속 정보 로드 (env.ps1 존재 시)
+$EnvFile = Join-Path $RootDir "env.ps1"
+if (Test-Path $EnvFile) { . $EnvFile }
+
 # ── 다운로드 URL (버전 변경 시 여기만 수정) ─────────────────────────
 $PYTHON_VER   = "3.13.3"
 $PYTHON_URL   = "https://www.python.org/ftp/python/$PYTHON_VER/python-$PYTHON_VER-amd64.exe"
@@ -277,6 +281,42 @@ if ($LASTEXITCODE -ne 0) { Fail "마이그레이션 실패 — 위 오류를 확
 & $VenvPython (Join-Path $RootDir "manage.py") migrate --database=workflow
 if ($LASTEXITCODE -ne 0) { Fail "workflow DB 마이그레이션 실패 — 위 오류를 확인하세요." }
 OK "마이그레이션 완료"
+
+# ══════════════════════════════════════════════════════════════════════
+# 11-2. reference(PostgreSQL) DB — sw_data 테이블 마이그레이션 + 데이터 적재
+#   PostgreSQL이 설치되어 있고 env.ps1(접속정보)이 준비된 경우에만 수행한다.
+#   PG가 없거나 접속이 안 되면 실패시키지 않고 안내만 출력한다.
+# ══════════════════════════════════════════════════════════════════════
+Step "reference(PostgreSQL) DB 설정"
+if (-not (Test-Path $EnvFile)) {
+    Warn "env.ps1 이 없어 reference(PostgreSQL) DB 설정을 건너뜁니다."
+    Write-Host "       1) PostgreSQL 설치 후 DB 생성:  CREATE DATABASE gscert_reference;" -ForegroundColor Gray
+    Write-Host "       2) env.ps1.example 을 env.ps1 로 복사하고 비밀번호 입력" -ForegroundColor Gray
+    Write-Host "       3) setup.ps1 을 다시 실행하거나 아래 두 명령을 수동 실행:" -ForegroundColor Gray
+    Write-Host "          python manage.py migrate --database=reference" -ForegroundColor Gray
+    Write-Host "          python manage.py import_reference_db --source-xlsx main/data/reference.xlsx" -ForegroundColor Gray
+} else {
+    # PostgreSQL 접속 확인 (psycopg)
+    $pgOk = & $VenvPython -c "import os,psycopg; psycopg.connect(dbname=os.environ.get('REFERENCE_PG_NAME','gscert_reference'), user=os.environ.get('REFERENCE_PG_USER','postgres'), password=os.environ.get('REFERENCE_PG_PASSWORD',''), host=os.environ.get('REFERENCE_PG_HOST','localhost'), port=os.environ.get('REFERENCE_PG_PORT','5432')).close()" 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Warn "PostgreSQL(gscert_reference)에 접속할 수 없어 reference DB 설정을 건너뜁니다."
+        Write-Host "       오류: $pgOk" -ForegroundColor Gray
+        Write-Host "       PostgreSQL 설치/실행 및 'CREATE DATABASE gscert_reference;' 후 env.ps1 의 비밀번호를 확인하세요." -ForegroundColor Gray
+        Write-Host "       이후 수동 실행: python manage.py migrate --database=reference; python manage.py import_reference_db --source-xlsx main/data/reference.xlsx" -ForegroundColor Gray
+    } else {
+        & $VenvPython (Join-Path $RootDir "manage.py") migrate --database=reference
+        if ($LASTEXITCODE -ne 0) { Fail "reference DB 마이그레이션 실패 — 위 오류를 확인하세요." }
+        & $VenvPython (Join-Path $RootDir "manage.py") import_reference_db --source-xlsx (Join-Path $RootDir "main\data\reference.xlsx")
+        if ($LASTEXITCODE -ne 0) { Fail "reference 데이터 적재 실패 — 위 오류를 확인하세요." }
+        OK "reference(PostgreSQL) DB 설정 완료 (sw_data 마이그레이션 + reference.xlsx 적재)"
+        if ($InstallSearch) {
+            Write-Host "       FAISS 증분 임베딩 실행 중 (유사 시험 조회용, 수 분 소요)..." -ForegroundColor Gray
+            & $VenvPython (Join-Path $RootDir "manage.py") embed_db
+            if ($LASTEXITCODE -ne 0) { Warn "FAISS 임베딩 실패 — 나중에 launcher의 'I' 메뉴로 재시도하세요." }
+            else { OK "FAISS 임베딩 완료" }
+        }
+    }
+}
 
 # ══════════════════════════════════════════════════════════════════════
 # 12. 바탕화면 단축아이콘 생성
