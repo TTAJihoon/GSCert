@@ -5,6 +5,8 @@
 - 기존 배포 exe는 `점검 실행` 클릭 후 공용 점검 엔진을 UI 스레드에서 바로 실행해, 큰 zip을 점검하는 동안 창이 멈춘 것처럼 보일 수 있었다.
 - `local_review_app/gscert_local_review/app.py`에 `ReviewWorker(QThread)`를 연결해 점검 실행을 백그라운드 스레드로 옮겼다.
 - 클릭 직후 버튼 텍스트가 `점검 중…`으로 바뀌고, 완료 후 결과 테이블이 갱신되며 버튼이 다시 활성화된다.
+- 버튼 글씨가 흐리거나 보이지 않는 문제를 줄이기 위해 `점검 실행` 버튼의 활성/비활성 대비를 강화하고 버튼 옆에 `대기`, `파일 스캔 필요`, `점검 실행 중`, `점검 완료` 상태 문구를 추가했다.
+- 점검 중에는 폴더 선택, 기준정보 조회, 파일 스캔, 프로젝트 번호 입력, 점검 실행 버튼을 잠근다.
 - 자동 확인 결과 작은 샘플과 `C:\Users\jh910\Documents\New project 2\test.zip` 모두 클릭 직후 worker가 시작되고 결과 테이블이 채워졌다.
 - `local_review_app/dist/GSCertLocalReview/GSCertLocalReview.exe`를 새로 패키징했으며 `--self-check`와 GUI 실행 스모크를 통과했다.
 

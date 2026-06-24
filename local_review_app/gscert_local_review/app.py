@@ -159,22 +159,24 @@ QPushButton:disabled {{
     border-color: {C_LINE_STRONG};
 }}
 QPushButton#primaryBtn {{
-    background-color: {C_PRIMARY};
+    background-color: #0f4fd6;
     color: #ffffff;
-    border: 1px solid {C_PRIMARY};
-    font-weight: 700;
+    border: 1px solid #0b3fb0;
+    font-weight: 800;
 }}
 QPushButton#primaryBtn:hover {{
-    background-color: #1d4ed8;
-    border: 1px solid #1d4ed8;
+    background-color: #0b46c6;
+    color: #ffffff;
+    border: 1px solid #0b3fb0;
 }}
 QPushButton#primaryBtn:pressed {{
-    background-color: #1e40af;
-    border: 1px solid #1e40af;
+    background-color: #08358f;
+    color: #ffffff;
+    border: 1px solid #08358f;
 }}
 QPushButton#primaryBtn:disabled {{
-    background-color: #93c5fd;
-    color: #ffffff;
+    background-color: #dbeafe;
+    color: #1e3a8a;
     border: 1px solid #93c5fd;
 }}
 
@@ -600,37 +602,48 @@ class MainWindow(QMainWindow):
         self.scan_btn.clicked.connect(self.scan_files)
         self.run_btn = QPushButton("점검 실행")
         self.run_btn.setObjectName("primaryBtn")
-        self.run_btn.setMinimumWidth(96)
+        self.run_btn.setMinimumWidth(116)
+        self.run_btn.setFixedHeight(38)
         self.run_btn.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {C_PRIMARY};
+            QPushButton#primaryBtn {{
+                background-color: #0f4fd6;
                 color: #ffffff;
-                border: 1px solid {C_PRIMARY};
+                border: 1px solid #0b3fb0;
                 border-radius: 6px;
-                font-weight: 700;
-                min-height: 34px;
-                padding: 0 14px;
+                font-weight: 800;
+                font-size: 13px;
+                min-height: 38px;
+                padding: 0 16px;
             }}
-            QPushButton:hover {{
-                background-color: #1d4ed8;
-                border-color: #1d4ed8;
-            }}
-            QPushButton:pressed {{
-                background-color: #1e40af;
-                border-color: #1e40af;
-            }}
-            QPushButton:disabled {{
-                background-color: #93c5fd;
+            QPushButton#primaryBtn:hover {{
+                background-color: #0b46c6;
                 color: #ffffff;
+                border-color: #0b3fb0;
+            }}
+            QPushButton#primaryBtn:pressed {{
+                background-color: #08358f;
+                color: #ffffff;
+                border-color: #08358f;
+            }}
+            QPushButton#primaryBtn:disabled {{
+                background-color: #dbeafe;
+                color: #1e3a8a;
                 border-color: #93c5fd;
             }}
         """)
         self.run_btn.clicked.connect(self.run_local_review)
+        self.action_status = QLabel("대기")
+        self.action_status.setMinimumWidth(130)
+        self.action_status.setStyleSheet(
+            f"color: {C_MUTED}; font-size: 12px; font-weight: 700;"
+            " background: transparent; border: none;"
+        )
         row2.addWidget(pn_label)
         row2.addWidget(self.project_number)
         row2.addWidget(self.metadata_btn)
         row2.addWidget(self.scan_btn)
         row2.addStretch()
+        row2.addWidget(self.action_status)
         row2.addWidget(self.run_btn)
 
         vbox.addWidget(cap)
@@ -870,17 +883,21 @@ class MainWindow(QMainWindow):
 
     def scan_files(self):
         if self._scan_worker is not None:
+            self._set_action_status("스캔 진행 중", C_PRIMARY)
             return  # 이미 스캔 진행 중
         folder_text = self.folder_path.text().strip()
         if not folder_text:
+            self._set_action_status("폴더 선택 필요", C_WARNING)
             self._show_error("먼저 점검 대상 폴더를 선택하세요.")
             return
         folder = Path(folder_text)
         if not folder.is_dir():
+            self._set_action_status("폴더 확인 실패", C_DANGER)
             self._show_error("선택한 폴더가 존재하지 않습니다.")
             return
 
         self._set_scanning(True)
+        self._set_action_status("파일 스캔 중", C_PRIMARY)
         self.file_table.setRowCount(0)
         self.file_count_label.setText("스캔 중… 0개")
 
@@ -898,10 +915,12 @@ class MainWindow(QMainWindow):
     def _on_scan_done(self, scan: FolderScan):
         self.scan = scan
         self._set_file_rows(scan)
+        self._set_action_status("점검 실행 가능", C_SUCCESS)
 
     def _on_scan_failed(self, message: str):
         self.scan = None
         self.file_count_label.setText("0개")
+        self._set_action_status("스캔 실패", C_DANGER)
         self._show_error(f"폴더 스캔 중 오류가 발생했습니다:\n{message}")
 
     def _on_scan_thread_finished(self):
@@ -917,13 +936,16 @@ class MainWindow(QMainWindow):
 
     def run_local_review(self):
         if self._scan_worker is not None or self._review_worker is not None:
+            self._set_action_status("다른 작업 진행 중", C_WARNING)
             self._show_error("현재 다른 작업이 진행 중입니다.")
             return
         if self.scan is None:
+            self._set_action_status("파일 스캔 필요", C_WARNING)
             self._show_error("먼저 파일 스캔을 실행하세요.")
             return
         rule_bundle = load_rule_bundle()
         if not rule_bundle:
+            self._set_action_status("규칙 업데이트 필요", C_WARNING)
             self._show_error("먼저 Rulebase에서 규칙 업데이트를 실행하세요.")
             return
 
@@ -942,20 +964,28 @@ class MainWindow(QMainWindow):
 
     def _set_reviewing(self, reviewing: bool):
         self.browse_btn.setEnabled(not reviewing)
+        self.metadata_btn.setEnabled(not reviewing)
         self.scan_btn.setEnabled(not reviewing)
+        self.project_number.setEnabled(not reviewing)
         self.run_btn.setEnabled(not reviewing)
         self.run_btn.setText("점검 중…" if reviewing else "점검 실행")
         if reviewing:
+            self._set_action_status("점검 실행 중", C_PRIMARY)
+            self.scan_progress.setVisible(True)
             self.result_table.setRowCount(0)
+        else:
+            self.scan_progress.setVisible(False)
 
     def _on_review_thread_done(self, summary):
         self._review_worker = None
         self._set_reviewing(False)
         self._set_result_rows(summary)
+        self._set_action_status("점검 완료", C_SUCCESS)
 
     def _on_review_thread_failed(self, message: str):
         self._review_worker = None
         self._set_reviewing(False)
+        self._set_action_status("점검 오류", C_DANGER)
         self._show_error(f"점검 중 오류가 발생했습니다:\n{message}")
 
     def _on_review_thread_finished(self):
@@ -963,6 +993,7 @@ class MainWindow(QMainWindow):
         if self._review_worker is not None:
             self._review_worker = None
             self._set_reviewing(False)
+            self._set_action_status("점검 중단", C_DANGER)
             self._show_error("점검 스레드가 예기치 않게 종료되었습니다.")
 
     # ── Internal helpers ──────────────────────────────────────────────────────
@@ -1052,6 +1083,13 @@ class MainWindow(QMainWindow):
 
         self.result_table.resizeRowsToContents()
         self.result_table.setSortingEnabled(True)
+
+    def _set_action_status(self, text: str, color: str = C_MUTED):
+        self.action_status.setText(text)
+        self.action_status.setStyleSheet(
+            f"color: {color}; font-size: 12px; font-weight: 700;"
+            " background: transparent; border: none;"
+        )
 
     def _show_error(self, message: str):
         QMessageBox.warning(self, "GSCert Local Review", message)
