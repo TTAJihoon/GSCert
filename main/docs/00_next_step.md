@@ -1,5 +1,15 @@
 # GSCert Next Step
 
+## 2026-06-24: 서버/Windows 프로그램 실사용 스모크 확인
+
+- 서버용 루트 `.venv`를 Python 3.13으로 구성하고 `requirements.txt` 설치 후 `manage.py check --settings=myproject.ui_mock_settings`를 통과했다.
+- 로컬 검증 DB에 migration을 적용하고 실제 규칙을 seed했다. 활성 규칙은 18개이며 `seed_download_review_rules --only-real --enable --update-existing --dry-run` 결과는 `created=0 updated=0 unchanged=18`이다.
+- 현재 코드 기준 runserver를 `127.0.0.1:8001`에서 띄워 `/download-review/`, `/api/local-review/health/`, `/api/local-review/rules/manifest/`, `/api/local-review/rules/bundle/` 응답을 확인했다. 규칙 bundle은 18개를 반환했다.
+- Windows 앱 API client가 서버 rule bundle을 받고 `local_runner.py`로 실행했을 때 `local_unsupported_count=0`이었다. 현재 활성 규칙 기준 미지원 규칙은 없다.
+- 패키징된 `GSCertLocalReview.exe --self-check`는 exit code `0`이고, GUI 시작 스모크도 성공했다.
+- `C:\Users\jh910\Downloads\5. 테스트용 공개 문서.zip`을 별도 임시 폴더에서 샘플 입력으로 실행했을 때 `sample_total=18`, `sample_unsupported=0`, `sample_error=0`이었다. 해당 파일은 ECM 제출물 형식이 아니므로 18개 부적합은 정상으로 본다.
+- `manage.py test main.tests --settings=myproject.ui_mock_settings`는 51개 통과했고, `run_download_worker --once --dry-run`은 시작 가능한 작업 없음 상태로 정상 종료했다.
+
 ## 2026-06-24: Phase 5 로컬 exe 패키징 검증
 
 - `local_review_app/scripts/package_windows.ps1`가 저장소 루트를 PyInstaller `--paths`에 추가해 `gscert_review_core`를 포함하도록 수정했다.
