@@ -18,11 +18,11 @@
 | 구분 | 현재 위치 | 역할 |
 | --- | --- | --- |
 | 규칙 정의 | `DownloadReviewRule` 모델, DB 테이블 `inspection_rule` | 어떤 규칙을 어떤 설정으로 실행할지 저장 |
-| 규칙 실행 코드 | `main/views/review/ecm_download_review_inspection.py` | `rule_type`별로 실제 파일/문서 검사를 수행 |
+| 규칙 실행 코드 | `gscert_review_core.engine` | `rule_type`별로 실제 파일/문서 검사를 수행 |
 | 규칙 초기값/갱신 | `main/management/commands/seed_download_review_rules.py` | 코드에 정의된 기본 규칙을 DB에 seed |
 | 규칙 결과 | `DownloadReviewRuleResult`, DB 테이블 `inspection_result` | 규칙별 통과/부적합/오류 결과 저장 |
-| 웹 실행 흐름 | `ecm_download_review_worker.py` | 다운로드 후 `run_download_inspection()` 호출 |
-| Windows 앱 | `local_review_app/` | 폴더 선택, 기준정보 조회, 파일 스캔, 규칙 캐시, 파일/폴더 기반 1차 점검 실행 |
+| 웹 실행 흐름 | `ecm_download_review_worker.py` | 다운로드 후 웹 어댑터 `run_download_inspection()`을 통해 공용 엔진 호출 |
+| Windows 앱 | `local_review_app/` | 폴더 선택, 기준정보 조회, 파일 스캔, 규칙 캐시, 공용 엔진 기반 로컬 점검 실행 |
 
 ## 현재 웹 점검규칙 동작 구조
 
@@ -39,7 +39,7 @@ flowchart TD
 
     RuleDB[(inspection_rule 테이블)]
     RuleSeed[seed_download_review_rules.py]
-    RuleCode[ecm_download_review_inspection.py rule_type 실행 코드]
+    RuleCode[gscert_review_core.engine 공용 실행 코드]
 
     RuleSeed --> RuleDB
     RuleDB --> Inspect
@@ -51,7 +51,7 @@ flowchart TD
     ResultAPI --> WebUI
 ```
 
-현재 웹은 서버 안에서 모든 것을 처리한다. 따라서 서버 DB의 `inspection_rule`이 바뀌거나 서버 코드가 배포되면 웹 자동 점검은 곧바로 최신 상태를 사용한다.
+현재 웹은 서버 안에서 다운로드, 파일 확인, 결과 저장을 처리하고, 실제 규칙 평가는 공용 엔진 `gscert_review_core.engine`에 위임한다. 따라서 서버 DB의 `inspection_rule` 설정이 바뀌면 웹 자동 점검은 다음 실행부터 최신 규칙 정의를 사용하고, 새 `rule_type`이나 파서 수정이 필요한 경우에는 서버 코드 배포가 필요하다.
 
 ## 현재 Windows 프로그램 동작 구조
 
@@ -72,12 +72,12 @@ flowchart TD
     Scanner --> LocalRunner
     LocalRunner --> ResultTable[규칙별 결과 화면 표시]
 
-    RuleCode[점검규칙 실행 코드]
+    RuleCode[gscert_review_core.engine 공용 실행 코드]
 
-    RuleCode -. 문서 내용 규칙은 아직 서버 전용 .-> App
+    RuleCode --> LocalRunner
 ```
 
-현재 Windows 프로그램은 서버 규칙 bundle을 내려받아 로컬 캐시에 저장하고, 파일/폴더 목록만으로 판단 가능한 규칙을 1차 runner에서 실행한다. `document_artifact_check` 중 Word/PDF 기본 내용 검사 일부는 로컬에서도 실행한다. `.xlsx` 문서는 시트명/제목 같은 기초 조건을 확인한다. 복잡한 산출물 간 비교가 필요한 문서 규칙은 아직 서버 점검 엔진 전용이며, Windows 앱에서는 `미지원`으로 표시된다.
+현재 Windows 프로그램은 서버 규칙 bundle을 내려받아 로컬 캐시에 저장하고, 선택한 폴더의 파일 목록과 프로젝트 기준정보를 공용 엔진 입력으로 변환해 실행한다. 웹과 같은 규칙 실행 코드를 사용하지만, 로컬 앱은 서버 DB 저장과 산출물 캡처 저장을 수행하지 않고 화면 결과 표시까지만 담당한다. 현재 프로그램에 포함된 공용 엔진이 모르는 새 `rule_type`은 `미지원`으로 표시된다.
 
 ## 현재 구조의 중요한 한계
 
@@ -92,7 +92,7 @@ inspection_rule.config_json
 inspection_rule.rule_type
   -> 어떤 검사 함수를 쓸지 결정
 
-ecm_download_review_inspection.py
+gscert_review_core.engine
   -> rule_type별 실제 검사 코드
 ```
 

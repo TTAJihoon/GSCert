@@ -45,12 +45,12 @@
 - Windows 로컬 앱 테스트 매뉴얼은 `main/docs/25_local_windows_app_test_manual.md`에 정리했다.
 - 현재 외부 PC에서 PostgreSQL에 직접 접속하는 구조는 아니며, 외부 조회는 Django API를 통해 수행하는 것으로 정리했다.
 - `SELECT` 쿼리를 API 호출로 대체하는 방식과 SQL/API 매핑 예시는 `24_postgresql_api_access_manual.md`에 추가했다.
-- 현재 Windows 앱은 폴더 선택, 프로젝트번호 추정, 서버 기준정보 조회, 로컬 파일 스캔까지 테스트할 수 있고, 실제 점검 규칙 엔진 연결은 다음 구현 단계다.
+- 현재 Windows 앱은 폴더 선택, 프로젝트번호 추정, 서버 기준정보 조회, 로컬 파일 스캔, 공용 점검 엔진 실행, exe 패키징 self-check까지 테스트할 수 있다.
 
 ## 2026-06-19: 점검규칙 공유 아키텍처
 
 - 현재 점검규칙 저장/실행 구조와 웹/Windows 앱 공유 목표 구조는 `main/docs/26_rulebase_shared_architecture.md`에 구성도로 정리했다.
-- 현재 웹은 `inspection_rule` DB와 `ecm_download_review_inspection.py` 실행 코드를 사용하고, Windows 앱은 아직 규칙 실행 엔진에 연결되지 않았다.
+- 현재 웹과 Windows 앱은 `inspection_rule` DB의 규칙 bundle과 `gscert_review_core.engine` 공용 실행 코드를 함께 사용한다.
 - 권장 구조는 중앙 rulebase DB + 규칙 배포 API + 공용 점검 엔진이며, Windows 앱은 규칙 정의 업데이트와 프로그램 업데이트를 분리해서 적용한다.
 - 1차 구현으로 `GET /api/local-review/rules/manifest/`, `GET /api/local-review/rules/bundle/` API를 추가하고 Windows 앱에서 규칙 버전 확인/다운로드/로컬 캐시 저장까지 연결했다.
 
@@ -64,7 +64,7 @@
 - 로컬 앱 배포 폴더는 `local_review_app/`로 분리했다.
 - 서버 API는 `GET /api/local-review/health/`, `GET /api/local-review/projects/<project_number>/metadata/`를 추가했다.
 - 로컬 앱 1차 구현은 폴더 선택, 프로젝트번호 추정, 서버 기준정보 조회, 로컬 파일 스캔, PyInstaller 패키징 스크립트까지 포함한다.
-- 다음 구현 순서는 기존 점검 규칙 엔진을 `local_review_app` runner에 연결하고, PostgreSQL DB/계정 생성 및 기존 SQLite 데이터 이전을 진행하는 것이다.
+- 이후 구현 순서는 패키징된 Windows 앱으로 실제 ECM 제출물 폴더를 점검해 웹 결과와 비교하고, 필요하면 PostgreSQL 운영 전환 절차를 별도 검증하는 것이다.
 
 이 문서는 누적 이력 문서가 아니라 다른 PC에서 바로 이어받기 위한 최신 인수인계 문서다. 전체 목차는 `main/docs/18_manual_index.md`를 먼저 본다.
 
