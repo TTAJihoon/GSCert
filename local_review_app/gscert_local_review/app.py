@@ -161,15 +161,21 @@ QPushButton:disabled {{
 QPushButton#primaryBtn {{
     background-color: {C_PRIMARY};
     color: #ffffff;
-    border-color: {C_PRIMARY};
+    border: 1px solid {C_PRIMARY};
     font-weight: 700;
 }}
 QPushButton#primaryBtn:hover {{
     background-color: #1d4ed8;
-    border-color: #1d4ed8;
+    border: 1px solid #1d4ed8;
 }}
 QPushButton#primaryBtn:pressed {{
     background-color: #1e40af;
+    border: 1px solid #1e40af;
+}}
+QPushButton#primaryBtn:disabled {{
+    background-color: #93c5fd;
+    color: #ffffff;
+    border: 1px solid #93c5fd;
 }}
 
 /* ── Tables ────────────────────────────────── */
@@ -400,6 +406,30 @@ class ScanWorker(QThread):
             return
         self.done.emit(scan)
 
+class ReviewWorker(QThread):
+    done = Signal(object)           # LocalRunSummary
+    failed = Signal(str)            # 오류 메시지
+
+    def __init__(self, scan, rule_bundle, project_number, metadata, parent=None):
+        super().__init__(parent)
+        self._scan = scan
+        self._rule_bundle = rule_bundle
+        self._project_number = project_number
+        self._metadata = metadata
+
+    def run(self):
+        try:
+            summary = run_cached_rules(
+                self._scan,
+                self._rule_bundle,
+                self._project_number,
+                metadata=self._metadata,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self.failed.emit(str(exc))
+            return
+        self.done.emit(summary)
+
 
 # ── Main window ───────────────────────────────────────────────────────────────
 
@@ -411,6 +441,7 @@ class MainWindow(QMainWindow):
         self.selected_folder: Path | None = None
         self.scan: FolderScan | None = None
         self._scan_worker: ScanWorker | None = None
+        self._review_worker: ReviewWorker | None = None
         self.current_metadata: ProjectMetadata | None = None
         self.rule_cache = load_rule_cache()
 
@@ -570,6 +601,30 @@ class MainWindow(QMainWindow):
         self.run_btn = QPushButton("점검 실행")
         self.run_btn.setObjectName("primaryBtn")
         self.run_btn.setMinimumWidth(96)
+        self.run_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {C_PRIMARY};
+                color: #ffffff;
+                border: 1px solid {C_PRIMARY};
+                border-radius: 6px;
+                font-weight: 700;
+                min-height: 34px;
+                padding: 0 14px;
+            }}
+            QPushButton:hover {{
+                background-color: #1d4ed8;
+                border-color: #1d4ed8;
+            }}
+            QPushButton:pressed {{
+                background-color: #1e40af;
+                border-color: #1e40af;
+            }}
+            QPushButton:disabled {{
+                background-color: #93c5fd;
+                color: #ffffff;
+                border-color: #93c5fd;
+            }}
+        """)
         self.run_btn.clicked.connect(self.run_local_review)
         row2.addWidget(pn_label)
         row2.addWidget(self.project_number)
@@ -861,8 +916,8 @@ class MainWindow(QMainWindow):
         self.scan_btn.setText("스캔 중…" if scanning else "파일 스캔")
 
     def run_local_review(self):
-        if self._scan_worker is not None:
-            self._show_error("파일 스캔이 끝난 뒤 점검을 실행하세요.")
+        if self._scan_worker is not None or self._review_worker is not None:
+            self._show_error("현재 다른 작업이 진행 중입니다.")
             return
         if self.scan is None:
             self._show_error("먼저 파일 스캔을 실행하세요.")
@@ -871,13 +926,44 @@ class MainWindow(QMainWindow):
         if not rule_bundle:
             self._show_error("먼저 Rulebase에서 규칙 업데이트를 실행하세요.")
             return
-        summary = run_cached_rules(
+
+        self._set_reviewing(True)
+        self._review_worker = ReviewWorker(
             self.scan,
             rule_bundle,
             self.project_number.text().strip(),
-            metadata=self.current_metadata,
+            self.current_metadata,
+            parent=self,
         )
+        self._review_worker.done.connect(self._on_review_thread_done)
+        self._review_worker.failed.connect(self._on_review_thread_failed)
+        self._review_worker.finished.connect(self._on_review_thread_finished)
+        self._review_worker.start()
+
+    def _set_reviewing(self, reviewing: bool):
+        self.browse_btn.setEnabled(not reviewing)
+        self.scan_btn.setEnabled(not reviewing)
+        self.run_btn.setEnabled(not reviewing)
+        self.run_btn.setText("점검 중…" if reviewing else "점검 실행")
+        if reviewing:
+            self.result_table.setRowCount(0)
+
+    def _on_review_thread_done(self, summary):
+        self._review_worker = None
+        self._set_reviewing(False)
         self._set_result_rows(summary)
+
+    def _on_review_thread_failed(self, message: str):
+        self._review_worker = None
+        self._set_reviewing(False)
+        self._show_error(f"점검 중 오류가 발생했습니다:\n{message}")
+
+    def _on_review_thread_finished(self):
+        # done/failed 시그널 없이 스레드가 종료된 경우 UI 잠금 해제
+        if self._review_worker is not None:
+            self._review_worker = None
+            self._set_reviewing(False)
+            self._show_error("점검 스레드가 예기치 않게 종료되었습니다.")
 
     # ── Internal helpers ──────────────────────────────────────────────────────
 
