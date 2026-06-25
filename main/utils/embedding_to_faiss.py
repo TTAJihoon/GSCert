@@ -56,7 +56,7 @@ def _write_index(index, index_path):
 
 def _rebuild_index(model, ids, texts, index_path):
     if not texts:
-        print("임베딩할 텍스트가 없습니다. FAISS 인덱스를 생성하지 않습니다.")
+        print("임베딩할 텍스트가 없습니다. FAISS 인덱스를 생성하지 않습니다.", flush=True)
         return {
             "mode": "empty",
             "added": 0,
@@ -64,14 +64,17 @@ def _rebuild_index(model, ids, texts, index_path):
             "index_path": str(index_path),
         }
 
+    print(f"전체 {len(texts)}건 임베딩 계산 중...", flush=True)
     embeddings = _encode_texts(model, texts)
-    print("임베딩 완료된 벡터 형태:", embeddings.shape)
+    print(f"임베딩 완료: {embeddings.shape}", flush=True)
 
+    print("FAISS 인덱스 생성 중...", flush=True)
     index = _create_id_index(embeddings.shape[1])
     index.add_with_ids(embeddings, np.array(ids, dtype=np.int64))
+    print(f"인덱스 파일 저장 중: {index_path}", flush=True)
     _write_index(index, index_path)
 
-    print("FAISS 인덱스 전체 재생성 완료 (IndexIDMap2):", index.ntotal)
+    print("FAISS 인덱스 전체 재생성 완료 (IndexIDMap2):", index.ntotal, flush=True)
     return {
         "mode": "rebuild",
         "added": len(ids),
@@ -96,8 +99,9 @@ def fetch_texts_from_pg():
 
 
 def build_faiss_from_pg(index_path=DEFAULT_INDEX_PATH, force_rebuild=False):
+    print("PostgreSQL reference DB에서 데이터 조회 중...", flush=True)
     ids, texts = fetch_texts_from_pg()
-    print(f"조회된 텍스트 개수: {len(texts)}")
+    print(f"조회된 텍스트 개수: {len(texts)}", flush=True)
 
     index_path = Path(index_path)
     model = None
@@ -105,14 +109,18 @@ def build_faiss_from_pg(index_path=DEFAULT_INDEX_PATH, force_rebuild=False):
     if force_rebuild or not index_path.exists():
         if not texts:
             return _rebuild_index(model, ids, texts, index_path)
+        print(f"임베딩 모델 로드 중: {MODEL_NAME}", flush=True)
         model = SentenceTransformer(MODEL_NAME)
         return _rebuild_index(model, ids, texts, index_path)
 
+    print(f"기존 FAISS 인덱스 읽는 중: {index_path}", flush=True)
     try:
         index = faiss.read_index(str(index_path))
         existing_ids = _get_index_ids(index)
+        print(f"기존 인덱스 벡터 수: {index.ntotal}", flush=True)
     except Exception as exc:
-        print(f"기존 FAISS 인덱스를 증분 갱신할 수 없어 전체 재생성합니다: {exc}")
+        print(f"기존 FAISS 인덱스를 증분 갱신할 수 없어 전체 재생성합니다: {exc}", flush=True)
+        print(f"임베딩 모델 로드 중: {MODEL_NAME}", flush=True)
         model = SentenceTransformer(MODEL_NAME)
         return _rebuild_index(model, ids, texts, index_path)
 
@@ -123,7 +131,7 @@ def build_faiss_from_pg(index_path=DEFAULT_INDEX_PATH, force_rebuild=False):
     ]
 
     if not new_pairs:
-        print(f"신규 데이터가 없습니다. 기존 FAISS 인덱스를 유지합니다: {index.ntotal}")
+        print(f"신규 데이터가 없습니다. 기존 FAISS 인덱스를 유지합니다: {index.ntotal}", flush=True)
         return {
             "mode": "unchanged",
             "added": 0,
@@ -134,7 +142,9 @@ def build_faiss_from_pg(index_path=DEFAULT_INDEX_PATH, force_rebuild=False):
     new_ids = [row_id for row_id, _ in new_pairs]
     new_texts = [text for _, text in new_pairs]
 
+    print(f"신규 {len(new_ids)}건 발견. 임베딩 모델 로드 중: {MODEL_NAME}", flush=True)
     model = SentenceTransformer(MODEL_NAME)
+    print(f"임베딩 계산 중 ({len(new_texts)}건)...", flush=True)
     embeddings = _encode_texts(model, new_texts)
 
     if index.d != embeddings.shape[1]:
@@ -144,12 +154,15 @@ def build_faiss_from_pg(index_path=DEFAULT_INDEX_PATH, force_rebuild=False):
         )
         return _rebuild_index(model, ids, texts, index_path)
 
+    print("인덱스에 벡터 추가 중...", flush=True)
     index.add_with_ids(embeddings, np.array(new_ids, dtype=np.int64))
+    print(f"인덱스 파일 저장 중: {index_path}", flush=True)
     _write_index(index, index_path)
 
     print(
         "FAISS 인덱스 증분 갱신 완료: "
-        f"추가 {len(new_ids)}건, 전체 {index.ntotal}건"
+        f"추가 {len(new_ids)}건, 전체 {index.ntotal}건",
+        flush=True,
     )
     return {
         "mode": "incremental",

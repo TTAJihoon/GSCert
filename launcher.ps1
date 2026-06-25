@@ -255,7 +255,7 @@ while ($true) {
             if (-not (Test-Path $VenvPython)) {
                 Write-Host "[ERROR] 가상환경 Python을 찾을 수 없습니다. 먼저 S(초기 환경 설정)를 실행하세요." -ForegroundColor Red
             } else {
-                & $VenvPython (Join-Path $ScriptDir "manage.py") embed_db
+                & $VenvPython -u (Join-Path $ScriptDir "manage.py") embed_db
                 if ($?) {
                     Write-Host "[OK] 임베딩 완료" -ForegroundColor Green
                 }
