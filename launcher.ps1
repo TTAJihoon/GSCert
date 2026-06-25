@@ -202,7 +202,15 @@ while ($true) {
             if (-not (Test-Path $VenvPython)) {
                 Write-Host "[ERROR] 가상환경 Python을 찾을 수 없습니다. 먼저 S(초기 환경 설정)를 실행하세요." -ForegroundColor Red
             } else {
+                $targetDate = Read-Host "대상 날짜 입력 (yyyymmdd, 생략 시 최신)"
+                if ($targetDate) {
+                    $env:GSCERT_WEEKLY_TARGET_DATE = $targetDate
+                    Write-Host "  대상 날짜: $targetDate" -ForegroundColor Cyan
+                } else {
+                    Remove-Item Env:\GSCERT_WEEKLY_TARGET_DATE -ErrorAction SilentlyContinue
+                }
                 & $VenvPython (Join-Path $ScriptDir "main\utils\weekly.py")
+                Remove-Item Env:\GSCERT_WEEKLY_TARGET_DATE -ErrorAction SilentlyContinue
             }
         }
         'G' {
