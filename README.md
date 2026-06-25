@@ -13,12 +13,17 @@ Set-Location "C:\Claude_GSCert"
 
 ## 2. Git 설치 및 초기 설정
 
-Git이 설치되어 있지 않다면 먼저 설치합니다.
+Git이 설치되어 있지 않다면 아래 명령으로 설치 파일을 다운로드한 뒤 실행합니다.
 
 ```powershell
-# winget으로 Git 설치 (Windows 10 1709 이상)
-winget install --id Git.Git -e --source winget
+# Git 설치 파일 다운로드 및 자동 설치
+$installer = "$env:TEMP\GitInstaller.exe"
+Invoke-WebRequest -Uri "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe" -OutFile $installer
+Start-Process -FilePath $installer -ArgumentList "/VERYSILENT /NORESTART" -Wait
+Remove-Item $installer
 ```
+
+> **주의** `github.com`에 접근할 수 없는 망분리 환경이라면 외부망 PC에서 [https://git-scm.com/download/win](https://git-scm.com/download/win) 에 접속해 설치 파일을 수동으로 받아 실행하세요.
 
 설치 후 PowerShell을 **재시작**하고, 사용자 정보를 등록합니다.
 
