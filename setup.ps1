@@ -333,13 +333,41 @@ if (-not (Test-Path $EnvFile)) {
     Write-Host "          python manage.py migrate --database=reference" -ForegroundColor Gray
     Write-Host "          python manage.py import_reference_db --source-xlsx main/data/reference.xlsx" -ForegroundColor Gray
 } else {
-    # PostgreSQL 접속 확인 (psycopg)
-    $pgOk = & $VenvPython -c "import os,psycopg; psycopg.connect(dbname=os.environ.get('REFERENCE_PG_NAME','gscert_reference'), user=os.environ.get('REFERENCE_PG_USER','postgres'), password=os.environ.get('REFERENCE_PG_PASSWORD',''), host=os.environ.get('REFERENCE_PG_HOST','localhost'), port=os.environ.get('REFERENCE_PG_PORT','5432')).close()" 2>&1
-    if ($LASTEXITCODE -ne 0) {
+    # PostgreSQL 접속 확인 — 임시 스크립트로 실행해 stderr 내용을 온전히 캡처
+    $pgTestScript = @'
+import os, sys
+try:
+    import psycopg
+    conn = psycopg.connect(
+        dbname=os.environ.get('REFERENCE_PG_NAME', 'gscert_reference'),
+        user=os.environ.get('REFERENCE_PG_USER', 'postgres'),
+        password=os.environ.get('REFERENCE_PG_PASSWORD', ''),
+        host=os.environ.get('REFERENCE_PG_HOST', 'localhost'),
+        port=int(os.environ.get('REFERENCE_PG_PORT', '5432')),
+        connect_timeout=5,
+    )
+    conn.close()
+    print('connected')
+except Exception as e:
+    print(str(e), file=sys.stderr)
+    sys.exit(1)
+'@
+    $tmpPy = Join-Path $env:TEMP "pg_test.py"
+    [System.IO.File]::WriteAllText($tmpPy, $pgTestScript, [System.Text.Encoding]::UTF8)
+    $pgErr = & $VenvPython $tmpPy 2>&1 | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] -or $true } | Out-String
+    $pgExitCode = $LASTEXITCODE
+    Remove-Item $tmpPy -ErrorAction SilentlyContinue
+
+    if ($pgExitCode -ne 0) {
         Warn "PostgreSQL(gscert_reference)에 접속할 수 없어 reference DB 설정을 건너뜁니다."
-        Write-Host "       오류: $pgOk" -ForegroundColor Gray
-        Write-Host "       PostgreSQL 설치/실행 및 'CREATE DATABASE gscert_reference;' 후 env.ps1 의 비밀번호를 확인하세요." -ForegroundColor Gray
-        Write-Host "       이후 수동 실행: python manage.py migrate --database=reference; python manage.py import_reference_db --source-xlsx main/data/reference.xlsx" -ForegroundColor Gray
+        Write-Host "       오류: $($pgErr.Trim())" -ForegroundColor Gray
+        Write-Host "       확인 사항:" -ForegroundColor Gray
+        Write-Host "         - PostgreSQL 서버($($env:REFERENCE_PG_HOST))가 실행 중인지 확인" -ForegroundColor Gray
+        Write-Host "         - 'CREATE DATABASE gscert_reference;' 로 DB가 생성되어 있는지 확인" -ForegroundColor Gray
+        Write-Host "         - pg_hba.conf 에 이 서버 IP의 접속 허용 여부 확인" -ForegroundColor Gray
+        Write-Host "         - env.ps1 의 비밀번호(REFERENCE_PG_PASSWORD) 확인" -ForegroundColor Gray
+        Write-Host "       이후 수동 실행:" -ForegroundColor Gray
+        Write-Host "         python manage.py migrate --database=reference" -ForegroundColor Gray
     } else {
         & $VenvPython (Join-Path $RootDir "manage.py") migrate --database=reference
         if ($LASTEXITCODE -ne 0) { Fail "reference DB 마이그레이션 실패 — 위 오류를 확인하세요." }
