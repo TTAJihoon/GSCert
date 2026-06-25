@@ -317,6 +317,29 @@ def normalize_rows(rows: list[list]) -> list[list]:
 
 
 # =========================
+# source_xlsx 경로 해석
+# =========================
+def _xlsx_date_key(p: Path) -> str:
+    m = re.search(r"(\d{8})", p.name)
+    if m:
+        return m.group(1)
+    return datetime.fromtimestamp(p.stat().st_mtime).strftime("%Y%m%d")
+
+
+def _resolve_source_xlsx(path: Path) -> Path:
+    """파일이면 그대로, 디렉토리면 '인증획득제품' 포함 xlsx 중 가장 최신 파일 반환."""
+    if path.is_file():
+        return path
+    if path.is_dir():
+        candidates = sorted(path.glob("*인증획득제품*.xlsx"), key=_xlsx_date_key, reverse=True)
+        if not candidates:
+            raise FileNotFoundError(f"디렉토리에서 '인증획득제품' xlsx를 찾을 수 없습니다: {path}")
+        logging.info("'인증획득제품' 최신 파일 자동 선택: %s", candidates[0].name)
+        return candidates[0]
+    raise FileNotFoundError(f"경로가 존재하지 않습니다: {path}")
+
+
+# =========================
 # UIA: "폴더 찾아보기" 대화상자 처리 (Enter만)
 # =========================
 def confirm_browse_dialog_by_enter(wait_popup_sec: int = 15, after_popup_sec: float = 3.0):
@@ -547,9 +570,7 @@ def main():
     expected_path = CFG.download_folder / xlsx_name
 
     if CFG.source_xlsx:
-        downloaded = CFG.source_xlsx
-        if not downloaded.exists():
-            raise FileNotFoundError(f"GSCERT_WEEKLY_SOURCE_XLSX 파일을 찾을 수 없습니다: {downloaded}")
+        downloaded = _resolve_source_xlsx(CFG.source_xlsx)
         logging.info("다운로드 단계 생략, 지정된 xlsx 사용: %s", downloaded)
     else:
         if expected_path.exists():

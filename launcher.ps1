@@ -218,10 +218,10 @@ while ($true) {
                 & $VenvPython (Join-Path $ScriptDir "main\utils\weekly.py")
                 Remove-Item Env:\GSCERT_WEEKLY_TARGET_DATE -ErrorAction SilentlyContinue
             } elseif ($mode -eq '2') {
-                $xlsxPath = Read-Host "엑셀 파일 경로 입력"
+                $xlsxPath = Read-Host "폴더 또는 파일 경로 입력 (폴더 지정 시 인증획득제품 최신 파일 자동 선택)"
                 $xlsxPath = $xlsxPath.Trim('"').Trim("'")
                 if (-not (Test-Path $xlsxPath)) {
-                    Write-Host "[ERROR] 파일을 찾을 수 없습니다: $xlsxPath" -ForegroundColor Red
+                    Write-Host "[ERROR] 경로를 찾을 수 없습니다: $xlsxPath" -ForegroundColor Red
                 } else {
                     $env:GSCERT_WEEKLY_SOURCE_XLSX = $xlsxPath
                     Remove-Item Env:\GSCERT_WEEKLY_TARGET_DATE -ErrorAction SilentlyContinue
