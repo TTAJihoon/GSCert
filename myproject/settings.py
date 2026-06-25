@@ -66,6 +66,7 @@ TEMPLATES = [
                 'django.template.context_processors.request',
                 'django.contrib.auth.context_processors.auth',
                 'django.contrib.messages.context_processors.messages',
+                'main.context_processors.nav_home_url',
             ],
         },
     },
@@ -155,6 +156,10 @@ DOWNLOAD_REVIEW_START_HOUR = 0
 DOWNLOAD_REVIEW_END_HOUR = 24
 DOWNLOAD_REVIEW_ACTIVE_JOB_LIMIT = 5
 DOWNLOAD_REVIEW_MAX_PROJECTS_PER_JOB = 100
+DOWNLOAD_REVIEW_NAV_HOME_BY_HOST = {
+    '210.96.71.194': '',
+    '210.96.71.241': 'http://210.96.71.194',
+}
 
 # --- ECM 다운로드 자동화 설정 ---
 ECM_BASE_URL = os.environ.get('ECM_BASE_URL', 'http://210.96.71.85')
