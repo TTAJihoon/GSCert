@@ -41,6 +41,8 @@ function Show-Menu {
     Write-Host "  W. weekly 동기화  - ECM xlsx 다운로드 → PostgreSQL reference DB 적재$venvWarn"
     Write-Host "  G. Google Sheets  - 인증위 시트 → PostgreSQL reference_project 적재$venvWarn"
     Write-Host "  I. FAISS 임베딩   - reference DB 신규 데이터 증분 임베딩$venvWarn"
+    $pgHost = if ($env:REFERENCE_PG_HOST) { $env:REFERENCE_PG_HOST } else { "미설정" }
+    Write-Host "  P. PostgreSQL 설정 - 현재 HOST: $pgHost"
     Write-Host "  0. 종료"
     Write-Host "=======================================" -ForegroundColor Cyan
 }
@@ -258,6 +260,29 @@ while ($true) {
                 & $VenvPython -u (Join-Path $ScriptDir "manage.py") embed_db
                 if ($?) {
                     Write-Host "[OK] 임베딩 완료" -ForegroundColor Green
+                }
+            }
+        }
+        'P' {
+            Write-Host ""
+            Write-Host "=== PostgreSQL 접속 설정 ===" -ForegroundColor Cyan
+            $EnvFile = Join-Path $ScriptDir "env.ps1"
+            $curHost = if ($env:REFERENCE_PG_HOST) { $env:REFERENCE_PG_HOST } else { "(미설정)" }
+            $curPort = if ($env:REFERENCE_PG_PORT) { $env:REFERENCE_PG_PORT } else { "5432" }
+            Write-Host "  현재 HOST : $curHost" -ForegroundColor Yellow
+            Write-Host "  현재 PORT : $curPort" -ForegroundColor Yellow
+            Write-Host ""
+            $newHost = Read-Host "새 HOST 입력 (생략 시 변경 없음)"
+            if ($newHost) {
+                if (Test-Path $EnvFile) {
+                    $content = Get-Content $EnvFile -Raw
+                    $content = $content -replace '(\$env:REFERENCE_PG_HOST\s*=\s*")[^"]*(")', "`${1}$newHost`${2}"
+                    [System.IO.File]::WriteAllText($EnvFile, $content, [System.Text.Encoding]::UTF8)
+                    $env:REFERENCE_PG_HOST = $newHost
+                    Write-Host "[OK] REFERENCE_PG_HOST 변경 완료: $newHost" -ForegroundColor Green
+                    Write-Host "     서버/워커를 재시작해야 변경이 반영됩니다." -ForegroundColor Yellow
+                } else {
+                    Write-Host "[ERROR] env.ps1 파일이 없습니다. S(setup)를 먼저 실행하세요." -ForegroundColor Red
                 }
             }
         }

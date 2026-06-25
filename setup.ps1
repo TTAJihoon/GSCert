@@ -14,8 +14,15 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$RootDir  = Split-Path -Parent $MyInvocation.MyCommand.Path
+$RootDir  = "C:\Claude_GSCert"
 $SetupDir = Join-Path $RootDir "setup"
+
+if (-not (Test-Path $RootDir)) {
+    Write-Host "[FAIL] 설치 경로가 없습니다: $RootDir" -ForegroundColor Red
+    Write-Host "       먼저 저장소를 복제하세요:" -ForegroundColor Yellow
+    Write-Host "       git clone https://github.com/TTAJihoon/GSCert.git $RootDir" -ForegroundColor Yellow
+    exit 1
+}
 
 # reference(PostgreSQL) 접속 정보 로드 (env.ps1 존재 시)
 $EnvFile = Join-Path $RootDir "env.ps1"
@@ -78,6 +85,36 @@ Write-Host "========================================" -ForegroundColor Cyan
 Write-Host "   GSCert 초기 환경 설정" -ForegroundColor Yellow
 Write-Host "   프로젝트 경로: $RootDir" -ForegroundColor Gray
 Write-Host "========================================" -ForegroundColor Cyan
+
+# ══════════════════════════════════════════════════════════════════════
+# 0. env.ps1 생성 마법사 (없을 때만)
+# ══════════════════════════════════════════════════════════════════════
+if (-not (Test-Path $EnvFile)) {
+    Step "PostgreSQL 접속 설정 (env.ps1 생성)"
+    Write-Host "  이 서버의 역할을 선택하세요:" -ForegroundColor Yellow
+    Write-Host "    1) 주 서버  — PostgreSQL이 이 PC에 설치되어 있음 (HOST=localhost)"
+    Write-Host "    2) 서브 서버 — 다른 서버의 PostgreSQL에 원격 접속"
+    $role = Read-Host "  선택 (1/2)"
+    if ($role -eq '2') {
+        $pgHost = Read-Host "  PostgreSQL 서버 IP 입력"
+        if (-not $pgHost) { $pgHost = "localhost" }
+    } else {
+        $pgHost = "localhost"
+    }
+    $pgPassword = Read-Host "  PostgreSQL 비밀번호 입력"
+
+    $envLines = @(
+        "# PostgreSQL reference DB 접속 정보",
+        "`$env:REFERENCE_PG_NAME     = `"gscert_reference`"",
+        "`$env:REFERENCE_PG_USER     = `"postgres`"",
+        "`$env:REFERENCE_PG_PASSWORD = `"$pgPassword`"",
+        "`$env:REFERENCE_PG_HOST     = `"$pgHost`"",
+        "`$env:REFERENCE_PG_PORT     = `"5432`""
+    )
+    [System.IO.File]::WriteAllLines($EnvFile, $envLines, [System.Text.Encoding]::UTF8)
+    . $EnvFile
+    OK "env.ps1 생성 완료 (HOST: $pgHost)"
+}
 
 # ══════════════════════════════════════════════════════════════════════
 # 1. VC++ Redistributable
@@ -323,7 +360,7 @@ if (-not (Test-Path $EnvFile)) {
 # ══════════════════════════════════════════════════════════════════════
 Step "바탕화면 단축아이콘 생성"
 $WshShell     = New-Object -ComObject WScript.Shell
-$ShortcutPath = "$([System.Environment]::GetFolderPath('Desktop'))\GSCert 서버 관리.lnk"
+$ShortcutPath = "$([System.Environment]::GetFolderPath('Desktop'))\GSCert.lnk"
 $Shortcut     = $WshShell.CreateShortcut($ShortcutPath)
 $Shortcut.TargetPath       = "powershell.exe"
 $Shortcut.Arguments        = "-NoExit -ExecutionPolicy Bypass -File `"$RootDir\launcher.ps1`""
