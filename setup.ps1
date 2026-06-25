@@ -357,7 +357,8 @@ except Exception as e:
     [System.IO.File]::WriteAllText($tmpPy, $pgTestScript, [System.Text.Encoding]::UTF8)
     & $VenvPython $tmpPy 2>$tmpErr | Out-Null
     $pgExitCode = $LASTEXITCODE
-    $pgErr = if (Test-Path $tmpErr) { (Get-Content $tmpErr -Raw -Encoding UTF8).Trim() } else { "" }
+    $pgErrRaw = if (Test-Path $tmpErr) { Get-Content $tmpErr -Raw -Encoding UTF8 } else { $null }
+    $pgErr = if ($pgErrRaw) { $pgErrRaw.Trim() } else { "" }
     Remove-Item $tmpPy, $tmpErr -ErrorAction SilentlyContinue
 
     if ($pgExitCode -ne 0) {
