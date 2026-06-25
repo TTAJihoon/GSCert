@@ -39,6 +39,7 @@ function Show-Menu {
     Write-Host "  N. nginx          - nginx 시작/중지/reload  $nginxStat" -ForegroundColor $nginxColor
     Write-Host "  S. setup          - 초기 환경 설정 (최초 1회 / 새 PC)"
     Write-Host "  W. weekly 동기화  - ECM xlsx 다운로드 → PostgreSQL reference DB 적재$venvWarn"
+    Write-Host "  G. Google Sheets  - 인증위 시트 → PostgreSQL reference_project 적재$venvWarn"
     Write-Host "  I. FAISS 임베딩   - reference DB 신규 데이터 증분 임베딩$venvWarn"
     Write-Host "  0. 종료"
     Write-Host "=======================================" -ForegroundColor Cyan
@@ -202,6 +203,20 @@ while ($true) {
                 Write-Host "[ERROR] 가상환경 Python을 찾을 수 없습니다. 먼저 S(초기 환경 설정)를 실행하세요." -ForegroundColor Red
             } else {
                 & $VenvPython (Join-Path $ScriptDir "main\utils\weekly.py")
+            }
+        }
+        'G' {
+            Write-Host ""
+            Write-Host "=== Google Sheets 동기화 (인증위 시트 → PostgreSQL reference_project) ===" -ForegroundColor Cyan
+            $VenvPython = Join-Path $ScriptDir ".venv\Scripts\python.exe"
+            if (-not (Test-Path $VenvPython)) { $VenvPython = Join-Path $ScriptDir "venv\Scripts\python.exe" }
+            if (-not (Test-Path $VenvPython)) {
+                Write-Host "[ERROR] 가상환경 Python을 찾을 수 없습니다. 먼저 S(초기 환경 설정)를 실행하세요." -ForegroundColor Red
+            } else {
+                & $VenvPython (Join-Path $ScriptDir "manage.py") sync_reference_projects_from_sheet
+                if ($?) {
+                    Write-Host "[OK] Google Sheets 동기화 완료" -ForegroundColor Green
+                }
             }
         }
         'I' {
