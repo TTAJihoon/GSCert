@@ -113,6 +113,7 @@ WORKFLOW_MODEL_NAMES = {
 
 REFERENCE_DATABASE_ALIAS = 'reference'
 REFERENCE_MODEL_NAMES = {'swdata', 'referencecenterpl', 'referenceproject'}
+DOWNLOAD_REVIEW_PROJECT_SOURCE = 'postgres'
 
 ECM_AGENT_LOCK_PATH = BASE_DIR / 'main' / 'data' / 'ecm_agent.lock'
 ECM_AGENT_LOCK_TIMEOUT_SECONDS = 600

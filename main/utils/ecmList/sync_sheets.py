@@ -1,14 +1,28 @@
 """
-Google Sheets → SQLite 동기화 스크립트
-- 구글시트 2153행~마지막 행에서 DB에 없는 프로젝트번호만 추가
-- F열 값을 WD 컬럼으로 저장
-- H열 값을 신청일, I열 값을 계약일 컬럼으로 저장
+Google Sheets → PostgreSQL reference_project 동기화 스크립트
+- 구글시트 2153행~마지막 행에서 데이터를 읽어 reference_project 테이블에 upsert
+- 신규 프로젝트는 추가, 기존 프로젝트는 원천 메타데이터(회사명, 제품명 등)만 갱신
 - 수동 실행
 """
 
-import sqlite3
 import os
+import sys
 from pathlib import Path
+
+# 독립 실행 시 Django 프로젝트 루트를 sys.path에 추가
+_PROJECT_ROOT = Path(__file__).resolve().parents[3]
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "myproject.settings")
+
+import django
+django.setup()
+
+from django.conf import settings
+
+from main.models import ReferenceProject
+from main.views.review.ecm_download_review_centers import center_label, normalize_center_code
+
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -17,9 +31,12 @@ from googleapiclient.discovery import build
 # === 설정 ===
 SPREADSHEET_ID = os.environ.get("ECMLIST_SPREADSHEET_ID", "").strip()
 SHEET_RANGE = os.environ.get("ECMLIST_SHEET_RANGE", "'시험완료(히스토리)'!A2153:Q")
+CENTER_CODE = normalize_center_code(os.environ.get("ECMLIST_CENTER", "sangam"))
+DB_ALIAS = os.environ.get(
+    "ECMLIST_DB_ALIAS",
+    getattr(settings, "REFERENCE_DATABASE_ALIAS", "reference"),
+)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = Path(BASE_DIR).resolve().parents[2]
-DB_PATH = os.environ.get("ECMLIST_DB_PATH", str(PROJECT_ROOT / "main" / "data" / "ecmlist.db"))
 CREDENTIALS_PATH = os.path.join(BASE_DIR, "credentials.json")
 TOKEN_PATH = os.path.join(BASE_DIR, "token.json")
 
@@ -79,13 +96,13 @@ def get_sheets_data():
 
         data.append({
             "project_no": project_no,
-            "company": safe_get(2),      # C열
-            "product": safe_get(3),      # D열
-            "wd": safe_get(5),           # F열
+            "company": safe_get(2),       # C열
+            "product": safe_get(3),       # D열
+            "wd": safe_get(5),            # F열
             "request_date": safe_get(7),  # H열 → 신청일
             "contract_date": safe_get(8), # I열 → 계약일
-            "tester": safe_get(11),      # L열
-            "cert_date": safe_get(16),   # Q열 → 인증일자
+            "tester": safe_get(11),       # L열
+            "cert_date": safe_get(16),    # Q열 → 인증일자
         })
 
     return data
@@ -93,158 +110,44 @@ def get_sheets_data():
 
 def get_existing_project_numbers():
     """DB에 이미 있는 프로젝트번호 목록을 가져온다."""
-    if not os.path.exists(DB_PATH):
-        return set()
-
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    try:
-        cursor.execute("SELECT 프로젝트번호 FROM ecm_list")
-        existing = {row[0] for row in cursor.fetchall()}
-    except sqlite3.OperationalError:
-        existing = set()
-
-    conn.close()
-    return existing
-
-
-def ensure_table():
-    """테이블이 없으면 새 스키마로 생성한다. 기존 테이블이 있으면 유지."""
-    os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS ecm_list (
-            번호 INTEGER PRIMARY KEY,
-            인증일자 TEXT DEFAULT '',
-            프로젝트번호 TEXT,
-            회사명 TEXT,
-            제품명 TEXT,
-            시험PL TEXT,
-            WD TEXT DEFAULT '',
-            신청일 TEXT DEFAULT '',
-            계약일 TEXT DEFAULT '',
-            점검결과 TEXT DEFAULT '',
-            계약서 TEXT DEFAULT 'X',
-            "합의서(PDF)" TEXT DEFAULT 'X',
-            수수료산정표 TEXT DEFAULT 'X',
-            시험환경구성도 TEXT DEFAULT 'X',
-            품질특성별제품정보기재사항 TEXT DEFAULT 'X',
-            기능리스트 TEXT DEFAULT 'X',
-            "시험계획서(PDF)" TEXT DEFAULT 'X',
-            "점검표(PDF)" TEXT DEFAULT 'X',
-            "최초/최종형상RawData" TEXT DEFAULT 'X',
-            테스트케이스 TEXT DEFAULT 'X',
-            결함리포트 TEXT DEFAULT 'X',
-            "1차/2차/성능/보안RawData" TEXT DEFAULT 'X',
-            "시험성적서(PDF)" TEXT DEFAULT 'X',
-            시험기록서 TEXT DEFAULT 'X',
-            품질평가보고서 TEXT DEFAULT 'X',
-            품질검사표 TEXT DEFAULT 'X',
-            SW저작권확인서 TEXT DEFAULT 'X',
-            홍보이미지 TEXT DEFAULT 'X'
-        )
-    """)
-
-    ensure_columns(cursor)
-
-    conn.commit()
-    conn.close()
-
-
-def ensure_columns(cursor):
-    """기존 ecm_list 테이블에 새 기준 컬럼이 없으면 추가한다."""
-    cursor.execute("PRAGMA table_info(ecm_list)")
-    columns = {row[1] for row in cursor.fetchall()}
-    if "WD" not in columns:
-        cursor.execute('ALTER TABLE ecm_list ADD COLUMN WD TEXT DEFAULT ""')
-    if "신청일" not in columns:
-        cursor.execute('ALTER TABLE ecm_list ADD COLUMN 신청일 TEXT DEFAULT ""')
-    if "계약일" not in columns:
-        cursor.execute('ALTER TABLE ecm_list ADD COLUMN 계약일 TEXT DEFAULT ""')
+    return set(
+        ReferenceProject.objects.using(DB_ALIAS)
+        .filter(center_code=CENTER_CODE)
+        .values_list("project_number", flat=True)
+    )
 
 
 def sync_to_db(new_data):
     """DB에 없는 프로젝트번호를 추가하고 기존 프로젝트의 원천 메타데이터를 갱신한다."""
-    conn = sqlite3.connect(DB_PATH)
-    cursor = conn.cursor()
+    label = center_label(CENTER_CODE)
+    inserted = updated = 0
 
-    # 현재 사용 중인 번호 목록 조회
-    cursor.execute("SELECT 번호 FROM ecm_list ORDER BY 번호")
-    used_numbers = {row[0] for row in cursor.fetchall()}
-
-    # 1부터 순서대로 빈 번호를 찾아 부여
-    next_num = 1
-    inserted = 0
-    updated = 0
     for d in new_data:
-        if project_exists(cursor, d["project_no"]):
-            cursor.execute(
-                """
-                UPDATE ecm_list
-                   SET 인증일자 = ?,
-                       회사명 = ?,
-                       제품명 = ?,
-                       시험PL = ?,
-                       WD = ?,
-                       신청일 = ?,
-                       계약일 = ?
-                 WHERE 프로젝트번호 = ?
-                """,
-                (
-                    d["cert_date"],
-                    d["company"],
-                    d["product"],
-                    d["tester"],
-                    d["wd"],
-                    d["request_date"],
-                    d["contract_date"],
-                    d["project_no"],
-                ),
-            )
-            updated += cursor.rowcount
-            continue
-
-        while next_num in used_numbers:
-            next_num += 1
-        cursor.execute(
-            """
-            INSERT INTO ecm_list (
-                번호, 인증일자, 프로젝트번호, 회사명, 제품명, 시험PL, WD, 신청일, 계약일
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                next_num,
-                d["cert_date"],
-                d["project_no"],
-                d["company"],
-                d["product"],
-                d["tester"],
-                d["wd"],
-                d["request_date"],
-                d["contract_date"],
-            ),
+        metadata = {
+            "center_label": label,
+            "cert_date": d["cert_date"],
+            "company": d["company"],
+            "product": d["product"],
+            "pl": d["tester"],
+            "wd": d["wd"],
+            "request_date": d["request_date"],
+            "contract_date": d["contract_date"],
+        }
+        _, is_created = ReferenceProject.objects.using(DB_ALIAS).update_or_create(
+            project_number=d["project_no"],
+            center_code=CENTER_CODE,
+            defaults=metadata,
         )
-        used_numbers.add(next_num)
-        next_num += 1
-        inserted += 1
+        if is_created:
+            inserted += 1
+        else:
+            updated += 1
 
-    conn.commit()
-    conn.close()
-    print(f"신규 {inserted}건 추가, 기존 {updated}건 원천 메타데이터 갱신 완료 → {DB_PATH}")
-
-
-def project_exists(cursor, project_no):
-    cursor.execute("SELECT 1 FROM ecm_list WHERE 프로젝트번호 = ? LIMIT 1", (project_no,))
-    return cursor.fetchone() is not None
+    print(f"신규 {inserted}건 추가, 기존 {updated}건 원천 메타데이터 갱신 완료 → PostgreSQL ({DB_ALIAS})")
 
 
 def main():
-    print("테이블 확인 중...")
-    ensure_table()
-
+    print(f"센터: {CENTER_CODE} / DB alias: {DB_ALIAS}")
     print("구글시트에서 데이터를 가져오는 중...")
     sheet_data = get_sheets_data()
     if not sheet_data:
