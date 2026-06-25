@@ -47,6 +47,7 @@ from .ecm_selectors import (
 logger = logging.getLogger("main.views.review.ecm_download")
 _PLAYWRIGHT_BY_BROWSER_ID = {}
 LOCAL_NETWORK_DISABLE_FEATURES = (
+    "LocalNetworkAccessCheck",
     "LocalNetworkAccessChecks",
     "BlockInsecurePrivateNetworkRequests",
     "PrivateNetworkAccessSendPreflights",
