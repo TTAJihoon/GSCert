@@ -197,11 +197,16 @@ while ($true) {
         'W' {
             Write-Host ""
             Write-Host "=== weekly 동기화 (ECM 다운로드 → PostgreSQL) ===" -ForegroundColor Cyan
+            Write-Host "  1) 자동 다운로드 후 처리"
+            Write-Host "  2) 이미 받은 인증획득제품 엑셀 파일 경로 지정"
+            $mode = Read-Host "선택 (1/2)"
+            Write-Host ""
+
             $VenvPython = Join-Path $ScriptDir ".venv\Scripts\python.exe"
             if (-not (Test-Path $VenvPython)) { $VenvPython = Join-Path $ScriptDir "venv\Scripts\python.exe" }
             if (-not (Test-Path $VenvPython)) {
                 Write-Host "[ERROR] 가상환경 Python을 찾을 수 없습니다. 먼저 S(초기 환경 설정)를 실행하세요." -ForegroundColor Red
-            } else {
+            } elseif ($mode -eq '1') {
                 $targetDate = Read-Host "대상 날짜 입력 (yyyymmdd, 생략 시 최신)"
                 if ($targetDate) {
                     $env:GSCERT_WEEKLY_TARGET_DATE = $targetDate
@@ -209,8 +214,23 @@ while ($true) {
                 } else {
                     Remove-Item Env:\GSCERT_WEEKLY_TARGET_DATE -ErrorAction SilentlyContinue
                 }
+                Remove-Item Env:\GSCERT_WEEKLY_SOURCE_XLSX -ErrorAction SilentlyContinue
                 & $VenvPython (Join-Path $ScriptDir "main\utils\weekly.py")
                 Remove-Item Env:\GSCERT_WEEKLY_TARGET_DATE -ErrorAction SilentlyContinue
+            } elseif ($mode -eq '2') {
+                $xlsxPath = Read-Host "엑셀 파일 경로 입력"
+                $xlsxPath = $xlsxPath.Trim('"').Trim("'")
+                if (-not (Test-Path $xlsxPath)) {
+                    Write-Host "[ERROR] 파일을 찾을 수 없습니다: $xlsxPath" -ForegroundColor Red
+                } else {
+                    $env:GSCERT_WEEKLY_SOURCE_XLSX = $xlsxPath
+                    Remove-Item Env:\GSCERT_WEEKLY_TARGET_DATE -ErrorAction SilentlyContinue
+                    Write-Host "  파일: $xlsxPath" -ForegroundColor Cyan
+                    & $VenvPython (Join-Path $ScriptDir "main\utils\weekly.py")
+                    Remove-Item Env:\GSCERT_WEEKLY_SOURCE_XLSX -ErrorAction SilentlyContinue
+                }
+            } else {
+                Write-Host "올바른 번호를 입력해 주세요." -ForegroundColor Red
             }
         }
         'G' {
