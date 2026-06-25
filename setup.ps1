@@ -374,9 +374,35 @@ except Exception as e:
     } else {
         & $VenvPython (Join-Path $RootDir "manage.py") migrate --database=reference
         if ($LASTEXITCODE -ne 0) { Fail "reference DB 마이그레이션 실패 — 위 오류를 확인하세요." }
-        & $VenvPython (Join-Path $RootDir "manage.py") import_reference_db --source-xlsx (Join-Path $RootDir "main\data\reference.xlsx")
-        if ($LASTEXITCODE -ne 0) { Fail "reference 데이터 적재 실패 — 위 오류를 확인하세요." }
-        OK "reference(PostgreSQL) DB 설정 완료 (sw_data 마이그레이션 + reference.xlsx 적재)"
+
+        # sw_data에 이미 데이터가 있으면 import 건너뜀 (서브 서버에서 공유 DB 재적재 방지)
+        $countScript = @'
+import os, sys, django
+sys.path.insert(0, os.environ.get("DJANGO_ROOT", "."))
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "myproject.settings")
+django.setup()
+from main.models import SwData
+print(SwData.objects.using("reference").count())
+'@
+        $tmpCount = Join-Path $env:TEMP "pg_count.py"
+        [System.IO.File]::WriteAllText($tmpCount, $countScript, [System.Text.Encoding]::UTF8)
+        $existingCount = & $VenvPython $tmpCount 2>$null
+        Remove-Item $tmpCount -ErrorAction SilentlyContinue
+
+        if ($existingCount -gt 0) {
+            Warn "sw_data 테이블에 이미 ${existingCount}건이 있어 import를 건너뜁니다. (서브 서버 — 주 서버 데이터 유지)"
+        } else {
+            $refXlsx = Join-Path $RootDir "main\data\reference.xlsx"
+            if (Test-Path $refXlsx) {
+                & $VenvPython (Join-Path $RootDir "manage.py") import_reference_db --source-xlsx $refXlsx
+                if ($LASTEXITCODE -ne 0) { Fail "reference 데이터 적재 실패 — 위 오류를 확인하세요." }
+                OK "sw_data 초기 데이터 적재 완료"
+            } else {
+                Warn "reference.xlsx 없음 — sw_data 적재를 건너뜁니다. 나중에 수동 실행:"
+                Write-Host "       python manage.py import_reference_db --source-xlsx main\data\reference.xlsx" -ForegroundColor Gray
+            }
+        }
+        OK "reference(PostgreSQL) DB 설정 완료"
         if ($InstallSearch) {
             Write-Host "       FAISS 증분 임베딩 실행 중 (유사 시험 조회용, 수 분 소요)..." -ForegroundColor Gray
             & $VenvPython (Join-Path $RootDir "manage.py") embed_db
