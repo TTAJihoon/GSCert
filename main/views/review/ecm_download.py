@@ -11,10 +11,17 @@ import re
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 from django.conf import settings
-from main.views.review.ecm_download_review_centers import ecm_tree_root, ecm_tree_root_index, normalize_center_code
+from main.views.review.ecm_download_review_centers import (
+    ecm_base_url,
+    ecm_has_tree_root,
+    ecm_test_type_contains,
+    ecm_tree_root,
+    ecm_tree_root_index,
+    normalize_center_code,
+)
 
 try:
     from playwright.async_api import Browser, Page, async_playwright
@@ -57,8 +64,8 @@ def _timeouts():
     })
 
 
-def _ecm_url():
-    return getattr(settings, "ECM_BASE_URL", "http://210.96.71.85")
+def _ecm_url(center_code: str = "") -> str:
+    return ecm_base_url(center_code)
 
 
 def _browser_channel():
@@ -77,10 +84,6 @@ def _browser_args():
     return list(args)
 
 
-# --- ECM 트리 경로 설정 ---
-# 실제 구조: {센터}AX센터 > {연도}년 시험서비스 > 01 GS인증시험(1등급) > 프로젝트 폴더
-ECM_TREE_TEST_TYPE = "01 GS인증시험(1등급)"
-
 
 @dataclass
 class DownloadStepResult:
@@ -89,6 +92,14 @@ class DownloadStepResult:
     error_step: str = ""
     error_message: str = ""
     page: Any = None
+    download_dir: str = ""
+    downloaded_folder_count: int = 0
+
+
+@dataclass
+class EcmFolderDownload:
+    relative_path: list[str]
+    doc_count: int
 
 
 async def _wait_splash_done(page: Page) -> None:
@@ -96,12 +107,12 @@ async def _wait_splash_done(page: Page) -> None:
     await page.locator(SPLASHSCREEN).wait_for(state="hidden", timeout=t["SPLASH"])
 
 
-async def open_ecm_page(browser: Browser) -> Page:
+async def open_ecm_page(browser: Browser, center_code: str = "") -> Page:
     """ECM 접속 후 좌측 트리가 보일 때까지 대기한다."""
     context = await browser.new_context(accept_downloads=True)
     page = await context.new_page()
     t = _timeouts()
-    resp = await page.goto(_ecm_url(), timeout=t["GOTO"], wait_until="domcontentloaded")
+    resp = await page.goto(_ecm_url(center_code), timeout=t["GOTO"], wait_until="domcontentloaded")
     if resp is None or resp.status >= 400:
         status = resp.status if resp else "no response"
         raise RuntimeError(f"ECM 접속 실패: HTTP {status}")
@@ -213,6 +224,7 @@ async def navigate_to_project_folder(page: Page, project_number: str, *, center_
     """
     center_code = normalize_center_code(center_code)
     root_name = ecm_tree_root(center_code)
+    test_type_text = ecm_test_type_contains(center_code)
     t = _timeouts()
     tree = page.locator(FOLDER_TREE)
 
@@ -222,19 +234,20 @@ async def navigate_to_project_folder(page: Page, project_number: str, *, center_
         raise RuntimeError(f"프로젝트번호 형식 오류: {project_number}")
     year = f"20{m.group(1)}"
 
-    # Step 1: 센터 폴더가 접혀 있을 수 있으므로 명시적으로 펼친다.
-    root_index = ecm_tree_root_index(center_code)
-    ax_node = _visible_tree_link(tree, root_name, index=root_index)
-    try:
-        await ax_node.wait_for(state="visible", timeout=t["FOLDER_SEARCH"])
-        await ax_node.scroll_into_view_if_needed(timeout=3000)
-        await _open_tree_node(page, ax_node)
-    except Exception as exc:
-        snapshot = await _tree_text_snapshot(tree)
-        raise RuntimeError(
-            f"ECM 트리에서 '{root_name}' 폴더 #{root_index + 1}을 찾거나 펼치지 못했습니다. "
-            f"visible={snapshot}"
-        ) from exc
+    # Step 1: 센터 폴더가 있는 센터만 명시적으로 펼친다. 분당은 연도 폴더부터 시작한다.
+    if ecm_has_tree_root(center_code):
+        root_index = ecm_tree_root_index(center_code)
+        ax_node = _visible_tree_link(tree, root_name, index=root_index)
+        try:
+            await ax_node.wait_for(state="visible", timeout=t["FOLDER_SEARCH"])
+            await ax_node.scroll_into_view_if_needed(timeout=3000)
+            await _open_tree_node(page, ax_node)
+        except Exception as exc:
+            snapshot = await _tree_text_snapshot(tree)
+            raise RuntimeError(
+                f"ECM 트리에서 '{root_name}' 폴더 #{root_index + 1}을 찾거나 펼치지 못했습니다. "
+                f"visible={snapshot}"
+            ) from exc
 
     # Step 2: 연도 시험서비스 폴더 클릭/펼침 (예: "2026년 시험서비스")
     year_folder = _visible_tree_link(tree, re.compile(f"{year}.*시험서비스"))
@@ -247,16 +260,16 @@ async def navigate_to_project_folder(page: Page, project_number: str, *, center_
         snapshot = await _tree_text_snapshot(tree)
         raise RuntimeError(f"ECM 트리에서 {year}년 시험서비스 폴더를 찾지 못했습니다. visible={snapshot}") from exc
 
-    # Step 3: 01 GS인증시험(1등급) 폴더 클릭/펼침
-    test_type_folder = _visible_tree_link(tree, ECM_TREE_TEST_TYPE)
+    # Step 3: GS 1등급 시험 폴더 클릭/펼침
+    test_type_folder = _visible_tree_link(tree, test_type_text)
     try:
         await test_type_folder.wait_for(state="visible", timeout=t["FOLDER_SEARCH"])
         await _open_tree_node(page, test_type_folder)
-        await _click_tree_link(page, test_type_folder, expected_text=ECM_TREE_TEST_TYPE)
+        await _click_tree_link(page, test_type_folder, expected_text=test_type_text)
         await _wait_splash_done(page)
     except Exception as exc:
         snapshot = await _tree_text_snapshot(tree)
-        raise RuntimeError(f"ECM 트리에서 '{ECM_TREE_TEST_TYPE}' 폴더를 찾지 못했습니다. visible={snapshot}") from exc
+        raise RuntimeError(f"ECM 트리에서 '{test_type_text}' 폴더를 찾지 못했습니다. visible={snapshot}") from exc
 
     # Step 4: 프로젝트번호를 포함하는 폴더 클릭
     project_folder = _visible_tree_link(tree, project_number)
@@ -386,6 +399,140 @@ async def _selected_tree_text(tree) -> str:
     return selected_text
 
 
+async def _select_project_relative_path(page: Page, project_number: str, relative_path: list[str]) -> str:
+    result = await page.evaluate(
+        """
+        ({ projectNumber, relativePath }) => {
+          const root = document.querySelector('#edm-folder');
+          if (!root) {
+            return { ok: false, reason: 'tree root not found' };
+          }
+          const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+          const openNode = (li) => {
+            if (!li || (li.className || '').includes('jstree-open')) {
+              return;
+            }
+            const icon = li.querySelector(':scope > ins.jstree-icon');
+            if (icon && !(li.className || '').includes('jstree-leaf')) {
+              icon.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+              icon.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+              icon.click();
+            }
+          };
+          const directChildLink = (li, label) => {
+            const ul = Array.from(li.children).find((el) => el.tagName === 'UL');
+            if (!ul) {
+              return null;
+            }
+            const children = Array.from(ul.children)
+              .map((child) => child.querySelector(':scope > a'))
+              .filter(Boolean);
+            return children.find((link) => norm(link.textContent) === label)
+              || children.find((link) => norm(link.textContent).includes(label));
+          };
+
+          const rootLink = Array.from(root.querySelectorAll('a'))
+            .find((link) => norm(link.textContent).includes(projectNumber));
+          if (!rootLink) {
+            return { ok: false, reason: 'project folder not found' };
+          }
+          let link = rootLink;
+          let li = link.closest('li');
+          openNode(li);
+          for (const segment of relativePath) {
+            const nextLink = directChildLink(li, segment);
+            if (!nextLink) {
+              return { ok: false, reason: 'relative folder not found', segment, current: norm(link.textContent) };
+            }
+            link = nextLink;
+            li = link.closest('li');
+            openNode(li);
+          }
+          link.scrollIntoView({ block: 'center', inline: 'nearest' });
+          link.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+          link.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+          link.click();
+          return { ok: true, text: norm(link.textContent) };
+        }
+        """,
+        {"projectNumber": project_number, "relativePath": relative_path},
+    )
+    if not result or not result.get("ok"):
+        raise RuntimeError(f"ECM 상대 폴더 선택 실패: path={relative_path}, detail={result}")
+    await page.wait_for_timeout(1000)
+    await _wait_splash_done(page)
+    return result.get("text") or ""
+
+
+async def _direct_child_folder_names(page: Page, project_number: str, relative_path: list[str]) -> list[str]:
+    await _select_project_relative_path(page, project_number, relative_path)
+    await page.wait_for_timeout(500)
+    result = await page.evaluate(
+        """
+        ({ projectNumber, relativePath }) => {
+          const root = document.querySelector('#edm-folder');
+          if (!root) {
+            return { ok: false, reason: 'tree root not found' };
+          }
+          const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
+          const directChildLink = (li, label) => {
+            const ul = Array.from(li.children).find((el) => el.tagName === 'UL');
+            if (!ul) {
+              return null;
+            }
+            const children = Array.from(ul.children)
+              .map((child) => child.querySelector(':scope > a'))
+              .filter(Boolean);
+            return children.find((link) => norm(link.textContent) === label)
+              || children.find((link) => norm(link.textContent).includes(label));
+          };
+          const rootLink = Array.from(root.querySelectorAll('a'))
+            .find((link) => norm(link.textContent).includes(projectNumber));
+          if (!rootLink) {
+            return { ok: false, reason: 'project folder not found' };
+          }
+          let link = rootLink;
+          let li = link.closest('li');
+          for (const segment of relativePath) {
+            link = directChildLink(li, segment);
+            if (!link) {
+              return { ok: false, reason: 'relative folder not found', segment };
+            }
+            li = link.closest('li');
+          }
+          const ul = Array.from(li.children).find((el) => el.tagName === 'UL');
+          if (!ul) {
+            return { ok: true, children: [] };
+          }
+          const children = Array.from(ul.children)
+            .map((child) => child.querySelector(':scope > a'))
+            .filter(Boolean)
+            .map((childLink) => norm(childLink.textContent))
+            .filter(Boolean);
+          return { ok: true, children };
+        }
+        """,
+        {"projectNumber": project_number, "relativePath": relative_path},
+    )
+    if not result or not result.get("ok"):
+        raise RuntimeError(f"ECM 하위 폴더 조회 실패: path={relative_path}, detail={result}")
+    return list(result.get("children") or [])
+
+
+async def _collect_download_folder_paths(page: Page, project_number: str) -> list[list[str]]:
+    paths: list[list[str]] = [[]]
+
+    async def walk(relative_path: list[str]) -> None:
+        children = await _direct_child_folder_names(page, project_number, relative_path)
+        for child in children:
+            child_path = [*relative_path, child]
+            paths.append(child_path)
+            await walk(child_path)
+
+    await walk([])
+    return paths
+
+
 async def select_all_documents(page: Page) -> int:
     """문서 목록이 로딩되면 전체 선택 체크박스를 클릭하고 문서 수를 반환한다."""
     t = _timeouts()
@@ -461,7 +608,7 @@ async def run_ecm_automation(browser: Browser, project_number: str, *, center_co
     """
     page: Optional[Page] = None
     try:
-        page = await open_ecm_page(browser)
+        page = await open_ecm_page(browser, center_code)
         await navigate_to_project_folder(page, project_number, center_code=center_code)
 
         doc_count = await select_all_documents(page)
@@ -499,6 +646,85 @@ async def run_ecm_automation(browser: Browser, project_number: str, *, center_co
             error_step="ECM 자동화",
             error_message=str(exc),
         )
+
+
+async def run_ecm_recursive_downloads(
+    browser: Browser,
+    project_number: str,
+    *,
+    center_code: str = "",
+    download_callback: Callable[[list[str], int], Awaitable[Any]] | None = None,
+) -> DownloadStepResult:
+    """프로젝트 폴더 아래에서 파일이 있는 모든 폴더를 다운로드한다."""
+    page: Optional[Page] = None
+    total_docs = 0
+    downloaded_folder_count = 0
+    download_dir = ""
+    try:
+        page = await open_ecm_page(browser, center_code)
+        await navigate_to_project_folder(page, project_number, center_code=center_code)
+        folder_paths = await _collect_download_folder_paths(page, project_number)
+
+        for relative_path in folder_paths:
+            await _select_project_relative_path(page, project_number, relative_path)
+            doc_count = await select_all_documents(page)
+            if doc_count == 0:
+                logger.info("ECM folder has no downloadable rows: %s / %s", project_number, relative_path)
+                continue
+
+            await _save_debug_screenshot(page, prefix="ecm_docs_selected")
+            await click_download_menu(page)
+
+            if download_callback is not None:
+                popup_result = await download_callback(relative_path, doc_count)
+                if not getattr(popup_result, "success", False):
+                    return DownloadStepResult(
+                        success=False,
+                        doc_count=total_docs,
+                        error_step=getattr(popup_result, "error_step", "폴더 선택"),
+                        error_message=getattr(popup_result, "error_message", ""),
+                        download_dir=getattr(popup_result, "download_dir", ""),
+                        downloaded_folder_count=downloaded_folder_count,
+                    )
+                download_dir = getattr(popup_result, "download_dir", "") or download_dir
+
+            total_docs += doc_count
+            downloaded_folder_count += 1
+
+        if total_docs == 0:
+            snapshot = await _document_list_snapshot(page)
+            return DownloadStepResult(
+                success=False,
+                doc_count=0,
+                error_step="문서 목록 확인",
+                error_message=f"{project_number} 프로젝트와 하위 폴더에서 다운로드할 문서를 찾지 못했습니다. {snapshot}",
+            )
+
+        return DownloadStepResult(
+            success=True,
+            doc_count=total_docs,
+            download_dir=download_dir,
+            downloaded_folder_count=downloaded_folder_count,
+        )
+
+    except Exception as exc:
+        logger.exception("ECM recursive download failed: %s", project_number)
+        return DownloadStepResult(
+            success=False,
+            doc_count=total_docs,
+            error_step="ECM 자동화",
+            error_message=str(exc),
+            download_dir=download_dir,
+            downloaded_folder_count=downloaded_folder_count,
+        )
+    finally:
+        if page:
+            try:
+                ctx = page.context
+                await page.close()
+                await ctx.close()
+            except Exception:
+                pass
 
 
 async def launch_browser(*, headless: bool = True) -> Browser:

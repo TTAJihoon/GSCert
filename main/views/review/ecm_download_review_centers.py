@@ -18,14 +18,19 @@ _CENTER_DEFINITIONS = {
         "tree_root": "상암AX센터",
         "tree_root_index_setting": "ECM_TREE_ROOT_INDEX",
         "default_tree_root_index": 0,
+        "ecm_url_setting": "ECM_BASE_URL",
+        "default_ecm_base_url": "http://210.96.71.85",
     },
     CENTER_BUNDANG: {
         "label": "분당",
         "reference_db_setting": "REFERENCE_DB_PATH_BUNDANG",
         "default_db_name": "ecmlist_bundang.db",
-        "tree_root": "분당AX센터",
+        "tree_root": "",
         "tree_root_index_setting": "ECM_TREE_ROOT_INDEX_BUNDANG",
         "default_tree_root_index": 0,
+        "test_type_contains": "GS 시험인증(1등급)",
+        "ecm_url_setting": "ECM_BASE_URL_BUNDANG",
+        "default_ecm_base_url": "http://210.104.181.10",
     },
     CENTER_YEONGNAM: {
         "label": "영남",
@@ -34,6 +39,8 @@ _CENTER_DEFINITIONS = {
         "tree_root": "영남AX센터",
         "tree_root_index_setting": "ECM_TREE_ROOT_INDEX_YEONGNAM",
         "default_tree_root_index": 0,
+        "ecm_url_setting": "ECM_BASE_URL",
+        "default_ecm_base_url": "http://210.96.71.85",
     },
 }
 
@@ -127,6 +134,10 @@ def ecm_tree_root(center_code):
     return _definition(center_code)["tree_root"]
 
 
+def ecm_has_tree_root(center_code):
+    return bool(ecm_tree_root(center_code))
+
+
 def ecm_tree_root_index(center_code):
     definition = _definition(center_code)
     return int(
@@ -136,6 +147,22 @@ def ecm_tree_root_index(center_code):
             definition["default_tree_root_index"],
         )
     )
+
+
+def ecm_base_url(center_code=""):
+    definition = _definition(center_code)
+    configured = getattr(settings, definition["ecm_url_setting"], None)
+    if configured:
+        return str(configured)
+    return definition["default_ecm_base_url"]
+
+
+def ecm_test_type_label(center_code):
+    return _definition(center_code).get("test_type_label", "01 GS인증시험(1등급)")
+
+
+def ecm_test_type_contains(center_code):
+    return _definition(center_code).get("test_type_contains", ecm_test_type_label(center_code))
 
 
 def _definition(center_code):

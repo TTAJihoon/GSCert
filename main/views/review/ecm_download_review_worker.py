@@ -158,7 +158,7 @@ async def _run_live_job(job, *, headless=True):
     """
     from main.views.review.ecm_agent_popup import handle_folder_popup_and_download
     from main.views.review.ecm_download_verify import summarize_files, verify_downloaded_files
-    from main.views.review.ecm_download import close_browser, launch_browser, run_ecm_automation
+    from main.views.review.ecm_download import close_browser, launch_browser, run_ecm_recursive_downloads
 
     browser = await launch_browser(headless=headless)
     try:
@@ -173,45 +173,35 @@ async def _run_live_job(job, *, headless=True):
 
             lock_timeout = getattr(settings, "ECM_AGENT_LOCK_TIMEOUT_SECONDS", 600)
             async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
-                # --- 5~6단계: ECM 웹페이지 자동화 ---
-                ecm_result = await run_ecm_automation(
-                    browser,
-                    project.project_number,
-                    center_code=project.center_code,
-                )
-
-                if not ecm_result.success:
+                async def _download_folder(relative_path, doc_count):
+                    path_text = " > ".join([project.project_number, *relative_path])
                     await _run_sync(
-                        _fail_project,
-                        job, project, ecm_result.error_step, ecm_result.error_message,
-                        event_code="ecm_download_failed",
+                        _mark_project,
+                        project, DownloadReviewProjectStatus.RUNNING,
+                        f"다운로드 중: {path_text} (문서 {doc_count}건)",
                     )
-                    failed += 1
-                    await _run_sync(_update_job_counts, job, completed=completed, failed=failed, total=total)
-                    continue
-
-                # --- 7~8단계: Windows 팝업 자동화 (동기) ---
-                await _run_sync(
-                    _mark_project,
-                    project, DownloadReviewProjectStatus.RUNNING,
-                    f"폴더 선택 및 다운로드 대기 중 (문서 {ecm_result.doc_count}건)",
-                )
-
-                try:
-                    popup_result = await asyncio.to_thread(
+                    return await asyncio.to_thread(
                         handle_folder_popup_and_download,
                         project.project_number,
                         str(job.id),
+                        2,
+                        relative_path,
+                        project.center_code,
                     )
-                finally:
-                    await _close_ecm_page(ecm_result.page)
 
-            if popup_result.success:
+                ecm_result = await run_ecm_recursive_downloads(
+                    browser,
+                    project.project_number,
+                    center_code=project.center_code,
+                    download_callback=_download_folder,
+                )
+
+            if ecm_result.success:
                 # --- 9단계: 다운로드 파일 확인 ---
                 await _run_sync(
                     _mark_project,
                     project, DownloadReviewProjectStatus.DOWNLOADED,
-                    "다운로드 파일 확인 중",
+                    f"다운로드 파일 확인 중 ({ecm_result.downloaded_folder_count}개 폴더)",
                 )
                 # 전송 직후 파일이 아직 디스크에 기록 중일 수 있으므로
                 # 0개이면 최대 3회(3초 간격) 재시도한다.
@@ -219,7 +209,7 @@ async def _run_live_job(job, *, headless=True):
                 for _verify_attempt in range(4):
                     verify_result = await asyncio.to_thread(
                         verify_downloaded_files,
-                        popup_result.download_dir,
+                        ecm_result.download_dir,
                         project.project_number,
                     )
                     if verify_result.success or _verify_attempt >= 3:
@@ -238,7 +228,7 @@ async def _run_live_job(job, *, headless=True):
                         _record_download_verified,
                         job,
                         project,
-                        popup_result.download_dir,
+                        ecm_result.download_dir,
                         verify_result.file_count,
                         file_summary,
                     )
@@ -261,7 +251,7 @@ async def _run_live_job(job, *, headless=True):
                             job, project, "점검규칙 검사", str(exc),
                             event_code="inspection_failed",
                             detail_json=file_summary,
-                            download_dir=popup_result.download_dir,
+                            download_dir=ecm_result.download_dir,
                         )
                         failed += 1
                     else:
@@ -284,18 +274,18 @@ async def _run_live_job(job, *, headless=True):
                         verify_result.error_message,
                         event_code="download_verify_failed",
                         detail_json=file_summary,
-                        download_dir=popup_result.download_dir,
+                        download_dir=ecm_result.download_dir,
                     )
                     await _run_sync(_cleanup_download_dir_safely, job, project)
                     failed += 1
             else:
                 await _run_sync(
                     _fail_project,
-                    job, project, popup_result.error_step, popup_result.error_message,
-                    event_code="agent_popup_failed",
-                    download_dir=popup_result.download_dir,
+                    job, project, ecm_result.error_step, ecm_result.error_message,
+                    event_code="ecm_download_failed",
+                    download_dir=ecm_result.download_dir,
                 )
-                if popup_result.download_dir:
+                if ecm_result.download_dir:
                     await _run_sync(_cleanup_download_dir_safely, job, project)
                 failed += 1
 

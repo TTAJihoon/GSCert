@@ -13,6 +13,11 @@ import time
 from dataclasses import dataclass
 
 from django.conf import settings
+from main.views.review.ecm_download_review_centers import (
+    CENTER_SANGAM,
+    CENTER_YEONGNAM,
+    normalize_center_code,
+)
 
 logger = logging.getLogger("main.views.review.ecm_agent_popup")
 
@@ -54,6 +59,7 @@ DOWNLOAD_PARTIAL_SUFFIXES = (".tmp", ".crdownload", ".part", ".download", ".file
 class PopupResult:
     success: bool
     download_dir: str = ""
+    target_dir: str = ""
     error_step: str = ""
     error_message: str = ""
     had_duplicate_alert: bool = False
@@ -71,6 +77,8 @@ def handle_folder_popup_and_download(
     project_number: str,
     job_id: str = "",
     max_retries: int = 2,
+    relative_path: list[str] | tuple[str, ...] | None = None,
+    center_code: str = "",
 ) -> PopupResult:
     """폴더 찾아보기 팝업 처리 -> 전송현황 대기 -> 시스템 알림 처리.
 
@@ -88,14 +96,10 @@ def handle_folder_popup_and_download(
             error_message="pywinauto가 설치되지 않았습니다.",
         )
 
-    folder_name = project_number
+    relative_path = [str(part).strip() for part in (relative_path or []) if str(part).strip()]
 
     for attempt in range(max_retries + 1):
-        if attempt > 0:
-            folder_name = f"{project_number}_{attempt + 1}"
-            logger.info("중복 발생. 폴더명 변경 후 재시도: %s", folder_name)
-
-        result = _try_download_once(folder_name)
+        result = _try_download_once(project_number, relative_path, center_code)
         if result.success:
             return result
 
@@ -111,9 +115,11 @@ def handle_folder_popup_and_download(
     )
 
 
-def _try_download_once(folder_name: str) -> PopupResult:
+def _try_download_once(project_number: str, relative_path: list[str], center_code: str) -> PopupResult:
     """1회 다운로드 시도."""
-    download_dir = os.path.join(_download_base_dir(), folder_name)
+    segments = [project_number, *relative_path]
+    download_dir = os.path.join(_download_base_dir(), project_number)
+    target_dir = os.path.join(_download_base_dir(), *segments)
 
     # Step 1: 폴더 찾아보기 팝업 대기
     try:
@@ -125,13 +131,15 @@ def _try_download_once(folder_name: str) -> PopupResult:
                 error_step="폴더 찾아보기 대기",
                 error_message=f"폴더 찾아보기 팝업이 표시되지 않았습니다. open_windows={windows}",
             )
-        _navigate_to_ecm_and_create_folder(folder_dlg, folder_name)
+        _navigate_to_download_target(folder_dlg, segments, center_code)
     except Exception as exc:
         logger.exception("폴더 선택 팝업 처리 실패")
         return PopupResult(
             success=False,
             error_step="폴더 선택",
             error_message=str(exc),
+            download_dir=download_dir,
+            target_dir=target_dir,
         )
 
     # Step 2: 전송현황 창 대기
@@ -142,6 +150,7 @@ def _try_download_once(folder_name: str) -> PopupResult:
         return PopupResult(
             success=False,
             download_dir=download_dir,
+            target_dir=target_dir,
             error_step="전송현황 대기",
             error_message=str(exc),
         )
@@ -152,6 +161,7 @@ def _try_download_once(folder_name: str) -> PopupResult:
         return PopupResult(
             success=False,
             download_dir=download_dir,
+            target_dir=target_dir,
             had_duplicate_alert=True,
             error_step="중복 파일 알림",
             error_message="중복 파일 시스템 알림이 발생했습니다.",
@@ -159,15 +169,16 @@ def _try_download_once(folder_name: str) -> PopupResult:
 
     # Step 4: 다운로드 파일이 실제로 기록 완료될 때까지 대기.
     # 전송현황 창 감지가 실패해도 파일시스템을 직접 관찰하므로 신뢰할 수 있다.
-    if not _wait_for_download_files(download_dir):
+    if not _wait_for_download_files(target_dir):
         return PopupResult(
             success=False,
             download_dir=download_dir,
+            target_dir=target_dir,
             error_step="다운로드 파일 대기",
-            error_message=f"다운로드 파일이 {DOWNLOAD_FILE_WAIT}초 내에 생성/안정화되지 않았습니다: {download_dir}",
+            error_message=f"다운로드 파일이 {DOWNLOAD_FILE_WAIT}초 내에 생성/안정화되지 않았습니다: {target_dir}",
         )
 
-    return PopupResult(success=True, download_dir=download_dir)
+    return PopupResult(success=True, download_dir=download_dir, target_dir=target_dir)
 
 
 def _list_download_files(download_dir: str) -> list:
@@ -522,92 +533,143 @@ def _find_child_hwnd_by_class(root_hwnd: int, class_name: str) -> int:
     return found[0] if found else 0
 
 
-def _navigate_to_ecm_and_create_folder(dlg, folder_name: str) -> None:
-    """ecm 폴더로 이동한 뒤 프로젝트 폴더를 생성하고 확인한다.
+def _navigate_to_download_target(dlg, segments: list[str], center_code: str = "") -> None:
+    """Move the folder popup to the configured base and mirror the ECM path."""
+    dialog = _connect_dialog(dlg)
+    download_root = os.path.join(_download_base_dir(), segments[0])
+    project_exists = os.path.isdir(download_root)
 
-    send_keys(SendInput)는 전역 포커스에 의존하므로, Chromium 창이 포커스를 가져가면
-    키 입력이 실패한다. 대신 AttachThreadInput + SetFocus + SendMessage를 사용해
-    포커스에 무관하게 트리 컨트롤에 직접 키 메시지를 전달한다.
+    normalized = normalize_center_code(center_code) if center_code else ""
+    is_sangam_yeongnam = normalized in (CENTER_SANGAM, CENTER_YEONGNAM)
 
-    조작 순서:
-    1. SysTreeView32 HWND 획득 (EnumChildWindows 재귀 탐색)
-    2. AttachThreadInput으로 다이얼로그 스레드에 연결 → SetFocus(tree)
-    3. Home → Down → Right → 'e' (ecm 폴더)
-    4. 새 폴더(folder_name) 생성 후 확인
-    """
+    if is_sangam_yeongnam:
+        if project_exists:
+            _return_sangam_to_base(dialog)
+        else:
+            _navigate_sangam_initial(dialog)
+    else:
+        if project_exists:
+            _return_to_download_base(dialog)
+        else:
+            _navigate_to_download_base_initial(dialog)
+
+    current_path = _download_base_dir()
+    for segment in segments:
+        current_path = os.path.join(current_path, segment)
+        if os.path.isdir(current_path):
+            _select_existing_popup_folder(dialog, segment)
+        else:
+            _create_popup_folder(dialog, segment)
+
+    _confirm_popup_download(dialog)
+
+
+def _navigate_to_download_base_initial(dialog) -> None:
+    """분당 폴더 팝업 기준 폴더 초기 이동 공식."""
+    _send_popup_keys(dialog, ["+{TAB}", "+{TAB}", "{PGUP}", "{DOWN 3}", "{RIGHT}", "{DOWN 2}", "{RIGHT}"])
+
+
+def _return_to_download_base(dialog) -> None:
+    """분당 기준 폴더 복귀 공식 (프로젝트 폴더가 이미 존재하는 경우)."""
+    _send_popup_keys(dialog, ["{LEFT 12}", "{RIGHT}", "{DOWN 3}", "{RIGHT}", "{DOWN 2}", "{RIGHT}"])
+
+
+def _navigate_sangam_initial(dialog) -> None:
+    """상암/영남 폴더 팝업 기준 폴더 초기 이동 공식."""
+    _send_popup_keys(dialog, ["+{TAB}", "+{TAB}", "{DOWN}", "{RIGHT}", "{DOWN 2}"])
+
+
+def _return_sangam_to_base(dialog) -> None:
+    """상암/영남 기준 폴더 복귀 공식 (프로젝트 폴더가 이미 존재하는 경우)."""
+    _send_popup_keys(dialog, ["+{TAB}", "+{TAB}", "{LEFT 12}", "{RIGHT}", "{DOWN 2}", "{RIGHT}", "{DOWN 2}", "{RIGHT}"])
+
+
+def _send_popup_keys(dialog, keys: list[str], pause: float = 0.12) -> None:
+    from pywinauto.keyboard import send_keys
+
+    try:
+        dialog.set_focus()
+    except Exception:
+        pass
+    time.sleep(0.2)
+    for key in keys:
+        send_keys(key, pause=0.03)
+        time.sleep(pause)
+
+
+def _select_existing_popup_folder(dialog, folder_name: str) -> None:
+    if folder_name:
+        try:
+            _send_popup_keys(dialog, [folder_name[0]], pause=0.2)
+        except Exception:
+            logger.debug("folder popup type-ahead failed: %s", folder_name, exc_info=True)
+    target = _find_tree_item(dialog, folder_name, timeout=5)
+    _select_tree_item(target, folder_name)
+    _expand_tree_item(target)
+
+
+def _expand_tree_item(target) -> None:
+    try:
+        if hasattr(target, "expand"):
+            target.expand()
+            time.sleep(0.3)
+            return
+    except Exception:
+        logger.debug("TreeItem expand failed", exc_info=True)
+    try:
+        target.type_keys("{RIGHT}")
+        time.sleep(0.3)
+    except Exception:
+        logger.debug("TreeItem right-key expand failed", exc_info=True)
+
+
+def _create_popup_folder(dialog, folder_name: str) -> None:
+    """Create one folder below the currently selected popup tree item."""
     import ctypes
-    import win32gui
-    import win32api
-    import win32process
     import win32con
 
-    # FindWindowEx는 직접 자식만 탐색 → EnumChildWindows 재귀 탐색 사용
-    tree_hwnd = _find_child_hwnd_by_class(dlg.handle, "SysTreeView32")
+    TVM_GETEDITCONTROL = 0x110F
+    dlg_hwnd = dialog.handle
+    tree_hwnd = _find_child_hwnd_by_class(dlg_hwnd, "SysTreeView32")
     if not tree_hwnd:
-        # dlg.handle이 실제 #32770이 아닌 부모일 수 있으므로 한 단계 위도 시도
-        parent_hwnd = win32gui.GetParent(dlg.handle)
-        if parent_hwnd:
-            tree_hwnd = _find_child_hwnd_by_class(parent_hwnd, "SysTreeView32")
-    if not tree_hwnd:
-        children_info = []
-        def _enum_cb(hwnd, _):
-            try:
-                children_info.append(f"{win32gui.GetClassName(hwnd)}({hwnd})")
-            except Exception:
-                pass
-            return True
-        try:
-            win32gui.EnumChildWindows(dlg.handle, _enum_cb, None)
-        except Exception:
-            pass
-        raise RuntimeError(
-            f"SysTreeView32를 찾을 수 없습니다. dlg.handle={dlg.handle}, "
-            f"children={children_info[:20]}"
-        )
+        raise RuntimeError("SysTreeView32를 찾을 수 없습니다.")
 
-    my_tid = win32api.GetCurrentThreadId()
-    target_tid, _ = win32process.GetWindowThreadProcessId(tree_hwnd)
-    attached = (my_tid != target_tid)
-    if attached:
-        ctypes.windll.user32.AttachThreadInput(my_tid, target_tid, True)
-    try:
-        ctypes.windll.user32.SetFocus(tree_hwnd)
+    _send_popup_keys(dialog, ["%m"], pause=0.5)
+
+    edit_hwnd = 0
+    for _ in range(20):
+        edit_hwnd = ctypes.windll.user32.SendMessageW(tree_hwnd, TVM_GETEDITCONTROL, 0, 0)
+        if edit_hwnd:
+            break
         time.sleep(0.2)
+    if not edit_hwnd:
+        raise RuntimeError("TreeView 인라인 편집창을 찾을 수 없습니다.")
 
-        # Home → Down → Right: SendMessage로 트리 탐색 (포커스 불필요)
-        for vk in (win32con.VK_HOME, win32con.VK_DOWN, win32con.VK_RIGHT):
-            ctypes.windll.user32.SendMessageW(tree_hwnd, win32con.WM_KEYDOWN, vk, 0)
-            time.sleep(0.15)
-            ctypes.windll.user32.SendMessageW(tree_hwnd, win32con.WM_KEYUP, vk, 0xC0000001)
-            time.sleep(0.2)
+    EM_SETSEL = 0x00B1
+    ctypes.windll.user32.SendMessageW(edit_hwnd, EM_SETSEL, 0, -1)
+    time.sleep(0.05)
+    for ch in folder_name:
+        ctypes.windll.user32.SendMessageW(edit_hwnd, win32con.WM_CHAR, ord(ch), 1)
+        time.sleep(0.02)
+    _send_vk_to_hwnd(edit_hwnd, win32con.VK_RETURN)
+    time.sleep(0.8)
 
-        # 'e' → WM_KEYDOWN+WM_CHAR+WM_KEYUP 세트로 type-ahead 탐색 (ecm 폴더)
-        # WM_CHAR만으로는 TreeView type-ahead가 작동하지 않는 경우가 있음
-        VK_E = 0x45
-        ctypes.windll.user32.SendMessageW(tree_hwnd, win32con.WM_KEYDOWN, VK_E, 0)
-        time.sleep(0.1)
-        ctypes.windll.user32.SendMessageW(tree_hwnd, win32con.WM_CHAR, ord('e'), 0)
-        time.sleep(0.1)
-        ctypes.windll.user32.SendMessageW(tree_hwnd, win32con.WM_KEYUP, VK_E, 0xC0000001)
-        time.sleep(0.8)  # type-ahead 결과 반영 대기
-    finally:
-        if attached:
-            ctypes.windll.user32.AttachThreadInput(my_tid, target_tid, False)
-
-    logger.info("트리 직접 포커스로 ecm 폴더 이동 완료. 새 폴더 생성: %s", folder_name)
-
-    # ecm 폴더 안에 새 폴더 생성 후 확인
-    _create_new_folder_and_confirm(dlg, folder_name)
+    target = _find_tree_item(dialog, folder_name, timeout=5)
+    _select_tree_item(target, folder_name)
+    _expand_tree_item(target)
+    logger.info("folder popup path segment ready: %s", folder_name)
 
 
-def _create_new_folder_and_confirm(dlg, folder_name: str) -> None:
-    """팝업 안에서 새 폴더를 만들고, 생성된 폴더를 실제 선택한 뒤 확인한다."""
-    dialog = _connect_dialog(dlg)
+def _confirm_popup_download(dialog) -> None:
+    from pywinauto.keyboard import send_keys
+
     try:
-        _create_new_folder_and_confirm_uia(dialog, folder_name)
+        dialog.set_focus()
     except Exception:
-        logger.warning("UIA 새 폴더 생성/선택 실패. 키보드 fallback을 시도합니다.", exc_info=True)
-        _create_new_folder_and_confirm_keyboard(dialog, folder_name)
+        pass
+    time.sleep(0.2)
+    send_keys("{ENTER}")
+    time.sleep(0.5)
 
 
 def _find_tree_item(dialog, folder_name: str, timeout: int = 5):
@@ -653,105 +715,6 @@ def _select_tree_item(target, folder_name: str) -> None:
             time.sleep(0.3)
     except Exception:
         logger.debug("폴더 TreeItem 선택 상태 확인 실패: %s", folder_name, exc_info=True)
-
-
-def _find_button_hwnd_by_text(root_hwnd: int, texts: list) -> int:
-    """root_hwnd 하위에서 지정 텍스트를 포함하는 Button HWND를 반환한다."""
-    import win32gui
-    found = []
-    keywords = [t.lower() for t in texts]
-
-    def _cb(hwnd, _):
-        try:
-            if win32gui.GetClassName(hwnd) == "Button":
-                label = win32gui.GetWindowText(hwnd).lower()
-                if any(kw in label for kw in keywords):
-                    found.append(hwnd)
-                    return False
-        except Exception:
-            pass
-        return True
-
-    try:
-        win32gui.EnumChildWindows(root_hwnd, _cb, None)
-    except Exception:
-        pass
-    return found[0] if found else 0
-
-
-def _click_ok(dialog) -> None:
-    import ctypes
-    BM_CLICK = 0x00F5
-    ok_hwnd = _find_button_hwnd_by_text(dialog.handle, ["확인", "OK"])
-    if ok_hwnd:
-        ctypes.windll.user32.SendMessageW(ok_hwnd, BM_CLICK, 0, 0)
-        return
-    # fallback: pywinauto click_input (마우스 클릭)
-    ok_btn = dialog.child_window(title="확인", control_type="Button")
-    if not ok_btn.exists(timeout=2):
-        ok_btn = dialog.child_window(title="OK", control_type="Button")
-    ok_btn.click_input()
-
-
-def _create_new_folder_and_confirm_uia(dialog, folder_name: str) -> None:
-    """Win32 직접 호출로 새 폴더를 만들고 확인한다.
-
-    pywinauto UIA의 edit.handle이 0을 반환하는 문제를 피하기 위해
-    BM_CLICK / TVM_GETEDITCONTROL / SetWindowTextW 를 직접 사용한다.
-    """
-    import ctypes
-    import win32con
-
-    TVM_GETEDITCONTROL = 0x110F
-    BM_CLICK = 0x00F5
-
-    dlg_hwnd = dialog.handle
-    tree_hwnd = _find_child_hwnd_by_class(dlg_hwnd, "SysTreeView32")
-    if not tree_hwnd:
-        raise RuntimeError("SysTreeView32를 찾을 수 없습니다.")
-
-    # '새 폴더 만들기' 버튼 — win32 BM_CLICK (포커스·SendInput 불필요)
-    btn_hwnd = _find_button_hwnd_by_text(dlg_hwnd, ["새 폴더 만들기"])
-    if not btn_hwnd:
-        raise RuntimeError("'새 폴더 만들기' 버튼을 찾을 수 없습니다.")
-    ctypes.windll.user32.SendMessageW(btn_hwnd, BM_CLICK, 0, 0)
-    time.sleep(0.5)
-
-    # TVM_GETEDITCONTROL: TreeView가 관리하는 인라인 편집 HWND 획득
-    edit_hwnd = 0
-    for _ in range(20):
-        edit_hwnd = ctypes.windll.user32.SendMessageW(tree_hwnd, TVM_GETEDITCONTROL, 0, 0)
-        if edit_hwnd:
-            break
-        time.sleep(0.2)
-
-    if not edit_hwnd:
-        raise RuntimeError("TreeView 인라인 편집창(TVM_GETEDITCONTROL)을 찾을 수 없습니다.")
-
-    # SetWindowTextW는 TreeView 인라인 편집창에 반영되지 않는 경우가 있음.
-    # EM_SETSEL로 전체 선택 후 WM_CHAR 문자별 입력으로 대체한다.
-    EM_SETSEL = 0x00B1
-    ctypes.windll.user32.SendMessageW(edit_hwnd, EM_SETSEL, 0, -1)  # 전체 선택
-    time.sleep(0.05)
-    for ch in folder_name:
-        ctypes.windll.user32.SendMessageW(edit_hwnd, win32con.WM_CHAR, ord(ch), 1)
-        time.sleep(0.02)
-    time.sleep(0.15)
-    logger.info("인라인 편집창에 폴더명 입력 완료: %s", folder_name)
-    _send_vk_to_hwnd(edit_hwnd, win32con.VK_RETURN)
-    time.sleep(0.8)
-
-    target = _find_tree_item(dialog, folder_name, timeout=5)
-    _select_tree_item(target, folder_name)
-    _click_ok(dialog)
-    logger.info("새 폴더 생성 및 선택 완료: %s", folder_name)
-
-
-def _create_new_folder_and_confirm_keyboard(dialog, folder_name: str) -> None:
-    """UIA 경로 실패 시 fallback — 동일한 win32 직접 호출 방식 재시도."""
-    logger.info("keyboard fallback: win32 직접 호출로 재시도")
-    _create_new_folder_and_confirm_uia(dialog, folder_name)
-
 
 
 def _wait_for_transfer_complete() -> None:
