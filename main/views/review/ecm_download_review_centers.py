@@ -39,6 +39,7 @@ _CENTER_DEFINITIONS = {
         "tree_root": "영남AX센터",
         "tree_root_index_setting": "ECM_TREE_ROOT_INDEX_YEONGNAM",
         "default_tree_root_index": 0,
+        "test_type_label": "01 GS시험인증(1등급)",
         "ecm_url_setting": "ECM_BASE_URL",
         "default_ecm_base_url": "http://210.96.71.85",
     },
