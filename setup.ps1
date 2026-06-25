@@ -352,11 +352,13 @@ except Exception as e:
     print(str(e), file=sys.stderr)
     sys.exit(1)
 '@
-    $tmpPy = Join-Path $env:TEMP "pg_test.py"
+    $tmpPy  = Join-Path $env:TEMP "pg_test.py"
+    $tmpErr = Join-Path $env:TEMP "pg_test_err.txt"
     [System.IO.File]::WriteAllText($tmpPy, $pgTestScript, [System.Text.Encoding]::UTF8)
-    $pgErr = & $VenvPython $tmpPy 2>&1 | Where-Object { $_ -isnot [System.Management.Automation.ErrorRecord] -or $true } | Out-String
+    & $VenvPython $tmpPy 2>$tmpErr | Out-Null
     $pgExitCode = $LASTEXITCODE
-    Remove-Item $tmpPy -ErrorAction SilentlyContinue
+    $pgErr = if (Test-Path $tmpErr) { (Get-Content $tmpErr -Raw -Encoding UTF8).Trim() } else { "" }
+    Remove-Item $tmpPy, $tmpErr -ErrorAction SilentlyContinue
 
     if ($pgExitCode -ne 0) {
         Warn "PostgreSQL(gscert_reference)에 접속할 수 없어 reference DB 설정을 건너뜁니다."
