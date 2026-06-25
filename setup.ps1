@@ -216,7 +216,7 @@ OK "nginx 부팅 자동시작 태스크 등록 완료"
 # nginx 즉시 시작 또는 reload
 $running = Get-Process -Name nginx -ErrorAction SilentlyContinue
 if ($running) {
-    & $NginxExe -s reload 2>$null
+    Start-Process -FilePath $NginxExe -ArgumentList "-s reload" -WorkingDirectory $NginxInstallDir -Wait -WindowStyle Hidden
     OK "nginx conf reload 완료"
 } else {
     Start-Process -FilePath $NginxExe -WorkingDirectory $NginxInstallDir -WindowStyle Hidden

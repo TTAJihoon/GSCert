@@ -179,7 +179,7 @@ while ($true) {
                 Write-Host "  1) reload (conf 재적용)"
                 Write-Host "  2) stop  (중지)"
                 $sub = Read-Host "선택"
-                if ($sub -eq '1') { & $NginxExe -s reload; Write-Host "[OK] nginx reload 완료" -ForegroundColor Green }
+                if ($sub -eq '1') { Start-Process -FilePath $NginxExe -ArgumentList "-s reload" -WorkingDirectory $NginxDir -Wait -WindowStyle Hidden; Write-Host "[OK] nginx reload 완료" -ForegroundColor Green }
                 elseif ($sub -eq '2') { & (Join-Path $ScriptDir "stop_nginx.ps1") }
             } else {
                 & (Join-Path $ScriptDir "start_nginx.ps1")
