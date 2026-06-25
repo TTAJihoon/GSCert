@@ -116,7 +116,7 @@ def api_run_sync_sheets(request):
     env = os.environ.copy()
     env["PYTHONUNBUFFERED"] = "1"
     _launch(
-        [_VENV_PYTHON, "-u", r"C:\Claude_GSCert\main\utils\ecmList\sync_sheets.py"],
+        [_VENV_PYTHON, "-u", "manage.py", "sync_reference_projects_from_sheet"],
         cwd=_CLAUDE_ROOT,
         env=env,
         task=task,
