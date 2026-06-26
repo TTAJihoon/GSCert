@@ -447,8 +447,23 @@ async def _wait_doc_list_settled(page: Page, prev_signature: str, *, max_polls: 
     )
 
 
-async def _select_project_relative_path(page: Page, project_number: str, relative_path: list[str]) -> str:
+async def _select_project_relative_path(
+    page: Page,
+    project_number: str,
+    relative_path: list[str],
+    *,
+    load_documents: bool = True,
+) -> str:
+    """트리에서 프로젝트 하위 상대경로를 펼치고 해당 폴더를 선택한다.
+
+    load_documents=True(다운로드 시): 최종 노드를 실제 클릭해 문서 목록을 로드하고
+        목록 갱신을 검증한다.
+    load_documents=False(폴더 구조 수집 시): 펼치기만 하고 문서 로드/검증은 생략한다.
+    """
     prev_signature = await _doc_list_signature(page)
+
+    # 1) 경로를 따라 트리를 펼치고 최종 노드의 li.id 를 확보한다(클릭은 아래에서 별도 수행).
+    #    중간 노드는 jstree open_node 로 펼쳐 하위 폴더를 노출시킨다.
     result = await page.evaluate(
         """
         ({ projectNumber, relativePath }) => {
@@ -458,11 +473,15 @@ async def _select_project_relative_path(page: Page, project_number: str, relativ
           }
           const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
           const openNode = (li) => {
-            if (!li || (li.className || '').includes('jstree-open')) {
+            if (!li || (li.className || '').includes('jstree-open') || (li.className || '').includes('jstree-leaf')) {
+              return;
+            }
+            if (window.jQuery && window.jQuery.fn && window.jQuery.fn.jstree && li.id) {
+              window.jQuery(root).jstree('open_node', li.id);
               return;
             }
             const icon = li.querySelector(':scope > ins.jstree-icon');
-            if (icon && !(li.className || '').includes('jstree-leaf')) {
+            if (icon) {
               icon.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
               icon.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
               icon.click();
@@ -497,37 +516,73 @@ async def _select_project_relative_path(page: Page, project_number: str, relativ
             li = link.closest('li');
             openNode(li);
           }
-          link.scrollIntoView({ block: 'center', inline: 'nearest' });
-          // jstree select_node API로 선택해 문서 목록을 확실히 로드한다.
-          // raw 앵커 클릭은 parent(하위 폴더 보유) 노드에서 '펼치기 토글'로만
-          // 동작해 문서 패널이 직전 폴더 목록을 유지하는 버그가 있었다.
-          if (window.jQuery && window.jQuery.fn && window.jQuery.fn.jstree && li && li.id) {
-            window.jQuery(root).jstree('deselect_all');
-            window.jQuery(root).jstree('select_node', li.id);
-            return { ok: true, method: 'jstree', text: norm(link.textContent), id: li.id };
-          }
-          link.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
-          link.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
-          link.click();
-          return { ok: true, method: 'dom-click', text: norm(link.textContent), id: li ? li.id : '' };
+          return { ok: true, text: norm(link.textContent), id: li ? li.id : '' };
         }
         """,
         {"projectNumber": project_number, "relativePath": relative_path},
     )
     if not result or not result.get("ok"):
         raise RuntimeError(f"ECM 상대 폴더 선택 실패: path={relative_path}, detail={result}")
+
+    await page.wait_for_timeout(500)  # open_node AJAX(하위 폴더 로드) 여유
+    await _wait_splash_done(page)
+
+    if not load_documents:
+        # 폴더 구조 수집 단계: 문서 로드/검증 없이 펼침 결과만 반환.
+        return result.get("text") or ""
+
+    # 2) 최종 노드의 앵커를 '진짜' Playwright 클릭으로 선택해 문서 목록을 로드한다.
+    #    DOM 디스패치 클릭은 parent(하위 폴더 보유) 노드에서 ECM 문서 로더를
+    #    트리거하지 못하고 펼치기 토글로만 동작해, 문서 패널이 직전 폴더 목록을
+    #    유지하던 버그가 있었다(navigate_to_project_folder 의 _click_tree_link 와 동일 패턴).
+    li_id = result.get("id") or ""
+    method = ""
+    clicked = False
+    if li_id:
+        anchor = page.locator(f'#edm-folder li[id="{li_id}"] > a').first
+        try:
+            await anchor.scroll_into_view_if_needed(timeout=3000)
+            await anchor.click(timeout=3000, force=True)
+            clicked = True
+            method = "playwright-click"
+        except Exception:
+            logger.warning("앵커 실제 클릭 실패 id=%s, 대체 방식 시도", li_id, exc_info=True)
+
+    if not clicked:
+        # 대체: 텍스트로 보이는 앵커를 찾아 실제 클릭
+        last_text = relative_path[-1] if relative_path else project_number
+        fallback = _visible_tree_link(page.locator(FOLDER_TREE), last_text)
+        try:
+            await fallback.scroll_into_view_if_needed(timeout=3000)
+            await fallback.click(timeout=3000, force=True)
+            clicked = True
+            method = "text-click"
+        except Exception:
+            logger.warning("대체 텍스트 클릭도 실패: %s", last_text, exc_info=True)
+
     await page.wait_for_timeout(300)
     await _wait_splash_done(page)
     await _wait_doc_list_settled(page, prev_signature)
+
+    new_signature = await _doc_list_signature(page)
+    # root([])는 navigate_to_project_folder 가 이미 선택해 둔 상태라 시그니처가
+    # 그대로일 수 있으므로 검증에서 제외한다. 하위 폴더는 직전 폴더와 반드시
+    # 달라야 하므로, 동일하면 갱신 실패로 보고 잘못된 다운로드를 차단한다.
+    if relative_path and prev_signature and new_signature == prev_signature and new_signature != "0::":
+        raise RuntimeError(
+            f"문서 목록이 폴더 전환 후에도 갱신되지 않았습니다(직전 폴더 내용 유지). "
+            f"path={'/'.join(relative_path) or '<root>'} method={method} sig={new_signature[:80]}"
+        )
+
     logger.info(
-        "ECM 상대 폴더 선택: path=%s method=%s",
-        "/".join(relative_path) or "<root>", result.get("method"),
+        "ECM 상대 폴더 선택: path=%s method=%s docs=%s",
+        "/".join(relative_path) or "<root>", method, new_signature.split("::", 1)[0],
     )
     return result.get("text") or ""
 
 
 async def _direct_child_folder_names(page: Page, project_number: str, relative_path: list[str]) -> list[str]:
-    await _select_project_relative_path(page, project_number, relative_path)
+    await _select_project_relative_path(page, project_number, relative_path, load_documents=False)
     await page.wait_for_timeout(500)
     result = await page.evaluate(
         """
