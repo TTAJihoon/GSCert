@@ -122,14 +122,23 @@ REFERENCE_DB_PATH = BASE_DIR / 'main' / 'data' / 'ecmlist.db'
 REFERENCE_DB_PATH_2 = BASE_DIR / 'main' / 'data' / 'ecmlist2.db'
 DOWNLOAD_REVIEW_ARTIFACT_DIR = BASE_DIR / 'main' / 'data' / 'download_review_artifacts'
 REFERENCE_DB_TABLE = 'ecm_list'
+# ── 서버 IP (설치 시 env.ps1 에서 주입; IP 하드코딩 금지) ──────────────
+# MAIN_SERVER_IP : 주 서버 — PostgreSQL(reference) + 점검규칙 소스 + 상암/영남 센터
+# SUB_SERVER_IP  : 서브 서버 — 분당 센터, 웹 네비게이션 홈
+# FILE_SHARE_HOST: 산출물 보관용 공유 폴더 호스트
+# 아래 기본값은 개발/기존 배포 호환용이며, 운영에서는 env.ps1 이 항상 덮어쓴다.
+MAIN_SERVER_IP = os.environ.get('MAIN_SERVER_IP', '210.96.71.241')
+SUB_SERVER_IP = os.environ.get('SUB_SERVER_IP', '210.96.71.194')
+FILE_SHARE_HOST = os.environ.get('FILE_SHARE_HOST', '210.96.71.99')
+
 DOWNLOAD_REVIEW_DEFAULT_CENTER = 'sangam'
 DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_HOST = {
-    '210.96.71.194': 'bundang',
-    '210.96.71.241': 'sangam',
+    SUB_SERVER_IP: 'bundang',
+    MAIN_SERVER_IP: 'sangam',
 }
 DOWNLOAD_REVIEW_ALLOWED_CENTERS_BY_HOST = {
-    '210.96.71.194': {'bundang'},
-    '210.96.71.241': {'sangam', 'yeongnam'},
+    SUB_SERVER_IP: {'bundang'},
+    MAIN_SERVER_IP: {'sangam', 'yeongnam'},
 }
 DOWNLOAD_REVIEW_WORKER_CENTERS = {
     value.strip()
@@ -137,13 +146,13 @@ DOWNLOAD_REVIEW_WORKER_CENTERS = {
     if value.strip()
 }
 DOWNLOAD_REVIEW_CENTER_ROUTES_BY_HOST = {
-    '210.96.71.194': {
+    SUB_SERVER_IP: {
         'bundang': '',
-        'sangam': 'http://210.96.71.241/download-review/',
-        'yeongnam': 'http://210.96.71.241/download-review/',
+        'sangam': f'http://{MAIN_SERVER_IP}/download-review/',
+        'yeongnam': f'http://{MAIN_SERVER_IP}/download-review/',
     },
-    '210.96.71.241': {
-        'bundang': 'http://210.96.71.194/download-review/',
+    MAIN_SERVER_IP: {
+        'bundang': f'http://{SUB_SERVER_IP}/download-review/',
         'sangam': '',
         'yeongnam': '',
     },
@@ -157,14 +166,17 @@ DOWNLOAD_REVIEW_END_HOUR = 24
 DOWNLOAD_REVIEW_ACTIVE_JOB_LIMIT = 5
 DOWNLOAD_REVIEW_MAX_PROJECTS_PER_JOB = 100
 DOWNLOAD_REVIEW_NAV_HOME_BY_HOST = {
-    '210.96.71.194': '',
-    '210.96.71.241': 'http://210.96.71.194',
+    SUB_SERVER_IP: '',
+    MAIN_SERVER_IP: f'http://{SUB_SERVER_IP}',
 }
-# 241 서버처럼 로컬 DB에 점검규칙이 없을 때 규칙을 가져올 원격 API URL.
-# 194 서버: 빈 문자열 (로컬 DB 직접 사용).
-# 241 서버: DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL=http://210.96.71.194/api/local-review/rules/bundle/ 로 설정.
+# 점검규칙 소스는 주 서버(MAIN_SERVER_IP)다. 로컬 DB에 활성 규칙이 없을 때
+# 이 URL의 번들 API에서 규칙을 가져온다.
+#  - 주 서버: 로컬에 규칙이 있어 동기화가 트리거되지 않는다(자기 자신을 가리켜도 무해).
+#  - 서브 서버: 주 서버에서 규칙을 받아온다.
+# env 로 명시하면 그 값이 우선한다.
 DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL = os.environ.get(
-    'DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL', ''
+    'DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL',
+    f'http://{MAIN_SERVER_IP}/api/local-review/rules/bundle/',
 )
 
 # --- ECM 다운로드 자동화 설정 ---
@@ -187,7 +199,7 @@ AGENT_DOWNLOAD_BASE_DIR = os.environ.get(
 )
 AGENT_ARCHIVE_BASE_DIR = os.environ.get(
     'AGENT_ARCHIVE_BASE_DIR',
-    r'\\210.96.71.99\ecm',
+    rf'\\{FILE_SHARE_HOST}\ecm',
 )
 ECM_DOWNLOAD_TIMEOUTS = {
     'GOTO': 15_000,

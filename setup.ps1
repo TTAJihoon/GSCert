@@ -90,17 +90,26 @@ Write-Host "========================================" -ForegroundColor Cyan
 # 0. env.ps1 생성 마법사 (없을 때만)
 # ══════════════════════════════════════════════════════════════════════
 if (-not (Test-Path $EnvFile)) {
-    Step "PostgreSQL 접속 설정 (env.ps1 생성)"
+    Step "서버 환경 설정 (env.ps1 생성)"
+    $thisIP = Get-ServerIP
+    Write-Host "  이 서버의 IP(자동 감지): $thisIP" -ForegroundColor Gray
     Write-Host "  이 서버의 역할을 선택하세요:" -ForegroundColor Yellow
-    Write-Host "    1) 주 서버  — PostgreSQL이 이 PC에 설치되어 있음 (HOST=localhost)"
-    Write-Host "    2) 서브 서버 — 다른 서버의 PostgreSQL에 원격 접속"
+    Write-Host "    1) 주 서버  — PostgreSQL + 점검규칙 소스 (상암/영남). HOST=localhost"
+    Write-Host "    2) 서브 서버 — 주 서버의 PostgreSQL/규칙을 원격 사용 (분당)"
     $role = Read-Host "  선택 (1/2)"
     if ($role -eq '2') {
-        $pgHost = Read-Host "  PostgreSQL 서버 IP 입력"
+        $pgHost = Read-Host "  주 서버(PostgreSQL/규칙 소스) IP 입력"
         if (-not $pgHost) { $pgHost = "localhost" }
+        $mainIP = $pgHost          # 서브 서버 기준: PG/규칙 소스 = 주 서버
+        $subIP  = $thisIP          # 이 서버가 곧 서브 서버
     } else {
         $pgHost = "localhost"
+        $mainIP = $thisIP          # 이 서버가 곧 주 서버
+        $subIP  = Read-Host "  서브 서버 IP 입력"
+        if (-not $subIP) { $subIP = "" }
     }
+    $fileShareHost = Read-Host "  산출물 공유폴더 호스트 IP 입력 (예: 210.96.71.99)"
+    if (-not $fileShareHost) { $fileShareHost = "" }
     $pgPassword = Read-Host "  PostgreSQL 비밀번호 입력"
 
     $envLines = @(
@@ -109,11 +118,16 @@ if (-not (Test-Path $EnvFile)) {
         "`$env:REFERENCE_PG_USER     = `"postgres`"",
         "`$env:REFERENCE_PG_PASSWORD = `"$pgPassword`"",
         "`$env:REFERENCE_PG_HOST     = `"$pgHost`"",
-        "`$env:REFERENCE_PG_PORT     = `"5432`""
+        "`$env:REFERENCE_PG_PORT     = `"5432`"",
+        "",
+        "# 서버 IP — 앱이 호스트 기반 센터 라우팅/규칙 소스/보관 경로 산출에 사용 (IP 하드코딩 금지)",
+        "`$env:MAIN_SERVER_IP  = `"$mainIP`"",
+        "`$env:SUB_SERVER_IP   = `"$subIP`"",
+        "`$env:FILE_SHARE_HOST = `"$fileShareHost`""
     )
     [System.IO.File]::WriteAllLines($EnvFile, $envLines, [System.Text.Encoding]::UTF8)
     . $EnvFile
-    OK "env.ps1 생성 완료 (HOST: $pgHost)"
+    OK "env.ps1 생성 완료 (PG_HOST: $pgHost, MAIN: $mainIP, SUB: $subIP)"
 }
 
 # ══════════════════════════════════════════════════════════════════════
