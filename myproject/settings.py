@@ -181,7 +181,7 @@ AGENT_DOWNLOAD_BASE_DIR = os.environ.get(
 )
 AGENT_ARCHIVE_BASE_DIR = os.environ.get(
     'AGENT_ARCHIVE_BASE_DIR',
-    str(Path.home() / 'ecm'),
+    r'\\210.96.71.99\ecm',
 )
 ECM_DOWNLOAD_TIMEOUTS = {
     'GOTO': 15_000,
