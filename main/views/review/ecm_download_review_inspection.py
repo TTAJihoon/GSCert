@@ -12,6 +12,7 @@
 import 하던 심볼은 아래에서 재노출한다.
 """
 
+import logging
 import os
 import shutil
 import sqlite3
@@ -22,6 +23,8 @@ from zipfile import BadZipFile, ZipFile
 
 from django.conf import settings
 from django.utils import timezone
+
+logger = logging.getLogger("main.views.review.ecm_download_review_inspection")
 
 from main.models import (
     DownloadReviewProjectReviewStatus,
@@ -78,6 +81,9 @@ class CleanupOutcome:
 def run_download_inspection(project, verify_result, file_summary) -> InspectionOutcome:
     """등록된 활성 규칙을 공유 엔진으로 실행하고 규칙별 결과를 저장한다."""
     rules = list(DownloadReviewRule.objects.filter(enabled=True).order_by("sort_order", "name", "id"))
+    if not rules:
+        _try_sync_rules_from_remote()
+        rules = list(DownloadReviewRule.objects.filter(enabled=True).order_by("sort_order", "name", "id"))
     if not rules:
         raise DownloadReviewInspectionError("활성화된 점검규칙이 없습니다.")
 
@@ -378,6 +384,19 @@ def _ensure_soffice_env():
     configured = getattr(settings, "AGENT_SOFFICE_PATH", "")
     if configured and not os.environ.get("AGENT_SOFFICE_PATH"):
         os.environ["AGENT_SOFFICE_PATH"] = str(configured)
+
+
+def _try_sync_rules_from_remote() -> None:
+    """DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL 이 설정되어 있으면 원격 서버에서 규칙을 동기화한다."""
+    remote_url = getattr(settings, "DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL", "")
+    if not remote_url:
+        return
+    try:
+        from main.views.review.ecm_rulebase import sync_rules_from_remote
+        count = sync_rules_from_remote(remote_url)
+        logger.info("원격 규칙 동기화 완료: %d개 (%s)", count, remote_url)
+    except Exception as exc:
+        logger.error("원격 규칙 동기화 실패 (%s): %s", remote_url, exc)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

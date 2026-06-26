@@ -160,6 +160,12 @@ DOWNLOAD_REVIEW_NAV_HOME_BY_HOST = {
     '210.96.71.194': '',
     '210.96.71.241': 'http://210.96.71.194',
 }
+# 241 서버처럼 로컬 DB에 점검규칙이 없을 때 규칙을 가져올 원격 API URL.
+# 194 서버: 빈 문자열 (로컬 DB 직접 사용).
+# 241 서버: DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL=http://210.96.71.194/api/local-review/rules/bundle/ 로 설정.
+DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL = os.environ.get(
+    'DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL', ''
+)
 
 # --- ECM 다운로드 자동화 설정 ---
 ECM_BASE_URL = os.environ.get('ECM_BASE_URL', 'http://210.96.71.85')

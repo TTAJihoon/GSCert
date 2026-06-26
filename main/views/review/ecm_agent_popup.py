@@ -144,7 +144,7 @@ def _try_download_once(project_number: str, relative_path: list[str], center_cod
 
     # Step 2: 전송현황 창 대기
     try:
-        _wait_for_transfer_complete()
+        _wait_for_transfer_complete(target_dir=target_dir)
     except Exception as exc:
         logger.exception("전송현황 대기 실패")
         return PopupResult(
@@ -699,15 +699,52 @@ def _select_tree_item(target, folder_name: str) -> None:
         logger.debug("폴더 TreeItem 선택 상태 확인 실패: %s", folder_name, exc_info=True)
 
 
-def _wait_for_transfer_complete() -> None:
+def _has_any_download_files(download_dir: str) -> bool:
+    """다운로드 폴더에 완전한 파일(부분 파일 제외)이 1개 이상 있으면 True."""
+    try:
+        return any(
+            os.path.isfile(os.path.join(download_dir, name))
+            and not name.lower().endswith(DOWNLOAD_PARTIAL_SUFFIXES)
+            for name in os.listdir(download_dir)
+        )
+    except OSError:
+        return False
+
+
+def _wait_for_transfer_complete(target_dir: str = "") -> None:
     """전송현황 창이 뜨고 사라질 때까지 대기한다.
 
-    첫 번째 다운로드는 DestinyECM 초기화로 전송현황 창이 늦게 뜰 수 있으므로
-    감지 타임아웃을 넉넉히 60초로 설정한다.
-    창이 닫힌 후에도 파일이 디스크에 기록 완료될 때까지 잠시 대기한다.
+    전송현황 창 감지와 파일시스템 모니터링을 병렬로 수행한다.
+    창이 뜨기 전에 파일이 이미 생성됐으면 (매우 빠른 다운로드) 즉시 반환한다.
+    창이 60초 내에 나타나지 않더라도 파일이 생성되면 감지 대기를 중단한다.
     """
     logger.info("전송현황 창 대기 중...")
-    transfer_dlg = _wait_for_window(TRANSFER_STATUS_TITLE, timeout=60)
+
+    # 파일이 이미 존재하면 다운로드가 완료된 것
+    if target_dir and _has_any_download_files(target_dir):
+        logger.info("다운로드 파일이 이미 존재함. 전송현황 창 대기 생략.")
+        time.sleep(1)
+        return
+
+    transfer_dlg = None
+    end_detect_time = time.time() + 60
+    while time.time() < end_detect_time:
+        try:
+            windows = Desktop(backend="uia").windows(title=TRANSFER_STATUS_TITLE)
+            if windows:
+                transfer_dlg = windows[0]
+                break
+        except Exception:
+            pass
+
+        # 파일 생성 감지: 창을 놓쳤거나 창이 없어도 다운로드 완료로 판단
+        if target_dir and _has_any_download_files(target_dir):
+            logger.info("다운로드 파일 생성 감지됨. 전송현황 창 대기 종료.")
+            time.sleep(2)  # 파일 기록 여유
+            return
+
+        time.sleep(0.5)
+
     if transfer_dlg is None:
         logger.info("전송현황 창이 60초 내에 표시되지 않았습니다. 이미 완료되었거나 매우 빠르게 처리됐을 수 있습니다.")
         time.sleep(5)  # 파일 기록 완료 대기
