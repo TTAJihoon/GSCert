@@ -1102,7 +1102,6 @@ def serialize_rule_result(result):
     return {
         "id": str(result.id),
         "job_project_id": str(result.job_project_id),
-        "rule_id": str(result.rule_id) if result.rule_id else None,
         "rule_code": result.rule_code,
         "rule_name": result.rule_name,
         "sequence": result.sequence,

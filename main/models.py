@@ -189,13 +189,9 @@ class DownloadReviewRuleResult(models.Model):
         on_delete=models.CASCADE,
         related_name="rule_results",
     )
-    rule = models.ForeignKey(
-        DownloadReviewRule,
-        on_delete=models.SET_NULL,
-        blank=True,
-        null=True,
-        related_name="results",
-    )
+    # 규칙(DownloadReviewRule)은 공유 PostgreSQL(reference)로 이전되어 DB가 다르므로
+    # FK를 둘 수 없다(Django는 cross-DB 관계를 지원하지 않음). 규칙 식별은
+    # 비정규화된 rule_code/rule_name 으로 한다.
     rule_code = models.CharField(max_length=80, blank=True)
     rule_name = models.CharField(max_length=255)
     sequence = models.PositiveSmallIntegerField(default=0)

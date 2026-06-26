@@ -80,12 +80,13 @@ class CleanupOutcome:
 
 def run_download_inspection(project, verify_result, file_summary) -> InspectionOutcome:
     """등록된 활성 규칙을 공유 엔진으로 실행하고 규칙별 결과를 저장한다."""
+    # 점검규칙은 주 서버 PostgreSQL(reference)에 단일 저장되어 194/241이 공유한다.
+    # (서브 서버는 reference DB 연결이 주 서버 PG를 가리키므로 동일 규칙을 읽는다.)
     rules = list(DownloadReviewRule.objects.filter(enabled=True).order_by("sort_order", "name", "id"))
     if not rules:
-        _try_sync_rules_from_remote()
-        rules = list(DownloadReviewRule.objects.filter(enabled=True).order_by("sort_order", "name", "id"))
-    if not rules:
-        raise DownloadReviewInspectionError("활성화된 점검규칙이 없습니다.")
+        raise DownloadReviewInspectionError(
+            "활성화된 점검규칙이 없습니다. 주 서버 PostgreSQL에 규칙이 등록/활성화되어 있는지 확인하세요."
+        )
 
     _ensure_soffice_env()  # .doc 변환 경로(settings) 보존
     context = _build_rule_context(project)
@@ -101,7 +102,6 @@ def run_download_inspection(project, verify_result, file_summary) -> InspectionO
     result_rows = [
         DownloadReviewRuleResult(
             job_project=project,
-            rule=evaluation.rule,
             rule_code=evaluation.rule.code,
             rule_name=evaluation.rule.name,
             sequence=evaluation.sequence,
@@ -122,7 +122,6 @@ def run_download_inspection(project, verify_result, file_summary) -> InspectionO
     result_rows.append(
         DownloadReviewRuleResult(
             job_project=project,
-            rule=None,
             rule_code="temp_file_check",
             rule_name="임시파일 검사",
             sequence=len(evaluations) + 1,
@@ -384,19 +383,6 @@ def _ensure_soffice_env():
     configured = getattr(settings, "AGENT_SOFFICE_PATH", "")
     if configured and not os.environ.get("AGENT_SOFFICE_PATH"):
         os.environ["AGENT_SOFFICE_PATH"] = str(configured)
-
-
-def _try_sync_rules_from_remote() -> None:
-    """DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL 이 설정되어 있으면 원격 서버에서 규칙을 동기화한다."""
-    remote_url = getattr(settings, "DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL", "")
-    if not remote_url:
-        return
-    try:
-        from main.views.review.ecm_rulebase import sync_rules_from_remote
-        count = sync_rules_from_remote(remote_url)
-        logger.info("원격 규칙 동기화 완료: %d개 (%s)", count, remote_url)
-    except Exception as exc:
-        logger.error("원격 규칙 동기화 실패 (%s): %s", remote_url, exc)
 
 
 # ══════════════════════════════════════════════════════════════════════════════

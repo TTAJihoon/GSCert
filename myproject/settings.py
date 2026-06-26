@@ -103,17 +103,19 @@ DATABASE_ROUTERS = [
 ]
 
 WORKFLOW_DATABASE_ALIAS = 'workflow'
+# 작업 실행 상태(잡/프로젝트/결과/로그/락)는 각 서버의 로컬 SQLite(workflow.db)에 둔다.
+# 점검규칙(downloadreviewrule)은 두 서버가 공유하도록 주 서버의 PostgreSQL(reference)로 이전.
 WORKFLOW_MODEL_NAMES = {
     'downloadreviewjob',
     'downloadreviewproject',
-    'downloadreviewrule',
     'downloadreviewruleresult',
     'downloadreviewlog',
     'downloadreviewlock',
 }
 
 REFERENCE_DATABASE_ALIAS = 'reference'
-REFERENCE_MODEL_NAMES = {'swdata', 'referencecenterpl', 'referenceproject'}
+# downloadreviewrule: 점검규칙을 주 서버 PostgreSQL에 단일 저장 → 194/241 공유, Django admin에서 수정.
+REFERENCE_MODEL_NAMES = {'swdata', 'referencecenterpl', 'referenceproject', 'downloadreviewrule'}
 DOWNLOAD_REVIEW_PROJECT_SOURCE = 'postgres'
 
 ECM_AGENT_LOCK_PATH = BASE_DIR / 'main' / 'data' / 'ecm_agent.lock'
@@ -169,16 +171,9 @@ DOWNLOAD_REVIEW_NAV_HOME_BY_HOST = {
     MAIN_SERVER_IP: '',                          # 메인(분당)이 웹 네비게이션 홈
     SUB_SERVER_IP: f'http://{MAIN_SERVER_IP}',   # 서브(상암/영남)는 메인으로 리다이렉트
 }
-# 점검규칙 소스는 주 서버(MAIN_SERVER_IP)다. 로컬 DB에 활성 규칙이 없을 때
-# 이 URL의 번들 API에서 규칙을 가져온다(규칙을 PostgreSQL 공유 테이블로 이전하기
-# 전까지의 임시 HTTP 동기화 경로).
-#  - 주 서버: 로컬에 규칙이 있어 동기화가 트리거되지 않는다(자기 자신을 가리켜도 무해).
-#  - 서브 서버: 주 서버에서 규칙을 받아온다.
-# env 로 명시하면 그 값이 우선한다.
-DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL = os.environ.get(
-    'DOWNLOAD_REVIEW_RULEBASE_SOURCE_URL',
-    f'http://{MAIN_SERVER_IP}/api/local-review/rules/bundle/',
-)
+# 점검규칙은 주 서버 PostgreSQL(reference)에 단일 저장되어 두 서버가 공유한다.
+# 서브 서버는 REFERENCE_PG_HOST 가 주 서버를 가리키므로 동일 규칙을 직접 읽는다.
+# (과거의 HTTP 번들 동기화 방식은 제거됨.)
 
 # --- ECM 다운로드 자동화 설정 ---
 ECM_BASE_URL = os.environ.get('ECM_BASE_URL', 'http://210.96.71.85')

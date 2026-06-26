@@ -1,14 +1,7 @@
 import hashlib
 import json
-import logging
-import urllib.error
-import urllib.request
-
-from django.db import transaction
 
 from main.models import DownloadReviewRule
-
-logger = logging.getLogger("main.views.review.ecm_rulebase")
 
 
 RULE_ENGINE_MIN_VERSION = "0.1.0"
@@ -96,53 +89,3 @@ def _latest_updated_at(rules):
     if not values:
         return ""
     return max(values)
-
-
-def sync_rules_from_remote(remote_url: str) -> int:
-    """원격 서버의 규칙 번들을 가져와 로컬 DB에 반영한다.
-
-    기존 규칙을 비활성화하고 원격 규칙으로 교체한다.
-
-    Returns:
-        동기화된 규칙 수.
-    Raises:
-        RuntimeError: 네트워크 오류 또는 원격 응답이 실패인 경우.
-    """
-    logger.info("원격 규칙 번들 요청: %s", remote_url)
-    req = urllib.request.Request(remote_url, headers={"Accept": "application/json"})
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-    except urllib.error.URLError as exc:
-        raise RuntimeError(f"원격 규칙 서버 접속 실패 ({remote_url}): {exc}") from exc
-
-    if not data.get("success"):
-        raise RuntimeError(
-            f"원격 규칙 서버 응답 오류: {data.get('message', 'unknown error')}"
-        )
-
-    remote_rules = data.get("rules") or []
-    if not remote_rules:
-        logger.warning("원격 서버에 활성화된 규칙이 없습니다: %s", remote_url)
-        return 0
-
-    with transaction.atomic(using="workflow"):
-        DownloadReviewRule.objects.all().update(enabled=False)
-        for i, rule_data in enumerate(remote_rules):
-            DownloadReviewRule.objects.update_or_create(
-                code=rule_data["code"],
-                defaults={
-                    "name": rule_data.get("name", ""),
-                    "target_file_pattern": rule_data.get("target_file_pattern", ""),
-                    "target_file_type": rule_data.get("target_file_type", "any"),
-                    "rule_type": rule_data.get("rule_type", ""),
-                    "config_json": rule_data.get("config_json") or {},
-                    "severity": rule_data.get("severity", "error"),
-                    "version": rule_data.get("version", "1"),
-                    "sort_order": rule_data.get("sort_order", i),
-                    "enabled": True,
-                },
-            )
-
-    logger.info("원격 규칙 %d개 동기화 완료.", len(remote_rules))
-    return len(remote_rules)
