@@ -94,8 +94,8 @@ if (-not (Test-Path $EnvFile)) {
     $thisIP = Get-ServerIP
     Write-Host "  이 서버의 IP(자동 감지): $thisIP" -ForegroundColor Gray
     Write-Host "  이 서버의 역할을 선택하세요:" -ForegroundColor Yellow
-    Write-Host "    1) 주 서버  — PostgreSQL + 점검규칙 소스 (상암/영남). HOST=localhost"
-    Write-Host "    2) 서브 서버 — 주 서버의 PostgreSQL/규칙을 원격 사용 (분당)"
+    Write-Host "    1) 주 서버  — PostgreSQL + 점검규칙 + 웹 홈 (분당 워커). HOST=localhost"
+    Write-Host "    2) 서브 서버 — 주 서버의 PostgreSQL/규칙을 원격 사용 (상암/영남 워커)"
     $role = Read-Host "  선택 (1/2)"
     if ($role -eq '2') {
         $pgHost = Read-Host "  주 서버(PostgreSQL/규칙 소스) IP 입력"
