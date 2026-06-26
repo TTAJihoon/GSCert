@@ -2,7 +2,8 @@ const maxRetryCount = 2;
 const apiEndpoints = {
   projects: "/api/projects/",
   jobs: "/api/jobs/",
-  activeJob: "/api/jobs/active/"
+  activeJob: "/api/jobs/active/",
+  jobsForceStop: "/api/jobs/force-stop/"
 };
 
 const centerLabels = {
@@ -1432,6 +1433,64 @@ async function cancelJob(jobId) {
   }
 }
 
+function openForceStopModal() {
+  openModal({
+    eyebrow: "강제 종료",
+    title: "진행중 작업 강제 종료",
+    body: `
+      <div class="modal-message warning">
+        <strong>진행중(실행 중 포함) 작업을 강제로 종료하고 워커 락을 해제합니다.</strong>
+        <p>워커가 비정상 종료되어 작업이 멈춘 채 새 작업을 시작할 수 없을 때 사용하세요.
+        먼저 워커가 실제로 실행 중이라면 서버에서 워커를 중지(stop_worker)한 뒤 실행하는 것을 권장합니다.</p>
+        <p>강제 종료된 프로젝트는 프로젝트 선택 탭에서 다시 요청할 수 있습니다.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary-button" type="button" data-close-force-modal>닫기</button>
+        <button class="primary-button danger-action" type="button" data-confirm-force-stop>강제 종료 실행</button>
+      </div>
+    `
+  });
+  qs("modalBody").querySelector("[data-close-force-modal]").addEventListener("click", closeModal);
+  qs("modalBody").querySelector("[data-confirm-force-stop]").addEventListener("click", forceStopActiveJob);
+}
+
+async function forceStopActiveJob() {
+  const button = qs("modalBody").querySelector("[data-confirm-force-stop]");
+  if (button) {
+    button.disabled = true;
+    button.textContent = "강제 종료 중";
+  }
+
+  try {
+    const payload = await requestJson(apiEndpoints.jobsForceStop, { method: "POST" });
+    openModal({
+      eyebrow: "강제 종료",
+      title: "강제 종료 완료",
+      body: `
+        <div class="modal-message success">
+          <strong>${escapeHtml(payload.message || "진행중 작업을 강제 종료했습니다.")}</strong>
+          <p>이제 새 작업을 요청할 수 있습니다.</p>
+        </div>
+      `
+    });
+    await Promise.allSettled([
+      refreshActiveJob(),
+      loadProjects(),
+      loadResultJobs()
+    ]);
+  } catch (error) {
+    openModal({
+      eyebrow: "강제 종료",
+      title: "강제 종료 실패",
+      body: `
+        <div class="modal-message warning">
+          <strong>${escapeHtml(error.message)}</strong>
+        </div>
+      `
+    });
+  }
+}
+
 async function openInspectionModal(projectNumber) {
   const project = mockProjects.find((item) => item.number === projectNumber);
   if (!project) return;
@@ -2026,6 +2085,11 @@ function bindControls() {
       renderResults();
     });
   });
+
+  const forceStopButton = qs("forceStopButton");
+  if (forceStopButton) {
+    forceStopButton.addEventListener("click", openForceStopModal);
+  }
 
   qs("closeModal").addEventListener("click", closeModal);
   qs("detailModal").addEventListener("click", (event) => {

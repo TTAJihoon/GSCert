@@ -18,6 +18,7 @@ from django.utils import timezone
 from main.models import (
     DownloadReviewJob,
     DownloadReviewJobStatus,
+    DownloadReviewLock,
     DownloadReviewLog,
     DownloadReviewLogLevel,
     DownloadReviewProject,
@@ -623,6 +624,108 @@ def cancel_download_review_job(job_id):
         "success": True,
         "job": serialize_job(job),
         "message": "예약된 작업을 취소했습니다.",
+    }
+
+
+def force_stop_download_review_jobs(job_id=None):
+    """진행중(RUNNING 포함) 작업을 강제 종료하고 워커 락을 해제한다.
+
+    워커가 비정상 종료되어 작업이 RUNNING 상태로 멈추고 락(DownloadReviewLock)이
+    잠긴 채 남아 새 작업을 시작할 수 없을 때 사용한다.
+    cancel_download_review_job 과 달리 RUNNING 작업도 종료하고 락까지 해제한다.
+
+    Args:
+        job_id: 특정 작업만 종료. None 이면 활성(SCHEDULED/QUEUED/RUNNING) 작업 전체.
+
+    주의: 이미 실행 중인 워커 OS 프로세스나 브라우저는 종료하지 않는다.
+    DB 상태(작업/프로젝트/락)만 정리한다. 워커 프로세스가 살아 있다면 먼저
+    중지(stop_worker)해야 한다.
+    """
+    workflow_alias = getattr(settings, "WORKFLOW_DATABASE_ALIAS", "workflow")
+    current = timezone.now()
+    stopped_ids = []
+
+    with transaction.atomic(using=workflow_alias):
+        jobs_qs = DownloadReviewJob.objects.select_for_update()
+        if job_id is not None:
+            jobs_qs = jobs_qs.filter(id=job_id)
+        else:
+            jobs_qs = jobs_qs.filter(status__in=ACTIVE_JOB_STATUSES)
+        jobs = list(jobs_qs)
+
+        if job_id is not None and not jobs:
+            raise DownloadReviewNotFoundError("작업을 찾을 수 없습니다.")
+
+        for job in jobs:
+            if job.status not in ACTIVE_JOB_STATUSES:
+                # 이미 종료된 작업은 건너뛴다(특정 job_id 지정 시).
+                continue
+            job.status = DownloadReviewJobStatus.CANCELED
+            job.canceled_at = current
+            job.completed_at = job.completed_at or current
+            job.progress_message = "사용자가 작업을 강제 종료했습니다."
+            job.last_error_message = "사용자 강제 종료"
+            job.save(update_fields=[
+                "status", "canceled_at", "completed_at",
+                "progress_message", "last_error_message", "updated_at",
+            ])
+            job.projects.exclude(
+                status__in=(
+                    DownloadReviewProjectStatus.COMPLETED,
+                    DownloadReviewProjectStatus.FAILED,
+                    DownloadReviewProjectStatus.SKIPPED,
+                )
+            ).update(
+                status=DownloadReviewProjectStatus.SKIPPED,
+                current_step="사용자 강제 종료",
+                completed_at=current,
+                updated_at=current,
+            )
+            DownloadReviewLog.objects.create(
+                job=job,
+                level=DownloadReviewLogLevel.WARNING,
+                event_code="job_force_stopped",
+                message="사용자가 진행중 작업을 강제 종료했습니다.",
+            )
+            stopped_ids.append(job.id)
+
+        # 워커 락 해제 — 강제 종료의 핵심. 락이 종료 대상 작업을 가리키거나,
+        # 전체 강제 종료이거나, 락이 가리키는 작업이 더 이상 활성이 아니면 해제한다.
+        lock = DownloadReviewLock.objects.select_for_update().filter(id=1).first()
+        lock_released = False
+        if lock and lock.locked:
+            should_release = (
+                job_id is None
+                or lock.job_id in stopped_ids
+                or lock.job_id is None
+            )
+            if not should_release and lock.job_id is not None:
+                locked_job = DownloadReviewJob.objects.filter(id=lock.job_id).first()
+                if locked_job is None or locked_job.status not in ACTIVE_JOB_STATUSES:
+                    should_release = True
+            if should_release:
+                lock.locked = False
+                lock.owner = ""
+                lock.job = None
+                lock.locked_at = None
+                lock.heartbeat_at = None
+                lock.note = ""
+                lock.save(update_fields=[
+                    "locked", "owner", "job", "locked_at",
+                    "heartbeat_at", "note", "updated_at",
+                ])
+                lock_released = True
+
+    return {
+        "success": True,
+        "stopped_count": len(stopped_ids),
+        "lock_released": lock_released,
+        "message": (
+            f"진행중 작업 {len(stopped_ids)}건을 강제 종료했습니다."
+            + (" 워커 락을 해제했습니다." if lock_released else "")
+            if stopped_ids or lock_released
+            else "강제 종료할 진행중 작업이 없습니다."
+        ),
     }
 
 

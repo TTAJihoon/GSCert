@@ -8,6 +8,7 @@ from main.views.review.ecm_download_review_jobs import (
     attach_active_project_states,
     cancel_download_review_job,
     create_download_review_job,
+    force_stop_download_review_jobs,
     get_active_job_payload,
     get_bulk_projects_zip_response,
     get_job_detail_payload,
@@ -230,6 +231,33 @@ def job_cancel(request, job_id):
         status = exc.status_code
     except DownloadReviewJobRequestError as exc:
         payload = _error_payload(exc, str(exc), details=exc.details)
+        status = exc.status_code
+
+    response = JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_POST
+def jobs_force_stop(request):
+    """진행중(RUNNING 포함) 작업을 강제 종료하고 워커 락을 해제한다.
+
+    워커 비정상 종료로 작업이 멈춘 채 새 작업을 시작할 수 없을 때 사용한다.
+    body 에 job_id 가 있으면 해당 작업만, 없으면 활성 작업 전체를 종료한다.
+    """
+    job_id = None
+    try:
+        body = parse_json_body(request)
+    except DownloadReviewJobRequestError:
+        body = {}
+    if isinstance(body, dict):
+        job_id = body.get("job_id") or None
+
+    try:
+        payload = force_stop_download_review_jobs(job_id)
+        status = 200
+    except DownloadReviewNotFoundError as exc:
+        payload = _error_payload(exc, str(exc))
         status = exc.status_code
 
     response = JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False})

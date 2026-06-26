@@ -640,6 +640,17 @@
   color: var(--review-danger);
 }
 
+.mini-button.danger {
+  border-color: var(--review-danger);
+  color: var(--review-danger);
+}
+
+.mini-button.danger:hover:not(:disabled) {
+  background: var(--review-danger);
+  border-color: var(--review-danger);
+  color: #fff;
+}
+
 .primary-button.danger-action {
   background: var(--review-danger);
   color: #fff;
