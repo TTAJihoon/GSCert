@@ -536,22 +536,14 @@ def _find_child_hwnd_by_class(root_hwnd: int, class_name: str) -> int:
 def _navigate_to_download_target(dlg, segments: list[str], center_code: str = "") -> None:
     """Move the folder popup to the configured base and mirror the ECM path."""
     dialog = _connect_dialog(dlg)
-    download_root = os.path.join(_download_base_dir(), segments[0])
-    project_exists = os.path.isdir(download_root)
 
     normalized = normalize_center_code(center_code) if center_code else ""
     is_sangam_yeongnam = normalized in (CENTER_SANGAM, CENTER_YEONGNAM)
 
     if is_sangam_yeongnam:
-        if project_exists:
-            _return_sangam_to_base(dialog)
-        else:
-            _navigate_sangam_initial(dialog)
+        _navigate_sangam_to_base(dialog)
     else:
-        if project_exists:
-            _return_to_download_base(dialog)
-        else:
-            _navigate_to_download_base_initial(dialog)
+        _navigate_to_download_base_initial(dialog)
 
     current_path = _download_base_dir()
     for segment in segments:
@@ -565,23 +557,13 @@ def _navigate_to_download_target(dlg, segments: list[str], center_code: str = ""
 
 
 def _navigate_to_download_base_initial(dialog) -> None:
-    """분당 폴더 팝업 기준 폴더 초기 이동 공식."""
+    """분당 폴더 팝업 기준 폴더 이동 공식. {PGUP}으로 트리 위치 리셋 후 탐색."""
     _send_popup_keys(dialog, ["+{TAB}", "+{TAB}", "{PGUP}", "{DOWN 3}", "{RIGHT}", "{DOWN 2}", "{RIGHT}"])
 
 
-def _return_to_download_base(dialog) -> None:
-    """분당 기준 폴더 복귀 공식 (프로젝트 폴더가 이미 존재하는 경우)."""
-    _send_popup_keys(dialog, ["{LEFT 12}", "{RIGHT}", "{DOWN 3}", "{RIGHT}", "{DOWN 2}", "{RIGHT}"])
-
-
-def _navigate_sangam_initial(dialog) -> None:
-    """상암/영남 폴더 팝업 기준 폴더 초기 이동 공식."""
-    _send_popup_keys(dialog, ["+{TAB}", "+{TAB}", "{DOWN}", "{RIGHT}", "{DOWN 2}"])
-
-
-def _return_sangam_to_base(dialog) -> None:
-    """상암/영남 기준 폴더 복귀 공식 (프로젝트 폴더가 이미 존재하는 경우)."""
-    _send_popup_keys(dialog, ["+{TAB}", "+{TAB}", "{LEFT 12}", "{RIGHT}", "{DOWN 2}", "{RIGHT}", "{DOWN 2}", "{RIGHT}"])
+def _navigate_sangam_to_base(dialog) -> None:
+    """상암/영남 폴더 팝업 기준 폴더 이동 공식. {PGUP}으로 트리 위치 리셋 후 탐색."""
+    _send_popup_keys(dialog, ["+{TAB}", "+{TAB}", "{PGUP}", "{DOWN}", "{RIGHT}", "{DOWN 2}"])
 
 
 def _send_popup_keys(dialog, keys: list[str], pause: float = 0.12) -> None:
