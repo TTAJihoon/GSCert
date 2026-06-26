@@ -1,8 +1,26 @@
+import sys
 import time
 
 from django.core.management.base import BaseCommand
 
 from main.views.review.ecm_download_review_worker import run_worker_once
+
+
+def _force_utf8_streams():
+    """Windows 일부 로케일(cp1252 등)에서 stdout이 한글을 인코딩하지 못해
+    UnicodeEncodeError로 워커 프로세스가 죽는 것을 방지한다.
+
+    워커 메시지(진행상황/에러)에는 한글이 포함되므로, 콘솔 코드페이지와
+    무관하게 출력 스트림을 UTF-8로 고정한다.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="backslashreplace")
+        except (ValueError, OSError):
+            pass
 
 
 class Command(BaseCommand):
@@ -43,6 +61,7 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
+        _force_utf8_streams()
         once = options["once"]
         dry_run = options["dry_run"] or not options["live"]
         headless = not options["no_headless"]

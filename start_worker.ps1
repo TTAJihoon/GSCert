@@ -69,6 +69,11 @@ $ts     = Get-Date -Format "yyyyMMdd_HHmmss"
 $OutLog = Join-Path $LogsDir "download_worker_${ts}_out.log"
 $ErrLog = Join-Path $LogsDir "download_worker_${ts}_err.log"
 
+# Windows 로케일(cp1252 등)에서 한글 출력 시 UnicodeEncodeError로 워커가
+# 죽는 것을 방지하기 위해 자식 프로세스의 stdout/stderr를 UTF-8로 고정한다.
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+
 $process = Start-Process -FilePath $VenvPython `
     -ArgumentList $ArgumentList `
     -WorkingDirectory $RootDir `

@@ -56,6 +56,11 @@ $ts     = Get-Date -Format "yyyyMMdd_HHmmss"
 $OutLog = Join-Path $LogsDir "django_runserver_${ts}_out.log"
 $ErrLog = Join-Path $LogsDir "django_runserver_${ts}_err.log"
 
+# Windows 로케일(cp1252 등)에서 한글 로그 출력 시 UnicodeEncodeError를
+# 방지하기 위해 자식 프로세스의 stdout/stderr를 UTF-8로 고정한다.
+$env:PYTHONUTF8 = "1"
+$env:PYTHONIOENCODING = "utf-8"
+
 $process = Start-Process -FilePath $VenvPython `
     -ArgumentList @("manage.py", "runserver", "--noreload", "0.0.0.0:$Port") `
     -WorkingDirectory $RootDir `
