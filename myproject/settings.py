@@ -177,6 +177,10 @@ ECM_TREE_ROOT_INDEX_BUNDANG = int(os.environ.get('ECM_TREE_ROOT_INDEX_BUNDANG', 
 ECM_TREE_ROOT_INDEX_YEONGNAM = int(os.environ.get('ECM_TREE_ROOT_INDEX_YEONGNAM', '0'))
 AGENT_DOWNLOAD_BASE_DIR = os.environ.get(
     'AGENT_DOWNLOAD_BASE_DIR',
+    str(Path.home() / 'Downloads'),
+)
+AGENT_ARCHIVE_BASE_DIR = os.environ.get(
+    'AGENT_ARCHIVE_BASE_DIR',
     str(Path.home() / 'ecm'),
 )
 ECM_DOWNLOAD_TIMEOUTS = {

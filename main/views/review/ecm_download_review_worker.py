@@ -1,8 +1,10 @@
 import asyncio
 import os
+import shutil
 import socket
 import time
 from dataclasses import dataclass
+from pathlib import Path
 import logging
 
 from asgiref.sync import sync_to_async
@@ -234,6 +236,15 @@ async def _run_live_job(job, *, headless=True):
                     )
                     await _run_sync(
                         _mark_project,
+                        project, DownloadReviewProjectStatus.RUNNING,
+                        "산출물 보관 중 (ecm 폴더로 복사)",
+                    )
+                    await _run_sync(
+                        _archive_download_dir_safely,
+                        job, project, ecm_result.download_dir,
+                    )
+                    await _run_sync(
+                        _mark_project,
                         project,
                         DownloadReviewProjectStatus.INSPECTING,
                         "점검규칙 검사 중",
@@ -462,6 +473,35 @@ def _cleanup_download_dir_safely(job, project):
             "file_count": outcome.file_count,
         },
     )
+
+
+def _archive_download_dir_safely(job, project, download_dir):
+    """다운로드 폴더를 ecm 보관 경로로 복사한다. 실패해도 점검을 중단하지 않는다."""
+    archive_base = getattr(settings, "AGENT_ARCHIVE_BASE_DIR", "")
+    if not archive_base:
+        return
+
+    src = Path(download_dir)
+    dst = Path(archive_base) / project.project_number
+    try:
+        shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
+        DownloadReviewLog.objects.create(
+            job=job,
+            job_project=project,
+            level=DownloadReviewLogLevel.INFO,
+            event_code="archive_completed",
+            message=f"{project.project_number} 산출물 보관 완료: {dst}",
+            detail_json={"download_dir": str(src), "archive_dir": str(dst)},
+        )
+    except Exception as exc:
+        DownloadReviewLog.objects.create(
+            job=job,
+            job_project=project,
+            level=DownloadReviewLogLevel.WARNING,
+            event_code="archive_failed",
+            message=f"{project.project_number} 산출물 보관 실패 (점검은 계속 진행): {exc}",
+            detail_json={"download_dir": str(src), "archive_dir": str(dst), "error": str(exc)},
+        )
 
 
 def _finish_live_job(job, *, completed, failed, total):
