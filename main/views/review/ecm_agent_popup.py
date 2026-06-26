@@ -13,11 +13,6 @@ import time
 from dataclasses import dataclass
 
 from django.conf import settings
-from main.views.review.ecm_download_review_centers import (
-    CENTER_SANGAM,
-    CENTER_YEONGNAM,
-    normalize_center_code,
-)
 
 logger = logging.getLogger("main.views.review.ecm_agent_popup")
 
@@ -537,13 +532,8 @@ def _navigate_to_download_target(dlg, segments: list[str], center_code: str = ""
     """Move the folder popup to the configured base and mirror the ECM path."""
     dialog = _connect_dialog(dlg)
 
-    normalized = normalize_center_code(center_code) if center_code else ""
-    is_sangam_yeongnam = normalized in (CENTER_SANGAM, CENTER_YEONGNAM)
-
-    if is_sangam_yeongnam:
-        _navigate_sangam_to_base(dialog)
-    else:
-        _navigate_to_download_base_initial(dialog)
+    # 다운로드 루트 폴더 이동은 분당/상암/영남 공통 공식이다.
+    _navigate_to_download_base(dialog)
 
     current_path = _download_base_dir()
     for segment in segments:
@@ -556,14 +546,14 @@ def _navigate_to_download_target(dlg, segments: list[str], center_code: str = ""
     _confirm_popup_download(dialog)
 
 
-def _navigate_to_download_base_initial(dialog) -> None:
-    """분당 폴더 팝업 기준 폴더 이동 공식. {PGUP}으로 트리 위치 리셋 후 탐색."""
-    _send_popup_keys(dialog, ["+{TAB}", "+{TAB}", "{PGUP}", "{DOWN 3}", "{RIGHT}", "{DOWN 2}", "{RIGHT}"])
+def _navigate_to_download_base(dialog) -> None:
+    """다운로드 루트 폴더 이동 공식(분당/상암/영남 공통).
 
-
-def _navigate_sangam_to_base(dialog) -> None:
-    """상암/영남 폴더 팝업 기준 폴더 이동 공식. {PGUP}으로 트리 위치 리셋 후 탐색."""
-    _send_popup_keys(dialog, ["+{TAB}", "+{TAB}", "{PGUP}", "{DOWN}", "{RIGHT}", "{DOWN 2}"])
+    1) Shift+Tab 2번 → 폴더 트리에 포커스
+    2) 'a' 입력 후 오른쪽 방향키 → 트리 항목 펼침
+    3) 'd' 입력 → 다운로드 루트 폴더 선택
+    """
+    _send_popup_keys(dialog, ["+{TAB}", "+{TAB}", "a", "{RIGHT}", "d"])
 
 
 def _send_popup_keys(dialog, keys: list[str], pause: float = 0.12) -> None:
