@@ -400,7 +400,55 @@ async def _selected_tree_text(tree) -> str:
     return selected_text
 
 
+async def _doc_list_signature(page: Page) -> str:
+    """현재 문서 목록 패널의 행 개수+행 텍스트 시그니처를 반환한다.
+
+    폴더 전환 후 문서 목록이 실제로 갱신됐는지 판정하는 데 사용한다.
+    """
+    try:
+        return await page.evaluate(
+            """
+            () => {
+              const rows = Array.from(document.querySelectorAll('#main-list-document tr.document-list-item'));
+              const names = rows.map((r) => (r.textContent || '').replace(/\\s+/g, ' ').trim());
+              return rows.length + '::' + names.join('|');
+            }
+            """
+        )
+    except Exception:
+        return ""
+
+
+async def _wait_doc_list_settled(page: Page, prev_signature: str, *, max_polls: int = 20, interval_ms: int = 300) -> None:
+    """폴더 선택 후 문서 목록이 새 폴더 내용으로 갱신되고 안정될 때까지 대기한다.
+
+    parent 폴더 클릭 시 직전 폴더의 목록이 남는 경합을 방지한다.
+    - 시그니처가 직전 폴더와 달라지고(또는 직전 시그니처가 없고) 2회 연속 동일하면 반환.
+    - 최대 대기 시간(max_polls*interval_ms) 초과 시 현재 목록으로 진행.
+    """
+    last = None
+    stable = 0
+    changed = (prev_signature == "")
+    for _ in range(max_polls):
+        sig = await _doc_list_signature(page)
+        if sig != prev_signature:
+            changed = True
+        if sig == last:
+            stable += 1
+            if stable >= 2 and changed:
+                return
+        else:
+            stable = 0
+        last = sig
+        await page.wait_for_timeout(interval_ms)
+    logger.warning(
+        "문서 목록 갱신 확인 시간 초과. prev=%r last=%r 로 진행합니다.",
+        prev_signature[:80], (last or "")[:80],
+    )
+
+
 async def _select_project_relative_path(page: Page, project_number: str, relative_path: list[str]) -> str:
+    prev_signature = await _doc_list_signature(page)
     result = await page.evaluate(
         """
         ({ projectNumber, relativePath }) => {
@@ -450,18 +498,31 @@ async def _select_project_relative_path(page: Page, project_number: str, relativ
             openNode(li);
           }
           link.scrollIntoView({ block: 'center', inline: 'nearest' });
+          // jstree select_node API로 선택해 문서 목록을 확실히 로드한다.
+          // raw 앵커 클릭은 parent(하위 폴더 보유) 노드에서 '펼치기 토글'로만
+          // 동작해 문서 패널이 직전 폴더 목록을 유지하는 버그가 있었다.
+          if (window.jQuery && window.jQuery.fn && window.jQuery.fn.jstree && li && li.id) {
+            window.jQuery(root).jstree('deselect_all');
+            window.jQuery(root).jstree('select_node', li.id);
+            return { ok: true, method: 'jstree', text: norm(link.textContent), id: li.id };
+          }
           link.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
           link.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
           link.click();
-          return { ok: true, text: norm(link.textContent) };
+          return { ok: true, method: 'dom-click', text: norm(link.textContent), id: li ? li.id : '' };
         }
         """,
         {"projectNumber": project_number, "relativePath": relative_path},
     )
     if not result or not result.get("ok"):
         raise RuntimeError(f"ECM 상대 폴더 선택 실패: path={relative_path}, detail={result}")
-    await page.wait_for_timeout(1000)
+    await page.wait_for_timeout(300)
     await _wait_splash_done(page)
+    await _wait_doc_list_settled(page, prev_signature)
+    logger.info(
+        "ECM 상대 폴더 선택: path=%s method=%s",
+        "/".join(relative_path) or "<root>", result.get("method"),
+    )
     return result.get("text") or ""
 
 
