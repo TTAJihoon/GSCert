@@ -723,9 +723,16 @@ def _select_popup_folder_by_path(dialog, path: str) -> bool:
     k32.VirtualAllocEx.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD, wintypes.DWORD]
     k32.VirtualFreeEx.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD]
     k32.WriteProcessMemory.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
-    u32.SendMessageW.restype = ctypes.c_void_p
-    u32.SendMessageW.argtypes = [wintypes.HWND, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p]
+    # SendMessageTimeout으로 보낸다(대화상자가 응답하지 않을 때 무한 대기 방지).
+    u32.SendMessageTimeoutW.restype = ctypes.c_void_p
+    u32.SendMessageTimeoutW.argtypes = [
+        wintypes.HWND, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p,
+        ctypes.c_uint, ctypes.c_uint, ctypes.POINTER(ctypes.c_void_p),
+    ]
+    SMTO_ABORTIFHUNG = 0x0002
+    SETSELECTION_TIMEOUT_MS = 5000
 
+    logger.info("폴더 경로 직접 선택 시도(BFFM_SETSELECTION): %s", path)
     h_proc = k32.OpenProcess(PROCESS_VM, False, int(target_pid))
     if not h_proc:
         return False
@@ -739,7 +746,14 @@ def _select_popup_folder_by_path(dialog, path: str) -> bool:
         written = ctypes.c_size_t(0)
         if not k32.WriteProcessMemory(h_proc, remote, buf, size, ctypes.byref(written)):
             return False
-        u32.SendMessageW(dlg_hwnd, BFFM_SETSELECTIONW, ctypes.c_void_p(1), ctypes.c_void_p(remote))
+        result = ctypes.c_void_p(0)
+        ret = u32.SendMessageTimeoutW(
+            dlg_hwnd, BFFM_SETSELECTIONW, ctypes.c_void_p(1), ctypes.c_void_p(remote),
+            SMTO_ABORTIFHUNG, SETSELECTION_TIMEOUT_MS, ctypes.byref(result),
+        )
+        if not ret:
+            logger.warning("BFFM_SETSELECTION 응답 없음(타임아웃/행) → 폴백 예정")
+            return False
         time.sleep(0.4)
         # 검증: 선택된 트리 항목 이름이 기대한 폴더명과 일치하는가
         ok = _tree_selected_name(dialog) == expected_name

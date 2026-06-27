@@ -73,6 +73,9 @@ $ErrLog = Join-Path $LogsDir "download_worker_${ts}_err.log"
 # 죽는 것을 방지하기 위해 자식 프로세스의 stdout/stderr를 UTF-8로 고정한다.
 $env:PYTHONUTF8 = "1"
 $env:PYTHONIOENCODING = "utf-8"
+# 리다이렉트된 로그 파일이 블록 버퍼링으로 비어 보이지 않도록 버퍼링을 끈다.
+# (워커 진행상황/에러가 즉시 logs\download_worker_*_out.log 에 남도록)
+$env:PYTHONUNBUFFERED = "1"
 
 $process = Start-Process -FilePath $VenvPython `
     -ArgumentList $ArgumentList `
