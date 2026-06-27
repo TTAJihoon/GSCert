@@ -129,6 +129,8 @@ def _try_download_once(project_number: str, relative_path: list[str], center_cod
         _navigate_to_download_target(folder_dlg, segments, center_code)
     except Exception as exc:
         logger.exception("폴더 선택 팝업 처리 실패")
+        # 실패한 폴더 대화상자를 닫아 다음 프로젝트로 모달 팝업이 누적되지 않게 한다.
+        _close_folder_popups()
         return PopupResult(
             success=False,
             error_step="폴더 선택",
@@ -528,6 +530,150 @@ def _find_child_hwnd_by_class(root_hwnd: int, class_name: str) -> int:
     return found[0] if found else 0
 
 
+def _focus_hwnd(hwnd: int) -> None:
+    """AttachThreadInput으로 대상 스레드에 붙어 SetFocus 한다(전역 포커스 불필요)."""
+    import ctypes
+    import win32api
+    import win32process
+
+    my_tid = win32api.GetCurrentThreadId()
+    target_tid, _ = win32process.GetWindowThreadProcessId(hwnd)
+    attached = (my_tid != target_tid)
+    if attached:
+        ctypes.windll.user32.AttachThreadInput(my_tid, target_tid, True)
+    try:
+        ctypes.windll.user32.SetFocus(hwnd)
+        time.sleep(0.05)
+    finally:
+        if attached:
+            ctypes.windll.user32.AttachThreadInput(my_tid, target_tid, False)
+
+
+def _send_char_to_hwnd(hwnd: int, ch: str) -> None:
+    import ctypes
+    import win32con
+
+    ctypes.windll.user32.SendMessageW(hwnd, win32con.WM_CHAR, ord(ch), 1)
+
+
+def _click_hwnd(hwnd: int) -> None:
+    """BM_CLICK으로 버튼을 누른다(마우스 입력 불필요 → 세션 잠금 무관)."""
+    import ctypes
+
+    BM_CLICK = 0x00F5
+    ctypes.windll.user32.SendMessageW(hwnd, BM_CLICK, 0, 0)
+
+
+def _find_child_hwnd_by_text(root_hwnd: int, substrings) -> int:
+    """root_hwnd 하위 전체 계층에서 창 텍스트에 substrings 중 하나가 포함된 첫 HWND를 반환한다."""
+    import win32gui
+
+    subs = [s for s in substrings if s]
+    found = []
+
+    def _cb(hwnd, _):
+        try:
+            text = win32gui.GetWindowText(hwnd) or ""
+            if any(sub in text for sub in subs):
+                found.append(hwnd)
+                return False
+        except Exception:
+            pass
+        return True
+
+    try:
+        win32gui.EnumChildWindows(root_hwnd, _cb, None)
+    except Exception:
+        pass
+    return found[0] if found else 0
+
+
+def _send_popup_token_via_message(dialog, token: str) -> None:
+    """전역 키보드(SendInput)가 막힌 환경(세션 잠금/원격 끊김)에서 폴더 찾아보기
+    팝업 키 입력을 창 메시지로 대체 전송한다.
+
+    지원 토큰: '+{TAB}'(폴더 트리에 포커스), '%m'('새 폴더 만들기' 버튼),
+    '{RIGHT}', '{ENTER}'(확인), 단일 문자(트리 type-ahead).
+    """
+    import win32con
+
+    dlg_hwnd = dialog.handle
+    tree_hwnd = _find_child_hwnd_by_class(dlg_hwnd, "SysTreeView32")
+
+    if "{TAB}" in token:
+        # Shift+Tab은 폴더 트리로 포커스를 옮기는 것이 목적 → 트리에 직접 포커스
+        if tree_hwnd:
+            _focus_hwnd(tree_hwnd)
+        return
+    if token == "%m":
+        # Alt+M = '새 폴더 만들기' 버튼 클릭
+        btn = _find_child_hwnd_by_text(dlg_hwnd, ("새 폴더 만들기", "폴더 만들기", "Make New Folder"))
+        if not btn:
+            raise RuntimeError("'새 폴더 만들기' 버튼을 찾을 수 없습니다.")
+        _click_hwnd(btn)
+        return
+    if token == "{RIGHT}":
+        if tree_hwnd:
+            _focus_hwnd(tree_hwnd)
+            _send_vk_to_hwnd(tree_hwnd, win32con.VK_RIGHT)
+        return
+    if token == "{ENTER}":
+        # 확인 버튼을 우선 클릭, 없으면 대화상자에 Enter 전송
+        btn = _find_child_hwnd_by_text(dlg_hwnd, ("확인", "OK"))
+        if btn:
+            _click_hwnd(btn)
+        else:
+            _send_vk_to_hwnd(dlg_hwnd, win32con.VK_RETURN)
+        return
+    if len(token) == 1 and tree_hwnd:
+        # 단일 문자: 폴더 트리 type-ahead
+        _focus_hwnd(tree_hwnd)
+        _send_char_to_hwnd(tree_hwnd, token)
+        return
+    raise RuntimeError(f"메시지 기반 입력으로 처리할 수 없는 키입니다: {token}")
+
+
+def _close_folder_popups() -> int:
+    """남아있는 '폴더 찾아보기' 류 팝업을 모두 닫는다(처리 실패 시 누적 방지).
+
+    프로젝트 다운로드가 폴더 선택 단계에서 실패하면 ECM이 띄운 폴더 대화상자가
+    그대로 남는다. 다음 프로젝트가 새 대화상자를 또 열어 모달이 계속 쌓이고
+    이후 모든 다운로드가 실패하므로, 실패 시 잔여 팝업을 닫아 차단한다.
+    """
+    import win32con
+    import win32gui
+
+    targets = []
+
+    def _cb(hwnd, _):
+        try:
+            if not win32gui.IsWindowVisible(hwnd):
+                return True
+            text = win32gui.GetWindowText(hwnd) or ""
+            if any(title in text for title in FOLDER_POPUP_TITLES):
+                targets.append(hwnd)
+        except Exception:
+            pass
+        return True
+
+    try:
+        win32gui.EnumWindows(_cb, None)
+    except Exception:
+        logger.debug("folder popup enumeration failed", exc_info=True)
+        return 0
+
+    closed = 0
+    for hwnd in targets:
+        try:
+            win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+            closed += 1
+        except Exception:
+            logger.debug("folder popup close failed: %s", hwnd, exc_info=True)
+    if closed:
+        logger.info("잔여 '폴더 찾아보기' 팝업 %d개를 정리했습니다.", closed)
+    return closed
+
+
 def _navigate_to_download_target(dlg, segments: list[str], center_code: str = "") -> None:
     """Move the folder popup to the configured base and mirror the ECM path."""
     dialog = _connect_dialog(dlg)
@@ -565,7 +711,18 @@ def _send_popup_keys(dialog, keys: list[str], pause: float = 0.12) -> None:
         pass
     time.sleep(0.2)
     for key in keys:
-        send_keys(key, pause=0.03)
+        try:
+            send_keys(key, pause=0.03)
+        except RuntimeError as exc:
+            # 세션 잠금/원격 연결 끊김으로 대화형 데스크톱이 비활성이면 SendInput이
+            # 0개 이벤트만 주입하며 실패한다. 이때 창 메시지 기반 입력으로 폴백한다.
+            if "SendInput" not in str(exc):
+                raise
+            logger.warning(
+                "send_keys SendInput 실패(세션 잠금/원격 끊김 추정) → 메시지 기반 입력으로 폴백: %r",
+                key,
+            )
+            _send_popup_token_via_message(dialog, key)
         time.sleep(pause)
 
 
@@ -633,15 +790,8 @@ def _create_popup_folder(dialog, folder_name: str) -> None:
 
 
 def _confirm_popup_download(dialog) -> None:
-    from pywinauto.keyboard import send_keys
-
-    try:
-        dialog.set_focus()
-    except Exception:
-        pass
-    time.sleep(0.2)
-    send_keys("{ENTER}")
-    time.sleep(0.5)
+    # send_keys("{ENTER}")가 기본 경로이며, SendInput 실패 시 확인 버튼 클릭으로 폴백한다.
+    _send_popup_keys(dialog, ["{ENTER}"], pause=0.5)
 
 
 def _find_tree_item(dialog, folder_name: str, timeout: int = 5):
