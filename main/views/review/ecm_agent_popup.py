@@ -674,14 +674,120 @@ def _close_folder_popups() -> int:
     return closed
 
 
+def _tree_selected_name(dialog) -> str:
+    """대화상자 폴더 트리에서 현재 선택된 항목의 텍스트를 반환한다(UIA)."""
+    try:
+        for item in dialog.descendants(control_type="TreeItem"):
+            try:
+                if item.is_selected():
+                    return item.window_text() or ""
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return ""
+
+
+def _select_popup_folder_by_path(dialog, path: str) -> bool:
+    """BFFM_SETSELECTION 메시지로 폴더 찾아보기 트리에서 경로를 한 번에 선택한다.
+
+    키보드(SendInput) 없이 동작하므로 세션 잠금/원격 끊김과 무관하다. 경로 문자열은
+    대화상자 소유 프로세스 주소공간에 써넣어 전달한다(SendMessage가 포인터를 그 프로세스
+    기준으로 해석하므로). 이미 존재하는 폴더만 선택 가능하다. 성공하면 True.
+    """
+    import ctypes
+    from ctypes import wintypes
+    import win32process
+
+    BFFM_SETSELECTIONW = 0x0400 + 103  # WM_USER + 103, wParam=TRUE → lParam은 경로 문자열
+    MEM_COMMIT_RESERVE = 0x1000 | 0x2000
+    PAGE_READWRITE = 0x04
+    MEM_RELEASE = 0x8000
+    PROCESS_VM = 0x0008 | 0x0010 | 0x0020  # VM_WRITE | VM_READ | VM_OPERATION
+
+    dlg_hwnd = dialog.handle
+    expected_name = os.path.basename(path.rstrip("\\/")) or path
+
+    try:
+        _, target_pid = win32process.GetWindowThreadProcessId(dlg_hwnd)
+    except Exception:
+        return False
+    if not target_pid:
+        return False
+
+    k32 = ctypes.windll.kernel32
+    u32 = ctypes.windll.user32
+    k32.OpenProcess.restype = wintypes.HANDLE
+    k32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    k32.VirtualAllocEx.restype = ctypes.c_void_p
+    k32.VirtualAllocEx.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD, wintypes.DWORD]
+    k32.VirtualFreeEx.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_size_t, wintypes.DWORD]
+    k32.WriteProcessMemory.argtypes = [wintypes.HANDLE, ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t, ctypes.POINTER(ctypes.c_size_t)]
+    u32.SendMessageW.restype = ctypes.c_void_p
+    u32.SendMessageW.argtypes = [wintypes.HWND, ctypes.c_uint, ctypes.c_void_p, ctypes.c_void_p]
+
+    h_proc = k32.OpenProcess(PROCESS_VM, False, int(target_pid))
+    if not h_proc:
+        return False
+    remote = None
+    try:
+        buf = ctypes.create_unicode_buffer(path)  # UTF-16, 널 종료 포함
+        size = ctypes.sizeof(buf)
+        remote = k32.VirtualAllocEx(h_proc, None, size, MEM_COMMIT_RESERVE, PAGE_READWRITE)
+        if not remote:
+            return False
+        written = ctypes.c_size_t(0)
+        if not k32.WriteProcessMemory(h_proc, remote, buf, size, ctypes.byref(written)):
+            return False
+        u32.SendMessageW(dlg_hwnd, BFFM_SETSELECTIONW, ctypes.c_void_p(1), ctypes.c_void_p(remote))
+        time.sleep(0.4)
+        # 검증: 선택된 트리 항목 이름이 기대한 폴더명과 일치하는가
+        ok = _tree_selected_name(dialog) == expected_name
+        if not ok:
+            logger.info("BFFM_SETSELECTION 후 선택 검증 실패. selected=%r expected=%r",
+                        _tree_selected_name(dialog), expected_name)
+        return ok
+    except Exception:
+        logger.debug("BFFM_SETSELECTION 처리 중 예외", exc_info=True)
+        return False
+    finally:
+        try:
+            if remote:
+                k32.VirtualFreeEx(h_proc, remote, 0, MEM_RELEASE)
+        finally:
+            k32.CloseHandle(h_proc)
+
+
 def _navigate_to_download_target(dlg, segments: list[str], center_code: str = "") -> None:
     """Move the folder popup to the configured base and mirror the ECM path."""
     dialog = _connect_dialog(dlg)
+    base = _download_base_dir()
 
-    # 다운로드 루트 폴더 이동은 분당/상암/영남 공통 공식이다.
+    # 타겟 경로에서 '이미 존재하는 가장 깊은 폴더'와 '새로 만들 segment'를 분리한다.
+    deepest_existing = base
+    remaining: list[str] = []
+    cursor = base
+    still_existing = True
+    for segment in segments:
+        cursor = os.path.join(cursor, segment)
+        if still_existing and os.path.isdir(cursor):
+            deepest_existing = cursor
+        else:
+            still_existing = False
+            remaining.append(segment)
+
+    # 1) 존재하는 경로를 메시지로 한 번에 선택(분당/상암/영남 공통 베이스). 키 이동 불필요.
+    if _select_popup_folder_by_path(dialog, deepest_existing):
+        logger.info("폴더 경로 직접 선택 성공: %s (생성 대상=%s)", deepest_existing, remaining)
+        for segment in remaining:
+            _create_popup_folder(dialog, segment)
+        _confirm_popup_download(dialog)
+        return
+
+    # 2) 폴백: 기존 키보드 이동 방식(무회귀). 경로 선택이 불가한 환경 대비.
+    logger.warning("폴더 경로 직접 선택 실패 → 키보드 이동 방식으로 폴백: %s", deepest_existing)
     _navigate_to_download_base(dialog)
-
-    current_path = _download_base_dir()
+    current_path = base
     for segment in segments:
         current_path = os.path.join(current_path, segment)
         if os.path.isdir(current_path):
