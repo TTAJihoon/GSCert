@@ -30,6 +30,7 @@ from main.views.review.ecm_reference_db import (
     list_projects,
 )
 from main.views.review.ecm_download_review_centers import (
+    allowed_centers_for_host,
     default_center_for_host,
     is_center_allowed_for_host,
     normalize_center_code,
@@ -80,11 +81,21 @@ def local_review_health(request):
 
 @require_GET
 def local_review_project_metadata(request, project_number):
-    center_code = request.GET.get("center") or default_center_for_host(request.get_host())
+    requested_center = request.GET.get("center")
     try:
-        _ensure_request_center_allowed(request, center_code)
-        projects_payload = get_projects_by_numbers([project_number], center_code=center_code)
-        project = projects_payload[0] if projects_payload else None
+        if requested_center:
+            # 명시된 센터로만 조회
+            centers_to_search = [_ensure_request_center_allowed(request, requested_center)]
+        else:
+            # 센터 미지정(로컬 앱) → 이 서버가 허용하는 전체 센터에서 프로젝트번호로 조회.
+            # 프로젝트번호는 센터 간 고유하므로 첫 매치를 사용한다.
+            centers_to_search = sorted(allowed_centers_for_host(request.get_host()))
+        project = None
+        for center_code in centers_to_search:
+            projects_payload = get_projects_by_numbers([project_number], center_code=center_code)
+            if projects_payload and projects_payload[0]:
+                project = projects_payload[0]
+                break
         if not project:
             payload = _error_payload(
                 ReferenceQueryError("Project metadata was not found."),

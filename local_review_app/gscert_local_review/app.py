@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, QSettings, QTimer, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QApplication,
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QMainWindow,
     QMessageBox,
+    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QSplitter,
@@ -389,6 +391,60 @@ class ReferenceSearchDialog(QDialog):
             self.accept()
 
 
+class ManualMetadataDialog(QDialog):
+    """서버 미연결(오프라인) 등으로 기준정보를 조회할 수 없을 때 수동 입력한다.
+
+    점검은 메타데이터가 반드시 있어야 하므로(컨텍스트 의존 규칙), 온라인은 서버 조회,
+    오프라인은 이 직접 입력 경로로 메타데이터를 채운다.
+    """
+
+    FIELDS = [
+        ("company_name", "회사명"),
+        ("product_name", "제품명"),
+        ("pl_name", "시험PL"),
+        ("wd_name", "WD담당"),
+        ("start_date", "시험 시작일 (예: 2026.01.01)"),
+        ("end_date", "시험 종료일 (예: 2026.03.31)"),
+        ("cert_date", "인증일자"),
+    ]
+
+    def __init__(self, project_number: str, initial: "ProjectMetadata | None" = None, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("기준정보 직접 입력")
+        self.setMinimumWidth(420)
+        self.result_metadata: ProjectMetadata | None = None
+        self._project_number = project_number
+
+        layout = QVBoxLayout(self)
+        layout.addWidget(QLabel(f"프로젝트번호: {project_number or '(미입력)'}"))
+        grid = QGridLayout()
+        self._edits: dict[str, QLineEdit] = {}
+        for i, (attr, label) in enumerate(self.FIELDS):
+            grid.addWidget(QLabel(label), i, 0)
+            edit = QLineEdit()
+            if initial is not None:
+                edit.setText(str(getattr(initial, attr, "") or ""))
+            grid.addWidget(edit, i, 1)
+            self._edits[attr] = edit
+        layout.addLayout(grid)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self._accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _accept(self):
+        values = {attr: edit.text().strip() for attr, edit in self._edits.items()}
+        # 시험기간(시작/종료일)은 날짜 규칙에 필수
+        if not values.get("start_date") or not values.get("end_date"):
+            QMessageBox.warning(self, "기준정보 직접 입력", "시험 시작일과 종료일은 필수입니다.")
+            return
+        self.result_metadata = ProjectMetadata(project_number=self._project_number, **values)
+        self.accept()
+
+
 # ── 폴더 스캔 백그라운드 워커 ────────────────────────────────────────────────────
 
 class ScanWorker(QThread):
@@ -446,6 +502,7 @@ class MainWindow(QMainWindow):
         self._review_worker: ReviewWorker | None = None
         self.current_metadata: ProjectMetadata | None = None
         self.rule_cache = load_rule_cache()
+        self._settings = QSettings("TTA", "GSCertLocalReview")
 
         root = QWidget()
         root.setStyleSheet(f"background-color: {C_BG};")
@@ -458,6 +515,41 @@ class MainWindow(QMainWindow):
         outer.addWidget(self._build_body(), stretch=1)
 
         self.setCentralWidget(root)
+        self._restore_settings()
+        # 시작 시 서버 규칙 버전을 비교해 stale 규칙을 알린다(오프라인이면 조용히 건너뜀).
+        QTimer.singleShot(300, self._check_version_on_startup)
+
+    def _restore_settings(self):
+        saved_url = self._settings.value("server_url", "")
+        if saved_url:
+            self.server_url.setText(str(saved_url))
+        saved_folder = self._settings.value("last_folder", "")
+        if saved_folder and Path(str(saved_folder)).is_dir():
+            self.selected_folder = Path(str(saved_folder))
+            self.folder_path.setText(str(saved_folder))
+
+    def _save_settings(self):
+        self._settings.setValue("server_url", self.server_url.text().strip())
+        if self.selected_folder is not None:
+            self._settings.setValue("last_folder", str(self.selected_folder))
+
+    def closeEvent(self, event):
+        self._save_settings()
+        super().closeEvent(event)
+
+    def _check_version_on_startup(self):
+        try:
+            manifest = GSCertApiClient(
+                self.server_url.text().strip() or DEFAULT_SERVER_URL, timeout_seconds=5
+            ).rule_manifest()
+        except Exception:
+            return  # 오프라인/서버 오류 → 캐시 규칙으로 계속(조용히 건너뜀)
+        server_ver = str(manifest.get("rulebase_version") or "")
+        cached_ver = self.rule_cache.rulebase_version or ""
+        base_text = self._rule_cache_text(self.rule_cache)
+        if server_ver and server_ver != cached_ver:
+            self.rulebase_status.setText(f"{base_text}  ⚠ 서버 v{server_ver} 업데이트 있음")
+            self._set_action_status("규칙 업데이트 권장", C_WARNING)
 
     # ── Header ────────────────────────────────────────────────────────────────
 
@@ -494,15 +586,8 @@ class MainWindow(QMainWindow):
         self.server_url.setMinimumWidth(220)
         url_col.addWidget(self.server_url)
 
-        center_col = QVBoxLayout()
-        center_col.setSpacing(3)
-        center_col.addWidget(_muted("센터"))
-        self.center = QComboBox()
-        self.center.addItem("상암", "sangam")
-        self.center.addItem("영남", "yeongnam")
-        self.center.setFixedWidth(86)
-        center_col.addWidget(self.center)
-
+        # 센터 구분 제거: 센터는 ECM 에이전트(서버) 분리용이었고, 3개 센터의 산출물
+        # 구조는 동일하다. 로컬 점검은 폴더/파일 구조만 보므로 센터 선택이 필요 없다.
         btn_col = QVBoxLayout()
         btn_col.setSpacing(3)
         btn_col.addWidget(QLabel(" "))  # spacer to align with labels above
@@ -512,7 +597,6 @@ class MainWindow(QMainWindow):
         btn_col.addWidget(health_btn)
 
         right.addLayout(url_col)
-        right.addLayout(center_col)
         right.addLayout(btn_col)
 
         layout.addLayout(left)
@@ -597,6 +681,9 @@ class MainWindow(QMainWindow):
         self.metadata_btn = QPushButton("기준정보 조회")
         self.metadata_btn.setMinimumWidth(104)
         self.metadata_btn.clicked.connect(self.fetch_metadata)
+        self.manual_metadata_btn = QPushButton("직접 입력")
+        self.manual_metadata_btn.setMinimumWidth(84)
+        self.manual_metadata_btn.clicked.connect(self.enter_metadata_manually)
         self.scan_btn = QPushButton("파일 스캔")
         self.scan_btn.setMinimumWidth(88)
         self.scan_btn.clicked.connect(self.scan_files)
@@ -641,6 +728,7 @@ class MainWindow(QMainWindow):
         row2.addWidget(pn_label)
         row2.addWidget(self.project_number)
         row2.addWidget(self.metadata_btn)
+        row2.addWidget(self.manual_metadata_btn)
         row2.addWidget(self.scan_btn)
         row2.addStretch()
         row2.addWidget(self.action_status)
@@ -808,6 +896,8 @@ class MainWindow(QMainWindow):
         self.result_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.result_table.setWordWrap(True)
         self.result_table.setAlternatingRowColors(True)
+        # 행을 더블클릭하면 엔진이 계산한 상세 근거(raw_detail)를 팝업으로 보여준다.
+        self.result_table.cellDoubleClicked.connect(self._show_result_detail)
         layout.addWidget(self.result_table, stretch=1)
         return frame
 
@@ -864,6 +954,7 @@ class MainWindow(QMainWindow):
         folder = Path(folder_name)
         self.selected_folder = folder
         self.folder_path.setText(str(folder))
+        self._save_settings()
         inferred = infer_project_number(folder)
         if inferred and not self.project_number.text().strip():
             self.project_number.setText(inferred)
@@ -875,11 +966,27 @@ class MainWindow(QMainWindow):
             self._show_error("프로젝트 번호를 입력하거나 프로젝트 번호가 포함된 폴더를 선택하세요.")
             return
         try:
-            metadata = self._client().project_metadata(project_number, self.center.currentData())
+            # 센터 미지정 → 서버가 전체 센터에서 프로젝트번호로 조회한다.
+            metadata = self._client().project_metadata(project_number)
         except ApiClientError as exc:
-            self._show_error(str(exc))
+            # 오프라인/서버 오류: 점검은 메타데이터가 필수이므로 직접 입력을 제안한다.
+            answer = QMessageBox.question(
+                self,
+                "기준정보 조회 실패",
+                f"서버에서 기준정보를 가져오지 못했습니다.\n{exc}\n\n직접 입력하시겠습니까?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            )
+            if answer == QMessageBox.StandardButton.Yes:
+                self.enter_metadata_manually()
             return
         self._set_metadata(metadata)
+
+    def enter_metadata_manually(self):
+        project_number = self.project_number.text().strip()
+        dialog = ManualMetadataDialog(project_number, initial=self.current_metadata, parent=self)
+        if dialog.exec() == QDialog.DialogCode.Accepted and dialog.result_metadata is not None:
+            self._set_metadata(dialog.result_metadata)
+            self._set_action_status("기준정보 입력됨", C_SUCCESS)
 
     def scan_files(self):
         if self._scan_worker is not None:
@@ -947,6 +1054,15 @@ class MainWindow(QMainWindow):
         if not rule_bundle:
             self._set_action_status("규칙 업데이트 필요", C_WARNING)
             self._show_error("먼저 Rulebase에서 규칙 업데이트를 실행하세요.")
+            return
+        # 기준정보(메타데이터)는 점검에 필수다. 시험기간 등 컨텍스트가 없으면 규칙이
+        # 조용히 부적합으로 떨어지므로, 없으면 점검을 막고 조회/직접입력을 유도한다.
+        if not self._has_metadata():
+            self._set_action_status("기준정보 필요", C_WARNING)
+            self._show_error(
+                "점검에는 기준정보가 필요합니다.\n'기준정보 조회'(온라인) 또는 '직접 입력'(오프라인)으로 "
+                "회사/제품/시험 시작·종료일 등을 먼저 채우세요."
+            )
             return
 
         self._set_reviewing(True)
@@ -1022,6 +1138,51 @@ class MainWindow(QMainWindow):
     def _client(self) -> GSCertApiClient:
         return GSCertApiClient(self.server_url.text().strip() or DEFAULT_SERVER_URL)
 
+    def _has_metadata(self) -> bool:
+        """점검에 필요한 최소 기준정보가 채워졌는지. 컨텍스트 의존 규칙(날짜 등)을 위해
+        최소한 시험 시작/종료일이 있어야 한다."""
+        m = self.current_metadata
+        if m is None:
+            return False
+        return bool((m.start_date or "").strip() and (m.end_date or "").strip())
+
+    def _show_result_detail(self, row: int, _col: int):
+        item = self.result_table.item(row, 0)
+        result = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        if result is None:
+            return
+        lines = [
+            f"점검항목: {result.rule_name}",
+            f"규칙코드: {result.rule_code}",
+            f"결과: {result.status}",
+            f"기대값: {result.expected}",
+            f"실제값: {result.actual}",
+            f"메시지: {result.message}",
+        ]
+        if result.file_path:
+            lines.append(f"대상: {result.file_path}")
+        detail_text = "\n".join(lines)
+        raw = getattr(result, "raw_detail", None)
+        if raw:
+            try:
+                detail_text += "\n\n[상세 근거]\n" + json.dumps(raw, ensure_ascii=False, indent=2)
+            except (TypeError, ValueError):
+                detail_text += "\n\n[상세 근거]\n" + str(raw)
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"점검 상세 — {result.rule_name}")
+        dialog.setMinimumSize(560, 420)
+        vbox = QVBoxLayout(dialog)
+        viewer = QPlainTextEdit()
+        viewer.setReadOnly(True)
+        viewer.setPlainText(detail_text)
+        vbox.addWidget(viewer)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        buttons.accepted.connect(dialog.accept)
+        vbox.addWidget(buttons)
+        dialog.exec()
+
     def _rule_cache_text(self, summary: RuleCacheSummary) -> str:
         if not summary.exists:
             return "로컬 규칙 없음"
@@ -1067,6 +1228,8 @@ class MainWindow(QMainWindow):
             status_item.setTextAlignment(Qt.AlignCenter)
             status_item.setForeground(QColor(fg))
             status_item.setBackground(QColor(bg))
+            # 상세 팝업에서 쓰도록 결과 객체를 행에 보관(정렬돼도 item이 데이터를 들고 감).
+            status_item.setData(Qt.ItemDataRole.UserRole, result)
             self.result_table.setItem(row, 0, status_item)
 
             for col, value in enumerate(

@@ -78,14 +78,16 @@ class ProjectMetadata:
 
 
 class GSCertApiClient:
-    def __init__(self, base_url: str, timeout_seconds: int = 10):
+    def __init__(self, base_url: str, timeout_seconds: int = 60):
+        # 규칙 번들이 커질 수 있어 기본 타임아웃을 넉넉히 둔다(과거 10초는 빠듯).
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
 
     def health(self) -> dict[str, Any]:
         return self._get_json("/api/local-review/health/")
 
-    def project_metadata(self, project_number: str, center: str = "sangam") -> ProjectMetadata:
+    def project_metadata(self, project_number: str, center: str = "") -> ProjectMetadata:
+        # center 미지정 → 서버가 전체 센터에서 프로젝트번호로 조회한다(센터 무관).
         quoted_number = quote(project_number.strip())
         query = urlencode({"center": center}) if center else ""
         suffix = f"?{query}" if query else ""
