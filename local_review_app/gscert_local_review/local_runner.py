@@ -15,26 +15,19 @@ from gscert_review_core.types import ERROR, FAIL, PASS, UNSUPPORTED, RuleSpec
 from .scanner import FolderScan
 
 
-CORE_RULE_TYPES = {
-    "min_file_count",
-    "filename_contains_project_number",
-    "required_extension",
-    "required_file_name_contains",
-    "required_artifact_file",
-    "downloadable_artifact_check",
-    "document_artifact_check",
-    "all_files_non_empty",
-    "excel_feature_list_check",
-    "test_plan_document_check",
-    "image_screenshot_folder_date_check",
-    "test_case_check",
-    "rawdata_folder_structure_check",
-    "test_report_document_check",
-    "defect_report_check",
-    "inspection_checklist_check",
-    "quality_inspection_table_check",
-    "quality_evaluation_report_check",
-}
+# 지원하는 rule_type 은 엔진이 단일 소스로 노출한다(engine.SUPPORTED_RULE_TYPES).
+# 앱이 별도 목록을 두면 엔진에 규칙이 추가될 때 멀쩡한 규칙이 '미지원'으로 오판되므로
+# import 해서 그대로 사용한다.
+CORE_RULE_TYPES = engine.SUPPORTED_RULE_TYPES
+
+
+class _SharedFiles:
+    """engine.evaluate_rules 가 .files 속성을 가진 객체는 재사용하고 zip 확장 결과를
+    그 객체에 캐시한다. 규칙별로 호출하면서도 같은 객체를 넘기면, 규칙별 오류 격리는
+    유지하면서 zip 을 매번 다시 풀지 않는다."""
+
+    def __init__(self, files):
+        self.files = files
 
 
 @dataclass(frozen=True)
@@ -47,6 +40,7 @@ class LocalRuleResult:
     message: str
     file_path: str = ""
     file_name: str = ""
+    raw_detail: dict | None = None
 
 
 @dataclass(frozen=True)
@@ -68,7 +62,8 @@ def run_cached_rules(
     """Run the cached server rulebase through the shared review engine."""
 
     context = _build_context(project_number, metadata)
-    files = _engine_files(scan)
+    # 같은 객체를 모든 규칙 호출에 재사용 → zip 확장 캐시 공유(규칙마다 다시 풀지 않음).
+    shared_files = _SharedFiles(_engine_files(scan))
     rules = [_rule_spec(raw_rule) for raw_rule in rule_bundle.get("rules") or []]
     results: list[LocalRuleResult] = []
 
@@ -87,7 +82,7 @@ def run_cached_rules(
             continue
 
         try:
-            evaluations = engine.evaluate_rules([rule], context, files)
+            evaluations = engine.evaluate_rules([rule], context, shared_files)
         except Exception as exc:  # pragma: no cover - defensive UI boundary
             results.append(
                 LocalRuleResult(
@@ -134,6 +129,9 @@ def _engine_files(scan: FolderScan) -> list[engine.FileInfo]:
             path=str(root / file.relative_path),
             size=file.size_bytes,
             extension=file.extension,
+            # 날짜 기반 규칙(이미지 수정일 등)이 동작하도록 수정시각을 채운다.
+            # (웹 verify_downloaded_files 와 동일. 누락 시 전부 None → 날짜 규칙 오탐)
+            modified_at=file.modified_at,
         )
         for file in scan.files
     ]
@@ -177,4 +175,5 @@ def _local_result(evaluation: engine.RuleEvaluation) -> LocalRuleResult:
         message=str(evaluation.message or ""),
         file_path=str(evaluation.file_path or ""),
         file_name=str(evaluation.file_name or ""),
+        raw_detail=getattr(evaluation, "raw_detail", None),
     )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Callable
 
@@ -11,6 +12,7 @@ class FileRecord:
     name: str
     extension: str
     size_bytes: int
+    modified_at: datetime | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,7 @@ def scan_folder(
                 name=path.name,
                 extension=path.suffix.lower(),
                 size_bytes=stat.st_size,
+                modified_at=datetime.fromtimestamp(stat.st_mtime),
             )
         )
         if progress_cb is not None and len(records) % 25 == 0:
