@@ -939,21 +939,24 @@ def _confirm_popup_download(dialog) -> None:
     _send_popup_keys(dialog, ["{ENTER}"], pause=0.5)
 
 
-def _find_tree_item(dialog, folder_name: str, timeout: int = 5):
+def _find_tree_item(dialog, folder_name: str, timeout: int = 10):
+    # 생성 직후 트리 갱신이 늦을 수 있어 대기시간을 넉넉히(10초) 둔다.
+    # 한글 폴더명의 NFC/NFD 정규화 차이로 정확 일치(==) 비교가 빗나가지 않도록
+    # 양쪽을 NFC 로 정규화해 비교한다.
+    target_norm = unicodedata.normalize("NFC", folder_name or "")
     end_time = time.time() + timeout
     while time.time() < end_time:
-        target = None
         try:
             target = dialog.child_window(title=folder_name, control_type="TreeItem")
             if target.exists(timeout=0.5):
                 return target
         except Exception:
-            target = None
+            pass
 
         try:
             for item in dialog.descendants(control_type="TreeItem"):
                 try:
-                    if item.window_text() == folder_name:
+                    if unicodedata.normalize("NFC", item.window_text() or "") == target_norm:
                         return item
                 except Exception:
                     continue
