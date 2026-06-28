@@ -10,6 +10,7 @@ pywinauto를 사용하여:
 import logging
 import os
 import time
+import unicodedata
 from dataclasses import dataclass
 
 from django.conf import settings
@@ -112,8 +113,12 @@ def handle_folder_popup_and_download(
 
 def _try_download_once(project_number: str, relative_path: list[str], center_code: str) -> PopupResult:
     """1회 다운로드 시도."""
-    segments = [project_number, *relative_path]
-    download_dir = os.path.join(_download_base_dir(), project_number)
+    # relative_path 는 ECM 웹(DOM)에서 온 폴더명이라 한글이 NFD(분해형)일 수 있다.
+    # Windows 는 폴더를 NFC 로 생성하므로, 경로를 NFC 로 통일하지 않으면 다운로드한
+    # 파일이 그 폴더에 있어도 os.listdir(target_dir) 가 폴더를 못 찾아(0개) 대기가
+    # 300초 타임아웃된다. 생성·선택·대기 경로를 모두 NFC 로 맞춘다.
+    segments = [unicodedata.normalize("NFC", str(part)) for part in (project_number, *relative_path)]
+    download_dir = os.path.join(_download_base_dir(), segments[0])
     target_dir = os.path.join(_download_base_dir(), *segments)
 
     # Step 1: 폴더 찾아보기 팝업 대기
@@ -180,6 +185,7 @@ def _try_download_once(project_number: str, relative_path: list[str], center_cod
 
 def _list_download_files(download_dir: str) -> list:
     """다운로드 폴더의 일반 파일 이름 목록을 반환한다."""
+    download_dir = unicodedata.normalize("NFC", download_dir)  # 디스크(NFC)와 일치시킴
     try:
         return [
             name for name in os.listdir(download_dir)
@@ -980,6 +986,7 @@ def _select_tree_item(target, folder_name: str) -> None:
 
 def _has_any_download_files(download_dir: str) -> bool:
     """다운로드 폴더에 완전한 파일(부분 파일 제외)이 1개 이상 있으면 True."""
+    download_dir = unicodedata.normalize("NFC", download_dir)  # 디스크(NFC)와 일치시킴
     try:
         return any(
             os.path.isfile(os.path.join(download_dir, name))
