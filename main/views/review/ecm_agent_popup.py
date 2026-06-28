@@ -816,30 +816,27 @@ def _navigate_to_download_target(dlg, segments: list[str], center_code: str = ""
     """Move the folder popup to the configured base and mirror the ECM path."""
     dialog = _connect_dialog(dlg)
     base = _download_base_dir()
+    target_dir = os.path.join(base, *segments)
 
-    # 타겟 경로에서 '이미 존재하는 가장 깊은 폴더'와 '새로 만들 segment'를 분리한다.
-    deepest_existing = base
-    remaining: list[str] = []
-    cursor = base
-    still_existing = True
-    for segment in segments:
-        cursor = os.path.join(cursor, segment)
-        if still_existing and os.path.isdir(cursor):
-            deepest_existing = cursor
-        else:
-            still_existing = False
-            remaining.append(segment)
+    # 1) 다운로드 폴더는 로컬이므로 대상 경로를 디스크에 미리 만들고(NFC), 대화상자에서는
+    #    BFFM_SETSELECTION 으로 그 경로를 곧장 선택한다. '새 폴더 만들기' 버튼·인라인 편집·
+    #    UIA 트리 검색(_create_popup_folder/_find_tree_item) 은 2번째 이후 하위 폴더에서
+    #    "TreeItem을 찾을 수 없습니다" / COM 오류로 반복 실패했으므로 통째로 우회한다.
+    try:
+        os.makedirs(target_dir, exist_ok=True)
+    except OSError:
+        logger.warning("다운로드 대상 폴더 생성 실패: %s", target_dir, exc_info=True)
 
-    # 1) 존재하는 경로를 메시지로 한 번에 선택(분당/상암/영남 공통 베이스). 키 이동 불필요.
-    if _select_popup_folder_by_path(dialog, deepest_existing):
-        logger.info("폴더 경로 직접 선택 성공: %s (생성 대상=%s)", deepest_existing, remaining)
-        for segment in remaining:
-            _create_popup_folder(dialog, segment)
-        _confirm_popup_download(dialog)
-        return
+    # 대화상자가 방금 만든 폴더를 인식하도록 몇 차례 재시도한다(shell 갱신 지연 대비).
+    for attempt in range(4):
+        if _select_popup_folder_by_path(dialog, target_dir):
+            logger.info("폴더 경로 직접 선택 성공(사전 생성, 시도 %d): %s", attempt + 1, target_dir)
+            _confirm_popup_download(dialog)
+            return
+        time.sleep(0.5)
 
-    # 2) 폴백: 기존 키보드 이동 방식(무회귀). 경로 선택이 불가한 환경 대비.
-    logger.warning("폴더 경로 직접 선택 실패 → 키보드 이동 방식으로 폴백: %s", deepest_existing)
+    # 2) 폴백: 기존 키보드 이동 + 인라인 폴더 생성 방식(무회귀). 경로 선택이 불가한 환경 대비.
+    logger.warning("폴더 경로 직접 선택 실패 → 키보드 이동 방식으로 폴백: %s", target_dir)
     _navigate_to_download_base(dialog)
     current_path = base
     for segment in segments:
