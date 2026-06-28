@@ -128,6 +128,31 @@ class ExcelWorkbook:
     sheets: list[ExcelSheet]
 
 
+# 엔진이 평가할 수 있는 rule_type 목록(단일 진실 소스).
+# _evaluate_rule 의 분기와 일치해야 하며, 로컬 앱은 이 집합을 import 해 미지원 판정을 한다
+# (앱이 별도 하드코딩 목록을 두면 엔진에 규칙 추가 시 멀쩡한 규칙이 '미지원'으로 오판됨).
+SUPPORTED_RULE_TYPES = frozenset({
+    "min_file_count",
+    "filename_contains_project_number",
+    "required_extension",
+    "required_file_name_contains",
+    "required_artifact_file",
+    "downloadable_artifact_check",
+    "document_artifact_check",
+    "all_files_non_empty",
+    "excel_feature_list_check",
+    "test_plan_document_check",
+    "image_screenshot_folder_date_check",
+    "test_case_check",
+    "rawdata_folder_structure_check",
+    "test_report_document_check",
+    "defect_report_check",
+    "inspection_checklist_check",
+    "quality_inspection_table_check",
+    "quality_evaluation_report_check",
+})
+
+
 def _evaluate_rule(rule, sequence, project, context, verify_result, file_summary):
     rule_type = (rule.rule_type or "").strip()
     if rule_type == "min_file_count":
@@ -1348,7 +1373,7 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
     config = rule.config_json or {}
     # 기존 제품 zip이 아닌, 이름에 'rawdata'가 포함된 zip의 이미지만 대상으로 한다(대소문자/공백 무시).
     all_files = _matching_files(rule, verify_result)
-    rawdata_files = [file_info for file_info in all_files if _zip_name_contains(file_info, "rawdata")]
+    rawdata_files = [file_info for file_info in all_files if _is_rawdata_file(file_info, "rawdata")]
     files, selected_folder = _select_folder_chain_files(rawdata_files, config.get("folder_keyword_chain"))
     min_images = int(config.get("min_images_per_folder") or 5)
     required_folder_count = int(config.get("required_candidate_folder_count") or 2)
@@ -1493,7 +1518,7 @@ def _evaluate_rawdata_folder_structure_check(rule, sequence, project, verify_res
     rawdata_files = [
         file_info
         for file_info in _inspection_files(verify_result)
-        if _zip_name_contains(file_info, "rawdata")
+        if _is_rawdata_file(file_info, "rawdata")
     ]
     raw_detail = {"rawdata_file_count": len(rawdata_files)}
     if not rawdata_files:
@@ -3618,7 +3643,7 @@ def _files_in_configured_folder(rule, verify_result):
     # rawdata zip(예: '..._RAWDATA.zip')의 파일은 rawdata 전용 규칙에서만 사용한다.
     # 일반 규칙이 rawdata의 스크린샷 이미지 폴더를 제출물 폴더로 잘못 선택하지 않도록 제외한다.
     # (최초/최종형상RawData 규칙은 _files_in_configured_folder를 쓰지 않고 직접 rawdata를 필터링한다.)
-    files = [file_info for file_info in files if not _zip_name_contains(file_info, "rawdata")]
+    files = [file_info for file_info in files if not _is_rawdata_file(file_info, "rawdata")]
     return _select_folder_chain_files(files, config.get("folder_keyword_chain"))
 
 
@@ -3662,6 +3687,31 @@ def _zip_name_contains(file_info, keyword):
         needle in _normalize_zip_keyword(zip_name)
         for zip_name in _source_zip_names(raw_path)
     )
+
+
+def _is_rawdata_file(file_info, keyword="rawdata"):
+    """파일이 'rawdata' 산출물에 속하는지 판정한다(폴더·zip 공통).
+
+    원래 rawdata 점검은 폴더/파일 기준이었으나, 메인 zip 밖에 별도 rawdata.zip이
+    존재하는 경우를 처리하려고 zip 이름 기준(_zip_name_contains)으로만 좁혀졌었다.
+    그 결과 압축을 푼 'rawdata' 폴더는 인식하지 못했다. 여기서는 경로의 어떤
+    세그먼트(상위 폴더명 또는 zip 파일명)든 keyword를 포함하면 rawdata로 본다.
+    - 압축 해제 폴더: .../rawdata/결함/a.png        → 폴더명 'rawdata' 매치
+    - 별도 rawdata.zip: RAWDATA.zip::결함/a.png      → zip명 'rawdata' 매치
+    - zip 내부 rawdata 폴더: x.zip::수행/rawdata/...  → 내부 폴더명 매치
+    (대소문자/공백/_/- 무시. 마지막 세그먼트=파일명 자체는 판정에서 제외)
+    """
+    needle = _normalize_zip_keyword(keyword)
+    if not needle:
+        return False
+    raw_path = str(file_info.path or "").replace("\\", "/")
+    segments = [seg for seg in raw_path.replace("::", "/").split("/") if seg][:-1]
+    for seg in segments:
+        if seg.lower().endswith(".zip"):
+            seg = seg[:-4]
+        if needle in _normalize_zip_keyword(seg):
+            return True
+    return False
 
 
 def _source_zip_names(raw_path):
