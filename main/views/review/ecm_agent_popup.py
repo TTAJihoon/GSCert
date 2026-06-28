@@ -184,15 +184,22 @@ def _try_download_once(project_number: str, relative_path: list[str], center_cod
 
 
 def _list_download_files(download_dir: str) -> list:
-    """다운로드 폴더의 일반 파일 이름 목록을 반환한다."""
-    download_dir = unicodedata.normalize("NFC", download_dir)  # 디스크(NFC)와 일치시킴
+    """다운로드 폴더 이하의 일반 파일 목록(폴더 기준 상대경로)을 반환한다.
+
+    ECM 이 선택 폴더 바로 아래가 아니라 하위 폴더에 파일을 내려받는 경우가 있어
+    최상위만 보던 os.listdir 대신 os.walk 로 재귀 탐색한다. 디스크(NFC)와 맞추기
+    위해 경로를 NFC 로 정규화한다.
+    """
+    download_dir = unicodedata.normalize("NFC", download_dir)
+    names = []
     try:
-        return [
-            name for name in os.listdir(download_dir)
-            if os.path.isfile(os.path.join(download_dir, name))
-        ]
+        for root, _dirs, files in os.walk(download_dir):
+            for name in files:
+                full = os.path.join(root, name)
+                names.append(os.path.relpath(full, download_dir))
     except OSError:
         return []
+    return names
 
 
 def _wait_for_download_files(download_dir: str) -> bool:
@@ -245,10 +252,37 @@ def _wait_for_download_files(download_dir: str) -> bool:
         time.sleep(DOWNLOAD_POLL_INTERVAL)
 
     logger.warning(
-        "다운로드 파일 대기 시간 초과(%ds): %s (마지막 상태=%s)",
+        "다운로드 파일 대기 시간 초과(%ds): %s (마지막 상태=%s) | 실제 위치 진단: %s",
         DOWNLOAD_FILE_WAIT, download_dir, last_signature,
+        _nearby_download_snapshot(download_dir),
     )
     return False
+
+
+def _nearby_download_snapshot(download_dir: str, max_entries: int = 40) -> str:
+    """대기 실패 시, 파일이 실제로 어디에 내려갔는지 파악하도록 대상 폴더의 가장 가까운
+    존재 조상부터 재귀 목록을 만든다(NFC/오배치/하위폴더 문제 진단용)."""
+    probe = unicodedata.normalize("NFC", download_dir)
+    # 존재하는 가장 가까운 조상 폴더를 찾는다(대상 폴더가 없을 수 있음).
+    while probe and not os.path.isdir(probe):
+        parent = os.path.dirname(probe)
+        if parent == probe:
+            break
+        probe = parent
+    if not probe or not os.path.isdir(probe):
+        return "<조상 폴더 없음>"
+    entries = []
+    try:
+        for root, _dirs, files in os.walk(probe):
+            for name in files:
+                entries.append(os.path.relpath(os.path.join(root, name), probe))
+                if len(entries) >= max_entries:
+                    break
+            if len(entries) >= max_entries:
+                break
+    except OSError:
+        return f"<{probe} 열거 실패>"
+    return f"base={probe} files={entries or '<없음>'}"
 
 
 
@@ -988,16 +1022,12 @@ def _select_tree_item(target, folder_name: str) -> None:
 
 
 def _has_any_download_files(download_dir: str) -> bool:
-    """다운로드 폴더에 완전한 파일(부분 파일 제외)이 1개 이상 있으면 True."""
-    download_dir = unicodedata.normalize("NFC", download_dir)  # 디스크(NFC)와 일치시킴
-    try:
-        return any(
-            os.path.isfile(os.path.join(download_dir, name))
-            and not name.lower().endswith(DOWNLOAD_PARTIAL_SUFFIXES)
-            for name in os.listdir(download_dir)
-        )
-    except OSError:
-        return False
+    """다운로드 폴더 이하에 완전한 파일(부분 파일 제외)이 1개 이상 있으면 True.
+    하위 폴더에 내려받는 경우도 감지하도록 재귀 목록을 사용한다."""
+    return any(
+        not name.lower().endswith(DOWNLOAD_PARTIAL_SUFFIXES)
+        for name in _list_download_files(download_dir)
+    )
 
 
 def _wait_for_transfer_complete(target_dir: str = "") -> None:
