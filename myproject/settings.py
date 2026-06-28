@@ -118,6 +118,12 @@ REFERENCE_DATABASE_ALIAS = 'reference'
 REFERENCE_MODEL_NAMES = {'swdata', 'referencecenterpl', 'referenceproject', 'downloadreviewrule'}
 DOWNLOAD_REVIEW_PROJECT_SOURCE = 'postgres'
 
+# 로컬 점검 앱(local-review) API 인증 토큰.
+# 값이 설정되면 /api/local-review/* 호출 시 헤더 X-Local-Review-Token 이 일치해야 한다.
+# 비어 있으면(기본) 인증을 적용하지 않는다(기존 동작 유지 → 점진 도입 안전).
+# 운영에서는 env.ps1 등으로 LOCAL_REVIEW_API_TOKEN 을 주입하고 사내 HTTPS와 함께 사용한다.
+LOCAL_REVIEW_API_TOKEN = os.environ.get('LOCAL_REVIEW_API_TOKEN', '')
+
 ECM_AGENT_LOCK_PATH = BASE_DIR / 'main' / 'data' / 'ecm_agent.lock'
 ECM_AGENT_LOCK_TIMEOUT_SECONDS = 600
 REFERENCE_DB_PATH = BASE_DIR / 'main' / 'data' / 'ecmlist.db'

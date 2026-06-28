@@ -78,10 +78,11 @@ class ProjectMetadata:
 
 
 class GSCertApiClient:
-    def __init__(self, base_url: str, timeout_seconds: int = 60):
+    def __init__(self, base_url: str, timeout_seconds: int = 60, token: str = ""):
         # 규칙 번들이 커질 수 있어 기본 타임아웃을 넉넉히 둔다(과거 10초는 빠듯).
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.token = (token or "").strip()
 
     def health(self) -> dict[str, Any]:
         return self._get_json("/api/local-review/health/")
@@ -109,7 +110,10 @@ class GSCertApiClient:
 
     def _get_json(self, path: str) -> dict[str, Any]:
         url = f"{self.base_url}{path}"
-        request = Request(url, headers={"Accept": "application/json"})
+        headers = {"Accept": "application/json"}
+        if self.token:
+            headers["X-Local-Review-Token"] = self.token
+        request = Request(url, headers=headers)
         try:
             with urlopen(request, timeout=self.timeout_seconds) as response:
                 body = response.read().decode("utf-8")

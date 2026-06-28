@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.http import JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
@@ -69,6 +70,9 @@ def projects(request):
 
 @require_GET
 def local_review_health(request):
+    denied = _local_review_auth_denied(request)
+    if denied:
+        return denied
     payload = {
         "success": True,
         "ok": True,
@@ -81,6 +85,9 @@ def local_review_health(request):
 
 @require_GET
 def local_review_project_metadata(request, project_number):
+    denied = _local_review_auth_denied(request)
+    if denied:
+        return denied
     requested_center = request.GET.get("center")
     try:
         if requested_center:
@@ -144,6 +151,9 @@ def local_review_project_metadata(request, project_number):
 
 @require_GET
 def local_review_rules_manifest(request):
+    denied = _local_review_auth_denied(request)
+    if denied:
+        return denied
     payload = get_rulebase_manifest_payload()
     response = JsonResponse(payload, json_dumps_params={"ensure_ascii": False})
     response["Cache-Control"] = "no-store"
@@ -152,6 +162,9 @@ def local_review_rules_manifest(request):
 
 @require_GET
 def local_review_rules_bundle(request):
+    denied = _local_review_auth_denied(request)
+    if denied:
+        return denied
     payload, status = get_rulebase_bundle_payload(request.GET.get("version"))
     response = JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False})
     response["Cache-Control"] = "no-store"
@@ -383,6 +396,23 @@ def _query_params_with_host_default_center(request):
     if not query_params.get("center"):
         query_params["center"] = default_center_for_host(request.get_host())
     return query_params
+
+
+def _local_review_auth_denied(request):
+    """local-review API 토큰 검증. settings.LOCAL_REVIEW_API_TOKEN 이 설정된 경우에만
+    헤더 X-Local-Review-Token 일치를 요구한다. 미설정이면 None(=통과, 기존 동작)."""
+    token = getattr(settings, "LOCAL_REVIEW_API_TOKEN", "") or ""
+    if not token:
+        return None
+    provided = request.headers.get("X-Local-Review-Token", "")
+    if provided and provided == token:
+        return None
+    response = JsonResponse(
+        {"success": False, "error_code": "unauthorized", "message": "유효한 인증 토큰이 필요합니다."},
+        status=401,
+    )
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 def _ensure_request_center_allowed(request, center_code):

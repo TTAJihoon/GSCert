@@ -523,6 +523,9 @@ class MainWindow(QMainWindow):
         saved_url = self._settings.value("server_url", "")
         if saved_url:
             self.server_url.setText(str(saved_url))
+        saved_token = self._settings.value("api_token", "")
+        if saved_token:
+            self.api_token.setText(str(saved_token))
         saved_folder = self._settings.value("last_folder", "")
         if saved_folder and Path(str(saved_folder)).is_dir():
             self.selected_folder = Path(str(saved_folder))
@@ -530,6 +533,7 @@ class MainWindow(QMainWindow):
 
     def _save_settings(self):
         self._settings.setValue("server_url", self.server_url.text().strip())
+        self._settings.setValue("api_token", self.api_token.text().strip())
         if self.selected_folder is not None:
             self._settings.setValue("last_folder", str(self.selected_folder))
 
@@ -540,7 +544,9 @@ class MainWindow(QMainWindow):
     def _check_version_on_startup(self):
         try:
             manifest = GSCertApiClient(
-                self.server_url.text().strip() or DEFAULT_SERVER_URL, timeout_seconds=5
+                self.server_url.text().strip() or DEFAULT_SERVER_URL,
+                timeout_seconds=5,
+                token=self.api_token.text().strip(),
             ).rule_manifest()
         except Exception:
             return  # 오프라인/서버 오류 → 캐시 규칙으로 계속(조용히 건너뜀)
@@ -588,6 +594,16 @@ class MainWindow(QMainWindow):
 
         # 센터 구분 제거: 센터는 ECM 에이전트(서버) 분리용이었고, 3개 센터의 산출물
         # 구조는 동일하다. 로컬 점검은 폴더/파일 구조만 보므로 센터 선택이 필요 없다.
+
+        token_col = QVBoxLayout()
+        token_col.setSpacing(3)
+        token_col.addWidget(_muted("API 토큰(선택)"))
+        self.api_token = QLineEdit()
+        self.api_token.setEchoMode(QLineEdit.EchoMode.Password)
+        self.api_token.setPlaceholderText("서버가 요구할 때만")
+        self.api_token.setFixedWidth(140)
+        token_col.addWidget(self.api_token)
+
         btn_col = QVBoxLayout()
         btn_col.setSpacing(3)
         btn_col.addWidget(QLabel(" "))  # spacer to align with labels above
@@ -597,6 +613,7 @@ class MainWindow(QMainWindow):
         btn_col.addWidget(health_btn)
 
         right.addLayout(url_col)
+        right.addLayout(token_col)
         right.addLayout(btn_col)
 
         layout.addLayout(left)
@@ -1136,7 +1153,10 @@ class MainWindow(QMainWindow):
             )
 
     def _client(self) -> GSCertApiClient:
-        return GSCertApiClient(self.server_url.text().strip() or DEFAULT_SERVER_URL)
+        return GSCertApiClient(
+            self.server_url.text().strip() or DEFAULT_SERVER_URL,
+            token=self.api_token.text().strip(),
+        )
 
     def _has_metadata(self) -> bool:
         """점검에 필요한 최소 기준정보가 채워졌는지. 컨텍스트 의존 규칙(날짜 등)을 위해
