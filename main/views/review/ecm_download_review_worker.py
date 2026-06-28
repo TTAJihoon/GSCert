@@ -150,6 +150,24 @@ def _run_live_worker(*, headless=True):
         release_worker_lock(job)
 
 
+class _JobCanceled(Exception):
+    """작업이 강제 종료(CANCELED)되어 워커가 진행을 중단해야 함을 알리는 내부 신호."""
+
+
+def _job_canceled(job):
+    """작업이 외부(강제 종료/취소)에서 CANCELED 로 바뀌었는지 DB 에서 확인한다.
+
+    force_stop_download_review_jobs 는 DB 상태만 CANCELED 로 바꾸고 실행 중인 워커
+    프로세스는 건드리지 않으므로, 워커가 주기적으로 이 신호를 확인해 스스로 멈춰야
+    '강제 종료'가 실제로 동작한다.
+    """
+    try:
+        job.refresh_from_db(fields=["status"])
+    except Exception:
+        return False
+    return job.status == DownloadReviewJobStatus.CANCELED
+
+
 async def _run_live_job(job, *, headless=True):
     """작업 단위로 browser를 launch/close하고 프로젝트를 순차 처리한다.
 
@@ -170,33 +188,45 @@ async def _run_live_job(job, *, headless=True):
         failed = 0
 
         for project in projects:
+            # 강제 종료(취소) 시 남은 프로젝트를 더 처리하지 않고 즉시 중단한다.
+            if await _run_sync(_job_canceled, job):
+                logger.info("강제 종료 감지 → 남은 프로젝트 처리를 중단합니다: job=%s", job.id)
+                break
             await _run_sync(_touch_job, job, f"{project.project_number} ECM 자동화 진행 중")
             await _run_sync(_mark_project, project, DownloadReviewProjectStatus.RUNNING, "ECM 폴더 선택 중")
 
             lock_timeout = getattr(settings, "ECM_AGENT_LOCK_TIMEOUT_SECONDS", 600)
-            async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
-                async def _download_folder(relative_path, doc_count):
-                    path_text = " > ".join([project.project_number, *relative_path])
-                    await _run_sync(
-                        _mark_project,
-                        project, DownloadReviewProjectStatus.RUNNING,
-                        f"다운로드 중: {path_text} (문서 {doc_count}건)",
-                    )
-                    return await asyncio.to_thread(
-                        handle_folder_popup_and_download,
-                        project.project_number,
-                        str(job.id),
-                        2,
-                        relative_path,
-                        project.center_code,
-                    )
+            try:
+                async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
+                    async def _download_folder(relative_path, doc_count):
+                        # 폴더별 다운로드 직전에도 취소를 확인해, 한 프로젝트가 여러 폴더를
+                        # 받는 도중에도 즉시 멈춘다.
+                        if await _run_sync(_job_canceled, job):
+                            raise _JobCanceled()
+                        path_text = " > ".join([project.project_number, *relative_path])
+                        await _run_sync(
+                            _mark_project,
+                            project, DownloadReviewProjectStatus.RUNNING,
+                            f"다운로드 중: {path_text} (문서 {doc_count}건)",
+                        )
+                        return await asyncio.to_thread(
+                            handle_folder_popup_and_download,
+                            project.project_number,
+                            str(job.id),
+                            2,
+                            relative_path,
+                            project.center_code,
+                        )
 
-                ecm_result = await run_ecm_recursive_downloads(
-                    browser,
-                    project.project_number,
-                    center_code=project.center_code,
-                    download_callback=_download_folder,
-                )
+                    ecm_result = await run_ecm_recursive_downloads(
+                        browser,
+                        project.project_number,
+                        center_code=project.center_code,
+                        download_callback=_download_folder,
+                    )
+            except _JobCanceled:
+                logger.info("강제 종료 감지(다운로드 중) → 처리를 중단합니다: job=%s", job.id)
+                break
 
             if ecm_result.success:
                 # --- 9단계: 다운로드 파일 확인 ---
@@ -302,7 +332,11 @@ async def _run_live_job(job, *, headless=True):
 
             await _run_sync(_update_job_counts, job, completed=completed, failed=failed, total=total)
 
-        await _run_sync(_finish_live_job, job, completed=completed, failed=failed, total=total)
+        # 강제 종료된 경우 완료(COMPLETED/FAILED)로 덮어쓰지 않는다(CANCELED 유지).
+        if await _run_sync(_job_canceled, job):
+            logger.info("작업이 강제 종료되어 완료 처리를 생략합니다: job=%s", job.id)
+        else:
+            await _run_sync(_finish_live_job, job, completed=completed, failed=failed, total=total)
     finally:
         await close_browser(browser)
 
