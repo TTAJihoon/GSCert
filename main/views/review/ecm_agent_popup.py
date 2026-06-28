@@ -883,7 +883,18 @@ def _create_popup_folder(dialog, folder_name: str) -> None:
     if not tree_hwnd:
         raise RuntimeError("SysTreeView32를 찾을 수 없습니다.")
 
-    _send_popup_keys(dialog, ["%m"], pause=0.5)
+    # '새 폴더 만들기'는 전역 Alt+M 대신 버튼을 창 메시지로 직접 클릭한다.
+    # (BFFM 선택은 메시지 기반이라 대화상자를 포그라운드로 올리지 않으므로, 이어지는
+    #  Alt+M 전역 키가 포커스 없는 창에 닿지 않아 편집창이 안 뜨는 문제를 피한다.)
+    new_folder_btn = _find_child_hwnd_by_text(
+        dlg_hwnd, ("새 폴더 만들기", "폴더 만들기", "Make New Folder")
+    )
+    if new_folder_btn:
+        _focus_hwnd(tree_hwnd)  # 선택된 부모 노드 아래에 생성되도록 트리에 포커스
+        _click_hwnd(new_folder_btn)
+    else:
+        # 버튼을 못 찾으면 기존 Alt+M 경로로 폴백
+        _send_popup_keys(dialog, ["%m"], pause=0.5)
 
     edit_hwnd = 0
     for _ in range(20):
