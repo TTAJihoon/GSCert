@@ -921,7 +921,15 @@ def _create_popup_folder(dialog, folder_name: str) -> None:
 
 
 def _confirm_popup_download(dialog) -> None:
-    # send_keys("{ENTER}")가 기본 경로이며, SendInput 실패 시 확인 버튼 클릭으로 폴백한다.
+    # 확인 버튼을 창 메시지(BM_CLICK)로 직접 누른다.
+    # BFFM 선택·버튼 클릭(메시지 방식)으로 진행하면 대화상자가 포그라운드가 아니므로,
+    # 전역 Enter(SendInput)는 닿지 않아 다운로드 단계로 넘어가지 못한다. 버튼을 못 찾을
+    # 때만 기존 Enter 경로(전역→메시지 폴백)로 처리한다.
+    ok_btn = _find_child_hwnd_by_text(dialog.handle, ("확인", "OK"))
+    if ok_btn:
+        _click_hwnd(ok_btn)
+        time.sleep(0.5)
+        return
     _send_popup_keys(dialog, ["{ENTER}"], pause=0.5)
 
 
