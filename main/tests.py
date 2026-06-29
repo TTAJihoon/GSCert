@@ -2883,3 +2883,109 @@ class LocalReviewRulebaseApiTests(TestCase):
         self.assertEqual(bundle["rule_count"], 1)
         self.assertEqual(bundle["rules"][0]["code"], "artifact_01")
         self.assertEqual(bundle["rules"][0]["config_json"]["artifact_column"], "Contract")
+
+
+class RuleConfigValidationTests(SimpleTestCase):
+    """config_json 검증기(main.rule_config_validation) 단위 테스트."""
+
+    def test_all_seeded_specs_pass_validation(self):
+        # 현재 시드되는 18개 실제 규칙은 모두 검증을 통과해야 한다.
+        from main.management.commands.seed_download_review_rules import _rule_specs
+        from main.rule_config_validation import validate_rule_spec
+
+        specs = _rule_specs(only_real=False)
+        self.assertEqual(len(specs), 18)
+        for spec in specs:
+            errors, warnings = validate_rule_spec(spec)
+            self.assertEqual(errors, [], f"{spec.get('code')} 검증 실패: {errors}")
+            self.assertEqual(warnings, [], f"{spec.get('code')} 경고: {warnings}")
+
+    def test_unknown_rule_type_is_error(self):
+        from main.rule_config_validation import validate_rule_config
+
+        errors, _ = validate_rule_config("made_up_check", {"filename_keywords": []})
+        self.assertTrue(any("rule_type" in e for e in errors))
+
+    def test_config_must_be_object(self):
+        from main.rule_config_validation import validate_rule_config
+
+        errors, _ = validate_rule_config("required_artifact_file", ["oops"])
+        self.assertTrue(any("config_json" in e for e in errors))
+
+    def test_missing_required_key_is_error(self):
+        from main.rule_config_validation import validate_rule_config
+
+        errors, _ = validate_rule_config(
+            "required_artifact_file", {"folder_keyword_chain": ["계약"]}
+        )
+        self.assertTrue(any("filename_keywords" in e for e in errors))
+
+    def test_string_where_list_expected_is_error(self):
+        from main.rule_config_validation import validate_rule_config
+
+        errors, _ = validate_rule_config(
+            "required_artifact_file",
+            {"filename_keywords": "계약서", "extensions": ".pdf"},
+        )
+        self.assertTrue(any("filename_keywords" in e for e in errors))
+        self.assertTrue(any("extensions" in e for e in errors))
+
+    def test_non_integer_count_is_error(self):
+        from main.rule_config_validation import validate_rule_config
+
+        errors, _ = validate_rule_config(
+            "required_artifact_file", {"filename_keywords": [], "exact_count": "1"}
+        )
+        self.assertTrue(any("exact_count" in e for e in errors))
+
+    def test_extension_without_dot_is_error(self):
+        from main.rule_config_validation import validate_rule_config
+
+        errors, _ = validate_rule_config(
+            "required_artifact_file", {"filename_keywords": [], "extensions": ["pdf"]}
+        )
+        self.assertTrue(any("extensions" in e for e in errors))
+
+    def test_invalid_version_pattern_regex_is_error(self):
+        from main.rule_config_validation import validate_rule_config
+
+        errors, _ = validate_rule_config(
+            "defect_report_check",
+            {"filename_keywords": [], "version_pattern": "v(\\d+"},
+        )
+        self.assertTrue(any("version_pattern" in e for e in errors))
+
+    def test_unknown_content_check_type_is_error(self):
+        from main.rule_config_validation import validate_rule_config
+
+        errors, _ = validate_rule_config(
+            "document_artifact_check",
+            {
+                "required_files": [{"extensions": [".pdf"]}],
+                "content_checks": [{"type": "docx_magic", "text": "x"}],
+            },
+        )
+        self.assertTrue(any("content_check" in e for e in errors))
+
+    def test_content_check_missing_required_key_is_error(self):
+        from main.rule_config_validation import validate_rule_config
+
+        errors, _ = validate_rule_config(
+            "document_artifact_check",
+            {
+                "required_files": [{"extensions": [".pdf"]}],
+                "content_checks": [
+                    {"type": "docx_table_next_cell_equals", "label": "시험신청번호"}
+                ],
+            },
+        )
+        self.assertTrue(any("expected" in e for e in errors))
+
+    def test_missing_artifact_column_is_warning_not_error(self):
+        from main.rule_config_validation import validate_rule_config
+
+        errors, warnings = validate_rule_config(
+            "required_artifact_file", {"filename_keywords": ["계약서"]}
+        )
+        self.assertEqual(errors, [])
+        self.assertTrue(any("artifact_column" in w for w in warnings))

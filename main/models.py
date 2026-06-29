@@ -181,6 +181,21 @@ class DownloadReviewRule(models.Model):
     def __str__(self):
         return self.name
 
+    def clean(self):
+        """config_json 이 엔진 실행 가능한 형태인지 저장 전에 검증한다.
+
+        Admin 의 ModelForm 이 full_clean() → clean() 을 호출하므로,
+        관리자 화면에서 잘못된 config 를 저장하면 여기서 막힌다.
+        """
+        from django.core.exceptions import ValidationError
+        from main.rule_config_validation import validate_rule_config
+
+        errors, _warnings = validate_rule_config(
+            self.rule_type, self.config_json, code=self.code
+        )
+        if errors:
+            raise ValidationError({"config_json": errors})
+
 
 class DownloadReviewRuleResult(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

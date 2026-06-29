@@ -3,10 +3,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from main.models import DownloadReviewRule, DownloadReviewRuleSeverity
+from main.rule_config_validation import validate_rule_spec
 from main.views.review.ecm_reference_db import ARTIFACT_REVIEW_COLUMNS
 
 
@@ -51,6 +52,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         enabled_override = _enabled_override(options)
         specs = _rule_specs(only_real=options["only_real"])
+        self._validate_specs(specs)
         db_alias = DownloadReviewRule.objects.db
         stats = {"created": 0, "updated": 0, "unchanged": 0}
 
@@ -67,6 +69,22 @@ class Command(BaseCommand):
                 f"created={stats['created']} updated={stats['updated']} unchanged={stats['unchanged']}"
             )
         )
+
+    def _validate_specs(self, specs):
+        """DB 에 쓰기 전에 모든 spec 의 config_json 을 검증한다(dry-run 포함).
+
+        하나라도 오류가 있으면 아무것도 쓰지 않고 중단한다 — 잘못된 config 가
+        섞인 채로 일부만 반영되는 상황을 막는다.
+        """
+        all_errors = []
+        for spec in specs:
+            errors, warnings = validate_rule_spec(spec)
+            all_errors.extend(errors)
+            for warning in warnings:
+                self.stdout.write(self.style.WARNING(f"warning: {warning}"))
+        if all_errors:
+            joined = "\n".join(f"  - {message}" for message in all_errors)
+            raise CommandError(f"점검규칙 config 검증 실패 ({len(all_errors)}건):\n{joined}")
 
     def _apply_specs(self, specs, options, enabled_override, stats, dry_run):
         for spec in specs:

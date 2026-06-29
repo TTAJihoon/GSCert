@@ -1,50 +1,58 @@
-import uuid
+from django.db import migrations, router
 
-from django.db import migrations, models
+
+def create_rule_table_if_missing(apps, schema_editor):
+    """점검규칙 테이블(inspection_rule)을 라우팅된 home alias 에 *없을 때만* 만든다.
+
+    배경: 0001_initial 이 이미 일반 CreateModel 로 inspection_rule 을 생성한다.
+    이 0006 의 원래 목적은 *기존 운영 배포*에서 테이블을 reference(PostgreSQL)로
+    옮기는 것뿐이며, fresh DB(테스트 러너가 매번 만드는 DB) 에서는 0001 이 이미
+    home alias 에 테이블을 만들어 두므로 0006 은 건너뛰어야 한다.
+
+    과거 구현은 `database_operations=[CreateModel(...)]` 로 무조건 재생성해서,
+    fresh 빌드(특히 ui_mock_settings 의 workflow alias)에서 "table already exists"
+    로 전체 테스트가 깨졌다. 라우터 게이트 + 존재 여부 확인으로 멱등하게 만든다.
+    """
+    Model = apps.get_model("main", "DownloadReviewRule")
+    alias = schema_editor.connection.alias
+    # 라우터가 이 alias 에 이 모델 생성을 허용하지 않으면 skip
+    # (운영: reference 만, ui_mock: workflow 만 — 0001 의 self-gating 과 동일 동작).
+    if not router.allow_migrate_model(alias, Model):
+        return
+    table = Model._meta.db_table
+    if table in schema_editor.connection.introspection.table_names():
+        return  # 0001 에서 이미 생성됨(fresh 빌드) → 멱등 no-op
+    schema_editor.create_model(Model)
+
+
+def drop_rule_table_if_present(apps, schema_editor):
+    Model = apps.get_model("main", "DownloadReviewRule")
+    alias = schema_editor.connection.alias
+    if not router.allow_migrate_model(alias, Model):
+        return
+    table = Model._meta.db_table
+    if table in schema_editor.connection.introspection.table_names():
+        schema_editor.delete_model(Model)
 
 
 class Migration(migrations.Migration):
-    """점검규칙(DownloadReviewRule)을 reference(PostgreSQL)로 이전한다.
+    """점검규칙(DownloadReviewRule)을 reference(PostgreSQL)로 이전한다(멱등).
 
     모델 상태(state)에는 0001_initial 에서 이미 DownloadReviewRule 이 존재하므로
-    state_operations 는 비우고, 라우터가 reference 로만 허용하는 CreateModel 을
-    database_operations 로 실행해 reference DB 에 inspection_rule 테이블을 만든다.
+    상태는 건드리지 않고(RunPython 은 state 무변경), DB 작업만 수행한다.
 
-    - migrate --database=reference  : 이 CreateModel 이 실행되어 PG 에 테이블 생성
-    - migrate (default) / --database=workflow : 라우터(allow_migrate)가 막아 건너뜀
-      (workflow.db 의 기존 inspection_rule 은 더 이상 사용되지 않는 orphan 으로 남는다)
+    - migrate --database=reference : reference 에 테이블이 없으면 생성(최초 이전)
+    - migrate (default)/--database=workflow : 라우터(allow_migrate)가 막아 skip
+    - fresh DB(테스트) : 0001 이 이미 home alias 에 생성 → 존재 확인 후 no-op
     """
 
     dependencies = [
-        ('main', '0005_remove_downloadreviewruleresult_rule'),
+        ("main", "0005_remove_downloadreviewruleresult_rule"),
     ]
 
     operations = [
-        migrations.SeparateDatabaseAndState(
-            state_operations=[],
-            database_operations=[
-                migrations.CreateModel(
-                    name='DownloadReviewRule',
-                    fields=[
-                        ('id', models.UUIDField(default=uuid.uuid4, editable=False, primary_key=True, serialize=False)),
-                        ('code', models.CharField(max_length=80, unique=True)),
-                        ('name', models.CharField(max_length=255)),
-                        ('target_file_pattern', models.CharField(blank=True, max_length=255)),
-                        ('target_file_type', models.CharField(default='any', max_length=30)),
-                        ('rule_type', models.CharField(blank=True, max_length=80)),
-                        ('config_json', models.JSONField(blank=True, default=dict)),
-                        ('severity', models.CharField(choices=[('error', 'Error'), ('warning', 'Warning'), ('info', 'Info')], default='error', max_length=20)),
-                        ('enabled', models.BooleanField(db_index=True, default=True)),
-                        ('version', models.CharField(default='1', max_length=40)),
-                        ('sort_order', models.PositiveSmallIntegerField(default=0)),
-                        ('created_at', models.DateTimeField(auto_now_add=True)),
-                        ('updated_at', models.DateTimeField(auto_now=True)),
-                    ],
-                    options={
-                        'db_table': 'inspection_rule',
-                        'ordering': ['sort_order', 'name', 'id'],
-                    },
-                ),
-            ],
+        migrations.RunPython(
+            create_rule_table_if_missing,
+            drop_rule_table_if_present,
         ),
     ]
