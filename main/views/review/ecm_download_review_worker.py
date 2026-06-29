@@ -34,6 +34,7 @@ from main.views.review.ecm_download_review_inspection import (
     run_download_inspection,
 )
 from main.views.review.ecm_download_review_centers import worker_allowed_centers
+from main.views.review.artifact_source import JobCanceledError, build_artifact_source
 from main.utils.ecm_agent_lock import async_ecm_agent_lock
 
 
@@ -152,10 +153,6 @@ def _run_live_worker(*, headless=True):
         release_worker_lock(job)
 
 
-class _JobCanceled(Exception):
-    """작업이 강제 종료(CANCELED)되어 워커가 진행을 중단해야 함을 알리는 내부 신호."""
-
-
 def _job_canceled(job):
     """작업이 외부(강제 종료/취소)에서 CANCELED 로 바뀌었는지 DB 에서 확인한다.
 
@@ -178,11 +175,11 @@ async def _run_live_job(job, *, headless=True):
     2. Windows 폴더 찾아보기 팝업에서 다운로드 폴더 선택 (7단계)
     3. 전송현황 창 대기 및 시스템 알림 처리 (8단계)
     """
-    from main.views.review.ecm_agent_popup import handle_folder_popup_and_download
     from main.views.review.ecm_download_verify import summarize_files, verify_downloaded_files
-    from main.views.review.ecm_download import close_browser, launch_browser, run_ecm_recursive_downloads
 
-    browser = await launch_browser(headless=headless)
+    # 산출물 source(현재 ECM). 추후 로컬/다른 저장소로 갈아끼우려면 이 source 만 교체한다.
+    source = build_artifact_source("ecm", headless=headless)
+    await source.open()
     try:
         projects = await _run_sync(_projects_for_job, job)
         total = len(projects)
@@ -198,39 +195,30 @@ async def _run_live_job(job, *, headless=True):
             await _run_sync(_mark_project, project, DownloadReviewProjectStatus.RUNNING, "ECM 폴더 선택 중")
 
             lock_timeout = getattr(settings, "ECM_AGENT_LOCK_TIMEOUT_SECONDS", 600)
+
+            async def _on_progress(relative_path, doc_count):
+                path_text = " > ".join([project.project_number, *relative_path])
+                await _run_sync(
+                    _mark_project,
+                    project, DownloadReviewProjectStatus.RUNNING,
+                    f"다운로드 중: {path_text} (문서 {doc_count}건)",
+                )
+
+            async def _is_canceled():
+                return await _run_sync(_job_canceled, job)
+
             try:
                 async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
                     # 다운로드 시작 전, 남아 있는 이전 산출물을 비워 '덮어쓰기 확인'
                     # 팝업으로 작업이 멈추는 것을 막는다(에이전트 락 안에서 직렬화).
                     await _run_sync(_clear_project_download_dir, job, project)
 
-                    async def _download_folder(relative_path, doc_count):
-                        # 폴더별 다운로드 직전에도 취소를 확인해, 한 프로젝트가 여러 폴더를
-                        # 받는 도중에도 즉시 멈춘다.
-                        if await _run_sync(_job_canceled, job):
-                            raise _JobCanceled()
-                        path_text = " > ".join([project.project_number, *relative_path])
-                        await _run_sync(
-                            _mark_project,
-                            project, DownloadReviewProjectStatus.RUNNING,
-                            f"다운로드 중: {path_text} (문서 {doc_count}건)",
-                        )
-                        return await asyncio.to_thread(
-                            handle_folder_popup_and_download,
-                            project.project_number,
-                            str(job.id),
-                            2,
-                            relative_path,
-                            project.center_code,
-                        )
-
-                    ecm_result = await run_ecm_recursive_downloads(
-                        browser,
-                        project.project_number,
-                        center_code=project.center_code,
-                        download_callback=_download_folder,
+                    ecm_result = await source.fetch(
+                        project,
+                        on_progress=_on_progress,
+                        is_canceled=_is_canceled,
                     )
-            except _JobCanceled:
+            except JobCanceledError:
                 logger.info("강제 종료 감지(다운로드 중) → 처리를 중단합니다: job=%s", job.id)
                 break
 
@@ -344,7 +332,7 @@ async def _run_live_job(job, *, headless=True):
         else:
             await _run_sync(_finish_live_job, job, completed=completed, failed=failed, total=total)
     finally:
-        await close_browser(browser)
+        await source.close()
 
 
 def _fail_project(

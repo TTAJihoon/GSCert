@@ -16,6 +16,7 @@
 | 7 | 테스트 라우팅 정렬 (ui_mock ↔ 운영) | ⏸ **보류 (재검토 조건 기록)** | 본 문서 §7 |
 | 8 | 운영 시간창 복구 (00–24시 → 20–07시) | ⏳ **운영 전환 전 필수** | 본 문서 §8 |
 | 9 | 외부 자동화 경계 테스트 하네스 | 🟡 **부분 착수** | 본 문서 §9 |
+| 10 | 산출물 source 추상화 (ECM 분리 경계) | 🟢 **seam 도입** | 본 문서 §10 |
 
 ---
 
@@ -204,8 +205,42 @@ pywinauto/Playwright 의 *실제 팝업 거동*은 재현하지 못한다. fake 
   → 먼저 `ecm_download.py`/`ecm_download_review_worker.py`에 **다운로드 함수 주입 seam**이
   필요(현재 `handle_folder_popup_and_download`/`run_ecm_recursive_downloads` 직접 호출).
 - fake Agent adapter: 폴더 선택/전송현황/시스템 알림 + "팝업 중복" 실패 모드 모델링.
-- 골든 픽스처 승격: `TTA-26-00018(정답)/(오류)` 를 공식 회귀 자산으로.
-  → **선결 조건**: 현재 git untracked 상태이며 **실제 제출물/개인정보 포함 여부 확인** 후
-  익명화·최소화한 픽스처로 커밋할지 결정해야 한다(무단 커밋 금지).
-- worker 모드 분리: `--dry-run`(현재)·`--live`(현재) 외에 **fake-live**(가짜 ECM/Agent)
-  모드를 추가해 CI 에서 전체 흐름을 돌릴 수 있게 한다. settings 정리(§7)와 함께 설계.
+- 골든 픽스처: `TTA-26-00018(정답)/(오류)` 는 **불완전한 자료라 회귀 자산으로 쓰지 않기로 결정**
+  (2026). 대신 ① 엔진 순수 함수 특성화 테스트, ② 합성(in-test 생성) xlsx/pdf 픽스처로 대체한다.
+- worker 모드 분리: `--dry-run`(현재)·`--live`(현재) 외에 **fake-live** 모드를 추가해 CI 에서 전체
+  흐름을 돌릴 수 있게 한다(§10 의 `LocalFolderArtifactSource` 를 source 로 선택). settings 정리(§7)와 함께.
+
+---
+
+## 10. 산출물 source 추상화 (ECM 분리 경계) — 🟢 seam 도입
+
+### 목적
+
+지금은 ECM 다운로드가 워커에 강하게 얽혀 있다. 추후 저장소가 ECM 이 아니라 **로컬/다른
+저장소**로 바뀔 수 있으므로, "산출물을 받아오는 부분"만 떼어내 새 구현으로 갈아끼울 수 있게
+한다. 이 경계는 §9 하네스의 주입 seam 과 동일하다 — 갈아끼우기용 로컬 source 가 곧 fake-live
+테스트 더블이 된다(한 번의 작업으로 두 목적 충족).
+
+### 경계 정의
+
+- **source-specific** (`main/views/review/artifact_source.py`): 어떻게 받아오는가
+  (ECM 탐색/팝업, 로컬 복사 등) → `fetch(project) → 로컬 다운로드 폴더`.
+- **source-agnostic** (워커): 받은 *로컬 폴더*에 대한 검증·보관·점검·상태 전이·정리.
+
+### 도입한 것 (🟢)
+
+- `ArtifactSource` Protocol: `open()` / `fetch(project, on_progress, is_canceled) → FetchResult` / `close()`.
+  진행/취소는 콜백으로 주입(Django 모델 비의존).
+- `EcmArtifactSource`: 기존 ECM 함수(`launch_browser`/`run_ecm_recursive_downloads`/
+  `handle_folder_popup_and_download`/`close_browser`)를 래핑. **동작 보존**(behavior-preserving).
+- `LocalFolderArtifactSource`: `source_root/<프로젝트번호>` → 다운로드 폴더로 복사. ECM 대체
+  첫 구현이자 fake-live 더블. `ArtifactSourceSeamTests` 로 ECM 없이 검증.
+- `build_artifact_source(name)` 팩토리. 워커 `_run_live_job` 은 이제 **source 에만 의존**
+  (`source.open()` → `source.fetch()` → `source.close()`). 워커에 ECM 직접 호출 없음.
+
+### 남은 것 (⬜)
+
+- 락/사전정리 이전: 현재 ECM 에이전트 락과 다운로드 폴더 사전 정리는 워커에 남아 있다
+  (ECM 결합). 진짜 로컬 source 도입 시 **ECM 전용 정책을 `EcmArtifactSource` 내부로 이동**.
+- source 선택을 settings/worker 옵션으로 노출(예: `--source=local`, `DOWNLOAD_REVIEW_SOURCE`).
+- 새 저장소 구현 시 이 Protocol 만 구현하면 됨(계약 테스트로 보장).

@@ -3128,3 +3128,107 @@ class WorkerDownloadDirCleanupTests(TestCase):
                 # 대상 프로젝트 폴더만 지우고, 다른 프로젝트 폴더는 보존(동시 작업 안전).
                 self.assertFalse(target.exists())
                 self.assertTrue(other.exists())
+
+
+class ArtifactSourceSeamTests(SimpleTestCase):
+    """산출물 source 추상화: ECM 없이도 다른 source 를 끼워 동작함을 검증.
+
+    LocalFolderArtifactSource 는 ECM 을 떼고 다른 저장소를 붙일 때의 첫 구현이자,
+    ECM 없이 워커 흐름을 돌리는 fake-live 테스트 더블이다.
+    """
+
+    def _run(self, coro):
+        import asyncio
+
+        return asyncio.run(coro)
+
+    def test_local_source_copies_project_folder_into_download_dir(self):
+        from types import SimpleNamespace
+        from main.views.review.artifact_source import LocalFolderArtifactSource
+
+        async def _noop(*_args):
+            return None
+
+        async def _not_canceled():
+            return False
+
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as base:
+            src = Path(root) / "TTA-26-00010"
+            (src / "계약").mkdir(parents=True)
+            (src / "계약" / "계약서.pdf").write_bytes(b"%PDF-1.4")
+            (src / "note.txt").write_text("x", encoding="utf-8")
+
+            with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
+                source = LocalFolderArtifactSource(source_root=root)
+                result = self._run(
+                    source.fetch(
+                        SimpleNamespace(project_number="TTA-26-00010"),
+                        on_progress=_noop,
+                        is_canceled=_not_canceled,
+                    )
+                )
+
+            self.assertTrue(result.success)
+            dst = Path(base) / "TTA-26-00010"
+            self.assertTrue((dst / "계약" / "계약서.pdf").exists())
+            self.assertTrue((dst / "note.txt").exists())
+            self.assertEqual(result.download_dir, str(dst))
+
+    def test_local_source_reports_missing_source_folder(self):
+        from types import SimpleNamespace
+        from main.views.review.artifact_source import LocalFolderArtifactSource
+
+        async def _noop(*_args):
+            return None
+
+        async def _not_canceled():
+            return False
+
+        with tempfile.TemporaryDirectory() as root, tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
+                source = LocalFolderArtifactSource(source_root=root)
+                result = self._run(
+                    source.fetch(
+                        SimpleNamespace(project_number="TTA-26-99999"),
+                        on_progress=_noop,
+                        is_canceled=_not_canceled,
+                    )
+                )
+
+            self.assertFalse(result.success)
+            self.assertEqual(result.error_step, "로컬 폴더 확인")
+
+    def test_fetch_raises_when_canceled(self):
+        from types import SimpleNamespace
+        from main.views.review.artifact_source import (
+            JobCanceledError,
+            LocalFolderArtifactSource,
+        )
+
+        async def _noop(*_args):
+            return None
+
+        async def _canceled():
+            return True
+
+        source = LocalFolderArtifactSource(source_root="/nonexistent")
+        with self.assertRaises(JobCanceledError):
+            self._run(
+                source.fetch(
+                    SimpleNamespace(project_number="TTA-26-00010"),
+                    on_progress=_noop,
+                    is_canceled=_canceled,
+                )
+            )
+
+    def test_factory_builds_known_sources_and_rejects_unknown(self):
+        from main.views.review.artifact_source import (
+            EcmArtifactSource,
+            LocalFolderArtifactSource,
+            build_artifact_source,
+        )
+
+        self.assertIsInstance(build_artifact_source("ecm"), EcmArtifactSource)
+        self.assertIsInstance(build_artifact_source("local"), LocalFolderArtifactSource)
+        with self.assertRaises(ValueError):
+            build_artifact_source("dropbox")
