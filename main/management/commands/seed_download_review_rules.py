@@ -7,7 +7,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 
 from main.models import DownloadReviewRule, DownloadReviewRuleSeverity
-from main.rule_config_validation import validate_rule_spec
+from main.rule_config_validation import validate_rule_graph_from_specs, validate_rule_spec
 from main.views.review.ecm_reference_db import ARTIFACT_REVIEW_COLUMNS
 
 
@@ -82,6 +82,13 @@ class Command(BaseCommand):
             all_errors.extend(errors)
             for warning in warnings:
                 self.stdout.write(self.style.WARNING(f"warning: {warning}"))
+
+        # 규칙셋 전체의 requires/produces 의존 그래프 검증(실행 순서 정합성).
+        graph_errors, graph_warnings = validate_rule_graph_from_specs(specs)
+        all_errors.extend(graph_errors)
+        for warning in graph_warnings:
+            self.stdout.write(self.style.WARNING(f"warning: {warning}"))
+
         if all_errors:
             joined = "\n".join(f"  - {message}" for message in all_errors)
             raise CommandError(f"점검규칙 config 검증 실패 ({len(all_errors)}건):\n{joined}")
@@ -327,6 +334,7 @@ def _actual_rule_spec(index, column_name):
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["시험", "계획"],
                 "filename_keywords": ["계획서", "{project_number}"],
+                "requires": ["시험성적서_세부사양표"],
                 "required_files": [
                     {"extensions": WORD_FILE_EXTENSIONS, "exact_count": 1},
                     {"extensions": [".pdf"], "exact_count": 1},
@@ -390,6 +398,7 @@ def _actual_rule_spec(index, column_name):
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["설계"],
                 "filename_keywords": ["테스트케이스", "{project_number}"],
+                "requires": ["잔여결함수"],
                 "extensions": [".xlsx", ".xls"],
                 "exact_count": 1,
                 "title_text": "{project_number} 테스트케이스",
@@ -422,6 +431,8 @@ def _actual_rule_spec(index, column_name):
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["수행"],
                 "filename_keywords": ["결함리포트", "{project_number}"],
+                "requires": ["결함차수"],
+                "produces": ["잔여결함수", "H", "R"],
                 "extensions": [".xlsx", ".xls"],
                 "version_pattern": r"(?i)v(\d+)\.0",
                 "count_mismatch_message": "시험성적서의 결함 차수와 결함리포트 개수가 다름",
@@ -453,6 +464,8 @@ def _actual_rule_spec(index, column_name):
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["설계"],
                 "filename_keywords": ["점검표", "{project_number}"],
+                "requires": ["H", "R"],
+                "produces": ["측정항목별점수표"],
                 "extensions": [".xlsx", ".xls", ".pdf"],
                 "cover_sheet": "표지",
                 "cover_author": "김진영",
@@ -523,6 +536,7 @@ def _actual_rule_spec(index, column_name):
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["시험", "종료"],
                 "filename_keywords": ["시험성적서", "{project_number}"],
+                "produces": ["결함차수", "시험성적서_세부사양표"],
                 "required_files": [
                     {"extensions": WORD_FILE_EXTENSIONS, "exact_count": 1},
                     {"extensions": [".pdf"], "exact_count": 1},
@@ -561,6 +575,7 @@ def _actual_rule_spec(index, column_name):
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["인증관련"],
                 "filename_keywords": ["품질평가보고서", "{project_number}"],
+                "requires": ["품질부특성측정값"],
                 "extensions": WORD_FILE_EXTENSIONS,
                 "exact_count": 1,
                 "project_number_count": 6,
@@ -590,6 +605,8 @@ def _actual_rule_spec(index, column_name):
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["인증관련"],
                 "filename_keywords": ["품질검사표", "{project_number}"],
+                "requires": ["측정항목별점수표"],
+                "produces": ["품질부특성측정값"],
                 "extensions": [".xlsx", ".xls"],
                 "sheet_name": "{project_number} 품질검사표",
                 "quality_value_count": 33,

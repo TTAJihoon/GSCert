@@ -68,7 +68,8 @@
 
 - `ecmlist.db`: 프로젝트 기준 데이터
 - `ecmlist2.db`: 영남 프로젝트 기준 데이터
-- `workflow.db`: 작업, 락, 다운로드, 검사 결과 데이터
+- `workflow.db`: 작업, 락, 다운로드, 검사 결과(`inspection_result`) 데이터
+- **reference(PostgreSQL)**: 점검규칙(`inspection_rule`)과 참조 데이터(두 서버 공유, 2026 이전)
 - Django 인증/관리 기본 테이블은 기존 `db.sqlite3` 사용 가능
 
 운영 중 기준 데이터를 갱신하더라도 작업 이력과 검사 결과가 영향을 덜 받도록 DB를 분리한다.
@@ -161,6 +162,14 @@
 ### inspection_rule
 
 파일 검사 규칙을 저장한다.
+
+> ⚠️ **저장 위치 변경(2026, migration `0006_move_rule_to_reference_db`)**: `inspection_rule`은
+> 더 이상 `workflow.db`에 있지 않다. 두 서버(상암/분당)가 규칙을 공유하도록 주 서버의
+> **reference(PostgreSQL)** 로 이전되었다(`REFERENCE_MODEL_NAMES`에 `downloadreviewrule` 포함,
+> `main.db_routers.ReferenceDatabaseRouter`가 라우팅). 나머지 실행 이력 테이블
+> (`automation_*`, `inspection_result`, `automation_log/lock`)은 `workflow.db`에 그대로 있다.
+> 참고: 테스트용 `ui_mock_settings`는 reference 별칭이 없어 규칙을 `workflow`(SQLite)로 둔다
+> (라우팅 정렬 보류 — `docs/INSPECTION_RULES_IMPROVEMENTS.md` §7).
 
 - id
 - name

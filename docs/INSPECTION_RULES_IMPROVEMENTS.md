@@ -14,6 +14,8 @@
 | 5 | 시드를 코드 → 선언 파일(YAML)로 분리 | ⬜ 미착수 | |
 | 6 | 검사관용 규칙 편집 UI (폼+미리보기+롤백) | ⬜ 미착수 | |
 | 7 | 테스트 라우팅 정렬 (ui_mock ↔ 운영) | ⏸ **보류 (재검토 조건 기록)** | 본 문서 §7 |
+| 8 | 운영 시간창 복구 (00–24시 → 20–07시) | ⏳ **운영 전환 전 필수** | 본 문서 §8 |
+| 9 | 외부 자동화 경계 테스트 하네스 | 🟡 **부분 착수** | 본 문서 §9 |
 
 ---
 
@@ -157,3 +159,53 @@
    (구조 parity는 얻지만 PG 엔진 parity는 못 얻음.)
 
 > 주의: 0006은 이미 멱등이므로 어느 선택지든 fresh DB 충돌은 재발하지 않는다.
+
+---
+
+## 8. 운영 시간창 복구 (00–24시 → 20–07시) — ⏳ 운영 전환 전 필수
+
+라이브 검증 편의를 위해 다운로드 작업 허용 시간창이 **전체 개방(00–24시)** 으로 열려 있다.
+운영 전환 시 야간 시간창(20–07시)으로 **반드시 되돌려야** 한다. 코드 주석 TODO에만 있어
+잊히기 쉬우므로 추적 항목으로 승격한다.
+
+- 위치: `myproject/ui_mock_settings.py`
+  - `DOWNLOAD_REVIEW_IGNORE_TIME_WINDOW = False`
+  - `DOWNLOAD_REVIEW_START_HOUR = 0` → **`20`**
+  - `DOWNLOAD_REVIEW_END_HOUR = 24` → **`7`**
+  - 주석 마커: `TODO(TEST_ONLY_DOWNLOAD_REVIEW_TIME_WINDOW)`
+- 운영 `settings.py`에도 동일 값이 있는지 확인하고 함께 맞춘다.
+- 되돌린 뒤, 시간창 밖 요청이 거절되는지 1회 확인.
+
+---
+
+## 9. 외부 자동화 경계 테스트 하네스 — 🟡 부분 착수
+
+ECM(Playwright)·Windows Agent(pywinauto)·다운로드 폴더·팝업 상태에 강결합된 구간은
+실환경 없이는 재현이 어렵다. 핵심 원칙: **실제 서버에 붙기 전에도 실패를 재현**할 것.
+
+### 착수한 부분 (✅)
+
+- **다운로드 폴더 정리(팝업 잔여물) 회귀 테스트**: `WorkerDownloadDirCleanupTests`
+  (`main/tests.py`). 합성 다운로드 폴더로 "이전 산출물이 남은" 상태를 재생해
+  `_clear_project_download_dir` 가 대상 폴더만 비우는지 검증(동시 작업 안전 포함).
+- **다운로드 검증 상태 재생**: `DownloadVerifyTests` 가 0 byte / 프로젝트번호 없는 파일을
+  이미 합성 폴더로 검증.
+
+### 충실도 한계 (반드시 인지) ⚠️
+
+위 테스트는 **우리 오케스트레이션 로직**(상태 전이·정리·검증)을 고정할 뿐,
+pywinauto/Playwright 의 *실제 팝업 거동*은 재현하지 못한다. fake Agent 가 특정 실패
+모드(leftover→덮어쓰기 팝업 등)를 **명시적으로 모델링**할 때만 그 회귀를 잡는다.
+따라서 하네스는 "실환경 테스트 대체"가 아니라 **"관측된 실패 모드 재생기"** 로 본다.
+
+### 남은 작업 (⬜)
+
+- fake ECM page: HTML/트리/문서목록을 흉내 내 `run_ecm_recursive_downloads` 를 구동.
+  → 먼저 `ecm_download.py`/`ecm_download_review_worker.py`에 **다운로드 함수 주입 seam**이
+  필요(현재 `handle_folder_popup_and_download`/`run_ecm_recursive_downloads` 직접 호출).
+- fake Agent adapter: 폴더 선택/전송현황/시스템 알림 + "팝업 중복" 실패 모드 모델링.
+- 골든 픽스처 승격: `TTA-26-00018(정답)/(오류)` 를 공식 회귀 자산으로.
+  → **선결 조건**: 현재 git untracked 상태이며 **실제 제출물/개인정보 포함 여부 확인** 후
+  익명화·최소화한 픽스처로 커밋할지 결정해야 한다(무단 커밋 금지).
+- worker 모드 분리: `--dry-run`(현재)·`--live`(현재) 외에 **fake-live**(가짜 ECM/Agent)
+  모드를 추가해 CI 에서 전체 흐름을 돌릴 수 있게 한다. settings 정리(§7)와 함께 설계.

@@ -59,6 +59,8 @@ _LIST_OF_STR_KEYS = {
     "forbidden_filename_keywords",
     "texts",
     "after_texts",
+    "requires",
+    "produces",
 }
 _INT_KEYS = {
     "exact_count",
@@ -288,3 +290,82 @@ def validate_rule_spec(spec: dict[str, Any]) -> tuple[list[str], list[str]]:
         config,
         code=spec.get("code", "") or spec.get("name", ""),
     )
+
+
+# ── 규칙셋 의존 그래프 검증 (requires / produces) ──────────────────────────────
+#
+# 규칙은 선행 규칙이 raw_detail.variables 로 남긴 산출 변수를 후속 규칙이 소비한다
+# (예: 시험성적서 → 결함차수 → 결함리포트 → 잔여결함수 → 테스트케이스).
+# 실행 순서는 sort_order 로 정해지므로, 운영자가 Admin 에서 순서를 바꾸거나 규칙을
+# 비활성화하면 후속 규칙이 빈 변수를 받아 "제출물 문제가 아닌데 부적합"이 날 수 있다.
+# 각 규칙이 config 에 requires/produces 를 선언하면 이 검증으로 사전에 잡는다.
+
+
+def _graph_entry(code: str, name: str, sort_order: Any, config: Any) -> dict[str, Any]:
+    cfg = config if isinstance(config, dict) else {}
+    return {
+        "code": code or name or "(규칙)",
+        "sort_order": sort_order if _is_int(sort_order) else 0,
+        "requires": [v for v in (cfg.get("requires") or []) if isinstance(v, str)],
+        "produces": [v for v in (cfg.get("produces") or []) if isinstance(v, str)],
+    }
+
+
+def validate_rule_graph(entries: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
+    """활성 규칙 entries 의 requires/produces 의존 그래프를 검증한다.
+
+    각 entry: {code, sort_order, requires:[str], produces:[str]} (`_graph_entry` 로 생성).
+    호출자가 *실행될 규칙만*(enabled=True) 넘겨야 한다.
+
+    검사:
+    - 각 requires 변수마다, 그 변수를 produces 하는 규칙이 *더 작은 sort_order* 로
+      존재하는가? 없으면 error(후속 규칙이 빈 변수를 받음).
+    - 같은 변수를 2개 이상이 produces → warning(모호).
+
+    Returns (errors, warnings).
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    producers: dict[str, list[tuple[int, str]]] = {}
+    for entry in entries:
+        for var in entry["produces"]:
+            producers.setdefault(var, []).append((entry["sort_order"], entry["code"]))
+
+    for var, plist in sorted(producers.items()):
+        if len(plist) > 1:
+            codes = ", ".join(code for _, code in sorted(plist))
+            warnings.append(f"산출 변수 '{var}'를 여러 규칙이 생성합니다(모호): {codes}")
+
+    for entry in entries:
+        for var in entry["requires"]:
+            plist = producers.get(var)
+            if not plist:
+                errors.append(
+                    f"[{entry['code']}] 가 요구하는 변수 '{var}'를 생성하는 활성 규칙이 없습니다 "
+                    f"(생성 규칙이 비활성화되었거나 오타일 수 있음)."
+                )
+                continue
+            if not any(p_order < entry["sort_order"] for p_order, _ in plist):
+                earliest = min(p_order for p_order, _ in plist)
+                errors.append(
+                    f"[{entry['code']}] (sort_order={entry['sort_order']}) 가 '{var}'를 요구하지만, "
+                    f"이를 생성하는 규칙이 더 늦게/같이 실행됩니다(가장 이른 producer sort_order={earliest}). "
+                    f"sort_order 를 조정하세요."
+                )
+
+    return errors, warnings
+
+
+def validate_rule_graph_from_specs(specs: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
+    """시드 spec 리스트로 그래프 검증(모든 spec 을 실행 대상으로 간주)."""
+    entries = [
+        _graph_entry(
+            spec.get("code", ""),
+            spec.get("name", ""),
+            spec.get("sort_order"),
+            spec.get("config_json") if spec.get("config_json") is not None else spec.get("config"),
+        )
+        for spec in specs
+    ]
+    return validate_rule_graph(entries)

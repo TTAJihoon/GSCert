@@ -9,12 +9,13 @@ from xml.sax.saxutils import escape
 
 from django.core.management import call_command
 from django.db.utils import DatabaseError
-from django.test import RequestFactory, SimpleTestCase, TestCase
+from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from main.models import (
     DownloadReviewJob,
     DownloadReviewJobStatus,
+    DownloadReviewLog,
     DownloadReviewProject,
     DownloadReviewProjectReviewStatus,
     DownloadReviewProjectStatus,
@@ -2989,3 +2990,141 @@ class RuleConfigValidationTests(SimpleTestCase):
         )
         self.assertEqual(errors, [])
         self.assertTrue(any("artifact_column" in w for w in warnings))
+
+
+class RuleGraphValidationTests(SimpleTestCase):
+    """requires/produces 의존 그래프 검증 단위 테스트."""
+
+    def test_seeded_specs_graph_is_valid(self):
+        # 현재 시드 규칙의 requires/produces 그래프는 sort_order 와 정합해야 한다.
+        from main.management.commands.seed_download_review_rules import _rule_specs
+        from main.rule_config_validation import validate_rule_graph_from_specs
+
+        errors, _warnings = validate_rule_graph_from_specs(_rule_specs(only_real=False))
+        self.assertEqual(errors, [], f"그래프 검증 실패: {errors}")
+
+    def test_missing_producer_is_error(self):
+        from main.rule_config_validation import _graph_entry, validate_rule_graph
+
+        entries = [_graph_entry("consumer", "", 10, {"requires": ["잔여결함수"]})]
+        errors, _ = validate_rule_graph(entries)
+        self.assertTrue(any("잔여결함수" in e for e in errors))
+
+    def test_producer_after_consumer_is_error(self):
+        from main.rule_config_validation import _graph_entry, validate_rule_graph
+
+        # producer 가 consumer 보다 늦게(더 큰 sort_order) 실행되면 오류.
+        entries = [
+            _graph_entry("consumer", "", 10, {"requires": ["X"]}),
+            _graph_entry("producer", "", 20, {"produces": ["X"]}),
+        ]
+        errors, _ = validate_rule_graph(entries)
+        self.assertTrue(any("sort_order" in e for e in errors))
+
+    def test_producer_before_consumer_is_valid(self):
+        from main.rule_config_validation import _graph_entry, validate_rule_graph
+
+        entries = [
+            _graph_entry("producer", "", 10, {"produces": ["X"]}),
+            _graph_entry("consumer", "", 20, {"requires": ["X"]}),
+        ]
+        errors, _ = validate_rule_graph(entries)
+        self.assertEqual(errors, [])
+
+    def test_disabled_producer_simulated_as_missing_is_error(self):
+        from main.rule_config_validation import _graph_entry, validate_rule_graph
+
+        # 비활성 producer 는 호출자가 entries 에서 제외 → consumer 만 남으면 오류로 잡힌다.
+        entries = [_graph_entry("consumer", "", 20, {"requires": ["측정항목별점수표"]})]
+        errors, _ = validate_rule_graph(entries)
+        self.assertTrue(any("측정항목별점수표" in e for e in errors))
+
+    def test_duplicate_producer_is_warning(self):
+        from main.rule_config_validation import _graph_entry, validate_rule_graph
+
+        entries = [
+            _graph_entry("p1", "", 10, {"produces": ["X"]}),
+            _graph_entry("p2", "", 11, {"produces": ["X"]}),
+            _graph_entry("c", "", 20, {"requires": ["X"]}),
+        ]
+        errors, warnings = validate_rule_graph(entries)
+        self.assertEqual(errors, [])
+        self.assertTrue(any("여러 규칙이 생성" in w for w in warnings))
+
+
+class WorkerDownloadDirCleanupTests(TestCase):
+    """워커가 다운로드 시작 전 프로젝트 폴더를 비우는 동작(팝업 잔여물 방지)의 회귀 테스트.
+
+    실제 ECM/Agent 없이 합성 다운로드 폴더로 '이전 산출물이 남은' 상태를 재생한다.
+    """
+
+    databases = {"default", "workflow"}
+
+    def _make_project(self, base, project_number="TTA-26-00010"):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            center_code="sangam",
+            project_number=project_number,
+            ecm_row_json={"project_number": project_number},
+            status=DownloadReviewProjectStatus.RUNNING,
+        )
+        return job, project
+
+    def test_clears_leftover_artifacts_before_download(self):
+        from main.views.review.ecm_download_review_worker import _clear_project_download_dir
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
+                job, project = self._make_project(base)
+                proj_dir = Path(base) / project.project_number
+                (proj_dir / "sub").mkdir(parents=True)
+                (proj_dir / "old.txt").write_text("leftover", encoding="utf-8")
+                (proj_dir / "sub" / "nested.pdf").write_bytes(b"%PDF-1.4 leftover")
+
+                _clear_project_download_dir(job, project)
+
+                # 폴더가 통째로 비워졌고(삭제), 사전 정리 로그가 남아야 한다.
+                self.assertFalse(proj_dir.exists())
+                self.assertTrue(
+                    DownloadReviewLog.objects.filter(
+                        job_project=project, event_code="download_preclean"
+                    ).exists()
+                )
+
+    def test_noop_when_folder_absent(self):
+        from main.views.review.ecm_download_review_worker import _clear_project_download_dir
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
+                job, project = self._make_project(base)
+                # 폴더가 없으면 아무 일도 일어나지 않고 로그도 남지 않는다.
+                _clear_project_download_dir(job, project)
+                self.assertFalse((Path(base) / project.project_number).exists())
+                self.assertFalse(
+                    DownloadReviewLog.objects.filter(
+                        job_project=project, event_code="download_preclean"
+                    ).exists()
+                )
+
+    def test_only_target_project_folder_is_removed(self):
+        from main.views.review.ecm_download_review_worker import _clear_project_download_dir
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
+                job, project = self._make_project(base, "TTA-26-00010")
+                target = Path(base) / "TTA-26-00010"
+                other = Path(base) / "TTA-26-99999"
+                target.mkdir()
+                (target / "a.txt").write_text("x", encoding="utf-8")
+                other.mkdir()
+                (other / "b.txt").write_text("y", encoding="utf-8")
+
+                _clear_project_download_dir(job, project)
+
+                # 대상 프로젝트 폴더만 지우고, 다른 프로젝트 폴더는 보존(동시 작업 안전).
+                self.assertFalse(target.exists())
+                self.assertTrue(other.exists())
