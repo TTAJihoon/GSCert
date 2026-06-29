@@ -400,6 +400,25 @@
   overflow: visible;
 }
 
+/* '오류' 열(작업 상세 결과·현재 작업 프로젝트 목록의 마지막 열)은 잘리지 않고
+   전체 내용이 줄바꿈되어 보이도록 한다. ellipsis 클리핑 대신 셀 높이가 늘어난다. */
+.resizable-table[aria-label="작업 상세 결과"] td:last-child,
+.resizable-table[aria-label="현재 작업 프로젝트 목록"] td:last-child {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  vertical-align: top;
+}
+
+.resizable-table[aria-label="작업 상세 결과"] td:last-child .link-button,
+.resizable-table[aria-label="현재 작업 프로젝트 목록"] td:last-child .link-button {
+  display: inline;
+  white-space: normal;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
 .resizable-header {
   user-select: none;
 }

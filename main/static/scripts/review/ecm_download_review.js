@@ -410,8 +410,8 @@ const state = {
 
 const tableColumnDefaults = {
   projectRows: [20, 120, 75, 180, 320, 155, 70, 70, 50],
-  progressRows: [64, 145, 180, 220, 105, 260, 90, 105, 180],
-  resultRows: [145, 180, 220, 105, 115, 80, 240, 145, 180]
+  progressRows: [64, 145, 180, 220, 105, 260, 90, 105, 280],
+  resultRows: [145, 180, 220, 105, 115, 80, 240, 145, 280]
 };
 
 const statusLabel = {
@@ -792,7 +792,10 @@ function isProjectLocked(item) {
 }
 
 function hasInspectionResult(item) {
-  return item.review === "완료" || item.review === "수정 필요" || item.review === "보류";
+  // 점검이 끝난(또는 작업이 실패한) 프로젝트는 모두 상세를 볼 수 있다.
+  // 완료/수정 필요 → 규칙별 점검 결과, 실패/보류 → 실패 오류 내용.
+  // 미점검(이력 없음)만 비활성화한다.
+  return Boolean(item.review) && item.review !== "미점검";
 }
 
 function isProjectSelectable(item) {
@@ -1576,16 +1579,21 @@ function renderLatestInspectionResult(payload) {
   }
 
   if (!payload.items.length) {
+    // 작업이 실패해 규칙 결과가 없는 경우: 작업 조회 탭의 '오류' 값(error_message)과
+    // 상세 내용을 그대로 상세 모달에 표시한다.
+    const titleEl = qs("modalTitle");
+    if (titleEl) titleEl.textContent = `${project.number} 실패 상세`;
+    const eyebrowEl = qs("modalEyebrow");
+    if (eyebrowEl) eyebrowEl.textContent = "오류 상세";
     qs("modalBody").innerHTML = `
       <div class="modal-message warning">
-        <strong>생성된 규칙 결과가 없습니다.</strong>
-        <p>${escapeHtml(project.error || "작업 자체가 실패했거나 아직 규칙 검사가 실행되지 않은 프로젝트입니다.")}</p>
+        <strong>${escapeHtml(project.error || "작업이 실패하여 점검 규칙 결과가 생성되지 않았습니다.")}</strong>
         <dl class="error-detail-list">
-          <dt>최근 작업</dt><dd>${escapeHtml(payload.job?.id || "-")}</dd>
           <dt>상태</dt><dd>${badge(project.statusLabel || project.status)}</dd>
-          <dt>점검결과</dt><dd>${badge(project.review)}</dd>
-          <dt>현재 단계</dt><dd>${escapeHtml(project.step || "-")}</dd>
-          <dt>상세 내용</dt><dd>${escapeHtml(project.errorDetail || "-")}</dd>
+          <dt>실패 단계</dt><dd>${escapeHtml(project.failStep || project.step || "-")}</dd>
+          <dt>오류 요약</dt><dd>${escapeHtml(project.error || "-")}</dd>
+          <dt>상세 내용</dt><dd>${escapeHtml(project.errorDetail || "상세 로그가 없습니다.")}</dd>
+          <dt>최근 작업</dt><dd>${escapeHtml(payload.job?.id || "-")}</dd>
         </dl>
       </div>
     `;
