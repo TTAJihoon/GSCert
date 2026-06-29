@@ -25,16 +25,6 @@ def create_rule_table_if_missing(apps, schema_editor):
     schema_editor.create_model(Model)
 
 
-def drop_rule_table_if_present(apps, schema_editor):
-    Model = apps.get_model("main", "DownloadReviewRule")
-    alias = schema_editor.connection.alias
-    if not router.allow_migrate_model(alias, Model):
-        return
-    table = Model._meta.db_table
-    if table in schema_editor.connection.introspection.table_names():
-        schema_editor.delete_model(Model)
-
-
 class Migration(migrations.Migration):
     """점검규칙(DownloadReviewRule)을 reference(PostgreSQL)로 이전한다(멱등).
 
@@ -51,8 +41,12 @@ class Migration(migrations.Migration):
     ]
 
     operations = [
+        # reverse 는 noop: inspection_rule 은 migration state 상 0001 에서 추가되어
+        # 0005 로 롤백해도 여전히 존재해야 한다. 0006 의 정방향은 legacy 배포용 DB
+        # 보정(state 무변경)이므로, 그 역방향에서 0001 의 테이블을 지우면 state 와
+        # 실제 DB 가 어긋난다. 따라서 reverse 에서는 아무것도 하지 않는다.
         migrations.RunPython(
             create_rule_table_if_missing,
-            drop_rule_table_if_present,
+            migrations.RunPython.noop,
         ),
     ]

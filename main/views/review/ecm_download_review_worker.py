@@ -3,6 +3,7 @@ import os
 import shutil
 import socket
 import time
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 import logging
@@ -28,6 +29,7 @@ from main.views.review.ecm_reference_db import ARTIFACT_REVIEW_COLUMNS, write_pr
 from main.views.review.ecm_download_review_inspection import (
     DownloadReviewCleanupSafetyError,
     DownloadReviewInspectionError,
+    _validate_cleanup_target,
     cleanup_download_dir,
     run_download_inspection,
 )
@@ -198,6 +200,10 @@ async def _run_live_job(job, *, headless=True):
             lock_timeout = getattr(settings, "ECM_AGENT_LOCK_TIMEOUT_SECONDS", 600)
             try:
                 async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
+                    # 다운로드 시작 전, 남아 있는 이전 산출물을 비워 '덮어쓰기 확인'
+                    # 팝업으로 작업이 멈추는 것을 막는다(에이전트 락 안에서 직렬화).
+                    await _run_sync(_clear_project_download_dir, job, project)
+
                     async def _download_folder(relative_path, doc_count):
                         # 폴더별 다운로드 직전에도 취소를 확인해, 한 프로젝트가 여러 폴더를
                         # 받는 도중에도 즉시 멈춘다.
@@ -466,6 +472,64 @@ def _finish_project_after_inspection(job, project, outcome, file_count, file_sum
             "artifact_results": outcome.artifact_results,
             "files": file_summary,
         },
+    )
+
+
+def _clear_project_download_dir(job, project):
+    """프로젝트 다운로드를 *시작하기 전에* 대상 폴더(base/<프로젝트번호>)를 무조건 비운다.
+
+    이전 요청이 점검 도중 실패하면 다운로드 폴더가 정리되지 않고 남는데, 다음 요청에서
+    같은 폴더로 다시 받으면 ECM 에이전트가 '덮어쓰기 확인' 팝업을 띄워 작업이 멈춘다.
+    시작 시 깨끗이 비워 항상 새로 받도록 한다.
+
+    프로젝트 DB 상태(zip_deleted_at 등)는 건드리지 않는다 — 순수 디스크 정리.
+    경로 안전 검증 후 폴더가 있을 때만 삭제하며, 실패해도 작업을 중단시키지 않는다.
+    """
+    base_dir = Path(getattr(settings, "AGENT_DOWNLOAD_BASE_DIR")).resolve()
+    # 팝업 핸들러(ecm_agent_popup)가 만드는 폴더명과 동일하게 NFC 정규화한다.
+    project_number = unicodedata.normalize("NFC", project.project_number)
+    target = (base_dir / project_number).resolve()
+
+    try:
+        _validate_cleanup_target(project.project_number, base_dir, target)
+    except DownloadReviewCleanupSafetyError as exc:
+        DownloadReviewLog.objects.create(
+            job=job,
+            job_project=project,
+            level=DownloadReviewLogLevel.WARNING,
+            event_code="download_preclean_skipped",
+            message=f"{project.project_number} 다운로드 폴더 사전 정리 생략: {exc}",
+            detail_json={"target": str(target), "error": str(exc)},
+            admin_only=True,
+        )
+        return
+
+    if not target.exists():
+        return
+
+    try:
+        file_count = sum(1 for item in target.rglob("*") if item.is_file())
+        shutil.rmtree(target)
+    except Exception as exc:
+        DownloadReviewLog.objects.create(
+            job=job,
+            job_project=project,
+            level=DownloadReviewLogLevel.WARNING,
+            event_code="download_preclean_failed",
+            message=f"{project.project_number} 다운로드 폴더 사전 정리 실패: {exc}",
+            detail_json={"target": str(target), "error": str(exc)},
+            admin_only=True,
+        )
+        return
+
+    DownloadReviewLog.objects.create(
+        job=job,
+        job_project=project,
+        level=DownloadReviewLogLevel.INFO,
+        event_code="download_preclean",
+        message=f"{project.project_number} 다운로드 폴더 사전 정리: 기존 {file_count}개 파일 삭제",
+        detail_json={"target": str(target), "file_count": file_count},
+        admin_only=True,
     )
 
 
