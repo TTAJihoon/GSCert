@@ -227,20 +227,22 @@ pywinauto/Playwright 의 *실제 팝업 거동*은 재현하지 못한다. fake 
   (ECM 탐색/팝업, 로컬 복사 등) → `fetch(project) → 로컬 다운로드 폴더`.
 - **source-agnostic** (워커): 받은 *로컬 폴더*에 대한 검증·보관·점검·상태 전이·정리.
 
+> 📘 코딩 레퍼런스: **`main/docs/33_artifact_source_boundary.md`** (계약·경계·새 source 추가법·fake-live 실행).
+
 ### 도입한 것 (🟢)
 
 - `ArtifactSource` Protocol: `open()` / `fetch(project, on_progress, is_canceled) → FetchResult` / `close()`.
   진행/취소는 콜백으로 주입(Django 모델 비의존).
-- `EcmArtifactSource`: 기존 ECM 함수(`launch_browser`/`run_ecm_recursive_downloads`/
-  `handle_folder_popup_and_download`/`close_browser`)를 래핑. **동작 보존**(behavior-preserving).
-- `LocalFolderArtifactSource`: `source_root/<프로젝트번호>` → 다운로드 폴더로 복사. ECM 대체
-  첫 구현이자 fake-live 더블. `ArtifactSourceSeamTests` 로 ECM 없이 검증.
-- `build_artifact_source(name)` 팩토리. 워커 `_run_live_job` 은 이제 **source 에만 의존**
-  (`source.open()` → `source.fetch()` → `source.close()`). 워커에 ECM 직접 호출 없음.
+- `EcmArtifactSource`: 기존 ECM 함수 래핑 + **ECM 에이전트 락을 어댑터 내부로 이전**(ECM 고유 정책).
+- `LocalFolderArtifactSource`: `source_root/<프로젝트번호>` → 다운로드 폴더 복사. ECM 대체 첫
+  구현이자 fake-live 더블. `ArtifactSourceSeamTests` 로 ECM 없이 검증.
+- `build_artifact_source(name, headless, source_root)` 팩토리. 워커 `_run_live_job` 은 **source 에만 의존**.
+- **source 선택 노출**: `settings.DOWNLOAD_REVIEW_SOURCE`(`ecm`/`local`) + CLI `--source` +
+  `LOCAL_ARTIFACT_SOURCE_ROOT`. `--source=local --live` = fake-live(ECM 없이 전체 흐름).
+  `WorkerSourceSelectionTests` 로 전달 경로 검증.
+- 다운로드 폴더 사전 정리는 워커가 **모든 source 공통**으로 수행(로컬 타깃 준비, source-agnostic).
 
 ### 남은 것 (⬜)
 
-- 락/사전정리 이전: 현재 ECM 에이전트 락과 다운로드 폴더 사전 정리는 워커에 남아 있다
-  (ECM 결합). 진짜 로컬 source 도입 시 **ECM 전용 정책을 `EcmArtifactSource` 내부로 이동**.
-- source 선택을 settings/worker 옵션으로 노출(예: `--source=local`, `DOWNLOAD_REVIEW_SOURCE`).
-- 새 저장소 구현 시 이 Protocol 만 구현하면 됨(계약 테스트로 보장).
+- source 별 동시성 선언(현재 락은 ECM 하드코딩) — 필요 시 Protocol 에 capability 노출.
+- 실제 대체 저장소 구현 시 33번 문서 §5 절차로 진행(Protocol 구현 + 계약 테스트).

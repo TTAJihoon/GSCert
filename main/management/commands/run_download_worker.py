@@ -48,6 +48,16 @@ class Command(BaseCommand):
             help="Show the browser window (for development/debugging).",
         )
         parser.add_argument(
+            "--source",
+            default=None,
+            help=(
+                "Artifact source for --live runs: 'ecm' (default) or 'local'. "
+                "'local' copies from LOCAL_ARTIFACT_SOURCE_ROOT instead of ECM "
+                "(fake-live: full pipeline without ECM/Windows agent). "
+                "Overrides settings.DOWNLOAD_REVIEW_SOURCE."
+            ),
+        )
+        parser.add_argument(
             "--poll-interval",
             type=float,
             default=5.0,
@@ -67,12 +77,14 @@ class Command(BaseCommand):
         headless = not options["no_headless"]
         poll_interval = max(options["poll_interval"], 0.1)
         step_sleep = max(options["step_sleep"], 0.0)
+        source_name = options["source"]
 
         while True:
             result = run_worker_once(
                 dry_run=dry_run,
                 sleep_seconds=step_sleep,
                 headless=headless,
+                source_name=source_name,
             )
             if result.processed:
                 self.stdout.write(

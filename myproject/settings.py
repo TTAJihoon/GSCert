@@ -199,6 +199,11 @@ AGENT_DOWNLOAD_BASE_DIR = os.environ.get(
     'AGENT_DOWNLOAD_BASE_DIR',
     str(Path.home() / 'download'),
 )
+# 산출물 source 선택: 'ecm'(운영 기본) 또는 'local'(LOCAL_ARTIFACT_SOURCE_ROOT 에서 복사).
+# 'local' 은 ECM 없이 워커 전체 흐름을 돌리는 fake-live 용. 자세한 내용은
+# main/docs/33_artifact_source_boundary.md 참고.
+DOWNLOAD_REVIEW_SOURCE = os.environ.get('DOWNLOAD_REVIEW_SOURCE', 'ecm')
+LOCAL_ARTIFACT_SOURCE_ROOT = os.environ.get('LOCAL_ARTIFACT_SOURCE_ROOT', '')
 AGENT_ARCHIVE_BASE_DIR = os.environ.get(
     'AGENT_ARCHIVE_BASE_DIR',
     rf'\\{FILE_SHARE_HOST}\ecm',

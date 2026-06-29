@@ -35,7 +35,6 @@ from main.views.review.ecm_download_review_inspection import (
 )
 from main.views.review.ecm_download_review_centers import worker_allowed_centers
 from main.views.review.artifact_source import JobCanceledError, build_artifact_source
-from main.utils.ecm_agent_lock import async_ecm_agent_lock
 
 
 logger = logging.getLogger("main.views.review.ecm_download_review_worker")
@@ -87,9 +86,9 @@ class WorkerRunResult:
     message: str = ""
 
 
-def run_worker_once(*, dry_run=False, sleep_seconds=0, headless=True):
+def run_worker_once(*, dry_run=False, sleep_seconds=0, headless=True, source_name=None):
     if not dry_run:
-        return _run_live_worker(headless=headless)
+        return _run_live_worker(headless=headless, source_name=source_name)
 
     claim = claim_next_job()
     if claim is None:
@@ -121,8 +120,8 @@ def run_worker_once(*, dry_run=False, sleep_seconds=0, headless=True):
 
 
 
-def _run_live_worker(*, headless=True):
-    """실제 ECM 자동화를 사용하는 worker 실행."""
+def _run_live_worker(*, headless=True, source_name=None):
+    """실제 자동화(기본 ECM, source_name 으로 변경 가능)를 사용하는 worker 실행."""
     claim = claim_next_job()
     if claim is None:
         return WorkerRunResult(
@@ -133,7 +132,7 @@ def _run_live_worker(*, headless=True):
 
     job = claim
     try:
-        asyncio.run(_run_live_job(job, headless=headless))
+        asyncio.run(_run_live_job(job, headless=headless, source_name=source_name))
         job.refresh_from_db()
         return WorkerRunResult(
             processed=True,
@@ -167,7 +166,7 @@ def _job_canceled(job):
     return job.status == DownloadReviewJobStatus.CANCELED
 
 
-async def _run_live_job(job, *, headless=True):
+async def _run_live_job(job, *, headless=True, source_name=None):
     """작업 단위로 browser를 launch/close하고 프로젝트를 순차 처리한다.
 
     각 프로젝트에 대해:
@@ -177,8 +176,14 @@ async def _run_live_job(job, *, headless=True):
     """
     from main.views.review.ecm_download_verify import summarize_files, verify_downloaded_files
 
-    # 산출물 source(현재 ECM). 추후 로컬/다른 저장소로 갈아끼우려면 이 source 만 교체한다.
-    source = build_artifact_source("ecm", headless=headless)
+    # 산출물 source 선택: 인자 > settings.DOWNLOAD_REVIEW_SOURCE > "ecm".
+    # 추후 로컬/다른 저장소로 갈아끼우려면 이 source 만 교체한다(워커 흐름은 불변).
+    source_name = source_name or getattr(settings, "DOWNLOAD_REVIEW_SOURCE", "ecm")
+    source = build_artifact_source(
+        source_name,
+        headless=headless,
+        source_root=getattr(settings, "LOCAL_ARTIFACT_SOURCE_ROOT", None),
+    )
     await source.open()
     try:
         projects = await _run_sync(_projects_for_job, job)
@@ -194,8 +199,6 @@ async def _run_live_job(job, *, headless=True):
             await _run_sync(_touch_job, job, f"{project.project_number} ECM 자동화 진행 중")
             await _run_sync(_mark_project, project, DownloadReviewProjectStatus.RUNNING, "ECM 폴더 선택 중")
 
-            lock_timeout = getattr(settings, "ECM_AGENT_LOCK_TIMEOUT_SECONDS", 600)
-
             async def _on_progress(relative_path, doc_count):
                 path_text = " > ".join([project.project_number, *relative_path])
                 await _run_sync(
@@ -207,17 +210,17 @@ async def _run_live_job(job, *, headless=True):
             async def _is_canceled():
                 return await _run_sync(_job_canceled, job)
 
-            try:
-                async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
-                    # 다운로드 시작 전, 남아 있는 이전 산출물을 비워 '덮어쓰기 확인'
-                    # 팝업으로 작업이 멈추는 것을 막는다(에이전트 락 안에서 직렬화).
-                    await _run_sync(_clear_project_download_dir, job, project)
+            # 다운로드 시작 전, 남아 있는 이전 산출물을 비운다(모든 source 공통: 같은
+            # 폴더로 다시 받을 때 '덮어쓰기 확인' 팝업/혼입 방지). source 동시성 제어
+            # (ECM 에이전트 락 등)는 각 source.fetch 내부 책임이다.
+            await _run_sync(_clear_project_download_dir, job, project)
 
-                    ecm_result = await source.fetch(
-                        project,
-                        on_progress=_on_progress,
-                        is_canceled=_is_canceled,
-                    )
+            try:
+                ecm_result = await source.fetch(
+                    project,
+                    on_progress=_on_progress,
+                    is_canceled=_is_canceled,
+                )
             except JobCanceledError:
                 logger.info("강제 종료 감지(다운로드 중) → 처리를 중단합니다: job=%s", job.id)
                 break

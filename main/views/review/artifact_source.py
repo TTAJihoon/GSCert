@@ -88,6 +88,7 @@ class EcmArtifactSource:
             self._browser = None
 
     async def fetch(self, project, *, on_progress, is_canceled) -> FetchResult:
+        from main.utils.ecm_agent_lock import async_ecm_agent_lock
         from main.views.review.ecm_agent_popup import handle_folder_popup_and_download
         from main.views.review.ecm_download import run_ecm_recursive_downloads
 
@@ -106,12 +107,16 @@ class EcmArtifactSource:
                 project.center_code,
             )
 
-        result = await run_ecm_recursive_downloads(
-            self._browser,
-            project.project_number,
-            center_code=project.center_code,
-            download_callback=_download_folder,
-        )
+        # ECM 단일 Windows 에이전트 동시 사용 방지 락은 ECM 고유 정책이므로 이 어댑터가
+        # 소유한다(로컬 등 다른 source 는 락이 필요 없다).
+        lock_timeout = getattr(settings, "ECM_AGENT_LOCK_TIMEOUT_SECONDS", 600)
+        async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
+            result = await run_ecm_recursive_downloads(
+                self._browser,
+                project.project_number,
+                center_code=project.center_code,
+                download_callback=_download_folder,
+            )
         return FetchResult(
             success=result.success,
             download_dir=result.download_dir,
@@ -174,11 +179,21 @@ class LocalFolderArtifactSource:
         )
 
 
-def build_artifact_source(name: str = "ecm", *, headless: bool = True, **kwargs) -> ArtifactSource:
-    """source 이름으로 구현체를 생성한다(기본: ecm)."""
+def build_artifact_source(
+    name: str = "ecm",
+    *,
+    headless: bool = True,
+    source_root: str | None = None,
+) -> ArtifactSource:
+    """source 이름으로 구현체를 생성한다(기본: ecm).
+
+    - ecm: 운영 기본. Playwright + Windows Agent.
+    - local: `source_root/<프로젝트번호>` 를 다운로드 폴더로 복사(다른 저장소 연결 첫 구현
+      이자 fake-live 테스트용). source_root 미지정 시 settings.LOCAL_ARTIFACT_SOURCE_ROOT 사용.
+    """
     key = (name or "ecm").strip().lower()
     if key == "ecm":
         return EcmArtifactSource(headless=headless)
     if key == "local":
-        return LocalFolderArtifactSource(**kwargs)
+        return LocalFolderArtifactSource(source_root=source_root)
     raise ValueError(f"알 수 없는 artifact source: {name}")

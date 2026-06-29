@@ -3232,3 +3232,20 @@ class ArtifactSourceSeamTests(SimpleTestCase):
         self.assertIsInstance(build_artifact_source("local"), LocalFolderArtifactSource)
         with self.assertRaises(ValueError):
             build_artifact_source("dropbox")
+
+
+class WorkerSourceSelectionTests(SimpleTestCase):
+    """source 선택이 CLI(--source)에서 워커까지 전달되는지 검증."""
+
+    def test_source_option_is_passed_to_worker(self):
+        from main.views.review.ecm_download_review_worker import WorkerRunResult
+
+        with patch(
+            "main.management.commands.run_download_worker.run_worker_once"
+        ) as mock_run:
+            mock_run.return_value = WorkerRunResult(
+                processed=False, status="idle", message="시작 가능한 작업이 없습니다."
+            )
+            call_command("run_download_worker", "--once", "--dry-run", "--source=local")
+
+        self.assertEqual(mock_run.call_args.kwargs.get("source_name"), "local")

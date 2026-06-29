@@ -117,6 +117,10 @@ AGENT_DOWNLOAD_BASE_DIR = os.environ.get(
     "AGENT_DOWNLOAD_BASE_DIR",
     str(Path.home() / "Downloads"),
 )
+# 산출물 source 선택(main/docs/33_artifact_source_boundary.md 참고).
+# 'local' + LOCAL_ARTIFACT_SOURCE_ROOT 로 ECM 없이 워커 흐름을 돌릴 수 있다(fake-live).
+DOWNLOAD_REVIEW_SOURCE = os.environ.get("DOWNLOAD_REVIEW_SOURCE", "ecm")
+LOCAL_ARTIFACT_SOURCE_ROOT = os.environ.get("LOCAL_ARTIFACT_SOURCE_ROOT", "")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 

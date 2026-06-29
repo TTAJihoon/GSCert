@@ -6,6 +6,7 @@
 - `25_local_windows_app_test_manual.md`: Windows 로컬 점검 앱 설치, 실행, 폴더 스캔, `.exe` 패키징 테스트 방법.
 - `26_rulebase_shared_architecture.md`: 점검규칙 저장/실행 구조, 웹/Windows 공유 구조, 업데이트 적용 방안.
 - `27_rule_db_edit_quick_guide.md`: 점검규칙이 저장되는 DB/테이블/컬럼과 실무 수정 예시.
+- `33_artifact_source_boundary.md`: 산출물 획득(ECM/로컬/다른 저장소) 경계, 새 source 추가법, fake-live 실행.
 
 ## 이 문서의 목적
 
@@ -23,6 +24,7 @@
 | Google Sheet 동기화와 WD 컬럼 확인하기 | `20_download_review_operations_manual.md` | `main/utils/ecmList/readme.md`, `02_database_design.md` |
 | API나 화면을 수정하기 | `21_developer_change_manual.md` | `08_ui_api_design.md`, `13_ui_mockup_design.md` |
 | ECM 다운로드 자동화를 수정하기 | `21_developer_change_manual.md` | `03_webpage1_automation.md`, `04_agent_download.md` |
+| ECM 대신 다른 저장소를 붙이거나 ECM 없이 흐름 테스트하기 | `33_artifact_source_boundary.md` | `09_worker_process_design.md`, `04_agent_download.md` |
 | lock, 재시도, 실패 복구를 확인하기 | `06_recovery_and_lock.md` | `09_worker_process_design.md` |
 | LLM 점검을 검토하기 | `17_llm_review_interface.md` | `05_zip_inspection.md` |
 | 남은 결정 사항을 확인하기 | `15_open_decisions.md` | `12_implementation_roadmap.md` |
