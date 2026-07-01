@@ -47,8 +47,10 @@ main/data/ngram_table.npz
 .tmp/
 run/
 
-# Local environment variables (DB 비밀번호 등 민감 정보)
-env.ps1
+# 비밀 환경변수 설정 스크립트(실제 값 포함) — 커밋 금지.
+# env.ps1 은 비밀값이 없어 추적 대상. set-secrets.ps1(실제 값)만 무시하고,
+# set-secrets.ps1.example(플레이스홀더 템플릿)은 커밋한다.
+set-secrets.ps1
 
 # Local Google OAuth credentials
 main/utils/ecmList/credentials.json
