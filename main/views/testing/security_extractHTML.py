@@ -176,6 +176,26 @@ def _extract_vuln_detail_as_json(vuln_block: BeautifulSoup) -> Optional[Dict[str
         "response": _vd_extract_pre_text(detail_container, '.vuln-tab.vuln-resp1-tab'),
     }
 
+def _build_invicti_gpt_prompt(h2_text, defect_summary, defect_description, vuln_detail_json):
+    clean_json_data = {k: v for k, v in (vuln_detail_json or {}).items() if v}
+    prompt_payload = {
+        "invicti_report_title": h2_text,
+        "mapped_defect_summary": defect_summary,
+        "mapped_defect_description": defect_description,
+        "parsed_invicti_detail": clean_json_data,
+    }
+    prompt_body = json.dumps(prompt_payload, indent=2, ensure_ascii=False)
+    return (
+        "아래는 Invicti 보안성 결함 리포트에서 파싱한 내용입니다.\n"
+        "이 정보만으로 실제 보안 결함인지 먼저 판단해줘.\n"
+        "실제 결함이라면 왜 결함인지 설명하고 추천 수정 방안과 검증 방법을 제시해줘.\n"
+        "결함으로 보기 어렵다면 수정 방안을 억지로 만들지 말고 결함이 아닌 이유를 설명해줘.\n"
+        "정보가 부족하면 판단 보류로 답하고 추가 확인이 필요한 증거를 알려줘.\n"
+        "mapped_defect_* 값은 리포트 작성용 변환값이므로, 최종 판단은 parsed_invicti_detail의 증거를 우선해줘.\n"
+        "코드가 포함된 답변이라면 해당 코드는 마크다운 코드 블록으로 감싸줘.\n\n"
+        f"{prompt_body}"
+    )
+
 # --- 4. 메인 추출 함수 ---
 def extract_vulnerability_sections(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
@@ -249,12 +269,11 @@ def extract_vulnerability_sections(html_content):
 
         gpt_prompt = ""
         if vuln_detail_json:
-            clean_json_data = {k: v for k, v in vuln_detail_json.items() if v}
-            prompt_body = json.dumps(clean_json_data, indent=2, ensure_ascii=False)
-            gpt_prompt = (
-                "다음 Invicti 취약점 데이터에 대한 구체적인 해결 방안을 한글로 제시해줘.\n"
-                "코드가 포함된 답변이라면, 해당 코드는 마크다운 코드 블록으로 감싸줘.\n\n"
-                f"{prompt_body}"
+            gpt_prompt = _build_invicti_gpt_prompt(
+                h2_text,
+                defect_summary,
+                defect_description,
+                vuln_detail_json,
             )
 
         parent_container = vuln_desc_div.find_parent(class_='container-fluid')
