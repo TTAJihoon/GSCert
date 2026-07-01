@@ -410,7 +410,16 @@ def wait_for_file_complete(folder: Path, expected_name: str, timeout_sec: int) -
 # Playwright: 웹 탐색/저장 트리거
 # =========================
 def ensure_page(p):
-    browser = p.chromium.launch(headless=False)  # UI 팝업 때문에 headful 필수
+    # ECM 서버는 사설망(로컬 네트워크)이라 Chrome의 Local Network Access 검사에 막힐 수 있다.
+    # chrome://flags 수동 변경은 Playwright가 띄우는 별도 Chromium에는 적용되지 않으므로,
+    # 다운로드 워커(launch_browser)와 동일하게 실행 인자로 해당 검사를 비활성화한다.
+    browser = p.chromium.launch(
+        headless=False,  # UI 팝업 때문에 headful 필수
+        args=[
+            "--disable-features=LocalNetworkAccessCheck,LocalNetworkAccessChecks",
+            "--disable-local-network-access-check",
+        ],
+    )
     context_kwargs = {
         "accept_downloads": False,  # 브라우저 다운로드가 아니라 OS 팝업 방식이라 의미 없음
         "viewport": {"width": 1400, "height": 900},
