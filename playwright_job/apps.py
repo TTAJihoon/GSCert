@@ -42,8 +42,16 @@ async def _ensure_playwright_started():
 async def _launch_browser() -> Browser:
     """브라우저 하나 새로 띄움."""
     await _ensure_playwright_started()
-    # 필요에 따라 firefox/webkit 변경 가능
-    b = await _playwright.chromium.launch(headless=True)
+    # ECM 은 사설망이라 Chrome의 Local Network Access 검사에 막혀 좌측 폴더 트리가
+    # 로드되지 않는다("좌측 트리 로딩 실패"). 다운로드 워커(launch_browser)/weekly 와
+    # 동일하게 해당 검사를 실행 인자로 비활성화한다.
+    b = await _playwright.chromium.launch(
+        headless=True,
+        args=[
+            "--disable-features=LocalNetworkAccessCheck,LocalNetworkAccessChecks",
+            "--disable-local-network-access-check",
+        ],
+    )
     return b
 
 def _is_connected(b: Optional[Browser]) -> bool:
