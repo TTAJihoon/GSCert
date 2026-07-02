@@ -45,8 +45,12 @@ def verify_downloaded_files(
     확인 항목:
     1. 폴더가 존재하는지
     2. 파일이 1개 이상 있는지
-    3. 0바이트 파일이 없는지
-    4. 프로젝트번호를 포함하는 파일이 있는지
+    3. 프로젝트번호를 포함하는 파일이 있는지
+
+    0바이트 파일은 여기서 실패시키지 않는다. 파싱이 필요한 점검 대상 파일이
+    0바이트인 경우는 점검규칙(파서/all_files_non_empty 규칙)이 부적합/오류로
+    잡고, 파싱이 필요 없는 추가 파일(예: 안내용 .txt)이 0바이트인 경우는
+    정상이므로 경고로만 남긴다.
     """
     if not os.path.isdir(download_dir):
         return DownloadVerifyResult(
@@ -93,18 +97,15 @@ def verify_downloaded_files(
             error_message=f"다운로드된 파일이 부족합니다: {file_count}개 (최소 {min_file_count}개)",
         )
 
+    warnings = []
     if empty_files:
-        return DownloadVerifyResult(
-            success=False,
-            download_dir=download_dir,
-            file_count=file_count,
-            total_size=total_size,
-            files=files,
-            error_message="0 byte 다운로드 파일이 있습니다: " + ", ".join(empty_files[:5]),
-            has_project_number_files=has_project_number,
+        warnings.append("0 byte 다운로드 파일이 있습니다: " + ", ".join(empty_files[:5]))
+        logger.info(
+            "0 byte 다운로드 파일 감지(점검규칙에서 판정): %s (%s)",
+            ", ".join(empty_files[:5]),
+            download_dir,
         )
 
-    warnings = []
     if not has_project_number:
         warnings.append("프로젝트 번호가 파일명에 포함된 파일을 찾지 못했습니다.")
         logger.warning(

@@ -504,15 +504,17 @@ class EcmReferenceSheetParserTests(SimpleTestCase):
 
 
 class DownloadVerifyTests(SimpleTestCase):
-    def test_zero_byte_file_fails_verification(self):
+    def test_zero_byte_file_is_warning_not_failure(self):
+        # 0바이트 파일은 다운로드 확인에서 실패시키지 않고 경고로만 남긴다.
+        # (파싱이 필요한 점검 대상이면 점검규칙이 부적합/오류로 잡는다.)
         with tempfile.TemporaryDirectory() as temp_dir:
-            file_path = Path(temp_dir) / "TTA-26-00010_empty.pdf"
-            file_path.write_bytes(b"")
+            (Path(temp_dir) / "TTA-26-00010_안내.txt").write_bytes(b"")
+            (Path(temp_dir) / "TTA-26-00010_보고서.pdf").write_bytes(b"content")
 
             result = verify_downloaded_files(temp_dir, "TTA-26-00010")
 
-        self.assertFalse(result.success)
-        self.assertIn("0 byte", result.error_message)
+        self.assertTrue(result.success)
+        self.assertTrue(any("0 byte" in w for w in result.warnings))
 
     def test_missing_project_number_is_warning_not_failure(self):
         with tempfile.TemporaryDirectory() as temp_dir:

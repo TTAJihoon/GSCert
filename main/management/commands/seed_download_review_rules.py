@@ -178,7 +178,10 @@ def _actual_rule_spec(index, column_name):
                 "filename_keywords": ["계약서", "{project_number}"],
                 "extensions": [".pdf"],
                 "exact_count": 1,
-                "missing_message": "파일이 없습니다.",
+                "folder_missing_message": "계약 폴더를 찾을 수 없습니다",
+                "missing_message": "계약서 파일을 찾을 수 없습니다",
+                "extension_mismatch_message": "계약서 파일이 pdf가 아닙니다",
+                "multiple_message": "계약서 파일이 2개 이상입니다",
                 "pass_message": "계약서 PDF 파일을 확인했습니다.",
             },
         }
@@ -204,14 +207,6 @@ def _actual_rule_spec(index, column_name):
                         "failure_message": "프로젝트 번호가 맞지 않습니다.",
                     },
                     {
-                        "type": "pdf_first_page_label_value_contains",
-                        "extensions": [".pdf"],
-                        "label": "시험신청번호",
-                        "expected": "{project_number}",
-                        "line_window": 3,
-                        "failure_message": "프로젝트 번호가 맞지 않습니다.",
-                    },
-                    {
                         "type": "docx_header_contains",
                         "extensions": WORD_FILE_EXTENSIONS,
                         "text": "{project_number}",
@@ -230,9 +225,11 @@ def _actual_rule_spec(index, column_name):
                         "extensions": [".pdf"],
                         "id": "pdf_first_page",
                         "label": "합의서 1페이지",
+                        "error_message": "이미지 추출에 실패했습니다",
                     }
                 ],
-                "missing_message": "필요한 합의서 파일이 없습니다.",
+                "folder_missing_message": "계약 폴더를 찾을 수 없습니다",
+                "missing_message": "합의서 파일을 찾을 수 없습니다",
                 "pass_message": "합의서 Word/PDF와 시험신청번호를 확인했습니다.",
             },
         }
@@ -246,7 +243,10 @@ def _actual_rule_spec(index, column_name):
                 "filename_keywords": ["수수료산정표", "{project_number}"],
                 "extensions": [".xlsx"],
                 "exact_count": 1,
-                "missing_message": "파일이 없습니다.",
+                "folder_missing_message": "계약 폴더를 찾을 수 없습니다",
+                "missing_message": "수수료산정표 파일을 찾을 수 없습니다",
+                "extension_mismatch_message": "수수료산정표 파일이 xlsx가 아닙니다",
+                "multiple_message": "수수료산정표 파일이 2개 이상입니다",
                 "pass_message": "수수료산정표 Excel 파일을 확인했습니다.",
             },
         }

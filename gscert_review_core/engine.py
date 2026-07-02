@@ -336,8 +336,18 @@ def _evaluate_required_artifact_file(rule, sequence, project, context, verify_re
             config.get("forbidden_message")
             or f"파일명에 {', '.join(forbidden_keywords)} 포함된 파일이 있습니다."
         )
+    elif status == DownloadReviewRuleStatus.PASS:
+        message = config.get("pass_message") or "대상 파일을 확인했습니다."
     else:
-        message = _artifact_file_message(config, status, len(matched), exact_count)
+        message = _artifact_failure_message(
+            rule,
+            config,
+            verify_result,
+            matched=matched,
+            selected_folder=selected_folder,
+            name_keywords=name_keywords,
+            exact_count=exact_count,
+        )
     expected_parts = [
         expected,
     ]
@@ -522,11 +532,19 @@ def _evaluate_document_artifact_check(rule, sequence, project, context, verify_r
     else:
         passed = file_check["passed"] and content_check["passed"]
         status = DownloadReviewRuleStatus.PASS if passed else DownloadReviewRuleStatus.FAIL
-    message = (
-        config.get("pass_message")
-        if status == DownloadReviewRuleStatus.PASS
-        else artifact_check["message"] or file_check["message"] or content_check["message"] or config.get("missing_message")
-    ) or ("문서 내용을 확인했습니다." if status == DownloadReviewRuleStatus.PASS else "문서 내용이 기준과 일치하지 않습니다.")
+    if status == DownloadReviewRuleStatus.PASS:
+        message = config.get("pass_message") or "문서 내용을 확인했습니다."
+    elif status == DownloadReviewRuleStatus.ERROR:
+        message = artifact_check["message"] or "산출물 처리 중 오류가 발생했습니다."
+    else:
+        message = _document_artifact_failure_message(
+            rule,
+            config,
+            verify_result,
+            name_keywords=name_keywords,
+            file_check=file_check,
+            content_check=content_check,
+        )
     expected = " / ".join([*file_check["expected"], *content_check["expected"]])
     actual = " / ".join([*file_check["actual"], *content_check["actual"]]) or _matched_files_actual(matched)
 
@@ -620,12 +638,13 @@ def _evaluate_configured_artifacts(config, matched_files, project, rule):
             else:
                 raise DownloadReviewInspectionError(f"지원하지 않는 산출물 유형입니다: {artifact_type or '(비어 있음)'}")
         except DownloadReviewInspectionError as exc:
+            fail_message = spec.get("error_message") or str(exc)
             detail["passed"] = False
-            detail["message"] = str(exc)
+            detail["message"] = fail_message
             details.append(detail)
             if not error:
                 error = True
-                message = str(exc)
+                message = fail_message
             continue
 
         detail["passed"] = True
@@ -3637,9 +3656,9 @@ def _read_path_bytes(raw_path):
     return data
 
 
-def _files_in_configured_folder(rule, verify_result):
+def _files_in_configured_folder(rule, verify_result, *, ignore_target_file_type=False):
     config = rule.config_json or {}
-    files = _matching_files(rule, verify_result)
+    files = _matching_files(rule, verify_result, ignore_target_file_type=ignore_target_file_type)
     # rawdata zip(예: '..._RAWDATA.zip')의 파일은 rawdata 전용 규칙에서만 사용한다.
     # 일반 규칙이 rawdata의 스크린샷 이미지 폴더를 제출물 폴더로 잘못 선택하지 않도록 제외한다.
     # (최초/최종형상RawData 규칙은 _files_in_configured_folder를 쓰지 않고 직접 rawdata를 필터링한다.)
@@ -3904,12 +3923,103 @@ def _extension_matches(extension, extensions):
     return False
 
 
-def _artifact_file_message(config, status, matched_count, exact_count):
-    if status == DownloadReviewRuleStatus.PASS:
-        return config.get("pass_message") or "대상 파일을 확인했습니다."
-    if exact_count is not None and matched_count > int(exact_count):
+def _artifact_failure_message(
+    rule,
+    config,
+    verify_result,
+    *,
+    matched,
+    selected_folder,
+    name_keywords,
+    exact_count,
+):
+    """required_artifact_file 규칙의 실패 사유를 세분화해 메시지를 고른다.
+
+    실패 원인을 (폴더 없음 → 개수 초과 → 파일명 없음 → 확장자 불일치) 순서로
+    판정한다. 확장자 필터 때문에 원인 파악이 왜곡되지 않도록, 진단 단계에서는
+    target_file_type 확장자 필터를 무시하고 폴더/파일명 기준으로 후보를 다시 찾는다.
+    각 원인별 메시지 config 키가 없으면 기존 동작(missing_message)으로 되돌아간다.
+    """
+    default_missing = config.get("missing_message") or "파일이 없습니다."
+    folder_chain = config.get("folder_keyword_chain")
+
+    files_any_ext, selected_folder_any = _files_in_configured_folder(
+        rule, verify_result, ignore_target_file_type=True
+    )
+
+    # 1) 대상 폴더 자체를 찾지 못함
+    if folder_chain and not selected_folder_any:
+        return config.get("folder_missing_message") or default_missing
+
+    # 2) 개수 초과(요구 개수보다 많이 발견)
+    if exact_count is not None and len(matched) > int(exact_count):
         return config.get("multiple_message") or "대상 파일이 여러개 존재합니다."
-    return config.get("missing_message") or "파일이 없습니다."
+
+    name_matched = [
+        file_info
+        for file_info in files_any_ext
+        if (not name_keywords or _name_contains_all(file_info.name, name_keywords))
+    ]
+
+    # 3) 폴더는 있으나 파일명 조건을 만족하는 파일이 아예 없음
+    if not name_matched:
+        return default_missing
+
+    # 4) 파일명은 맞지만 요구 확장자가 아님
+    if not matched:
+        return config.get("extension_mismatch_message") or default_missing
+
+    return default_missing
+
+
+def _extension_missing_label(extensions):
+    """실패 메시지용 확장자 라벨. Word 계열은 'Word', 그 외는 'pdf', 'png/pptx' 형태."""
+    normalized = [ext for ext in (_normalize_extension(e) for e in extensions) if ext]
+    if not normalized:
+        return "대상"
+    if set(normalized) <= set(WORD_EXTENSIONS):
+        return "Word"
+    return "/".join(ext.lstrip(".") for ext in normalized)
+
+
+def _document_artifact_failure_message(
+    rule,
+    config,
+    verify_result,
+    *,
+    name_keywords,
+    file_check,
+    content_check,
+):
+    """document_artifact_check 실패 사유를 (폴더 → 파일명 → 확장자 → 내용) 순서로 구분한다.
+
+    확장자 필터가 원인 파악을 왜곡하지 않도록 진단 시 target_file_type 필터를
+    무시하고 폴더/파일명 기준으로 후보를 다시 찾는다.
+    """
+    folder_chain = config.get("folder_keyword_chain")
+    files_any_ext, selected_folder_any = _files_in_configured_folder(
+        rule, verify_result, ignore_target_file_type=True
+    )
+
+    # 1) 대상 폴더 자체를 찾지 못함
+    if folder_chain and not selected_folder_any:
+        return config.get("folder_missing_message") or config.get("missing_message") or "대상 폴더를 찾을 수 없습니다."
+
+    # 2) 폴더는 있으나 파일명 조건을 만족하는 파일이 없음
+    name_matched = [
+        file_info
+        for file_info in files_any_ext
+        if (not name_keywords or _name_contains_all(file_info.name, name_keywords))
+    ]
+    if not name_matched:
+        return config.get("missing_message") or "대상 파일을 찾을 수 없습니다."
+
+    # 3) 파일명은 맞지만 필요한 확장자 파일이 없음(_evaluate_required_file_specs 가 확장자별 메시지 생성)
+    if not file_check["passed"]:
+        return file_check["message"] or config.get("missing_message") or "필요한 파일을 찾을 수 없습니다."
+
+    # 4) 내용 검사 실패
+    return content_check["message"] or "문서 내용이 기준과 일치하지 않습니다."
 
 
 def _matched_files_actual(files):
@@ -3963,7 +4073,12 @@ def _evaluate_required_file_specs(config, matched_files):
         })
         if not spec_passed:
             passed = False
-            message = spec.get("message") or config.get("missing_message") or "필요한 파일이 없습니다."
+            if spec.get("message"):
+                message = spec["message"]
+            elif extensions:
+                message = f"{_extension_missing_label(extensions)} 파일을 찾을 수 없습니다"
+            else:
+                message = config.get("missing_message") or "필요한 파일을 찾을 수 없습니다"
 
     return {
         "passed": passed,
