@@ -11,7 +11,6 @@
 <script src="{% static 'scripts/testing/history_set_date.js' %}" defer></script>
 <script src="{% static 'scripts/testing/history_Listener.js' %}" defer></script>
 <script src="{% static 'scripts/testing/history_resizable_columns.js' %}" defer></script>
-<script src="{% static 'scripts/testing/history_ECM.js' %}" defer></script>
 <script src="{% static 'scripts/testing/history_document.js' %}" defer></script>
 {% endblock %}
 
@@ -138,7 +137,6 @@
             <col class="col-wd">
             <col class="col-renewal">
             <col class="col-document">
-            <col class="col-ecm">
           </colgroup>
           <thead>
             <tr>
@@ -155,7 +153,6 @@
               <th class="col-wd">WD</th>
               <th class="col-renewal">재계약</th>
               <th class="col-document">문서</th>
-              <th class="col-ecm">ECM</th>
             </tr>
           </thead>
           <tbody id="resultsTableBody">
@@ -176,11 +173,6 @@
               <td class="action-cell">
                 <button type="button" class="table-icon-btn document-download-btn" title="문서 다운로드" aria-label="문서 다운로드">
                   <i class="fas fa-file-arrow-down"></i>
-                </button>
-              </td>
-              <td class="action-cell">
-                <button type="button" class="table-icon-btn download-btn" title="ECM 열기" aria-label="ECM 열기">
-                  <i class="fas fa-download"></i>
                 </button>
               </td>
             </tr>
@@ -216,7 +208,6 @@
             <col class="col-wd">
             <col class="col-renewal">
             <col class="col-document">
-            <col class="col-ecm">
           </colgroup>
           <thead>
             <tr>
@@ -233,7 +224,6 @@
               <th class="col-wd">WD</th>
               <th class="col-renewal">재계약</th>
               <th class="col-document">문서</th>
-              <th class="col-ecm">ECM</th>
             </tr>
           </thead>
         </table>

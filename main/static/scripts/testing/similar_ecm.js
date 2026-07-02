@@ -1,5 +1,7 @@
 // similar_ECM.js
-// - download-btn 클릭 → (시험번호로 DB 캐시 조회 후 있으면 바로 success) / (없으면 ECM 자동화) → URL 새 탭 오픈
+// - download-btn 클릭 → 문서 다운로드 방식(action:"document"):
+//   report\<시험번호> 폴더에 파일이 있으면 즉시, 없으면 ECM에서 전체 문서 다운로드 →
+//   서버가 ZIP으로 묶어 반환(download_url) → 브라우저에서 ZIP 다운로드.
 // - similar 페이지는 "테이블"이 아니라 카드 DOM에서 인증일자/시험번호를 뽑는다.
 
 (function () {
@@ -131,8 +133,8 @@
           return;
         }
 
-        if (msg.status === "success" && msg.url) {
-          return done(resolve, msg.url);
+        if (msg.status === "success" && msg.download_url) {
+          return done(resolve, msg.download_url);
         }
 
         if (msg.status === "error") {
@@ -160,55 +162,26 @@
       return;
     }
 
-    // 팝업 차단 회피를 위해 '클릭 순간'에 about:blank 탭을 하나 잡아두고,
-    // 완료되면 그 탭을 URL로 이동시킨다. (이후 현재 탭으로 포커스 복귀 시도)
-    let popup = null;
-    try {
-      popup = window.open("about:blank", "_blank", "noopener,noreferrer");
-      // 브라우저에 따라 포커스가 이동할 수 있어서 원래 탭으로 복귀 시도
-      window.focus();
-    } catch (e) {
-      popup = null;
-    }
+    setLoading(true, "문서 다운로드", "ECM에서 문서를 다운로드하는 중입니다...");
 
-    setLoading(true, "대기중", "ECM/DB에서 URL을 조회 중입니다...");
-
-    const payload = { "인증일자": certDate, "시험번호": testNo };
+    // 문서 다운로드 방식: report\<시험번호> 로 전체 문서 다운로드 → ZIP 링크 반환
+    const payload = { "인증일자": certDate, "시험번호": testNo, "action": "document" };
 
     runJobOnce(payload, ({ title, desc }) => setLoading(true, title, desc))
-      .then((url) => {
+      .then((downloadUrl) => {
         setLoading(false);
-
-        if (popup && !popup.closed) {
-          try {
-            popup.location.href = url;
-            window.focus();
-            return;
-          } catch (e) {
-            try { popup.close(); } catch (_) {}
-          }
-        }
-
-        // fallback: 그냥 새 탭
-        try {
-          window.open(url, "_blank", "noopener,noreferrer");
-        } catch (err) {
-          const a = document.createElement("a");
-          a.href = url;
-          a.target = "_blank";
-          a.rel = "noopener noreferrer";
-          document.body.appendChild(a);
-          a.click();
-          a.remove();
-        }
+        // ZIP 첨부 다운로드 (새 탭 X)
+        const a = document.createElement("a");
+        a.href = downloadUrl;
+        a.download = "";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
       })
       .catch((err) => {
         setLoading(false);
-        if (popup && !popup.closed) {
-          try { popup.close(); } catch (_) {}
-        }
         console.error(err);
-        alert("작업 실패: " + (err?.message || String(err)));
+        alert("문서 다운로드 실패: " + (err?.message || String(err)));
       });
   });
 })();
