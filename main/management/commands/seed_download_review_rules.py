@@ -260,17 +260,26 @@ def _actual_rule_spec(index, column_name):
                 "filename_keywords": ["구성도", "{project_number}"],
                 "extensions": [".png", ".pptx"],
                 "min_count": 1,
-                "missing_message": "파일이 없습니다.",
+                "folder_missing_message": "시험계획 폴더를 찾을 수 없습니다",
+                "missing_message": "시험환경구성도 파일을 찾을 수 없습니다",
+                "extension_mismatch_message": "시험환경구성도 파일이 png/pptx가 아닙니다",
                 "pass_message": "시험환경구성도 파일을 확인했습니다.",
             },
         }
     if column_name == "품질특성별제품정보기재사항":
         title_terms = ["{project_number}", "품질특성별"]
+        # 다양한 날짜 표기를 최대한 커버한다.
+        #   2026-07-03 / 2026.7.3 / 2026/07/03 / 2026. 7. 3. / 2026년 7월 3일
+        #   07-03 / 7.3 / 7월 3일 (연도 생략), 요일 표기·괄호·마침표 허용.
         date_regex = (
-            r"^\(?\s*(?:"
-            r"\d{4}\s*[-./년]\s*\d{1,2}\s*[-./월]\s*\d{1,2}\s*일?"
-            r"|\d{1,2}\s*[-./월]\s*\d{1,2}\s*일?"
-            r")\s*\.?\s*\)?$"
+            r"^\s*"
+            r"[\(\[]?\s*"                                        # 선택적 여는 괄호
+            r"(?:\d{4}\s*[-./년]\s*)?"                            # 선택적 연도(4자리)+구분자
+            r"\d{1,2}\s*[-./월]\s*"                               # 월+구분자
+            r"\d{1,2}\s*(?:일)?"                                  # 일(+선택적 '일')
+            r"(?:\s*[\(\[]?\s*[월화수목금토일](?:요일)?\s*[\)\]]?)?"  # 선택적 요일 표기
+            r"\s*\.?\s*"                                          # 선택적 마침표
+            r"[\)\]]?\s*$"                                        # 선택적 닫는 괄호
         )
         return {
             **common,
@@ -300,7 +309,8 @@ def _actual_rule_spec(index, column_name):
                         "failure_message": "1페이지 날짜가 잘못되었습니다.",
                     },
                 ],
-                "missing_message": "파일명이 잘못되었습니다.",
+                "folder_missing_message": "시험계획 폴더를 찾을 수 없습니다",
+                "missing_message": "품질특성별제품정보기재사항 파일을 찾을 수 없습니다",
                 "pass_message": "품질특성별 문서의 프로젝트번호, 제목 문구, 날짜를 확인했습니다.",
             },
         }
@@ -318,10 +328,16 @@ def _actual_rule_spec(index, column_name):
                 "title_text": "{project_number} 기능리스트",
                 "author_label": "작성자",
                 "capture_anchor": "대분류",
-                "missing_message": "파일이 없습니다.",
-                "multiple_message": "기능리스트 파일이 여러개 존재함",
+                "folder_missing_message": "시험계획 폴더를 찾을 수 없습니다",
+                "missing_message": "기능리스트 파일을 찾을 수 없습니다",
+                "extension_mismatch_message": "기능리스트 파일이 xlsx/xls가 아닙니다",
+                "multiple_message": "기능리스트 파일이 2개 이상입니다",
+                "parse_error_message": "기능리스트 파일을 읽을 수 없습니다",
                 "sheet_count_message": "불필요한 시트가 존재",
-                "content_message": "시험번호 또는 작성자가 잘못 작성됨",
+                "forbidden_header_texts": ["TTA"],
+                "forbidden_header_message": "머리글에 프로젝트번호가 작성되면 안됨",
+                "forbidden_footer_texts": ["TPG", "TIS"],
+                "forbidden_footer_message": "바닥글에 서식번호가 작성되면 안됨",
                 "pass_message": "기능리스트를 확인했습니다.",
             },
         }
@@ -340,6 +356,11 @@ def _actual_rule_spec(index, column_name):
                     {"extensions": [".pdf"], "exact_count": 1},
                 ],
                 "manager_expected": "김진영",
+                "manager_expected_by_center": {
+                    "bundang": "임우섭",
+                    "sangam": "김진영",
+                    "yeongnam": "이재훈",
+                },
                 "product_name_label": "소프트웨어 명",
                 "version_label": "버전",
                 "application_number_label": "시험신청번호",
@@ -361,7 +382,12 @@ def _actual_rule_spec(index, column_name):
                 "spec_marker": "<세부사양>",
                 "report_spec_variable": "시험성적서_세부사양표",
                 "pdf_artifact_label": "시험계획서 1페이지",
-                "missing_message": "파일이 없습니다.",
+                "folder_missing_message": "시험계획 폴더를 찾을 수 없습니다",
+                "missing_message": "시험계획서 파일을 찾을 수 없습니다",
+                "multiple_message": "시험계획서 파일이 2개 이상입니다",
+                "word_missing_message": "시험계획서 Word 파일을 찾을 수 없습니다",
+                "pdf_missing_message": "시험계획서 pdf 파일을 찾을 수 없습니다",
+                "parse_error_message": "시험계획서 파일을 읽을 수 없습니다",
                 "date_message": "시험계획서 날짜가 잘못 작성됨",
                 "manager_message": "시험계획서 담당자가 잘못 작성됨",
                 "pl_message": "시험계획서 PL이 잘못 작성됨",
@@ -384,6 +410,9 @@ def _actual_rule_spec(index, column_name):
                 "folder_keyword_chain": ["설계"],
                 "min_images_per_folder": 5,
                 "required_candidate_folder_count": 2,
+                "fallback_folder_keywords": ["스크린샷", "형상"],
+                "rawdata_missing_message": "rawdata 폴더를 찾을 수 없습니다",
+                "folder_missing_message": "설계·스크린샷·형상 폴더를 찾을 수 없습니다",
                 "folder_message": "제품 스크린샷 폴더를 찾을 수 없음",
                 "date_message": "제품 스크린샷 생성일이 시험기간과 다름",
                 "pass_message": "제품 스크린샷 rawdata를 확인했습니다.",
@@ -413,7 +442,11 @@ def _actual_rule_spec(index, column_name):
                         "message": "테스트케이스 바닥글에 '소프트웨어시험인증연구소'라는 단어가 잘못 작성됨",
                     },
                 ],
-                "missing_message": "파일이 존재하지 않음",
+                "folder_missing_message": "설계 폴더를 찾을 수 없습니다",
+                "missing_message": "테스트케이스 파일을 찾을 수 없습니다",
+                "extension_mismatch_message": "테스트케이스 파일이 xlsx/xls가 아닙니다",
+                "multiple_message": "테스트케이스 파일이 2개 이상입니다",
+                "parse_error_message": "테스트케이스 파일을 읽을 수 없습니다",
                 "sheet_count_message": "테스트케이스 시트가 1개 이상임",
                 "project_number_message": "프로젝트 번호가 잘못 작성됨",
                 "author_message": "작성자 또는 검토자가 잘못 작성됨",
@@ -448,9 +481,15 @@ def _actual_rule_spec(index, column_name):
                         "message": "결함리포트 바닥글에 '소프트웨어시험인증연구소'라는 단어가 잘못 작성됨",
                     },
                 ],
+                "folder_missing_message": "수행 폴더를 찾을 수 없습니다",
+                "missing_message": "결함리포트 파일을 찾을 수 없습니다",
+                "extension_mismatch_message": "결함리포트 파일이 xlsx/xls가 아닙니다",
+                "parse_error_message": "결함리포트 파일을 읽을 수 없습니다",
                 "filename_message": "결함리포트 파일명이 잘못됨",
-                "sheet_message": "{file_name}에 시트가 잘못 작성됨",
-                "environment_message": "시험환경 정보 잘못 작성됨",
+                "header_message": "결함리포트 머리글에 프로젝트번호가 작성됨",
+                "footer_message": "결함리포트 바닥글에 '소프트웨어시험인증연구소'가 작성됨",
+                "sheet_message": "결함리포트 시트 구성이 잘못됨",
+                "environment_message": "시험환경 정보가 잘못 작성됨",
                 "report_date_message": "프로젝트 번호, 결함 차시, 보고일자 중 잘못된 값이 작성됨",
                 "pass_message": "결함리포트를 확인했습니다.",
             },
@@ -487,7 +526,10 @@ def _actual_rule_spec(index, column_name):
                         "message": "점검표 바닥글에 '한국정보통신기술협회'라는 단어가 누락됨",
                     },
                 ],
-                "missing_message": "파일이 존재하지 않음",
+                "folder_missing_message": "설계 폴더를 찾을 수 없습니다",
+                "missing_message": "점검표 파일을 찾을 수 없습니다",
+                "excel_missing_message": "점검표 Excel 파일을 찾을 수 없습니다",
+                "parse_error_message": "점검표 파일을 읽을 수 없습니다",
                 "header_message": "머리글(프로젝트번호)이 잘못 작성됨",
                 "cover_title_message": "표지 제목이 잘못 작성됨",
                 "cover_date_message": "표지 날짜가 잘못 작성됨",
@@ -505,6 +547,7 @@ def _actual_rule_spec(index, column_name):
             "rule_type": "rawdata_folder_structure_check",
             "config_json": {
                 "artifact_column": column_name,
+                "missing_zip_message": "rawdata 폴더를 찾을 수 없습니다",
                 "folder_checks": [
                     {
                         "keyword": "결함",
@@ -543,7 +586,12 @@ def _actual_rule_spec(index, column_name):
                 ],
                 "spec_marker": "<세부사양>",
                 "pdf_artifact_label": "시험성적서 1페이지",
-                "missing_message": "파일이 없습니다.",
+                "folder_missing_message": "시험종료 폴더를 찾을 수 없습니다",
+                "missing_message": "시험성적서 파일을 찾을 수 없습니다",
+                "multiple_message": "시험성적서 파일이 2개 이상입니다",
+                "word_missing_message": "시험성적서 Word 파일을 찾을 수 없습니다",
+                "pdf_missing_message": "시험성적서 pdf 파일을 찾을 수 없습니다",
+                "parse_error_message": "시험성적서 파일을 읽을 수 없습니다",
                 "round_date_message": "결함리포트 송부 정보 확인 불가",
                 "pass_message": "시험성적서를 확인했습니다.",
             },

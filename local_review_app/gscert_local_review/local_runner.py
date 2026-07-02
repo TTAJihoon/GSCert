@@ -149,6 +149,7 @@ def _build_context(project_number: str, metadata: Any | None):
         request_date=_meta(metadata, "request_date"),
         contract_date=_meta(metadata, "contract_date"),
         certification_committee_date=_meta(metadata, "cert_date", "certification_committee_date"),
+        center=_meta(metadata, "center_code", "center"),
     )
 
 

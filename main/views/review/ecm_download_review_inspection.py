@@ -227,6 +227,7 @@ def _build_rule_context(project):
         request_date=ecm_row.get("request_date") or ecm_row.get("신청일") or "",
         contract_date=ecm_row.get("contract_date") or ecm_row.get("계약일") or "",
         certification_committee_date=ecm_row.get("cert_date") or ecm_row.get("인증일자") or "",
+        center=getattr(project, "center_code", "") or "",
     )
 
 
