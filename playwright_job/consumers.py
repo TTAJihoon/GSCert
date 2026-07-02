@@ -14,7 +14,7 @@ from django.conf import settings
 from main.utils.ecm_agent_lock import async_ecm_agent_lock
 
 from .apps import get_browser_safe
-from .tasks import run_playwright_task_on_page, StepError
+from .tasks import run_playwright_task_on_page, run_document_download_on_page, StepError
 
 logger_ws = logging.getLogger("playwright_job.ws")
 logger_worker = logging.getLogger("playwright_job.worker")
@@ -143,6 +143,30 @@ async def db_upsert_url(test_no: str, url: str) -> None:
         await asyncio.to_thread(_db_upsert_url_sync, test_no, url)
 
 
+# ---------------- report 폴더 캐시 ----------------
+def _report_base_dir() -> str:
+    return getattr(settings, "AGENT_REPORT_BASE_DIR", r"C:\Users\Administrator\report")
+
+
+def _report_dir(test_no: str):
+    import os
+    import unicodedata
+    from pathlib import Path
+    return Path(os.path.join(_report_base_dir(), unicodedata.normalize("NFC", str(test_no))))
+
+
+def _report_dir_has_files(test_no: str) -> bool:
+    """report\\<시험번호> 폴더가 있고 파일이 1개 이상이면 True(=캐시 hit)."""
+    import os
+    folder = str(_report_dir(test_no))
+    if not os.path.isdir(folder):
+        return False
+    for _root, _dirs, files in os.walk(folder):
+        if files:
+            return True
+    return False
+
+
 # ---------------- Worker orchestration ----------------
 def _ensure_worker_thread() -> asyncio.AbstractEventLoop:
     """Playwright 전용 워커 스레드(ProactorEventLoop)를 1회만 기동하고 그 루프를 반환한다.
@@ -175,7 +199,7 @@ def _ensure_worker_thread() -> asyncio.AbstractEventLoop:
         return _worker_loop_obj
 
 
-async def _submit_and_wait(cert_date: str, test_no: str, request_ip: str) -> Dict[str, Any]:
+async def _submit_and_wait(cert_date: str, test_no: str, request_ip: str, action: str) -> Dict[str, Any]:
     """워커 루프에서 실행: 큐에 잡을 넣고(같은 루프의 Future) 결과를 기다린다."""
     assert _job_queue is not None
     fut: asyncio.Future = asyncio.get_running_loop().create_future()
@@ -184,13 +208,14 @@ async def _submit_and_wait(cert_date: str, test_no: str, request_ip: str) -> Dic
             "cert_date": cert_date,
             "test_no": test_no,
             "request_ip": request_ip,
+            "action": action,
             "future": fut,
         }
     )
     return await fut
 
 
-async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) -> Dict[str, Any]:
+async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str, action: str = "url") -> Dict[str, Any]:
     """작업을 워커 스레드(Proactor 루프)에 넘기고 결과를 기다려 반환한다.
 
     ASGI(Selector) 루프 → 워커(Proactor) 루프로 run_coroutine_threadsafe 로 넘기고,
@@ -202,7 +227,7 @@ async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) 
     queue_total = queue_position
 
     cfut = asyncio.run_coroutine_threadsafe(
-        _submit_and_wait(cert_date, test_no, request_ip), worker_loop
+        _submit_and_wait(cert_date, test_no, request_ip, action), worker_loop
     )
     result = await asyncio.wrap_future(cfut)
     return {
@@ -247,18 +272,24 @@ async def _worker_loop() -> None:
                 ecm_page = await ecm_context.new_page()
                 logger_worker.info("context_page_ready")
 
-            # 3) 실제 작업 실행
+            # 3) 실제 작업 실행 (action 에 따라 URL 복사 / 문서 다운로드 분기)
+            action = job.get("action", "url")
             lock_timeout = getattr(settings, "ECM_AGENT_LOCK_TIMEOUT_SECONDS", 600)
             async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
-                result = await asyncio.wait_for(
-                    run_playwright_task_on_page(
-                        ecm_page,
-                        cert_date,
-                        test_no,
-                        request_ip=request_ip,
-                    ),
-                    timeout=120,
-                )
+                if action == "document":
+                    result = await asyncio.wait_for(
+                        run_document_download_on_page(
+                            ecm_page, cert_date, test_no, request_ip=request_ip,
+                        ),
+                        timeout=600,  # 파일 다운로드는 URL 복사보다 오래 걸림
+                    )
+                else:
+                    result = await asyncio.wait_for(
+                        run_playwright_task_on_page(
+                            ecm_page, cert_date, test_no, request_ip=request_ip,
+                        ),
+                        timeout=120,
+                    )
 
             if fut is not None and not fut.cancelled():
                 fut.set_result(result)
@@ -302,6 +333,60 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
         except Exception:
             pass
 
+    async def _handle_document_action(self, cert_date: str, test_no: str, request_ip: str) -> None:
+        """'문서' 버튼: report\\<시험번호> 폴더에 파일이 있으면 그 ZIP 링크를 즉시 반환하고,
+        없으면 ECM 에서 전체 문서를 다운로드한 뒤 링크를 반환한다."""
+        from urllib.parse import quote
+
+        download_url = f"/history/report/{quote(test_no)}/download/"
+
+        # 1) 캐시: report 폴더에 파일이 이미 있으면 ECM 접속 없이 즉시 전달
+        try:
+            has_files = await asyncio.to_thread(_report_dir_has_files, test_no)
+        except Exception:
+            has_files = False
+        if has_files:
+            await self._safe_send({"status": "processing", "message": "저장된 문서 확인 완료..."})
+            await self._safe_send({"status": "success", "download_url": download_url, "source": "cache"})
+            await self.close()
+            return
+
+        # 2) ECM 다운로드
+        try:
+            await asyncio.to_thread(_ensure_worker_thread)
+            await self._safe_send({"status": "wait", "message": "ECM 작업 큐에 등록 중..."})
+        except Exception:
+            pass
+        await self._safe_send({"status": "processing", "message": "ECM에서 문서를 다운로드 중입니다..."})
+
+        try:
+            await enqueue_playwright_job(cert_date, test_no, request_ip=request_ip, action="document")
+            if not await asyncio.to_thread(_report_dir_has_files, test_no):
+                raise RuntimeError("다운로드된 문서를 찾을 수 없습니다.")
+            await self._safe_send({"status": "success", "download_url": download_url, "source": "ecm"})
+        except StepError as e:
+            await self._safe_send(
+                {
+                    "status": "error",
+                    "message": f"{test_no}의 ECM 문서 다운로드를 실패하였습니다. 다시 요청해주세요.",
+                    "step": getattr(e, "step_no", None),
+                    "error_kind": getattr(e, "error_kind", None),
+                    "screenshot": getattr(e, "screenshot", None),
+                }
+            )
+        except Exception:
+            await self._safe_send(
+                {
+                    "status": "error",
+                    "message": f"{test_no}의 ECM 문서 다운로드를 실패하였습니다. 다시 요청해주세요.",
+                }
+            )
+        finally:
+            try:
+                await self.close()
+            except Exception:
+                pass
+
     async def receive(self, text_data=None, bytes_data=None):
         request_ip = self._client_ip()
 
@@ -320,6 +405,13 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
         if not cert_date or not test_no:
             await self._safe_send({"status": "error", "message": "인증일자/시험번호가 누락되었습니다."})
             await self.close()
+            return
+
+        action = (payload.get("action") or "url").strip()
+
+        # === '문서' 버튼: report\<시험번호> 로 ECM 문서 전체 다운로드 → ZIP 링크 반환 ===
+        if action == "document":
+            await self._handle_document_action(cert_date, test_no, request_ip)
             return
 
         # 2) DB 캐시 먼저 조회 (hit면 ECM 접속/큐 없이 바로 success)

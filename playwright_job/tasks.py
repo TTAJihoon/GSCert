@@ -93,6 +93,75 @@ async def run_playwright_task_on_page(
     return {"url": url}
 
 
+async def run_document_download_on_page(
+    page: Page,
+    cert_date: str,
+    test_no: str,
+    request_ip: str = "-",
+) -> Dict[str, str]:
+    """'문서' 버튼용: S1~S6(기존 탐색) → 문서 전체선택+파일다운로드 → report\\<시험번호>
+    폴더로 다운로드. 다운로드된 폴더 경로를 반환한다(브라우저 전달은 컨슈머가 처리).
+
+    S7~S8 의 전체선택/다운로드 트리거와 폴더 팝업 처리는 ECM 산출물 점검용 검증 코드를
+    재사용한다(main.views.review.ecm_download / ecm_agent_popup).
+    """
+    import asyncio
+    import os
+    import unicodedata
+
+    from django.conf import settings
+    from main.views.review.ecm_download import select_all_documents, click_download_menu
+    from main.views.review.ecm_agent_popup import handle_folder_popup_and_download
+
+    year, yyyymmdd = parse_cert_date(cert_date)
+
+    # S1~S6: 기존 인증일자 경로 탐색(시험번호 폴더까지)
+    await _run_step(page, 1, "페이지 이동 실패", request_ip, goto_base(page))
+    await _run_step(page, 2, "좌측 트리 로딩 실패", request_ip, wait_left_tree(page))
+    await _run_step(page, 3, "연도 폴더 클릭 실패", request_ip, click_year(page, year))
+    await _run_step(page, 4, "위원회 폴더 클릭 실패", request_ip, click_committee(page))
+    await _run_step(page, 5, "인증일자 폴더 클릭 실패", request_ip, click_date_folder(page, yyyymmdd))
+    await _run_step(page, 6, "시험번호 폴더 클릭 실패", request_ip, click_test_folder(page, test_no))
+
+    report_base = getattr(settings, "AGENT_REPORT_BASE_DIR", r"C:\Users\Administrator\report")
+    folder_name = unicodedata.normalize("NFC", str(test_no))
+
+    # S7: 문서 목록 전체 선택
+    try:
+        count = await select_all_documents(page)
+    except StepError:
+        raise
+    except Exception:
+        raise await _step_error(page, 7, "문서 전체 선택 실패", request_ip)
+    if not count:
+        raise await _step_error(page, 7, "다운로드할 문서가 없습니다", request_ip)
+
+    # S7: '파일 다운로드' 메뉴 클릭 → 다운로드 폴더 팝업 발생
+    await _run_step(page, 7, "파일 다운로드 메뉴 클릭 실패", request_ip, click_download_menu(page))
+
+    # S8: 폴더 찾아보기 팝업 처리 → report\<시험번호> 에 생성/다운로드/대기 (동기 → 스레드)
+    popup = await asyncio.to_thread(
+        handle_folder_popup_and_download, folder_name, "", 2, [], "", report_base
+    )
+    if not getattr(popup, "success", False):
+        raise await _step_error(
+            page, 8, getattr(popup, "error_message", None) or "다운로드 팝업 처리 실패", request_ip
+        )
+
+    download_dir = getattr(popup, "target_dir", "") or os.path.join(report_base, folder_name)
+    return {"download_dir": download_dir, "test_no": folder_name, "doc_count": str(count)}
+
+
+async def _step_error(page: Page, step_no: int, error_kind: str, request_ip: str) -> StepError:
+    ss = screenshot_name()
+    try:
+        await page.screenshot(path=ss)
+    except Exception:
+        ss = f"{ss}(FAILED)"
+    _log_fail(request_ip, step_no, error_kind, ss)
+    return StepError(step_no=step_no, error_kind=error_kind, screenshot=ss, request_ip=request_ip)
+
+
 async def run_playwright_task(
     browser: Browser,
     cert_date: str,

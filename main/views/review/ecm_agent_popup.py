@@ -75,6 +75,7 @@ def handle_folder_popup_and_download(
     max_retries: int = 2,
     relative_path: list[str] | tuple[str, ...] | None = None,
     center_code: str = "",
+    base_dir: str | None = None,
 ) -> PopupResult:
     """폴더 찾아보기 팝업 처리 -> 전송현황 대기 -> 시스템 알림 처리.
 
@@ -95,7 +96,7 @@ def handle_folder_popup_and_download(
     relative_path = [str(part).strip() for part in (relative_path or []) if str(part).strip()]
 
     for attempt in range(max_retries + 1):
-        result = _try_download_once(project_number, relative_path, center_code)
+        result = _try_download_once(project_number, relative_path, center_code, base_dir)
         if result.success:
             return result
 
@@ -111,15 +112,16 @@ def handle_folder_popup_and_download(
     )
 
 
-def _try_download_once(project_number: str, relative_path: list[str], center_code: str) -> PopupResult:
+def _try_download_once(project_number: str, relative_path: list[str], center_code: str, base_dir: str | None = None) -> PopupResult:
     """1회 다운로드 시도."""
     # relative_path 는 ECM 웹(DOM)에서 온 폴더명이라 한글이 NFD(분해형)일 수 있다.
     # Windows 는 폴더를 NFC 로 생성하므로, 경로를 NFC 로 통일하지 않으면 다운로드한
     # 파일이 그 폴더에 있어도 os.listdir(target_dir) 가 폴더를 못 찾아(0개) 대기가
     # 300초 타임아웃된다. 생성·선택·대기 경로를 모두 NFC 로 맞춘다.
     segments = [unicodedata.normalize("NFC", str(part)) for part in (project_number, *relative_path)]
-    download_dir = os.path.join(_download_base_dir(), segments[0])
-    target_dir = os.path.join(_download_base_dir(), *segments)
+    base = base_dir or _download_base_dir()
+    download_dir = os.path.join(base, segments[0])
+    target_dir = os.path.join(base, *segments)
 
     # Step 1: 폴더 찾아보기 팝업 대기
     try:
@@ -131,7 +133,7 @@ def _try_download_once(project_number: str, relative_path: list[str], center_cod
                 error_step="폴더 찾아보기 대기",
                 error_message=f"폴더 찾아보기 팝업이 표시되지 않았습니다. open_windows={windows}",
             )
-        _navigate_to_download_target(folder_dlg, segments, center_code)
+        _navigate_to_download_target(folder_dlg, segments, center_code, base)
     except Exception as exc:
         logger.exception("폴더 선택 팝업 처리 실패")
         # 실패한 폴더 대화상자를 닫아 다음 프로젝트로 모달 팝업이 누적되지 않게 한다.
@@ -812,10 +814,10 @@ def _select_popup_folder_by_path(dialog, path: str) -> bool:
             k32.CloseHandle(h_proc)
 
 
-def _navigate_to_download_target(dlg, segments: list[str], center_code: str = "") -> None:
+def _navigate_to_download_target(dlg, segments: list[str], center_code: str = "", base_dir: str | None = None) -> None:
     """Move the folder popup to the configured base and mirror the ECM path."""
     dialog = _connect_dialog(dlg)
-    base = _download_base_dir()
+    base = base_dir or _download_base_dir()
     target_dir = os.path.join(base, *segments)
 
     # 1) 다운로드 폴더는 로컬이므로 대상 경로를 디스크에 미리 만들고(NFC), 대화상자에서는

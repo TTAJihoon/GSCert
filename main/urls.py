@@ -4,6 +4,7 @@ from django.views.generic import RedirectView
 from main.views.init import index, similar, security, prdinfo, checkreport, test, download_review
 
 from main.views.testing.history import history
+from main.views.testing.history_report import download_report
 from main.views.testing.similar_summary import summarize_document
 from main.views.testing.security import invicti_parse_view
 from main.views.testing.security_GPT import get_gpt_recommendation_view, stream_gpt_recommendation_view
@@ -50,6 +51,7 @@ urlpatterns = [
     path('', RedirectView.as_view(url='/index/', permanent=False)),
     
     path('history/', history, name='history'),
+    path('history/report/<str:test_no>/download/', download_report, name='history_report_download'),
     path('similar/', similar, name='similar'),
     path('summarize_document/', summarize_document, name='summarize_document'),
     path('security/', security, name='security'),
