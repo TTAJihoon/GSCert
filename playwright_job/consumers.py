@@ -3,6 +3,8 @@ import asyncio
 import json
 import logging
 import sqlite3
+import sys
+import threading
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
@@ -18,9 +20,17 @@ logger_ws = logging.getLogger("playwright_job.ws")
 logger_worker = logging.getLogger("playwright_job.worker")
 
 # ---------------- 전역 큐 + 단일 워커 ----------------
+# Playwright 는 Windows 에서 브라우저 하위 프로세스 실행에 ProactorEventLoop 가 필요하다.
+# 그런데 이 서버(daphne/Channels)는 Twisted 호환을 위해 SelectorEventLoop 를 강제하므로
+# ASGI 루프에서 직접 Playwright 를 띄우면 NotImplementedError 가 난다.
+# → Playwright 워커를 '전용 ProactorEventLoop 스레드'에서 돌리고, ASGI 컨슈머는
+#   run_coroutine_threadsafe + wrap_future 로 그 루프에 잡을 넘기고 결과를 받는다.
 _job_queue: Optional[asyncio.Queue] = None
 _worker_task: Optional[asyncio.Task] = None
-_worker_lock = asyncio.Lock()
+_worker_thread: Optional[threading.Thread] = None
+_worker_loop_obj: Optional[asyncio.AbstractEventLoop] = None
+_worker_ready = threading.Event()
+_worker_start_lock = threading.Lock()
 
 # ---------------- DB (ECM URL 캐시) ----------------
 _db_lock = asyncio.Lock()
@@ -134,38 +144,41 @@ async def db_upsert_url(test_no: str, url: str) -> None:
 
 
 # ---------------- Worker orchestration ----------------
-async def _ensure_worker_started() -> None:
-    """프로세스 내 전역 큐/워커를 1회만 생성"""
-    global _job_queue, _worker_task
-    async with _worker_lock:
-        if _job_queue is None:
+def _ensure_worker_thread() -> asyncio.AbstractEventLoop:
+    """Playwright 전용 워커 스레드(ProactorEventLoop)를 1회만 기동하고 그 루프를 반환한다.
+    ASGI(Selector) 루프와 분리된 이 루프에서만 브라우저/Playwright 작업을 수행한다."""
+    global _worker_thread, _worker_loop_obj, _job_queue, _worker_task
+    if _worker_loop_obj is not None:
+        return _worker_loop_obj
+    with _worker_start_lock:
+        if _worker_loop_obj is not None:
+            return _worker_loop_obj
+
+        def _run() -> None:
+            global _worker_loop_obj, _job_queue, _worker_task
+            if sys.platform.startswith("win"):
+                loop = asyncio.ProactorEventLoop()  # 서브프로세스(브라우저) 지원
+            else:
+                loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            _worker_loop_obj = loop
             _job_queue = asyncio.Queue()
-            logger_worker.info("queue_init")
+            _worker_task = loop.create_task(_worker_loop())
+            logger_worker.info("worker_thread_started (Proactor=%s)", sys.platform.startswith("win"))
+            _worker_ready.set()
+            loop.run_forever()
 
-        if _worker_task is None or _worker_task.done():
-            _worker_task = asyncio.create_task(_worker_loop())
-            logger_worker.info("worker_started")
+        _worker_thread = threading.Thread(target=_run, name="playwright-worker", daemon=True)
+        _worker_thread.start()
+        if not _worker_ready.wait(timeout=15):
+            raise RuntimeError("Playwright 워커 스레드 기동 실패(타임아웃)")
+        return _worker_loop_obj
 
 
-async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) -> Dict[str, Any]:
-    """
-    작업을 전역 큐에 넣고 결과를 기다려 반환.
-    반환 dict:
-      - result: 작업 결과(dict)
-      - queue_ahead: enqueue 시점 내 앞 대기 수
-      - queue_position: enqueue 시점 내 순번(대략)
-      - queue_total: enqueue 시점 큐 총량(대략=position)
-    """
-    await _ensure_worker_started()
+async def _submit_and_wait(cert_date: str, test_no: str, request_ip: str) -> Dict[str, Any]:
+    """워커 루프에서 실행: 큐에 잡을 넣고(같은 루프의 Future) 결과를 기다린다."""
     assert _job_queue is not None
-
-    loop = asyncio.get_running_loop()
-    fut: asyncio.Future = loop.create_future()
-
-    queue_ahead = _job_queue.qsize()
-    queue_position = queue_ahead + 1
-    queue_total = queue_position  # enqueue 시점 기준(대략)
-
+    fut: asyncio.Future = asyncio.get_running_loop().create_future()
     await _job_queue.put(
         {
             "cert_date": cert_date,
@@ -174,8 +187,24 @@ async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) 
             "future": fut,
         }
     )
+    return await fut
 
-    result = await fut
+
+async def enqueue_playwright_job(cert_date: str, test_no: str, request_ip: str) -> Dict[str, Any]:
+    """작업을 워커 스레드(Proactor 루프)에 넘기고 결과를 기다려 반환한다.
+
+    ASGI(Selector) 루프 → 워커(Proactor) 루프로 run_coroutine_threadsafe 로 넘기고,
+    반환된 concurrent.futures.Future 를 wrap_future 로 ASGI 루프에서 await 한다.
+    """
+    worker_loop = _ensure_worker_thread()
+    queue_ahead = _job_queue.qsize() if _job_queue is not None else 0
+    queue_position = queue_ahead + 1
+    queue_total = queue_position
+
+    cfut = asyncio.run_coroutine_threadsafe(
+        _submit_and_wait(cert_date, test_no, request_ip), worker_loop
+    )
+    result = await asyncio.wrap_future(cfut)
     return {
         "result": result,
         "queue_ahead": queue_ahead,
@@ -307,9 +336,9 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
 
         # 3) enqueue 시점 큐 정보(대략) - 캐시 miss인 경우에만 의미 있음
         try:
-            await _ensure_worker_started()
-            assert _job_queue is not None
-            queue_ahead = _job_queue.qsize()
+            # 워커 스레드(Proactor 루프) 기동은 블로킹이므로 이벤트 루프를 막지 않게 to_thread
+            await asyncio.to_thread(_ensure_worker_thread)
+            queue_ahead = _job_queue.qsize() if _job_queue is not None else 0
             queue_position = queue_ahead + 1
             queue_total = queue_position
             await self._safe_send(
