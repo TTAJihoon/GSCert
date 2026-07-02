@@ -32,6 +32,10 @@ ALLOWED_HOSTS = ['*']
 # Application definition
 
 INSTALLED_APPS = [
+    # Channels 4.x 에서는 runserver 가 ASGI(WebSocket) 로 뜨려면 'daphne' 가
+    # INSTALLED_APPS 최상단에 있어야 한다. 없으면 runserver 가 WSGI 로 떠서
+    # /ws/ 요청이 일반 GET 으로 처리되어 404 → 프론트에서 "웹소켓 오류".
+    'daphne',
     'channels',
     'playwright_job',
     'django.contrib.admin',
