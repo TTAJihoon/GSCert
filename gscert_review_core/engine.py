@@ -434,9 +434,15 @@ def _evaluate_downloadable_artifact_check(rule, sequence, project, context, veri
 
     if not passed:
         # 매칭 파일이 없을 때 무관한 파일을 대표 파일로 표시하지 않는다("... 외 N개" 방지).
-        failure_message = config.get("missing_message") or "파일 확인 불가"
-        if exact_count is not None and len(matched) > int(exact_count):
-            failure_message = config.get("multiple_message") or "대상 파일이 여러개 존재합니다."
+        failure_message = _artifact_failure_message(
+            rule,
+            config,
+            verify_result,
+            matched=matched,
+            selected_folder=selected_folder,
+            name_keywords=name_keywords,
+            exact_count=exact_count,
+        )
         return RuleEvaluation(
             rule=rule,
             sequence=sequence,
@@ -486,7 +492,7 @@ def _evaluate_downloadable_artifact_check(rule, sequence, project, context, veri
             status=DownloadReviewRuleStatus.ERROR,
             expected="다운로드 산출물 저장 가능",
             actual=str(exc),
-            message=str(exc),
+            message=config.get("artifact_error_message") or str(exc),
             file_path=_representative_path(matched, project.project_number),
             file_name=_representative_name(matched),
             raw_detail=raw_detail,
@@ -3192,7 +3198,15 @@ def _evaluate_quality_inspection_table_check(rule, sequence, project, context, v
             raw_detail,
             expected="품질검사표 Excel 파일 1개",
             actual=f"품질검사표 Excel 파일 {len(matched)}개",
-            message=config.get("missing_message") or "품질검사표 파일 확인 불가",
+            message=_artifact_failure_message(
+                rule,
+                config,
+                verify_result,
+                matched=matched,
+                selected_folder=selected_folder,
+                name_keywords=name_keywords,
+                exact_count=1,
+            ),
         )
 
     file_info = matched[0]
@@ -3205,7 +3219,7 @@ def _evaluate_quality_inspection_table_check(rule, sequence, project, context, v
             status=DownloadReviewRuleStatus.ERROR,
             expected="품질검사표 Excel 파일 파싱 가능",
             actual=str(exc),
-            message=str(exc),
+            message=config.get("parse_error_message") or "품질검사표 파일을 읽을 수 없습니다",
             file_path=_representative_path(matched, project.project_number),
             file_name=file_info.name,
             raw_detail=raw_detail,
@@ -3438,7 +3452,15 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
             raw_detail,
             expected="품질평가보고서 Word 파일 1개",
             actual=f"품질평가보고서 Word 파일 {len(matched)}개",
-            message=config.get("missing_message") or "품질평가보고서 파일 확인 불가",
+            message=_artifact_failure_message(
+                rule,
+                config,
+                verify_result,
+                matched=matched,
+                selected_folder=selected_folder,
+                name_keywords=name_keywords,
+                exact_count=config.get("exact_count"),
+            ),
         )
 
     file_info = matched[0]
@@ -3452,7 +3474,7 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
             status=DownloadReviewRuleStatus.ERROR,
             expected="품질평가보고서 Word 파일 파싱 가능",
             actual=str(exc),
-            message="품질평가보고서 파일 확인 불가",
+            message=config.get("parse_error_message") or "품질평가보고서 파일을 읽을 수 없습니다",
             file_path=_representative_path(matched, project.project_number),
             file_name=file_info.name,
             raw_detail=raw_detail,
