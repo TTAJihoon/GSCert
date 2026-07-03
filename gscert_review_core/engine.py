@@ -815,7 +815,7 @@ def _evaluate_excel_feature_list_check(rule, sequence, project, context, verify_
         status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
         expected=f"시트 1개 / {title} 포함 / 작성자 {context.pl} 포함 / 캡처영역",
         actual=f"{sheet.name if sheet else '-'}",
-        message=(config.get("pass_message") or "기능리스트를 확인했습니다.") if all_passed else (first_fail["message"] if first_fail else "기능리스트 확인 필요"),
+        message=(config.get("pass_message") or "기능리스트를 확인했습니다.") if all_passed else (_append_current_value(first_fail["message"], first_fail.get("actual")) if first_fail else "기능리스트 확인 필요"),
         file_path=_representative_path(matched, project.project_number),
         file_name=file_info.name,
         raw_detail=details,
@@ -959,7 +959,7 @@ def _evaluate_test_plan_document_check(rule, sequence, project, context, verify_
         status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
         expected="시험계획서 Word/PDF / 표 값 / 형상항목 ID / WD / 바닥글 / 세부사양",
         actual=f"Word {docx_file.name} / PDF {pdf_file.name}",
-        message=(config.get("pass_message") or "시험계획서를 확인했습니다.") if all_passed else (first_fail.get("message") if first_fail else "시험계획서 확인 필요"),
+        message=(config.get("pass_message") or "시험계획서를 확인했습니다.") if all_passed else (_append_current_value(first_fail.get("message"), first_fail.get("actual")) if first_fail else "시험계획서 확인 필요"),
         file_path=_representative_path(matched, project.project_number),
         file_name=_representative_name(matched),
         raw_detail=raw_detail,
@@ -1450,7 +1450,7 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
         status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
         expected=" / ".join(item["expected"] for item in sub_checks),
         actual=" / ".join(item["actual"] for item in sub_checks),
-        message=(config.get("pass_message") or "테스트케이스를 확인했습니다.") if all_passed else (first_fail["message"] if first_fail else "테스트케이스 확인 필요"),
+        message=(config.get("pass_message") or "테스트케이스를 확인했습니다.") if all_passed else (_append_current_value(first_fail["message"], first_fail.get("actual")) if first_fail else "테스트케이스 확인 필요"),
         file_path=_representative_path(matched, project.project_number),
         file_name=file_info.name,
         raw_detail=raw_detail,
@@ -1772,26 +1772,45 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
         "spec_table": spec_table or [],
         "artifacts": [artifact],
     })
-    if "1차" not in rounds or "2차" not in rounds:
-        return RuleEvaluation(
-            rule=rule,
-            sequence=sequence,
-            status=DownloadReviewRuleStatus.FAIL,
-            expected="결함리포트 송부 표에 1차/2차 보고일자",
-            actual=", ".join(f"{key}: {value}" for key, value in rounds.items()) or "날짜 없음",
-            message=config.get("round_date_message") or "결함리포트 송부 정보 확인 불가",
-            file_path=_representative_path(matched, project.project_number),
-            file_name=docx_file.name,
-            raw_detail=raw_detail,
-        )
+    header_text = _docx_header_text(docx_file)
+    footer_text = _docx_footer_text(docx_file)
+    footer_form = _resolve_rule_value(str(config.get("footer_form_number") or ""), context)
+    sub_checks = []
+    # 1) 결함리포트 송부 표 1차/2차 보고일자
+    sub_checks.append({
+        "expected": "결함리포트 송부 표에 1차/2차 보고일자",
+        "actual": ", ".join(f"{key}: {value}" for key, value in rounds.items()) or "날짜 없음",
+        "passed": ("1차" in rounds and "2차" in rounds),
+        "message": config.get("round_date_message") or "결함리포트 송부 정보 확인 불가",
+    })
+    # 2) 머리글에 프로젝트번호
+    sub_checks.append({
+        "expected": f"머리글에 프로젝트번호 {context.project_number} 포함",
+        "actual": header_text or "머리글 없음",
+        "passed": bool(context.project_number and context.project_number in header_text),
+        "message": config.get("header_message") or "머리글에 프로젝트번호가 잘못 작성됨",
+    })
+    # 3) 바닥글에 서식번호 (공백 제거 후 비교)
+    if footer_form:
+        sub_checks.append({
+            "expected": f"바닥글에 {footer_form} 포함",
+            "actual": footer_text or "바닥글 없음",
+            "passed": _normalize_no_space(footer_form) in _normalize_no_space(footer_text),
+            "message": config.get("footer_message") or "바닥글에 서식번호가 잘못 작성됨",
+        })
 
+    raw_detail["sub_checks"] = [
+        {"expected": c["expected"], "actual": c["actual"], "passed": c["passed"]} for c in sub_checks
+    ]
+    all_passed = all(c["passed"] for c in sub_checks)
+    first_fail = next((c for c in sub_checks if not c["passed"]), None)
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
-        status=DownloadReviewRuleStatus.PASS,
-        expected="Word 파일 1개 / PDF 파일 1개 / 결함리포트 송부 날짜",
+        status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
+        expected="Word/PDF 1개 / 1차·2차 보고일자 / 머리글 프로젝트번호 / 바닥글 서식번호",
         actual=f"Word {docx_file.name} / PDF {pdf_file.name} / 결함차수 {len(rounds)}",
-        message=config.get("pass_message") or "시험성적서를 확인했습니다.",
+        message=(config.get("pass_message") or "시험성적서를 확인했습니다.") if all_passed else _append_current_value(first_fail["message"], first_fail["actual"]),
         file_path=_representative_path(matched, project.project_number),
         file_name=_representative_name(matched),
         raw_detail=raw_detail,
@@ -2004,6 +2023,8 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
         or config.get("report_date_message")
         or "결함리포트 확인 필요"
     )
+    if first_fail:
+        fail_message = _append_current_value(fail_message, first_fail.get("actual"))
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
@@ -2419,6 +2440,23 @@ def _stringify_check_value(value):
     return str(value)
 
 
+def _append_current_value(message, actual):
+    """부적합 메시지 뒤에 실제(현재) 값을 붙인다: '메시지(현재 값: …)'.
+
+    실제 값이 없거나 '정상'처럼 의미 없는 값이면 메시지를 그대로 둔다.
+    """
+    message = str(message or "")
+    text = _stringify_check_value(actual).strip()
+    if not text or text in ("정상", "일치", "없음", "범위 밖 파일 없음", "확인됨"):
+        return message
+    if "현재 값" in message:
+        return message
+    if len(text) > 120:
+        text = text[:120] + "…"
+    text = " ".join(text.split())
+    return f"{message}(현재 값: {text})"
+
+
 def _evaluate_inspection_checklist_check(rule, sequence, project, context, verify_result):
     config = rule.config_json or {}
     name_keywords = _resolved_keywords(config.get("filename_keywords") or [], context)
@@ -2615,7 +2653,10 @@ def _evaluate_inspection_checklist_check(rule, sequence, project, context, verif
         message = config.get("pass_message") or "점검표를 확인했습니다."
     else:
         fail_label, fail_check, fail_message = first_fail
-        message = fail_message or fail_check.get("message") or f"{fail_label} 확인 필요"
+        message = _append_current_value(
+            fail_message or fail_check.get("message") or f"{fail_label} 확인 필요",
+            fail_check.get("actual"),
+        )
 
     return RuleEvaluation(
         rule=rule,
@@ -2693,7 +2734,7 @@ def _check_workbook_forbidden_print_terms(workbook, terms, context, *, field, su
     return {
         "passed": not failures,
         "expected": f"모든 시트 {subject} 금지어 없음",
-        "actual": "오류 시트: " + ", ".join(failure["sheet"] for failure in failures) if failures else "정상",
+        "actual": (f"{failures[0]['sheet']}: {failures[0]['actual']}" if failures else "정상"),
         "message": failures[0]["message"] if failures else "",
         "details": details,
     }
@@ -2726,7 +2767,7 @@ def _check_workbook_required_print_terms(workbook, terms, context, *, field, sub
     return {
         "passed": not failures,
         "expected": f"모든 시트 {subject} 필수어 포함",
-        "actual": "오류 시트: " + ", ".join(failure["sheet"] for failure in failures) if failures else "정상",
+        "actual": (f"{failures[0]['sheet']}: {failures[0]['actual']}" if failures else "정상"),
         "message": failures[0]["message"] if failures else "",
         "details": details,
     }
@@ -2797,11 +2838,7 @@ def _check_forbidden_text_terms(actual_text, terms, context, *, subject, default
     return {
         "passed": not failures,
         "expected": f"{subject}에 금지어 없음: " + ", ".join(item["text"] for item in term_items),
-        "actual": (
-            "포함된 금지어: " + ", ".join(item["text"] for item in failures)
-            if failures
-            else "정상"
-        ),
+        "actual": (actual_text.strip() or "없음") if failures else "정상",
         "message": (failures[0]["message"] if failures else "") or default_message,
         "details": details,
     }
@@ -2826,11 +2863,7 @@ def _check_required_text_terms(actual_text, terms, context, *, subject, default_
     return {
         "passed": not failures,
         "expected": f"{subject}에 필수어 포함: " + ", ".join(item["text"] for item in term_items),
-        "actual": (
-            "누락된 필수어: " + ", ".join(item["text"] for item in failures)
-            if failures
-            else "정상"
-        ),
+        "actual": (actual_text.strip() or "없음") if failures else "정상",
         "message": (failures[0]["message"] if failures else "") or default_message,
         "details": details,
     }
@@ -3294,7 +3327,7 @@ def _evaluate_quality_inspection_table_check(rule, sequence, project, context, v
         status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
         expected=f"{expected_sheet_name} 단일 시트 / 측정값 {expected_quality_count}개 / 점수표 일치",
         actual=f"{file_info.name} / 품질부특성측정값 {len(rotated_values)}개",
-        message=(config.get("pass_message") or "품질검사표를 확인했습니다.") if all_passed else (first_fail["message"] if first_fail else "품질검사표 확인 필요"),
+        message=(config.get("pass_message") or "품질검사표를 확인했습니다.") if all_passed else (_append_current_value(first_fail["message"], first_fail.get("actual")) if first_fail else "품질검사표 확인 필요"),
         file_path=_representative_path(matched, project.project_number),
         file_name=file_info.name,
         raw_detail=raw_detail,
@@ -3524,7 +3557,7 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
         status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
         expected=" / ".join(item["expected"] for item in sub_checks),
         actual=" / ".join(item["actual"] for item in sub_checks),
-        message=(config.get("pass_message") or "품질평가보고서를 확인했습니다.") if all_passed else (first_fail["message"] if first_fail else "품질평가보고서 확인 필요"),
+        message=(config.get("pass_message") or "품질평가보고서를 확인했습니다.") if all_passed else (_append_current_value(first_fail["message"], first_fail.get("actual")) if first_fail else "품질평가보고서 확인 필요"),
         file_path=_representative_path(matched, project.project_number),
         file_name=file_info.name,
         raw_detail=raw_detail,

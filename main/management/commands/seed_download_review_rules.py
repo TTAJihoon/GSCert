@@ -648,6 +648,9 @@ def _actual_rule_spec(index, column_name):
                 "pdf_missing_message": "시험성적서 pdf 파일을 찾을 수 없습니다",
                 "parse_error_message": "시험성적서 파일을 읽을 수 없습니다",
                 "round_date_message": "결함리포트 송부 정보 확인 불가",
+                "header_message": "머리글에 프로젝트번호가 잘못 작성됨",
+                "footer_form_number": "TPG-1016-5(02)",
+                "footer_message": "바닥글에 서식번호가 잘못 작성됨",
                 "pass_message": "시험성적서를 확인했습니다.",
             },
         }
