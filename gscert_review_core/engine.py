@@ -1019,13 +1019,22 @@ def _test_plan_failure(rule, sequence, matched, project, raw_detail, *, expected
     )
 
 
-def _resolve_manager_expected(config, context):
-    """센터별 담당자명을 고른다. 센터 매핑에 없으면 manager_expected 기본값 사용."""
-    by_center = config.get("manager_expected_by_center") or {}
+def _resolve_center_expected(config, context, key, default=""):
+    """센터별 기대값 매핑('{key}_by_center')이 있으면 센터에 맞는 값을, 없으면 config[key] 사용.
+
+    센터 코드(분당=bundang, 상암=sangam, 영남=yeongnam) 기준으로 담당자/검토자/작성자
+    이름을 다르게 검사할 때 쓴다.
+    """
+    by_center = config.get(f"{key}_by_center") or {}
     center = str(getattr(context, "center", "") or "").strip()
     if center and center in by_center:
         return _resolve_rule_value(str(by_center[center]), context)
-    return _resolve_rule_value(str(config.get("manager_expected") or "김진영"), context)
+    return _resolve_rule_value(str(config.get(key) or default), context)
+
+
+def _resolve_manager_expected(config, context):
+    """센터별 담당자명을 고른다. 센터 매핑에 없으면 manager_expected 기본값 사용."""
+    return _resolve_center_expected(config, context, "manager_expected", "김진영")
 
 
 def _test_plan_first_table_checks(table, config, context):
@@ -1370,7 +1379,7 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
     # 3) 작성자 / 검토자
     author_label = str(config.get("author_label") or "작성자:")
     reviewer_label = str(config.get("reviewer_label") or "검토자:")
-    reviewer_expected = _resolve_rule_value(str(config.get("reviewer_expected") or "김진영"), context)
+    reviewer_expected = _resolve_center_expected(config, context, "reviewer_expected", "김진영")
     author_cell = _find_cell_with_all(sheet.rows, [author_label, context.pl])
     reviewer_cell = {}
     reviewer_ok = False
@@ -2911,8 +2920,8 @@ def _check_checklist_cover(sheet, context, config):
             "message": config.get("cover_date_message") or "표지 날짜가 잘못 작성됨",
         }
 
-    author_expected = str(config.get("cover_author") or "김진영")
-    # 검토자(김진영)와 작성자({PL})는 보통 다른 행/셀에 적히므로 각각 다른 셀에서 찾는다.
+    author_expected = _resolve_center_expected(config, context, "cover_author", "김진영")
+    # 검토자(센터별 담당자)와 작성자({PL})는 보통 다른 행/셀에 적히므로 각각 다른 셀에서 찾는다.
     reviewer_cell = _find_cell_normalized_contains_all(sheet.rows, [author_expected])
     pl_cell = _find_cell_normalized_contains_all(sheet.rows, [context.pl]) if context.pl else None
     if not reviewer_cell or not pl_cell:
