@@ -123,9 +123,9 @@ QFrame#panel {{
     border-radius: 4px;
 }}
 
-/* ── 상단 툴바 밴드 (pgAdmin 헤더 느낌) ───────── */
+/* ── 상단 헤더 (흰색 패널; 프로그램 배경만 회색) ── */
 QFrame#headerBar {{
-    background-color: {C_HEADER_BG};
+    background-color: {C_SURFACE};
     border: 1px solid {C_LINE};
     border-radius: 4px;
 }}
@@ -168,6 +168,7 @@ QPushButton {{
     background-color: {C_SURFACE};
     color: {C_TEXT};
     font-weight: 600;
+    font-size: 12px;  /* 기본 13px 대비 약 5% 축소 */
 }}
 QPushButton:hover {{
     background-color: {C_HEADER_BG};
@@ -668,9 +669,20 @@ class MainWindow(QMainWindow):
         health_btn.clicked.connect(self.check_health)
         btn_col.addWidget(health_btn)
 
+        help_col = QVBoxLayout()
+        help_col.setSpacing(3)
+        help_col.addWidget(QLabel(" "))  # spacer to align with labels above
+        help_btn = QPushButton("도움말")
+        help_btn.setObjectName("helpBtn")
+        help_btn.setMinimumWidth(72)
+        help_btn.setToolTip("사용법 보기")
+        help_btn.clicked.connect(self._show_help)
+        help_col.addWidget(help_btn)
+
         right.addLayout(url_col)
         right.addLayout(token_col)
         right.addLayout(btn_col)
+        right.addLayout(help_col)
 
         layout.addLayout(left)
         layout.addStretch()
@@ -764,33 +776,7 @@ class MainWindow(QMainWindow):
         self.run_btn.setObjectName("primaryBtn")
         self.run_btn.setMinimumWidth(116)
         self.run_btn.setFixedHeight(38)
-        self.run_btn.setStyleSheet(f"""
-            QPushButton#primaryBtn {{
-                background-color: #0f4fd6;
-                color: #ffffff;
-                border: 1px solid #0b3fb0;
-                border-radius: 6px;
-                font-weight: 800;
-                font-size: 13px;
-                min-height: 38px;
-                padding: 0 16px;
-            }}
-            QPushButton#primaryBtn:hover {{
-                background-color: #0b46c6;
-                color: #ffffff;
-                border-color: #0b3fb0;
-            }}
-            QPushButton#primaryBtn:pressed {{
-                background-color: #08358f;
-                color: #ffffff;
-                border-color: #08358f;
-            }}
-            QPushButton#primaryBtn:disabled {{
-                background-color: #dbeafe;
-                color: #1e3a8a;
-                border-color: #93c5fd;
-            }}
-        """)
+        # 전역 QSS의 #primaryBtn(스틸블루) 스타일을 그대로 사용한다.
         self.run_btn.clicked.connect(self.run_local_review)
         self.action_status = QLabel("대기")
         self.action_status.setMinimumWidth(130)
@@ -1360,6 +1346,34 @@ class MainWindow(QMainWindow):
 
     def _show_error(self, message: str):
         QMessageBox.warning(self, "GSCert Local Review", message)
+
+    def _show_help(self):
+        """상단 '도움말' 버튼: 간단한 사용법을 안내한다."""
+        box = QMessageBox(self)
+        box.setWindowTitle("도움말 — 사용법")
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setTextFormat(Qt.TextFormat.RichText)
+        box.setText("<b>GSCert Local Review 사용법</b>")
+        box.setInformativeText(
+            "<ol style='margin-left:-18px; line-height:1.6;'>"
+            "<li><b>서버 연결</b> — 상단에 서버 URL을 입력하고 <b>연결 확인</b>을 누릅니다."
+            " (필요 시 API 토큰 입력)</li>"
+            "<li><b>규칙 준비</b> — <b>규칙 업데이트</b>로 서버의 최신 점검규칙을 내려받습니다."
+            " 왼쪽 RULEBASE에 현재 규칙 버전이 표시됩니다.</li>"
+            "<li><b>폴더 선택</b> — <b>폴더 선택</b>으로 점검할 프로젝트 폴더를 지정합니다.</li>"
+            "<li><b>기준정보</b> — 프로젝트 번호를 확인한 뒤 <b>기준정보 조회</b>(서버 조회)"
+            " 또는 <b>직접 입력</b>으로 회사/제품/PL 정보를 채웁니다.</li>"
+            "<li><b>파일 스캔</b> — <b>파일 스캔</b>으로 폴더 안 파일 목록을 확인합니다.</li>"
+            "<li><b>점검 실행</b> — <b>점검 실행</b>을 누르면 규칙 검사가 수행되고, 우측"
+            " <b>점검 결과</b> 표에 적합/부적합/미지원/오류가 표시됩니다."
+            " 행을 더블클릭하면 항목별 상세를 볼 수 있습니다.</li>"
+            "</ol>"
+            "<p style='color:#6b7683;'>점검은 인터넷 없이 로컬에서 수행되며, 규칙은 서버"
+            " PostgreSQL에서 관리됩니다. 규칙 버전이 서버와 다르면 상단에 업데이트 안내가"
+            " 표시됩니다.</p>"
+        )
+        box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        box.exec()
 
 
 def main() -> int:
