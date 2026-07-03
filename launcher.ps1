@@ -43,6 +43,8 @@ function Show-Menu {
     Write-Host "  I. FAISS 임베딩   - reference DB 신규 데이터 증분 임베딩$venvWarn"
     $pgHost = if ($env:REFERENCE_PG_HOST) { $env:REFERENCE_PG_HOST } else { "미설정" }
     Write-Host "  P. PostgreSQL 설정 - 현재 HOST: $pgHost"
+    Write-Host "  D. 규칙 DB 반영    - 점검규칙(config)을 PostgreSQL에 반영 (seed)$venvWarn"
+    Write-Host "  U. Git 관리        - 원격 pull / 로컬 커밋·push"
     Write-Host "  0. 종료"
     Write-Host "=======================================" -ForegroundColor Cyan
 }
@@ -284,6 +286,63 @@ while ($true) {
                 } else {
                     Write-Host "[ERROR] env.ps1 파일이 없습니다. S(setup)를 먼저 실행하세요." -ForegroundColor Red
                 }
+            }
+        }
+        'D' {
+            Write-Host ""
+            Write-Host "=== 점검규칙 DB 반영 (seed_download_review_rules) ===" -ForegroundColor Cyan
+            $VenvPython = Join-Path $ScriptDir ".venv\Scripts\python.exe"
+            if (-not (Test-Path $VenvPython)) { $VenvPython = Join-Path $ScriptDir "venv\Scripts\python.exe" }
+            if (-not (Test-Path $VenvPython)) {
+                Write-Host "[ERROR] 가상환경 Python을 찾을 수 없습니다. 먼저 S(초기 환경 설정)를 실행하세요." -ForegroundColor Red
+            } else {
+                Write-Host "  코드의 점검규칙 정의(config_json)를 PostgreSQL(reference DB)에 반영합니다." -ForegroundColor Gray
+                Write-Host "  ※ 주 서버(reference PostgreSQL)에서 실행해야 합니다." -ForegroundColor Yellow
+                $apply = Ask-YesNo "실제로 DB에 반영할까요? (No = dry-run 미리보기만)"
+                $seedArgs = @((Join-Path $ScriptDir "manage.py"), "seed_download_review_rules", "--only-real", "--update-existing", "--enable")
+                if (-not $apply) { $seedArgs += "--dry-run" }
+                Write-Host ""
+                & $VenvPython @seedArgs
+                if ($? -and $apply) {
+                    Write-Host "[OK] 점검규칙 DB 반영 완료. 새로 시작되는 점검 작업부터 적용됩니다." -ForegroundColor Green
+                } elseif ($? -and -not $apply) {
+                    Write-Host "[OK] dry-run 미리보기 완료(실제 반영 안 됨). 반영하려면 다시 D → y." -ForegroundColor Yellow
+                }
+            }
+        }
+        'U' {
+            Write-Host ""
+            Write-Host "=== Git 관리 ===" -ForegroundColor Cyan
+            Write-Host "  1) pull  - 원격 최신 코드 받기"
+            Write-Host "  2) push  - 로컬 변경 커밋 후 업로드"
+            $sub = Read-Host "선택"
+            Write-Host ""
+            Push-Location $ScriptDir
+            try {
+                $branch = (git rev-parse --abbrev-ref HEAD).Trim()
+                Write-Host "  현재 브랜치: $branch" -ForegroundColor Gray
+                if ($sub -eq '1') {
+                    git pull
+                    if ($?) { Write-Host "[OK] git pull 완료. 코드 변경이 있으면 서버/워커를 재시작하세요(R)." -ForegroundColor Green }
+                } elseif ($sub -eq '2') {
+                    git status --short
+                    Write-Host ""
+                    $msg = Read-Host "커밋 메시지 입력 (생략 시 취소)"
+                    if ($msg) {
+                        git add -A
+                        git commit -m $msg
+                        if ($?) {
+                            git push
+                            if ($?) { Write-Host "[OK] git push 완료." -ForegroundColor Green }
+                        }
+                    } else {
+                        Write-Host "커밋 메시지가 없어 취소했습니다." -ForegroundColor Yellow
+                    }
+                } else {
+                    Write-Host "올바른 번호를 입력해 주세요." -ForegroundColor Red
+                }
+            } finally {
+                Pop-Location
             }
         }
         '0' {
