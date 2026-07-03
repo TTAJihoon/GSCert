@@ -47,16 +47,19 @@ from .scanner import FolderScan, scan_folder
 
 DEFAULT_SERVER_URL = "http://127.0.0.1:8000"
 
-# ── Design tokens (ecm_download_review.css 기준) ─────────────────────────────
+# ── Design tokens (pgAdmin 스타일: 스틸블루 강조 + 조밀/평면 UI) ───────────────
 C_BG           = "#ffffff"
 C_SURFACE      = "#ffffff"
-C_SOFT         = "#f8fafc"
-C_LINE         = "#d7dde5"
-C_LINE_STRONG  = "#aeb8c5"
-C_TEXT         = "#1f2937"
-C_MUTED        = "#667085"
-C_PRIMARY      = "#2563eb"
-C_PRIMARY_SOFT = "#e8f0ff"
+C_SOFT         = "#f2f4f7"   # 헤더/보조 배경 (쿨 그레이)
+C_LINE         = "#c9d0d9"   # 테두리 (pgAdmin처럼 또렷하게)
+C_LINE_STRONG  = "#a7b0bd"
+C_TEXT         = "#243142"   # 쿨 다크
+C_MUTED        = "#6b7683"
+C_PRIMARY      = "#326690"   # pgAdmin 시그니처 스틸블루
+C_PRIMARY_SOFT = "#e2ecf4"
+C_HEADER_BG    = "#e9edf2"   # 상단 툴바 밴드 / 테이블 헤더
+C_GRID         = "#dfe4ea"   # 데이터 그리드 선
+C_SELECT       = "#d6e6f4"   # 행 선택 하이라이트
 C_SUCCESS      = "#067647"
 C_SUCCESS_SOFT = "#e7f6ee"
 C_WARNING      = "#b54708"
@@ -80,7 +83,7 @@ REVIEW_COLOR = {
 APP_QSS = f"""
 /* ── Base ─────────────────────────────────── */
 QMainWindow, QDialog {{
-    background-color: {C_BG};
+    background-color: {C_SOFT};
 }}
 QWidget {{
     font-family: "Malgun Gothic", "Segoe UI", Arial, sans-serif;
@@ -90,40 +93,49 @@ QWidget {{
 
 /* ── Scrollbars ────────────────────────────── */
 QScrollBar:vertical {{
-    width: 7px;
-    background: transparent;
+    width: 12px;
+    background: {C_SOFT};
     margin: 0;
 }}
 QScrollBar::handle:vertical {{
     background: {C_LINE_STRONG};
-    border-radius: 3px;
-    min-height: 20px;
+    border-radius: 2px;
+    min-height: 24px;
+    margin: 2px;
 }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar:horizontal {{
-    height: 7px;
-    background: transparent;
+    height: 12px;
+    background: {C_SOFT};
 }}
 QScrollBar::handle:horizontal {{
     background: {C_LINE_STRONG};
-    border-radius: 3px;
-    min-width: 20px;
+    border-radius: 2px;
+    min-width: 24px;
+    margin: 2px;
 }}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 
-/* ── Panel cards ───────────────────────────── */
+/* ── Panel cards (평면, 작은 라운드) ─────────── */
 QFrame#panel {{
     background-color: {C_SURFACE};
     border: 1px solid {C_LINE};
-    border-radius: 8px;
+    border-radius: 4px;
+}}
+
+/* ── 상단 툴바 밴드 (pgAdmin 헤더 느낌) ───────── */
+QFrame#headerBar {{
+    background-color: {C_HEADER_BG};
+    border: 1px solid {C_LINE};
+    border-radius: 4px;
 }}
 
 /* ── Inputs ────────────────────────────────── */
 QLineEdit, QComboBox {{
-    min-height: 34px;
-    padding: 0 10px;
+    min-height: 30px;
+    padding: 0 8px;
     border: 1px solid {C_LINE};
-    border-radius: 6px;
+    border-radius: 3px;
     background-color: {C_SURFACE};
     color: {C_TEXT};
 }}
@@ -140,103 +152,123 @@ QComboBox::drop-down {{
 }}
 QComboBox QAbstractItemView {{
     border: 1px solid {C_LINE};
-    border-radius: 6px;
+    border-radius: 3px;
     background: {C_SURFACE};
-    selection-background-color: {C_PRIMARY_SOFT};
+    selection-background-color: {C_SELECT};
     selection-color: {C_TEXT};
     outline: none;
 }}
 
-/* ── Buttons ───────────────────────────────── */
+/* ── Buttons (평면, 조밀) ───────────────────── */
 QPushButton {{
-    min-height: 34px;
-    padding: 0 14px;
-    border: 1px solid {C_LINE};
-    border-radius: 6px;
+    min-height: 30px;
+    padding: 0 12px;
+    border: 1px solid {C_LINE_STRONG};
+    border-radius: 3px;
     background-color: {C_SURFACE};
     color: {C_TEXT};
     font-weight: 600;
 }}
 QPushButton:hover {{
-    background-color: {C_SOFT};
-    border-color: {C_LINE_STRONG};
+    background-color: {C_HEADER_BG};
+    border-color: {C_PRIMARY};
 }}
 QPushButton:pressed {{
-    background-color: #edf0f4;
+    background-color: #dde3ea;
 }}
 QPushButton:disabled {{
-    color: #98a2b3;
-    background-color: #eef2f6;
-    border-color: {C_LINE_STRONG};
+    color: #9aa4b0;
+    background-color: {C_SOFT};
+    border-color: {C_LINE};
 }}
 QPushButton#primaryBtn {{
-    background-color: #0f4fd6;
+    background-color: {C_PRIMARY};
     color: #ffffff;
-    border: 1px solid #0b3fb0;
+    border: 1px solid #2a577a;
     font-weight: 800;
 }}
 QPushButton#primaryBtn:hover {{
-    background-color: #0b46c6;
+    background-color: #2b587c;
     color: #ffffff;
-    border: 1px solid #0b3fb0;
+    border: 1px solid #234a68;
 }}
 QPushButton#primaryBtn:pressed {{
-    background-color: #08358f;
+    background-color: #234a68;
     color: #ffffff;
-    border: 1px solid #08358f;
+    border: 1px solid #234a68;
 }}
 QPushButton#primaryBtn:disabled {{
-    background-color: #dbeafe;
-    color: #1e3a8a;
-    border: 1px solid #93c5fd;
+    background-color: #aec6da;
+    color: #eef4f9;
+    border: 1px solid #9db8cf;
 }}
 
-/* ── Tables ────────────────────────────────── */
+/* ── Tables (pgAdmin 데이터 그리드) ──────────── */
 QTableWidget {{
     background-color: {C_SURFACE};
     border: 1px solid {C_LINE};
-    border-radius: 8px;
-    gridline-color: #edf0f4;
-    selection-background-color: {C_PRIMARY_SOFT};
+    border-radius: 4px;
+    gridline-color: {C_GRID};
+    selection-background-color: {C_SELECT};
     selection-color: {C_TEXT};
     outline: none;
 }}
 QTableWidget::item {{
-    padding: 7px 10px;
-    border-bottom: 1px solid #edf0f4;
+    padding: 4px 8px;
+    border-bottom: 1px solid {C_GRID};
+    border-right: 1px solid {C_GRID};
 }}
 QTableWidget::item:selected {{
-    background-color: {C_PRIMARY_SOFT};
+    background-color: {C_SELECT};
     color: {C_TEXT};
 }}
 QTableWidget[alternatingRowColors="true"]::item:alternate {{
     background-color: {C_SOFT};
 }}
 QHeaderView::section {{
-    background-color: {C_SOFT};
-    color: #475467;
+    background-color: {C_HEADER_BG};
+    color: #3a4756;
     font-weight: 700;
     font-size: 12px;
-    padding: 8px 10px;
+    padding: 6px 8px;
     border: none;
-    border-bottom: 1px solid {C_LINE};
+    border-bottom: 1px solid {C_LINE_STRONG};
     border-right: 1px solid {C_LINE};
 }}
 QHeaderView::section:last {{
     border-right: none;
 }}
+QTableCornerButton::section {{
+    background-color: {C_HEADER_BG};
+    border: none;
+    border-bottom: 1px solid {C_LINE_STRONG};
+}}
 
 /* ── Progress bar (busy indicator) ─────────── */
 QProgressBar {{
     border: 1px solid {C_LINE};
-    border-radius: 5px;
+    border-radius: 2px;
     background-color: {C_SOFT};
     max-height: 8px;
     text-align: center;
 }}
 QProgressBar::chunk {{
     background-color: {C_PRIMARY};
-    border-radius: 4px;
+    border-radius: 2px;
+}}
+
+/* ── Status bar (pgAdmin 하단 상태 표시줄) ────── */
+QStatusBar {{
+    background-color: {C_HEADER_BG};
+    border-top: 1px solid {C_LINE_STRONG};
+    color: {C_MUTED};
+    font-size: 12px;
+}}
+QStatusBar::item {{ border: none; }}
+QStatusBar QLabel {{
+    color: {C_MUTED};
+    background: transparent;
+    padding: 0 4px;
 }}
 
 /* ── Splitter ──────────────────────────────── */
@@ -514,19 +546,33 @@ class MainWindow(QMainWindow):
         self._settings = QSettings("TTA", "GSCertLocalReview")
 
         root = QWidget()
-        root.setStyleSheet(f"background-color: {C_BG};")
+        root.setStyleSheet(f"background-color: {C_SOFT};")  # 회색 캔버스 위 흰 패널 (pgAdmin)
         outer = QVBoxLayout(root)
-        outer.setContentsMargins(16, 16, 16, 16)
-        outer.setSpacing(10)
+        outer.setContentsMargins(12, 12, 12, 12)
+        outer.setSpacing(8)
 
         outer.addWidget(self._build_header())
         outer.addWidget(self._build_controls())
         outer.addWidget(self._build_body(), stretch=1)
 
         self.setCentralWidget(root)
+
+        # ── 하단 상태 표시줄 (pgAdmin 스타일) ──────────────────────────────
+        # 좌측: 현재 동작 상태(액션 상태 미러) / 우측: 서버·규칙 버전 상시 표시.
+        self._status_perm = QLabel("")
+        self.statusBar().addPermanentWidget(self._status_perm)
+        self.statusBar().showMessage("준비")
+
         self._restore_settings()
+        self._refresh_status_perm()
         # 시작 시 서버 규칙 버전을 비교해 stale 규칙을 알린다(오프라인이면 조용히 건너뜀).
         QTimer.singleShot(300, self._check_version_on_startup)
+
+    def _refresh_status_perm(self):
+        """상태바 우측에 서버 URL·규칙 버전을 상시 표시한다."""
+        server = (self.server_url.text().strip() or DEFAULT_SERVER_URL)
+        ver = self.rule_cache.rulebase_version or "규칙 없음"
+        self._status_perm.setText(f"서버 {server}   ·   규칙 {ver}")
 
     def _restore_settings(self):
         saved_url = self._settings.value("server_url", "")
@@ -570,8 +616,9 @@ class MainWindow(QMainWindow):
 
     def _build_header(self) -> QFrame:
         frame = _panel()
+        frame.setObjectName("headerBar")  # pgAdmin 스타일 상단 툴바 밴드
         layout = QHBoxLayout(frame)
-        layout.setContentsMargins(18, 13, 18, 13)
+        layout.setContentsMargins(18, 11, 18, 11)
         layout.setSpacing(0)
 
         # Left: title
@@ -1306,6 +1353,10 @@ class MainWindow(QMainWindow):
             f"color: {color}; font-size: 12px; font-weight: 700;"
             " background: transparent; border: none;"
         )
+        # 하단 상태바에도 현재 동작 상태를 미러링한다.
+        if hasattr(self, "_status_perm"):
+            self.statusBar().showMessage(text)
+            self._refresh_status_perm()
 
     def _show_error(self, message: str):
         QMessageBox.warning(self, "GSCert Local Review", message)
