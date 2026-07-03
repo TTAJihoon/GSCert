@@ -161,6 +161,8 @@ GET /api/job-projects/{job_project_id}/results/
 | GET | `/api/job-projects/{job_project_id}/results/` | 특정 작업 프로젝트의 규칙 결과 조회 |
 | GET | `/api/rule-results/{result_id}/artifacts/{artifact_id}/` | 규칙 결과 산출물 파일 조회 |
 | GET | `/api/projects/{project_number}/latest-results/` | 프로젝트 최신 규칙 결과 조회 |
+| GET | `/api/local-review/rules/manifest/` | Windows 로컬 앱용 현재 rulebase 메타데이터 조회 |
+| GET | `/api/local-review/rules/bundle/` | Windows 로컬 앱용 활성 규칙 bundle 조회 |
 
 ## GET /api/projects/
 
@@ -493,6 +495,60 @@ Response:
 - 가장 최근 완료/실패/보류 이력을 사용한다.
 
 프로젝트 선택 탭의 `상세` 버튼에서 사용한다.
+
+## GET /api/local-review/rules/manifest/
+
+Windows 로컬 점검 앱이 현재 서버 rulebase와 공유 엔진 요구 버전을 확인할 때 사용한다.
+
+Response:
+
+```json
+{
+  "success": true,
+  "rulebase_version": "20260703191355-abcdef123456",
+  "engine_min_version": "0.2.0",
+  "checksum": "sha256:...",
+  "rule_count": 18,
+  "published_at": "2026-07-03T19:13:55+09:00"
+}
+```
+
+로컬 앱은 `engine_min_version`이 앱에 포함된 `gscert_review_core.ENGINE_VERSION`보다 높으면 해당 규칙셋 실행을 막고 앱 업데이트를 안내한다.
+
+## GET /api/local-review/rules/bundle/
+
+Windows 로컬 점검 앱이 실제 실행할 활성 규칙 목록을 내려받는다.
+
+Query:
+
+| 이름 | 설명 |
+| --- | --- |
+| `version` | 선택. 특정 `rulebase_version` 요청. 현재 버전과 다르면 404를 반환한다. |
+
+Response:
+
+```json
+{
+  "success": true,
+  "rulebase_version": "20260703191355-abcdef123456",
+  "engine_min_version": "0.2.0",
+  "checksum": "sha256:...",
+  "rule_count": 18,
+  "published_at": "2026-07-03T19:13:55+09:00",
+  "rules": [
+    {
+      "code": "artifact_01",
+      "name": "계약서",
+      "rule_type": "required_artifact_file",
+      "config_json": {},
+      "sort_order": 10,
+      "enabled": true
+    }
+  ]
+}
+```
+
+`rules` 항목은 서버의 `DownloadReviewRule` 활성 규칙을 `sort_order`, `name`, `id` 순으로 직렬화한 값이다.
 
 ## 오류 응답
 

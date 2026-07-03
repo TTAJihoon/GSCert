@@ -44,7 +44,7 @@ Current rule status:
 | 11 | 점검표 | implemented | `점검표(PDF)` |
 | 12 | 1차/2차/성능/보안RawData | implemented | `1차/2차/성능/보안RawData` |
 | 13 | 시험성적서 | implemented | `시험성적서(PDF)` |
-| 14 | 시험기록서 | spec locked, not implemented | `시험기록서` |
+| 14 | 시험기록서 | implemented | `시험기록서` |
 | 15 | 품질평가보고서 | implemented | `품질평가보고서` |
 | 16 | 품질검사표 | implemented | `품질검사표` |
 | 17 | SW저작권확인서 | implemented | `SW저작권확인서` |
@@ -72,6 +72,17 @@ Current rule status:
 - `{인증위}`: `ecmlist.db` `인증일자` value matched by `{프로젝트번호}`
 
 Rules can publish derived variables by storing them in `raw_detail_json.variables`. Later rules in the same inspection run can resolve them through `{변수명}` placeholders, so seed `sort_order` must keep producer rules before consumer rules. Rule 13 시험성적서 is intentionally seeded with `sort_order=95` so it runs before rule 7 시험계획서 at `sort_order=96` and rule 10 결함리포트 at `sort_order=100`; rule 9 테스트케이스 is seeded with `sort_order=105` so it runs after rule 10 and can consume `{잔여결함수}`; rule 16 품질검사표 is seeded with `sort_order=145` so it runs before rule 15 품질평가보고서 at `sort_order=150`.
+
+## Center-Based Expected Names
+
+Rules 7, 9, and 11 use center-specific expected names for 시험계획서 담당자, 테스트케이스 검토자, and 점검표 표지 검토자:
+
+| Center code | Expected name |
+| --- | --- |
+| `bundang` | `임우섭` |
+| `sangam` | `김진영` |
+| `yeongnam` | `이재훈` |
+| default | `김진영` |
 
 ## Draft Rules
 
@@ -133,6 +144,8 @@ Current useful patterns include:
 
 Rule details are stored in `inspection_rule.config_json`, including folder keyword chains, file-name keywords, extension counts, labels, expected values, regexes, and user-facing messages.
 
+The shared engine version is currently `0.2.0`, and the rulebase manifest/bundle exposes `engine_min_version=0.2.0`. The local Windows app must refuse a rulebase that requires a newer engine than the bundled `gscert_review_core.ENGINE_VERSION`.
+
 Use this command to seed only implemented real rules:
 
 ```powershell
@@ -145,18 +158,18 @@ Prefer extending the inspection engine with small, explicit rule types rather th
 
 - Rule 2 합의서 stores the PDF first page as an artifact button in addition to `.docx/.pdf` file, project-number, Word header `{프로젝트번호}`, and Word footer `TIS-0101-3 (00)` checks.
 - Rule 6 기능리스트 is implemented for `.xls/.xlsx`, requires one sheet, checks `{프로젝트번호} 기능리스트`, checks `{PL}` in the same cell as `작성자`, stores the `대분류` capture target range metadata, and renders that range as an Excel-area image artifact.
-- Rule 7 시험계획서 is implemented. It uses `.docx` plus `.pdf`, checks the first and second tables, checks `형상항목 ID`, checks the `WD` schedule column, checks exact footer text `Copyright {연도} TTA`, forbids footer terms `TIS-` and `소프트웨어시험인증연구소`, stores a PDF first-page image, and compares its `<세부사양>` table with rule 13's `시험성적서_세부사양표` after whitespace-normalized matrix comparison.
+- Rule 7 시험계획서 is implemented. It uses Word plus PDF, checks the first and second tables, applies the center-specific manager expected name, checks `형상항목 ID`, checks the `WD` schedule column, compares version numbers while tolerating `v`/`ver` prefixes, checks exact footer text `Copyright {연도} TTA`, forbids footer terms `TIS-`, `TPG`, `TIS`, and `소프트웨어시험인증연구소`, stores a PDF first-page image, and compares its `<세부사양>` table with rule 13's `시험성적서_세부사양표` after whitespace-normalized matrix comparison.
 - Rule 8 제품 스크린샷 is implemented. It searches under the `설계` folder for a parent folder with at least two child image folders. Candidate child folders must each contain at least five `.png/.jpg/.jpeg/.bmp/.gif` files. Image dates use zip entry modified timestamps, inclusive from `{시작일}` through `{종료일}`.
-- Rule 9 테스트케이스 is implemented. It uses `.xls/.xlsx`, requires one sheet, checks `{프로젝트번호} 테스트케이스`, checks an author cell containing `작성자:` and `{PL}`, checks the cell below for `검토자:` and `김진영`, checks `작성일: {시작일} ~ {종료일}` after removing spaces, forbids footer term `소프트웨어시험인증연구소`, and compares `F` count in the `상세 테스트 결과` column against `{잔여결함수}` from rule 10.
+- Rule 9 테스트케이스 is implemented. It uses `.xls/.xlsx`, requires one sheet, checks `{프로젝트번호} 테스트케이스`, checks an author cell containing `작성자:` and `{PL}`, checks the cell below for `검토자:` and the center-specific reviewer expected name, checks `작성일: {시작일} ~ {종료일}` after removing spaces, forbids header term `TTA`, forbids footer terms `TPG`, `TIS`, and `소프트웨어시험인증연구소`, requires footer term `TTA`, and compares `F` count in the `상세 테스트 결과` column against `{잔여결함수}` from rule 10.
 - Rule 10 결함리포트 is implemented. It searches under the `수행` folder for versioned defect report Excel files named with `{프로젝트번호}`, `결함리포트`, and `vN.0`; requires exactly `{결함차수}+1` files; checks exact cumulative sheet sets; forbids `프로젝트번호` in all sheet headers and `소프트웨어시험인증연구소` in all sheet footers; compares `시험환경` across sheets; validates project/sheet/report-date text; and produces `{잔여결함수}`, `{H}`, and `{R}`. If the file count is higher or lower than `{결함차수}+1`, the user-facing message is `시험성적서의 결함 차수와 결함리포트 개수가 다름`.
-- Rule 11 점검표 is implemented. It searches under the `설계` folder for one 점검표 Excel file plus exactly one PDF, checks every sheet header, requires footer term `한국정보통신기술협회`, forbids footer term `TIS-`, checks 표지 title/date/author, checks 기능별 점검표 required cells, compares 기능적합성 tables, checks WD, captures the first matched PDF first page, stores `{측정항목별점수표}`, and compares reliability defect counts with `{H}` and `{R}` from rule 10.
-- Rule 12 rawdata is implemented. It checks `수행` folder subfolders for 결함리포트, 보안, and 성능 rawdata structures. 보안 and 성능 folders must each contain exactly two child folders, and each child must contain at least one item.
+- Rule 11 점검표 is implemented. It searches under the `설계` folder for one 점검표 Excel file plus exactly one PDF, checks every sheet header, requires footer term `한국정보통신기술협회`, forbids footer terms `TIS-`, `TPG`, `TIS`, and `소프트웨어시험인증연구소`, checks 표지 title/date/center-specific reviewer and `{PL}` author, checks 기능별 점검표 required cells, compares 기능적합성 tables, checks WD, captures the first matched PDF first page, stores `{측정항목별점수표}`, and compares reliability defect counts with `{H}` and `{R}` from rule 10.
+- Rule 12 rawdata is implemented. It checks `수행` folder subfolders for 결함, 보안, and 성능 rawdata structures. 결함 requires at least one image, 보안 requires at least two child folders with entries (or a file name containing `보안성`), and 성능 requires at least one entry.
 - Rule 13 시험성적서 is implemented. It checks `.docx/.pdf` under `시험 > 종료`, captures the PDF first page as an artifact, stores the first table nearest after `<세부사양>` as both `raw_detail_json.spec_table` and variable `{시험성적서_세부사양표}` for rule 7 comparison, and parses the `결함리포트 송부` table for `{1차}`, `{2차}`, optional later rounds, and `{결함차수}`.
-- Rule 14 시험기록서 is a PDF under `시험 > 종료` with file name containing `시험기록서` and `{프로젝트번호}`, made downloadable for manual user review. Missing file message: `시험기록서 파일 확인 불가`.
-- Rule 15 품질평가보고서 is implemented. It checks one `.docx` under `시험 > 인증관련`, validates project number count, signatures, company, 신청일/계약일/시험기간/인증위 dates, and compares the `<품질특성별 세부 평가결과>` table values with `{품질부특성측정값}` from rule 16. `NA`/`N/A` values require the right-hand cell to be `해당사항 없음`.
-- Rule 16 품질검사표 is implemented. It checks a single-sheet Excel file named `{프로젝트번호} 품질검사표`, compares D4:D87 with `{측정항목별점수표}`, and produces `{품질부특성측정값}` from E4:E85 by extracting 33 real values and reordering them as 4-33 then 1-3.
-- Rule 17 SW저작권확인서 is implemented and checks for a 확인서 PDF under `인증관련`; project number is not required in the file name.
-- Rule 18 홍보이미지 is implemented and checks for at least one image under a `홍보자료` folder.
+- Rule 14 시험기록서 searches the whole inspection target for a PDF with file name containing `기록서`; it checks existence only and stores the first page as an image artifact. Missing file message: `시험기록서 파일을 찾을 수 없습니다`.
+- Rule 15 품질평가보고서 is implemented. It checks one Word file under `인증관련`, validates project number count, signatures, company, 신청일/계약일/시험기간/인증위 dates, and compares the quality table values with `{품질부특성측정값}` from rule 16. `NA`/`N/A` values require the right-hand cell to be `해당사항 없음`.
+- Rule 16 품질검사표 is implemented. It checks a single-sheet Excel file named `{프로젝트번호} 품질검사표`, compares D4:D87 with `{측정항목별점수표}`, forbids footer terms `TPG`, `TIS`, and `소프트웨어시험인증연구소`, requires footer term `한국정보통신기술협회`, and produces `{품질부특성측정값}` from E4:E85 by extracting 33 real values, excluding the 27th value, and reordering them as `4~26, 28~33, 1~3`.
+- Rule 17 SW저작권확인서 is implemented and checks for a 확인서 PDF under `인증관련`; project number is not required in the file name. It has separate folder-missing, file-missing, and extension-mismatch messages.
+- Rule 18 홍보이미지 is implemented and checks for at least one file under a `홍보` folder; file names containing `예시` fail. The current seed does not restrict image extensions.
 
 ## LLM Review Interface
 

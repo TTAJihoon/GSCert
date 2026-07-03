@@ -1,5 +1,26 @@
 # GSCert Next Step
 
+## 2026-07-03: 점검규칙 대규모 검토 후 문서 최신화
+
+- 1~18번 실제 점검규칙은 `seed_download_review_rules --only-real --enable --update-existing` 기준으로 모두 구현된 상태다.
+- 세부 규칙의 단일 원본은 `main/docs/19_inspection_rule_manual.md`로 유지한다.
+- `main/docs/05_zip_inspection.md`는 과거 1~5번 초안 중심 내용을 걷어내고, 현재 18개 규칙의 설계 요약과 공통 기준만 남겼다.
+- `main/docs/08_ui_api_design.md`에 Windows 로컬 앱용 rulebase API(`/api/local-review/rules/manifest/`, `/api/local-review/rules/bundle/`)와 `engine_min_version=0.2.0` 계약을 추가했다.
+- 최근 규칙 변경점:
+  - 시험계획서 담당자, 테스트케이스 검토자, 점검표 표지 검토자는 센터별 expected 값을 사용한다. 분당 `임우섭`, 상암 `김진영`, 영남 `이재훈`, 기본값 `김진영`.
+  - 시험환경구성도는 `.png` 또는 `.pptx` 1개 이상이면 통과한다.
+  - 품질특성별제품정보기재사항은 `{프로젝트번호}`와 `품질특성별` 문구, 다음 문단 날짜, 바닥글 `TPG`/`TIS` 금지를 검사한다.
+  - 기능리스트, 테스트케이스, 점검표, 품질검사표는 Excel 머리글/바닥글 금지어/필수어 조건을 포함한다.
+  - 시험기록서는 전체 검사 대상에서 `기록서` PDF를 찾고 1페이지 캡처 이미지를 산출물로 제공한다.
+  - SW저작권확인서와 홍보이미지는 폴더 누락, 파일명 누락, 확장자 불일치, 파일명 `예시` 금지 등 실패 메시지를 세분화했다.
+
+## 바로 다음 작업
+
+1. `.\.venv\Scripts\python.exe manage.py seed_download_review_rules --only-real --enable --update-existing --dry-run --settings=myproject.ui_mock_settings`로 현재 DB 반영 차이를 확인한다.
+2. `.\.venv\Scripts\python.exe manage.py test main.tests --settings=myproject.ui_mock_settings`로 전체 규칙 회귀를 확인한다.
+3. 패키징된 Windows 앱에서 `/api/local-review/rules/manifest/`의 `engine_min_version`과 앱 `ENGINE_VERSION` 비교가 정상 동작하는지 확인한다.
+4. 실제 정상 산출물 zip/폴더로 1~18번 전체 PASS 여부를 다시 확인한다.
+
 ## 2026-06-24: 분당/상암·영남 split-server 운영 라우팅
 
 - `/download-review/` 화면이 현재 Host를 보고 기본 센터와 원격 센터 탭 URL을 결정하도록 수정했다.
