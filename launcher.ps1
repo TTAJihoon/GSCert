@@ -44,6 +44,7 @@ function Show-Menu {
     $pgHost = if ($env:REFERENCE_PG_HOST) { $env:REFERENCE_PG_HOST } else { "미설정" }
     Write-Host "  P. PostgreSQL 설정 - 현재 HOST: $pgHost"
     Write-Host "  D. 규칙 DB 반영    - 점검규칙(config)을 PostgreSQL에 반영 (seed)$venvWarn"
+    Write-Host "  B. 앱 빌드         - 로컬 검토 앱(GSCertLocalReview.exe) 재빌드"
     Write-Host "  U. Git 관리        - 원격 pull / 로컬 커밋·push"
     Write-Host "  0. 종료"
     Write-Host "=======================================" -ForegroundColor Cyan
@@ -343,6 +344,30 @@ while ($true) {
                 }
             } finally {
                 Pop-Location
+            }
+        }
+        'B' {
+            Write-Host ""
+            Write-Host "=== 로컬 검토 앱 빌드 (GSCertLocalReview.exe) ===" -ForegroundColor Cyan
+            $AppDir      = Join-Path $ScriptDir "local_review_app"
+            $BuildScript = Join-Path $AppDir "scripts\package_windows.ps1"
+            $AppPython   = Join-Path $AppDir ".venv\Scripts\python.exe"
+            if (-not (Test-Path $BuildScript)) {
+                Write-Host "[ERROR] 빌드 스크립트를 찾을 수 없습니다: $BuildScript" -ForegroundColor Red
+            } elseif (-not (Test-Path $AppPython)) {
+                Write-Host "[ERROR] 앱 전용 가상환경이 없습니다: $AppPython" -ForegroundColor Red
+                Write-Host "        먼저 아래로 생성 후 다시 시도하세요:" -ForegroundColor Yellow
+                Write-Host "          cd `"$AppDir`"; python -m venv .venv" -ForegroundColor Gray
+            } else {
+                Write-Host "  최신 gscert_review_core(엔진)를 포함해 exe 를 다시 빌드합니다. (수 분 소요)" -ForegroundColor Gray
+                Write-Host "  실행 중인 GSCertLocalReview.exe 가 있으면 종료합니다." -ForegroundColor Gray
+                taskkill /F /IM GSCertLocalReview.exe 2>$null | Out-Null
+                & powershell -ExecutionPolicy Bypass -File $BuildScript
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "[OK] 앱 빌드 완료. local_review_app\dist\GSCertLocalReview 의 exe 를 배포하세요." -ForegroundColor Green
+                } else {
+                    Write-Host "[ERROR] 앱 빌드 실패. 위 출력을 확인하세요." -ForegroundColor Red
+                }
             }
         }
         '0' {
