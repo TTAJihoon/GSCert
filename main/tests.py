@@ -1383,7 +1383,7 @@ class DownloadReviewJobsApiTests(TestCase):
         zip_path = project_dir / "TTA-26-00010.zip"
         rawdata_zip_path = project_dir / "TTA-26-00010 rawdata.zip"
         with zipfile.ZipFile(rawdata_zip_path, "w") as rawdata_archive:
-            rawdata_archive.writestr("결함/raw.txt", b"defect")
+            rawdata_archive.writestr("결함/defect.png", b"image")
             rawdata_archive.writestr("보안/1차/raw.txt", b"security")
             rawdata_archive.writestr("보안/2차/raw.txt", b"security")
             rawdata_archive.writestr("성능/1차/raw.txt", b"performance")
@@ -1729,7 +1729,7 @@ class DownloadReviewJobsApiTests(TestCase):
 
     def _write_valid_rawdata_zip(self, rawdata_zip_path):
         with zipfile.ZipFile(rawdata_zip_path, "w") as archive:
-            archive.writestr("결함/raw.txt", b"defect")
+            archive.writestr("결함/defect.png", b"image")
             archive.writestr("보안/1차/raw.txt", b"security")
             archive.writestr("보안/2차/raw.txt", b"security")
             archive.writestr("성능/1차/raw.txt", b"performance")

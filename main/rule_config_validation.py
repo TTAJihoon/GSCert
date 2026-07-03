@@ -171,7 +171,7 @@ def _check_folder_checks(value: Any, where: str, errors: list[str]) -> None:
             continue
         if not isinstance(item.get("keyword"), str) or not item.get("keyword"):
             errors.append(f"{fc_where} 에 비어 있지 않은 'keyword' 가 필요합니다.")
-        for ik in ("exact_child_folders", "min_entries"):
+        for ik in ("exact_child_folders", "min_entries", "min_images", "min_child_folders"):
             if ik in item and not _is_int(item[ik]):
                 errors.append(f"{fc_where} '{ik}' 는 정수여야 합니다.")
 

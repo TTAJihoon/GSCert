@@ -1658,33 +1658,29 @@ def _join_korean_or(values):
 
 def _evaluate_rawdata_folder_structure_check(rule, sequence, project, verify_result):
     config = rule.config_json or {}
-    # 프로젝트 루트에서 'rawdata' zip을 찾아 그 안에서만 폴더 구조를 점검한다.
+    all_files = _inspection_files(verify_result)
+    # 'rawdata'가 든 zip/폴더가 있으면 그 안에서만 점검하고,
+    # 없으면 전체 파일에서 결함/보안/성능 폴더를 직접 찾아 점검한다.
     rawdata_files = [
         file_info
-        for file_info in _inspection_files(verify_result)
+        for file_info in all_files
         if _is_rawdata_file(file_info, "rawdata")
     ]
-    raw_detail = {"rawdata_file_count": len(rawdata_files)}
-    if not rawdata_files:
-        return RuleEvaluation(
-            rule=rule,
-            sequence=sequence,
-            status=DownloadReviewRuleStatus.FAIL,
-            expected="rawdata zip 존재",
-            actual="rawdata zip 없음",
-            message=config.get("missing_zip_message") or "rawdata zip 파일을 찾을 수 없음",
-            raw_detail=raw_detail,
-        )
+    target_files = rawdata_files if rawdata_files else all_files
+    raw_detail = {
+        "rawdata_file_count": len(rawdata_files),
+        "used_rawdata_scope": bool(rawdata_files),
+    }
 
-    # 수행>rawdata 같은 고정 경로에 의존하지 않고, rawdata zip 안에서 각 키워드
-    # (결함/보안/성능) 폴더를 직접 찾아 그 안의 하위 폴더 구조를 점검한다.
-    folders, file_folders = _folder_tree_from_files(rawdata_files)
+    # rawdata zip이 있으면 그 안에서, 없으면 전체에서 각 키워드(결함/보안/성능)
+    # 폴더를 직접 찾아 그 안의 하위 폴더 구조를 점검한다.
+    folders, file_folders = _folder_tree_from_files(target_files)
 
     checks = []
     passed = True
     first_message = ""
     for folder_check in config.get("folder_checks") or []:
-        result = _run_folder_check(folders, file_folders, folder_check, files=rawdata_files)
+        result = _run_folder_check(folders, file_folders, folder_check, files=target_files)
         checks.append(result)
         if not result["passed"] and passed:
             passed = False
@@ -4925,12 +4921,41 @@ def _folder_direct_files(folder, files):
     return [file_info for file_info in (files or []) if tuple(_folder_segments(file_info.path)) == target]
 
 
+def _files_under_folder(folder, files):
+    """해당 폴더(및 모든 하위)에 속한 파일 목록(FileInfo)을 반환한다."""
+    target = tuple(folder)
+    depth = len(target)
+    return [
+        file_info
+        for file_info in (files or [])
+        if tuple(_folder_segments(file_info.path))[:depth] == target
+    ]
+
+
+def _any_file_name_contains(files, keyword):
+    needle = str(keyword or "")
+    if not needle:
+        return False
+    return any(needle in str(file_info.name or "") for file_info in (files or []))
+
+
 def _run_folder_check(folders, file_folders, folder_check, files=None):
     keyword = str(folder_check.get("keyword") or "").strip()
     failure_message = str(folder_check.get("failure_message") or "폴더 구조 확인 불가")
+    # 하위 폴더가 없을 때 특정 단어가 든 파일이 있으면 통과 처리하는 예외(예: '보안성' 미수행 안내).
+    name_exception = str(folder_check.get("pass_if_file_name_contains") or "").strip()
     # rawdata zip 안 어디에 있든 키워드를 포함한 폴더를 직접 찾는다.
     folder = _find_folder_by_keyword_chain(folders, [keyword]) if keyword else ()
     if not folder:
+        # 폴더 자체가 없어도, 예외 단어가 든 파일이 있으면 통과로 본다.
+        if name_exception and _any_file_name_contains(files, name_exception):
+            return {
+                "keyword": keyword,
+                "folder": "",
+                "passed": True,
+                "message": f"'{name_exception}' 포함 파일 존재하여 예외 통과",
+                "actual": f"'{name_exception}' 포함 파일 존재",
+            }
         return {
             "keyword": keyword,
             "folder": "",
@@ -4951,7 +4976,25 @@ def _run_folder_check(folders, file_folders, folder_check, files=None):
             else:
                 break
 
+    # 폴더 안에 이미지 파일이 최소 N개 있어야 한다(예: 결함 rawdata 스크린샷).
+    min_images = folder_check.get("min_images")
+    if min_images is not None:
+        image_count = len([
+            file_info
+            for file_info in _files_under_folder(folder, files)
+            if file_info.extension.lower() in IMAGE_EXTENSIONS
+        ])
+        if image_count < int(min_images):
+            return {
+                "keyword": keyword,
+                "folder": "/".join(folder),
+                "passed": False,
+                "message": failure_message,
+                "actual": f"이미지 {image_count}개",
+            }
+
     exact_child_folders = folder_check.get("exact_child_folders")
+    min_child_folders = folder_check.get("min_child_folders")
     child_folders = _immediate_child_folders(folder, folders)
     child_files = _immediate_child_file_folders(folder, file_folders)
 
@@ -4968,7 +5011,34 @@ def _run_folder_check(folders, file_folders, folder_check, files=None):
                 "actual": "txt 안내 파일만 존재: " + ", ".join(f.name for f in direct_files[:3]),
             }
 
+    # 예외: 하위 폴더가 없으면 예외 단어가 든 파일 존재 여부로 통과/실패를 판정한다.
+    if name_exception and not child_folders:
+        if _any_file_name_contains(files, name_exception):
+            return {
+                "keyword": keyword,
+                "folder": "/".join(folder),
+                "passed": True,
+                "message": f"'{name_exception}' 포함 파일 존재하여 예외 통과",
+                "actual": f"'{name_exception}' 포함 파일 존재",
+            }
+        return {
+            "keyword": keyword,
+            "folder": "/".join(folder),
+            "passed": False,
+            "message": failure_message,
+            "actual": "하위 폴더 없음",
+        }
+
     if exact_child_folders is not None and len(child_folders) != int(exact_child_folders):
+        return {
+            "keyword": keyword,
+            "folder": "/".join(folder),
+            "passed": False,
+            "message": failure_message,
+            "actual": f"하위 폴더 {len(child_folders)}개",
+        }
+
+    if min_child_folders is not None and len(child_folders) < int(min_child_folders):
         return {
             "keyword": keyword,
             "folder": "/".join(folder),

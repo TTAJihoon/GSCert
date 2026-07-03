@@ -605,20 +605,21 @@ def _actual_rule_spec(index, column_name):
                 "folder_checks": [
                     {
                         "keyword": "결함",
-                        "failure_message": "결함리포트 rawdata 확인 불가",
+                        "min_images": 1,
+                        "failure_message": "결함리포트 rawdata를 찾을 수 없습니다",
                     },
                     {
                         "keyword": "보안",
-                        "exact_child_folders": 2,
+                        "min_child_folders": 2,
                         "each_child_has_entry": True,
-                        "txt_only_pass": True,
                         "unwrap_single_folder": True,
-                        "failure_message": "보안성 rawdata 확인 불가",
+                        "pass_if_file_name_contains": "보안성",
+                        "failure_message": "보안성 rawdata를 찾을 수 없습니다",
                     },
                     {
                         "keyword": "성능",
                         "min_entries": 1,
-                        "failure_message": "성능 rawdata 확인 불가",
+                        "failure_message": "성능시험 rawdata를 찾을 수 없습니다",
                     },
                 ],
                 "pass_message": "rawdata 폴더 구조를 확인했습니다.",
