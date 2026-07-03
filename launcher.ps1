@@ -32,8 +32,7 @@ function Show-Menu {
     Write-Host "  5. stop_server    - Django 서버만 중지"
     Write-Host "  6. stop_worker    - download_worker만 중지"
     Write-Host "  7. status         - 서버/워커 상태 확인"
-    Write-Host "  8. run_ui_mock    - UI 목 서버 실행"
-    Write-Host "  9. collectstatic  - 정적 파일(css/js) 수집 (nginx 반영)$venvWarn"
+    Write-Host "  C. collectstatic  - 정적 파일(css/js) 수집 (nginx 반영)$venvWarn"
     Write-Host "  R. restart        - 서버/워커 재시작$venvWarn"
     $nginxColor = if ($nginxOk) { "Green" } else { "Red" }
     Write-Host "  N. nginx          - nginx 시작/중지/reload  $nginxStat" -ForegroundColor $nginxColor
@@ -66,13 +65,7 @@ while ($true) {
     switch ($choice.ToUpper()) {
         '1' {
             Write-Host ""
-            $live = Ask-YesNo "워커를 Live 모드로 실행할까요? (No = dry-run)"
-            Write-Host ""
-            if ($live) {
-                & (Join-Path $ScriptDir "start_all.ps1") -Live
-            } else {
-                & (Join-Path $ScriptDir "start_all.ps1")
-            }
+            & (Join-Path $ScriptDir "start_all.ps1") -Live
         }
         '2' {
             Write-Host ""
@@ -80,12 +73,10 @@ while ($true) {
         }
         '3' {
             Write-Host ""
-            $live   = Ask-YesNo "Live 모드로 실행할까요? (No = dry-run)"
             $once   = Ask-YesNo "--once 모드로 실행할까요?"
-            $nohead = if ($live) { Ask-YesNo "브라우저 창을 표시할까요? (No = headless)" } else { $false }
+            $nohead = Ask-YesNo "브라우저 창을 표시할까요? (No = headless)"
             Write-Host ""
-            $params = @{}
-            if ($live)   { $params['Live'] = $true }
+            $params = @{ Live = $true }
             if ($once)   { $params['Once'] = $true }
             if ($nohead) { $params['NoHeadless'] = $true }
             & (Join-Path $ScriptDir "start_worker.ps1") @params
@@ -106,11 +97,7 @@ while ($true) {
             Write-Host ""
             & (Join-Path $ScriptDir "status.ps1")
         }
-        '8' {
-            Write-Host ""
-            & (Join-Path $ScriptDir "run_ui_mock_server.ps1")
-        }
-        '9' {
+        'C' {
             Write-Host ""
             Write-Host "=== 정적 파일 수집 (collectstatic) ===" -ForegroundColor Cyan
             $VenvPython = Join-Path $ScriptDir ".venv\Scripts\python.exe"
@@ -144,30 +131,18 @@ while ($true) {
                     & (Join-Path $ScriptDir "start_server.ps1")
                 }
                 '2' {
-                    $live = Ask-YesNo "워커를 Live 모드로 실행할까요? (No = dry-run)"
-                    Write-Host ""
                     Write-Host "=== 워커 중지 ===" -ForegroundColor Yellow
                     & (Join-Path $ScriptDir "stop_worker.ps1")
                     Write-Host ""
                     Write-Host "=== 워커 시작 ===" -ForegroundColor Green
-                    if ($live) {
-                        & (Join-Path $ScriptDir "start_worker.ps1") -Live
-                    } else {
-                        & (Join-Path $ScriptDir "start_worker.ps1")
-                    }
+                    & (Join-Path $ScriptDir "start_worker.ps1") -Live
                 }
                 '3' {
-                    $live = Ask-YesNo "워커를 Live 모드로 실행할까요? (No = dry-run)"
-                    Write-Host ""
                     Write-Host "=== 전체 중지 ===" -ForegroundColor Yellow
                     & (Join-Path $ScriptDir "stop_all.ps1")
                     Write-Host ""
                     Write-Host "=== 전체 시작 ===" -ForegroundColor Green
-                    if ($live) {
-                        & (Join-Path $ScriptDir "start_all.ps1") -Live
-                    } else {
-                        & (Join-Path $ScriptDir "start_all.ps1")
-                    }
+                    & (Join-Path $ScriptDir "start_all.ps1") -Live
                 }
                 default { Write-Host "올바른 번호를 입력해 주세요." -ForegroundColor Red }
             }
@@ -299,15 +274,17 @@ while ($true) {
             } else {
                 Write-Host "  코드의 점검규칙 정의(config_json)를 PostgreSQL(reference DB)에 반영합니다." -ForegroundColor Gray
                 Write-Host "  ※ 주 서버(reference PostgreSQL)에서 실행해야 합니다." -ForegroundColor Yellow
-                $apply = Ask-YesNo "실제로 DB에 반영할까요? (No = dry-run 미리보기만)"
-                $seedArgs = @((Join-Path $ScriptDir "manage.py"), "seed_download_review_rules", "--only-real", "--update-existing", "--enable")
-                if (-not $apply) { $seedArgs += "--dry-run" }
                 Write-Host ""
+                $seedArgs = @((Join-Path $ScriptDir "manage.py"), "seed_download_review_rules", "--only-real", "--update-existing", "--enable")
+                # 네이티브 명령의 stderr 가 종료성 오류로 처리되지 않도록 잠시 완화한다.
+                $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
                 & $VenvPython @seedArgs
-                if ($? -and $apply) {
+                $seedOk = ($LASTEXITCODE -eq 0)
+                $ErrorActionPreference = $prevEAP
+                if ($seedOk) {
                     Write-Host "[OK] 점검규칙 DB 반영 완료. 새로 시작되는 점검 작업부터 적용됩니다." -ForegroundColor Green
-                } elseif ($? -and -not $apply) {
-                    Write-Host "[OK] dry-run 미리보기 완료(실제 반영 안 됨). 반영하려면 다시 D → y." -ForegroundColor Yellow
+                } else {
+                    Write-Host "[ERROR] seed 실패. 위 출력을 확인하세요(주 서버 PostgreSQL 접속/규칙 검증)." -ForegroundColor Red
                 }
             }
         }
@@ -318,13 +295,16 @@ while ($true) {
             Write-Host "  2) push  - 로컬 변경 커밋 후 업로드"
             $sub = Read-Host "선택"
             Write-Host ""
+            # git 은 진행 메시지를 stderr 로 내보내므로, 종료성 오류로 처리되지 않게 완화한다.
+            $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
             Push-Location $ScriptDir
             try {
-                $branch = (git rev-parse --abbrev-ref HEAD).Trim()
-                Write-Host "  현재 브랜치: $branch" -ForegroundColor Gray
+                $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
+                if ($branch) { Write-Host "  현재 브랜치: $($branch.Trim())" -ForegroundColor Gray }
                 if ($sub -eq '1') {
                     git pull
-                    if ($?) { Write-Host "[OK] git pull 완료. 코드 변경이 있으면 서버/워커를 재시작하세요(R)." -ForegroundColor Green }
+                    if ($LASTEXITCODE -eq 0) { Write-Host "[OK] git pull 완료. 코드 변경이 있으면 서버/워커를 재시작하세요(R)." -ForegroundColor Green }
+                    else { Write-Host "[ERROR] git pull 실패. 위 출력을 확인하세요." -ForegroundColor Red }
                 } elseif ($sub -eq '2') {
                     git status --short
                     Write-Host ""
@@ -332,10 +312,9 @@ while ($true) {
                     if ($msg) {
                         git add -A
                         git commit -m $msg
-                        if ($?) {
-                            git push
-                            if ($?) { Write-Host "[OK] git push 완료." -ForegroundColor Green }
-                        }
+                        git push
+                        if ($LASTEXITCODE -eq 0) { Write-Host "[OK] git push 완료." -ForegroundColor Green }
+                        else { Write-Host "[ERROR] git push 실패(또는 커밋할 변경 없음). 위 출력을 확인하세요." -ForegroundColor Red }
                     } else {
                         Write-Host "커밋 메시지가 없어 취소했습니다." -ForegroundColor Yellow
                     }
@@ -344,6 +323,7 @@ while ($true) {
                 }
             } finally {
                 Pop-Location
+                $ErrorActionPreference = $prevEAP
             }
         }
         'B' {
@@ -361,9 +341,13 @@ while ($true) {
             } else {
                 Write-Host "  최신 gscert_review_core(엔진)를 포함해 exe 를 다시 빌드합니다. (수 분 소요)" -ForegroundColor Gray
                 Write-Host "  실행 중인 GSCertLocalReview.exe 가 있으면 종료합니다." -ForegroundColor Gray
-                taskkill /F /IM GSCertLocalReview.exe 2>$null | Out-Null
+                # taskkill 은 프로세스가 없으면 stderr 를 내므로 Stop-Process 로 대체(없어도 무해).
+                Get-Process -Name GSCertLocalReview -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+                $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
                 & powershell -ExecutionPolicy Bypass -File $BuildScript
-                if ($LASTEXITCODE -eq 0) {
+                $buildOk = ($LASTEXITCODE -eq 0)
+                $ErrorActionPreference = $prevEAP
+                if ($buildOk) {
                     Write-Host "[OK] 앱 빌드 완료. local_review_app\dist\GSCertLocalReview 의 exe 를 배포하세요." -ForegroundColor Green
                 } else {
                     Write-Host "[ERROR] 앱 빌드 실패. 위 출력을 확인하세요." -ForegroundColor Red
