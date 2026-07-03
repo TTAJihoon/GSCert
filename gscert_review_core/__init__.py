@@ -15,6 +15,11 @@ from .types import (
     RuleSpec,
 )
 
+# 공유 점검 엔진 버전. 규칙셋이 요구하는 최소 엔진 버전(rulebase manifest 의
+# engine_min_version)과 비교해, 낡은 앱/서버에 신규 규칙이 적용되는 것을 막는다.
+# 엔진에 새 규칙유형/검사옵션을 추가하면 이 값을 올린다.
+ENGINE_VERSION = "0.2.0"
+
 __all__ = [
     "PASS",
     "FAIL",
@@ -24,4 +29,5 @@ __all__ = [
     "RuleContext",
     "RuleEvaluation",
     "RuleSpec",
+    "ENGINE_VERSION",
 ]

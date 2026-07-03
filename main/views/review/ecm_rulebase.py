@@ -4,7 +4,11 @@ import json
 from main.models import DownloadReviewRule
 
 
-RULE_ENGINE_MIN_VERSION = "0.1.0"
+# 현재 규칙셋을 실행하려면 최소 이 엔진 버전이 필요하다. 엔진에 새 규칙유형/검사옵션이
+# 추가되어 구버전 엔진에서 오작동할 수 있으면 이 값을 올린다.
+# 0.2.0: docx_footer/header_not_contains 검사유형, rawdata folder_check 옵션
+#        (min_images/min_child_folders/pass_if_file_name_contains), 센터별 담당자 등.
+RULE_ENGINE_MIN_VERSION = "0.2.0"
 
 
 def get_rulebase_manifest_payload():

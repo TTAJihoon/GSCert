@@ -9,10 +9,27 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 if (_REPO_ROOT / "gscert_review_core").is_dir() and str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
-from gscert_review_core import engine
+from gscert_review_core import ENGINE_VERSION, engine
 from gscert_review_core.types import ERROR, FAIL, PASS, UNSUPPORTED, RuleSpec
 
 from .scanner import FolderScan
+
+
+def _version_tuple(value: str) -> tuple[int, ...]:
+    parts = []
+    for part in str(value or "0").split("."):
+        try:
+            parts.append(int(part))
+        except ValueError:
+            parts.append(0)
+    return tuple(parts)
+
+
+def engine_supports(min_version: str) -> bool:
+    """번들이 요구하는 최소 엔진 버전을 이 앱의 엔진이 만족하는지."""
+    if not min_version:
+        return True
+    return _version_tuple(ENGINE_VERSION) >= _version_tuple(min_version)
 
 
 # 지원하는 rule_type 은 엔진이 단일 소스로 노출한다(engine.SUPPORTED_RULE_TYPES).

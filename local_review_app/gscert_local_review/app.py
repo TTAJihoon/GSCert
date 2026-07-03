@@ -30,7 +30,16 @@ from PySide6.QtWidgets import (
 )
 
 from .api_client import ApiClientError, GSCertApiClient, ProjectMetadata, ReferenceItem
-from .local_runner import ERROR, FAIL, PASS, UNSUPPORTED, LocalRunSummary, run_cached_rules
+from .local_runner import (
+    ENGINE_VERSION,
+    ERROR,
+    FAIL,
+    PASS,
+    UNSUPPORTED,
+    LocalRunSummary,
+    engine_supports,
+    run_cached_rules,
+)
 from .project import infer_project_number
 from .rule_cache import RuleCacheSummary, load_rule_bundle, load_rule_cache, save_rule_cache
 from .scanner import FolderScan, scan_folder
@@ -958,6 +967,16 @@ class MainWindow(QMainWindow):
             self._show_error(f"규칙 캐시 저장에 실패했습니다: {exc}")
             return
         self.rulebase_status.setText(self._rule_cache_text(self.rule_cache))
+        required_engine = str(bundle.get("engine_min_version") or "")
+        if not engine_supports(required_engine):
+            QMessageBox.warning(
+                self,
+                "앱 업데이트 필요",
+                f"규칙을 내려받았지만, 이 규칙셋은 엔진 v{required_engine} 이상이 필요합니다.\n"
+                f"현재 앱 엔진은 v{ENGINE_VERSION} 이라 점검이 차단됩니다.\n"
+                "최신 GSCertLocalReview 로 업데이트(재설치)하세요.",
+            )
+            return
         QMessageBox.information(
             self,
             "규칙 업데이트",
@@ -1071,6 +1090,16 @@ class MainWindow(QMainWindow):
         if not rule_bundle:
             self._set_action_status("규칙 업데이트 필요", C_WARNING)
             self._show_error("먼저 Rulebase에서 규칙 업데이트를 실행하세요.")
+            return
+        # 규칙셋이 요구하는 엔진 버전보다 이 앱의 엔진이 낡았으면 오작동하므로 막는다.
+        required_engine = str(rule_bundle.get("engine_min_version") or "")
+        if not engine_supports(required_engine):
+            self._set_action_status("앱 업데이트 필요", C_WARNING)
+            self._show_error(
+                f"이 규칙셋은 엔진 v{required_engine} 이상이 필요하지만, "
+                f"현재 앱 엔진은 v{ENGINE_VERSION} 입니다.\n"
+                "최신 GSCertLocalReview 로 업데이트(재설치)한 뒤 다시 시도하세요."
+            )
             return
         # 기준정보(메타데이터)는 점검에 필수다. 시험기간 등 컨텍스트가 없으면 규칙이
         # 조용히 부적합으로 떨어지므로, 없으면 점검을 막고 조회/직접입력을 유도한다.
@@ -1250,13 +1279,17 @@ class MainWindow(QMainWindow):
             status_item.setBackground(QColor(bg))
             # 상세 팝업에서 쓰도록 결과 객체를 행에 보관(정렬돼도 item이 데이터를 들고 감).
             status_item.setData(Qt.ItemDataRole.UserRole, result)
+            status_item.setToolTip(result.message or label)
             self.result_table.setItem(row, 0, status_item)
 
             for col, value in enumerate(
                 [result.rule_name, result.expected, result.actual, result.message],
                 start=1,
             ):
-                self.result_table.setItem(row, col, QTableWidgetItem(value))
+                cell = QTableWidgetItem(value)
+                # 컬럼을 좁혀도 전체 내용을 볼 수 있도록 셀 전체 텍스트를 툴팁으로 제공.
+                cell.setToolTip(value)
+                self.result_table.setItem(row, col, cell)
 
         self._stat_labels["total"].setText(f"전체 {len(summary.results)}")
         self._stat_labels["pass"].setText(f"적합 {counts.get(PASS, 0)}")
