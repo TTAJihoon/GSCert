@@ -308,6 +308,12 @@ def _actual_rule_spec(index, column_name):
                         "remove_whitespace": True,
                         "failure_message": "1페이지 날짜가 잘못되었습니다.",
                     },
+                    {
+                        "type": "docx_footer_not_contains",
+                        "extensions": WORD_FILE_EXTENSIONS,
+                        "texts": ["TPG", "TIS"],
+                        "failure_message": "바닥글에 서식번호가 작성되면 안됨",
+                    },
                 ],
                 "folder_missing_message": "시험계획 폴더를 찾을 수 없습니다",
                 "missing_message": "품질특성별제품정보기재사항 파일을 찾을 수 없습니다",
@@ -375,6 +381,14 @@ def _actual_rule_spec(index, column_name):
                         "message": "시험계획서 바닥글에 양식번호가 잘못 작성됨",
                     },
                     {
+                        "text": "TPG",
+                        "message": "바닥글에 서식번호가 작성되면 안됨",
+                    },
+                    {
+                        "text": "TIS",
+                        "message": "바닥글에 서식번호가 작성되면 안됨",
+                    },
+                    {
                         "text": "소프트웨어시험인증연구소",
                         "message": "시험계획서 바닥글에 '소프트웨어시험인증연구소'라는 단어가 잘못 작성됨",
                     },
@@ -436,10 +450,30 @@ def _actual_rule_spec(index, column_name):
                 "reviewer_expected": "김진영",
                 "date_text": "작성일: {시작일} ~ {종료일}",
                 "result_header": "상세 테스트 결과",
+                "forbidden_header_terms": [
+                    {
+                        "text": "TTA",
+                        "message": "머리글에 프로젝트번호가 작성되면 안됨",
+                    },
+                ],
                 "forbidden_footer_terms": [
+                    {
+                        "text": "TPG",
+                        "message": "바닥글에 서식번호가 작성되면 안됨",
+                    },
+                    {
+                        "text": "TIS",
+                        "message": "바닥글에 서식번호가 작성되면 안됨",
+                    },
                     {
                         "text": "소프트웨어시험인증연구소",
                         "message": "테스트케이스 바닥글에 '소프트웨어시험인증연구소'라는 단어가 잘못 작성됨",
+                    },
+                ],
+                "required_footer_terms": [
+                    {
+                        "text": "TTA",
+                        "message": "바닥글에 TTA가 누락됨",
                     },
                 ],
                 "folder_missing_message": "설계 폴더를 찾을 수 없습니다",
@@ -471,11 +505,19 @@ def _actual_rule_spec(index, column_name):
                 "count_mismatch_message": "시험성적서의 결함 차수와 결함리포트 개수가 다름",
                 "forbidden_header_terms": [
                     {
-                        "text": "프로젝트번호",
-                        "message": "결함리포트 머리글에 프로젝트번호 삭제",
+                        "text": "TTA",
+                        "message": "머리글에 프로젝트번호가 작성되면 안됨",
                     },
                 ],
                 "forbidden_footer_terms": [
+                    {
+                        "text": "TPG",
+                        "message": "바닥글에 서식번호가 작성되면 안됨",
+                    },
+                    {
+                        "text": "TIS",
+                        "message": "바닥글에 서식번호가 작성되면 안됨",
+                    },
                     {
                         "text": "소프트웨어시험인증연구소",
                         "message": "결함리포트 바닥글에 '소프트웨어시험인증연구소'라는 단어가 잘못 작성됨",
@@ -486,8 +528,8 @@ def _actual_rule_spec(index, column_name):
                 "extension_mismatch_message": "결함리포트 파일이 xlsx/xls가 아닙니다",
                 "parse_error_message": "결함리포트 파일을 읽을 수 없습니다",
                 "filename_message": "결함리포트 파일명이 잘못됨",
-                "header_message": "결함리포트 머리글에 프로젝트번호가 작성됨",
-                "footer_message": "결함리포트 바닥글에 '소프트웨어시험인증연구소'가 작성됨",
+                "header_message": "머리글에 프로젝트번호가 작성되면 안됨",
+                "footer_message": "바닥글에 서식번호가 작성되면 안됨",
                 "sheet_message": "결함리포트 시트 구성이 잘못됨",
                 "environment_message": "시험환경 정보가 잘못 작성됨",
                 "report_date_message": "프로젝트 번호, 결함 차시, 보고일자 중 잘못된 값이 작성됨",
@@ -518,6 +560,18 @@ def _actual_rule_spec(index, column_name):
                     {
                         "text": "TIS-",
                         "message": "점검표 바닥글에 양식번호가 잘못 작성됨",
+                    },
+                    {
+                        "text": "TPG",
+                        "message": "바닥글에 서식번호가 작성되면 안됨",
+                    },
+                    {
+                        "text": "TIS",
+                        "message": "바닥글에 서식번호가 작성되면 안됨",
+                    },
+                    {
+                        "text": "소프트웨어시험인증연구소",
+                        "message": "바닥글에 '소프트웨어시험인증연구소'가 작성되면 안됨",
                     },
                 ],
                 "required_footer_terms": [
@@ -659,6 +713,26 @@ def _actual_rule_spec(index, column_name):
                 "sheet_name": "{project_number} 품질검사표",
                 "quality_value_count": 33,
                 "quality_value_excluded_indices": [27],
+                "forbidden_footer_terms": [
+                    {
+                        "text": "TPG",
+                        "message": "바닥글에 서식번호가 작성되면 안됨",
+                    },
+                    {
+                        "text": "TIS",
+                        "message": "바닥글에 서식번호가 작성되면 안됨",
+                    },
+                    {
+                        "text": "소프트웨어시험인증연구소",
+                        "message": "바닥글에 '소프트웨어시험인증연구소'가 작성되면 안됨",
+                    },
+                ],
+                "required_footer_terms": [
+                    {
+                        "text": "한국정보통신기술협회",
+                        "message": "바닥글에 '한국정보통신기술협회'가 누락됨",
+                    },
+                ],
                 "missing_message": "품질검사표 파일 확인 불가",
                 "sheet_message": "품질검사표 시트명 확인 필요",
                 "score_message": "측정항목별 점수표가 점검표와 상이함",

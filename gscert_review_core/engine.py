@@ -1316,6 +1316,40 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
             "message": footer_check.get("message") or "테스트케이스 바닥글에 잘못된 단어가 작성됨",
         })
 
+    # 1-1) 머리글 금지어 (설정된 경우에만)
+    header_forbidden_check = _check_forbidden_text_terms(
+        _clean_excel_header_text(sheet.header_text),
+        config.get("forbidden_header_terms") or [],
+        context,
+        subject="테스트케이스 머리글",
+        default_message="테스트케이스 머리글에 잘못된 단어가 작성됨",
+    )
+    if header_forbidden_check["details"]:
+        raw_detail["header_forbidden_check"] = header_forbidden_check
+        sub_checks.append({
+            "expected": f"[머리글] {_stringify_check_value(header_forbidden_check.get('expected', ''))}",
+            "actual": _stringify_check_value(header_forbidden_check.get("actual", "")),
+            "passed": bool(header_forbidden_check.get("passed")),
+            "message": header_forbidden_check.get("message") or "테스트케이스 머리글에 잘못된 단어가 작성됨",
+        })
+
+    # 1-2) 바닥글 필수어 (설정된 경우에만)
+    footer_required_check = _check_required_text_terms(
+        _clean_excel_header_text(sheet.footer_text),
+        config.get("required_footer_terms") or [],
+        context,
+        subject="테스트케이스 바닥글",
+        default_message="테스트케이스 바닥글에 필요한 단어가 누락됨",
+    )
+    if footer_required_check["details"]:
+        raw_detail["footer_required_check"] = footer_required_check
+        sub_checks.append({
+            "expected": f"[바닥글 필수어] {_stringify_check_value(footer_required_check.get('expected', ''))}",
+            "actual": _stringify_check_value(footer_required_check.get("actual", "")),
+            "passed": bool(footer_required_check.get("passed")),
+            "message": footer_required_check.get("message") or "테스트케이스 바닥글에 필요한 단어가 누락됨",
+        })
+
     # 2) 제목(프로젝트번호)
     title_text = _resolve_rule_value(config.get("title_text") or "{project_number} 테스트케이스", context)
     title_cell = _find_cell_containing(sheet.rows, title_text)
@@ -1905,21 +1939,23 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
     sheet_msg = config.get("sheet_message") or "결함리포트 시트 구성이 잘못됨"
     environment_msg = config.get("environment_message") or "시험환경 정보가 잘못 작성됨"
 
-    # 1) 머리글 금지어 (차수별로 집계)
+    # 1) 머리글 금지어 (차수별로 집계, 실제로 걸린 금지어의 메시지 사용)
+    header_fail_msg = _defect_print_fail_message(header_forbidden_check, header_msg)
     for version, version_passed in _defect_print_pass_by_version(header_forbidden_check):
         sub_checks.append({
             "expected": f"[v{version}.0 머리글] 금지어 미포함: {header_forbidden_words}",
             "actual": "정상" if version_passed else f"금지어 포함: {header_forbidden_words}",
             "passed": version_passed,
-            "message": header_msg,
+            "message": header_fail_msg,
         })
     # 2) 바닥글 금지어 (차수별)
+    footer_fail_msg = _defect_print_fail_message(footer_forbidden_check, footer_msg)
     for version, version_passed in _defect_print_pass_by_version(footer_forbidden_check):
         sub_checks.append({
             "expected": f"[v{version}.0 바닥글] 금지어 미포함: {footer_forbidden_words}",
             "actual": "정상" if version_passed else f"금지어 포함: {footer_forbidden_words}",
             "passed": version_passed,
-            "message": footer_msg,
+            "message": footer_fail_msg,
         })
     # 3) 시트 구성 (차수별)
     for detail in sheet_check.get("details", []):
@@ -2004,6 +2040,15 @@ def _defect_print_pass_by_version(check):
         if not detail.get("passed"):
             by_version[version] = False
     return sorted(by_version.items(), key=lambda item: (item[0] is None, item[0]))
+
+
+def _defect_print_fail_message(check, default):
+    """머리글/바닥글 금지어 검사에서 실제로 걸린 금지어의 메시지를 찾는다(없으면 default)."""
+    for detail in check.get("details", []) if isinstance(check, dict) else []:
+        for term in detail.get("checks") or []:
+            if not term.get("passed"):
+                return term.get("message") or default
+    return default
 
 
 def _defect_report_failure(rule, sequence, matched, project, raw_detail, *, expected, actual, message):
@@ -3210,6 +3255,38 @@ def _evaluate_quality_inspection_table_check(rule, sequence, project, context, v
             ),
         })
 
+    # 4) 바닥글 금지어/필수어 (설정된 경우에만)
+    footer_forbidden_check = _check_workbook_forbidden_print_terms(
+        workbook,
+        config.get("forbidden_footer_terms") or [],
+        context,
+        field="footer_text",
+        subject="품질검사표 바닥글",
+        default_message="품질검사표 바닥글에 잘못된 단어가 작성됨",
+    )
+    if footer_forbidden_check.get("details"):
+        checks.append({
+            "expected": f"[바닥글 금지어] {_stringify_check_value(footer_forbidden_check.get('expected', ''))}",
+            "actual": _stringify_check_value(footer_forbidden_check.get("actual", "")),
+            "passed": bool(footer_forbidden_check.get("passed")),
+            "message": footer_forbidden_check.get("message") or "품질검사표 바닥글에 잘못된 단어가 작성됨",
+        })
+    footer_required_check = _check_workbook_required_print_terms(
+        workbook,
+        config.get("required_footer_terms") or [],
+        context,
+        field="footer_text",
+        subject="품질검사표 바닥글",
+        default_message="품질검사표 바닥글에 필요한 단어가 누락됨",
+    )
+    if footer_required_check.get("details"):
+        checks.append({
+            "expected": f"[바닥글 필수어] {_stringify_check_value(footer_required_check.get('expected', ''))}",
+            "actual": _stringify_check_value(footer_required_check.get("actual", "")),
+            "passed": bool(footer_required_check.get("passed")),
+            "message": footer_required_check.get("message") or "품질검사표 바닥글에 필요한 단어가 누락됨",
+        })
+
     raw_detail["sub_checks"] = [
         {"expected": c["expected"], "actual": c["actual"], "passed": c["passed"]} for c in checks
     ]
@@ -4291,9 +4368,37 @@ def _run_content_check(check, file_info, context):
         return _check_docx_part_contains(check, file_info, context, part="header")
     if check_type == "docx_footer_contains":
         return _check_docx_part_contains(check, file_info, context, part="footer")
+    if check_type == "docx_header_not_contains":
+        return _check_docx_part_not_contains(check, file_info, context, part="header")
+    if check_type == "docx_footer_not_contains":
+        return _check_docx_part_not_contains(check, file_info, context, part="footer")
     if check_type == "docx_next_paragraph_matches":
         return _check_docx_next_paragraph_matches(check, file_info, context)
     raise DownloadReviewInspectionError(f"지원하지 않는 문서 내용 검사 유형입니다: {check_type or '(비어 있음)'}")
+
+
+def _check_docx_part_not_contains(check, file_info, context, *, part):
+    """docx 머리글/바닥글에 금지 문자열이 없어야 통과한다(texts 중 하나라도 있으면 실패)."""
+    raw_texts = check.get("texts") or ([check.get("text")] if check.get("text") else [])
+    forbidden = [
+        _resolve_rule_value(str(text), context)
+        for text in raw_texts
+        if str(text).strip()
+    ]
+    if part == "header":
+        actual_text = _docx_header_text(file_info)
+        label = "머리글"
+    else:
+        actual_text = _docx_footer_text(file_info)
+        label = "바닥글"
+    hits = [text for text in forbidden if text in actual_text]
+    return _content_result(
+        check,
+        not hits,
+        expected=f"{label}에 금지어 미포함: {', '.join(forbidden)}",
+        actual=("포함된 금지어: " + ", ".join(hits)) if hits else (actual_text or f"{label} 없음"),
+        detail={"part": part, "forbidden": forbidden, "hits": hits},
+    )
 
 
 def _check_docx_table_next_cell_equals(check, file_info, context):

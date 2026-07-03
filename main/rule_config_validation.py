@@ -30,6 +30,8 @@ _CONTENT_CHECKS: dict[str, dict[str, Any]] = {
     "docx_text_contains": {"all": [], "any": [["text", "texts"]], "regex": []},
     "docx_header_contains": {"all": ["text"], "any": [], "regex": []},
     "docx_footer_contains": {"all": ["text"], "any": [], "regex": []},
+    "docx_header_not_contains": {"all": [], "any": [["text", "texts"]], "regex": []},
+    "docx_footer_not_contains": {"all": [], "any": [["text", "texts"]], "regex": []},
     "docx_next_paragraph_matches": {"all": ["regex"], "any": [["after_text", "after_texts"]], "regex": ["regex"]},
 }
 
