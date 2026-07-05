@@ -183,25 +183,25 @@ QPushButton:disabled {{
     border-color: {C_LINE};
 }}
 QPushButton#primaryBtn {{
-    background-color: #0f4fd6;
+    background-color: #0a357f;
     color: #ffffff;
-    border: 1px solid #0b3fb0;
+    border: 1px solid #082a66;
     font-weight: 800;
 }}
 QPushButton#primaryBtn:hover {{
-    background-color: #0b46c6;
+    background-color: #082a66;
     color: #ffffff;
-    border: 1px solid #0b3fb0;
+    border: 1px solid #061f4d;
 }}
 QPushButton#primaryBtn:pressed {{
-    background-color: #08358f;
+    background-color: #061f4d;
     color: #ffffff;
-    border: 1px solid #08358f;
+    border: 1px solid #061f4d;
 }}
 QPushButton#primaryBtn:disabled {{
-    background-color: #dbeafe;
-    color: #1e3a8a;
-    border: 1px solid #93c5fd;
+    background-color: #aebfd9;
+    color: #eef2fb;
+    border: 1px solid #93a6c9;
 }}
 
 /* ── Tables (pgAdmin 데이터 그리드) ──────────── */
@@ -1028,6 +1028,9 @@ class MainWindow(QMainWindow):
         inferred = infer_project_number(folder)
         if inferred and not self.project_number.text().strip():
             self.project_number.setText(inferred)
+        # 폴더 선택 시 기준정보 조회 + 파일 스캔을 자동으로 실행한다.
+        if self.project_number.text().strip():
+            self.fetch_metadata()
         self.scan_files()
 
     def fetch_metadata(self):
