@@ -143,8 +143,8 @@ QLineEdit:focus, QComboBox:focus {{
     border-color: {C_PRIMARY};
 }}
 QLineEdit:read-only {{
-    background-color: {C_SOFT};
-    color: {C_MUTED};
+    background-color: {C_SURFACE};
+    color: {C_TEXT};
 }}
 QComboBox::drop-down {{
     border: none;
