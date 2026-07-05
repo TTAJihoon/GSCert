@@ -183,25 +183,25 @@ QPushButton:disabled {{
     border-color: {C_LINE};
 }}
 QPushButton#primaryBtn {{
-    background-color: {C_PRIMARY};
+    background-color: #0f4fd6;
     color: #ffffff;
-    border: 1px solid #2a577a;
+    border: 1px solid #0b3fb0;
     font-weight: 800;
 }}
 QPushButton#primaryBtn:hover {{
-    background-color: #2b587c;
+    background-color: #0b46c6;
     color: #ffffff;
-    border: 1px solid #234a68;
+    border: 1px solid #0b3fb0;
 }}
 QPushButton#primaryBtn:pressed {{
-    background-color: #234a68;
+    background-color: #08358f;
     color: #ffffff;
-    border: 1px solid #234a68;
+    border: 1px solid #08358f;
 }}
 QPushButton#primaryBtn:disabled {{
-    background-color: #aec6da;
-    color: #eef4f9;
-    border: 1px solid #9db8cf;
+    background-color: #dbeafe;
+    color: #1e3a8a;
+    border: 1px solid #93c5fd;
 }}
 
 /* ── Tables (pgAdmin 데이터 그리드) ──────────── */
@@ -224,10 +224,10 @@ QTableWidget::item:selected {{
     color: {C_TEXT};
 }}
 QTableWidget[alternatingRowColors="true"]::item:alternate {{
-    background-color: {C_SOFT};
+    background-color: {C_SURFACE};
 }}
 QHeaderView::section {{
-    background-color: {C_HEADER_BG};
+    background-color: {C_SURFACE};
     color: #3a4756;
     font-weight: 700;
     font-size: 12px;
@@ -240,7 +240,7 @@ QHeaderView::section:last {{
     border-right: none;
 }}
 QTableCornerButton::section {{
-    background-color: {C_HEADER_BG};
+    background-color: {C_SURFACE};
     border: none;
     border-bottom: 1px solid {C_LINE_STRONG};
 }}
@@ -951,7 +951,8 @@ class MainWindow(QMainWindow):
         hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         hdr.setStretchLastSection(False)
         self.result_table.verticalHeader().setVisible(False)
-        self.result_table.setSortingEnabled(True)
+        # 하위 검사를 rowspan으로 묶어 표시하므로 헤더 클릭 정렬은 끈다(정렬 시 그룹이 깨짐).
+        self.result_table.setSortingEnabled(False)
         self.result_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.result_table.setWordWrap(True)
         self.result_table.setAlternatingRowColors(True)
@@ -1229,8 +1230,15 @@ class MainWindow(QMainWindow):
         return bool((m.start_date or "").strip() and (m.end_date or "").strip())
 
     def _show_result_detail(self, row: int, _col: int):
-        item = self.result_table.item(row, 0)
-        result = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
+        # rowspan 으로 일부 열이 비어 있을 수 있으므로, 행의 어느 셀이든 데이터를 찾는다.
+        result = None
+        for col in range(self.result_table.columnCount()):
+            cell = self.result_table.item(row, col)
+            if cell is not None:
+                data = cell.data(Qt.ItemDataRole.UserRole)
+                if data is not None:
+                    result = data
+                    break
         if result is None:
             return
         lines = [
@@ -1297,32 +1305,126 @@ class MainWindow(QMainWindow):
                 self.file_table.setItem(row, col, item)
         self.file_table.setSortingEnabled(True)
 
+    @staticmethod
+    def _split_slash(value) -> list[str]:
+        """" / " 로 이어진 문자열을 하위 검사 단위로 분해한다(웹과 동일)."""
+        if value is None or value == "":
+            return []
+        return [part.strip() for part in str(value).split(" / ")]
+
+    def _sub_checks(self, result: "LocalRuleResult") -> list[tuple[str, str, bool | None]]:
+        """규칙 결과를 하위 검사 [(기대값, 실제값, 통과여부)] 로 분해한다(웹 ruleSubChecks 동일).
+
+        - raw_detail.sub_checks 가 있으면 그대로 사용(각 항목별 통과여부 포함).
+        - 없으면 기대값/실제값을 " / " 로 분해. file_checks/content_checks 개수가 맞으면
+          행별 통과여부를 부여한다.
+        - 1건 이하이면 빈 리스트를 반환해 호출부가 단일 행으로 처리하게 한다.
+        """
+        rd = result.raw_detail or {}
+        subs = rd.get("sub_checks")
+        if isinstance(subs, list) and subs:
+            out = []
+            for sub in subs:
+                exp = sub.get("expected")
+                act = sub.get("actual")
+                passed = sub.get("passed")
+                out.append((
+                    str(exp) if exp not in (None, "") else "-",
+                    str(act) if act not in (None, "") else "-",
+                    passed if isinstance(passed, bool) else None,
+                ))
+            return out
+
+        exp_parts = self._split_slash(result.expected)
+        act_parts = self._split_slash(result.actual)
+        row_count = max(len(exp_parts), len(act_parts))
+        if row_count <= 1:
+            return []
+
+        file_checks = rd.get("file_checks") if isinstance(rd.get("file_checks"), list) else []
+        content_checks = rd.get("content_checks") if isinstance(rd.get("content_checks"), list) else []
+        flags = [c.get("passed") for c in [*file_checks, *content_checks]]
+        use_per_row = len(flags) == row_count and all(isinstance(f, bool) for f in flags)
+
+        rows = []
+        for i in range(row_count):
+            rows.append((
+                exp_parts[i] if i < len(exp_parts) else "-",
+                act_parts[i] if i < len(act_parts) else "-",
+                flags[i] if use_per_row else None,
+            ))
+        return rows
+
+    def _put_status_cell(self, row, col, label, fg, bg, result, tooltip, span=1):
+        item = QTableWidgetItem(label)
+        item.setTextAlignment(Qt.AlignCenter | Qt.AlignTop if span > 1 else Qt.AlignCenter)
+        item.setForeground(QColor(fg))
+        item.setBackground(QColor(bg))
+        item.setData(Qt.ItemDataRole.UserRole, result)  # 더블클릭 상세용
+        item.setToolTip(tooltip or label)
+        self.result_table.setItem(row, col, item)
+        if span > 1:
+            self.result_table.setSpan(row, col, span, 1)
+
+    def _put_text_cell(self, row, col, value, result, span=1):
+        text = value if value not in (None, "") else "-"
+        item = QTableWidgetItem(text)
+        if span > 1:
+            item.setTextAlignment(Qt.AlignLeft | Qt.AlignTop)
+        item.setToolTip(text)
+        item.setData(Qt.ItemDataRole.UserRole, result)
+        self.result_table.setItem(row, col, item)
+        if span > 1:
+            self.result_table.setSpan(row, col, span, 1)
+
     def _set_result_rows(self, summary: LocalRunSummary):
-        self.result_table.setSortingEnabled(False)
-        self.result_table.setRowCount(len(summary.results))
+        table = self.result_table
+        table.setSortingEnabled(False)
+        table.clearContents()
+        table.clearSpans()
+
+        # 규칙별로 하위 검사를 분해해 행으로 펼친다(웹과 동일하게 세부 항목까지 표시).
+        plan = []
+        total_rows = 0
+        for result in summary.results:
+            subs = self._sub_checks(result)
+            plan.append((result, subs))
+            total_rows += max(1, len(subs))
+        table.setRowCount(total_rows)
 
         counts = {PASS: 0, FAIL: 0, UNSUPPORTED: 0, ERROR: 0}
-        for row, result in enumerate(summary.results):
+        row = 0
+        for result, subs in plan:
             counts[result.status] = counts.get(result.status, 0) + 1
             fg, bg, label = STATUS_META.get(result.status, (C_TEXT, C_SOFT, result.status))
 
-            status_item = QTableWidgetItem(label)
-            status_item.setTextAlignment(Qt.AlignCenter)
-            status_item.setForeground(QColor(fg))
-            status_item.setBackground(QColor(bg))
-            # 상세 팝업에서 쓰도록 결과 객체를 행에 보관(정렬돼도 item이 데이터를 들고 감).
-            status_item.setData(Qt.ItemDataRole.UserRole, result)
-            status_item.setToolTip(result.message or label)
-            self.result_table.setItem(row, 0, status_item)
+            if len(subs) <= 1:
+                self._put_status_cell(row, 0, label, fg, bg, result, result.message or label)
+                self._put_text_cell(row, 1, result.rule_name, result)
+                self._put_text_cell(row, 2, result.expected, result)
+                self._put_text_cell(row, 3, result.actual, result)
+                self._put_text_cell(row, 4, result.message, result)
+                row += 1
+                continue
 
-            for col, value in enumerate(
-                [result.rule_name, result.expected, result.actual, result.message],
-                start=1,
-            ):
-                cell = QTableWidgetItem(value)
-                # 컬럼을 좁혀도 전체 내용을 볼 수 있도록 셀 전체 텍스트를 툴팁으로 제공.
-                cell.setToolTip(value)
-                self.result_table.setItem(row, col, cell)
+            n = len(subs)
+            per_row = subs[0][2] is not None
+            # 점검항목/메시지는 규칙 단위이므로 rowspan 으로 묶는다.
+            self._put_text_cell(row, 1, result.rule_name, result, span=n)
+            self._put_text_cell(row, 4, result.message, result, span=n)
+            if not per_row:
+                # 하위 통과여부가 없으면 결과 열도 규칙 전체 배지 하나로 묶는다.
+                self._put_status_cell(row, 0, label, fg, bg, result, result.message or label, span=n)
+            for i, (exp, act, passed) in enumerate(subs):
+                r = row + i
+                if per_row:
+                    if passed:
+                        self._put_status_cell(r, 0, "정상", C_SUCCESS, C_SUCCESS_SOFT, result, exp)
+                    else:
+                        self._put_status_cell(r, 0, "부적합", C_DANGER, C_DANGER_SOFT, result, exp)
+                self._put_text_cell(r, 2, exp, result)
+                self._put_text_cell(r, 3, act, result)
+            row += n
 
         self._stat_labels["total"].setText(f"전체 {len(summary.results)}")
         self._stat_labels["pass"].setText(f"적합 {counts.get(PASS, 0)}")
@@ -1330,8 +1432,7 @@ class MainWindow(QMainWindow):
         self._stat_labels["unsupported"].setText(f"미지원 {counts.get(UNSUPPORTED, 0)}")
         self._stat_labels["error"].setText(f"오류 {counts.get(ERROR, 0)}")
 
-        self.result_table.resizeRowsToContents()
-        self.result_table.setSortingEnabled(True)
+        table.resizeRowsToContents()
 
     def _set_action_status(self, text: str, color: str = C_MUTED):
         self.action_status.setText(text)
