@@ -312,9 +312,15 @@ while ($true) {
                     if ($msg) {
                         git add -A
                         git commit -m $msg
-                        git push
-                        if ($LASTEXITCODE -eq 0) { Write-Host "[OK] git push 완료." -ForegroundColor Green }
-                        else { Write-Host "[ERROR] git push 실패(또는 커밋할 변경 없음). 위 출력을 확인하세요." -ForegroundColor Red }
+                        # push 전에 원격 변경을 먼저 통합(rebase)해 non-fast-forward 거부를 방지한다.
+                        git pull --rebase
+                        if ($LASTEXITCODE -ne 0) {
+                            Write-Host "[ERROR] git pull --rebase 실패(충돌 가능). 'git status'로 충돌 해결 후 다시 시도하세요." -ForegroundColor Red
+                        } else {
+                            git push
+                            if ($LASTEXITCODE -eq 0) { Write-Host "[OK] git push 완료." -ForegroundColor Green }
+                            else { Write-Host "[ERROR] git push 실패. 위 출력을 확인하세요." -ForegroundColor Red }
+                        }
                     } else {
                         Write-Host "커밋 메시지가 없어 취소했습니다." -ForegroundColor Yellow
                     }

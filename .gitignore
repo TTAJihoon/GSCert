@@ -60,3 +60,10 @@ main/utils/ecmList/token.json
 setup/*.exe
 setup/*.msi
 setup/nginx-1.29.8/
+
+# 자동 생성/로컬 산출물 (콘솔 U-push 의 git add -A 가 쓸어담지 않도록)
+# (.gitignore 는 인라인 주석 미지원 → 패턴은 반드시 단독 줄로 둘 것)
+# - ECM 자동화 디버그 스크린샷
+playwright_error_*.png
+# - Windows 바로가기(예: 서버 관리 콘솔 링크)
+*.lnk
