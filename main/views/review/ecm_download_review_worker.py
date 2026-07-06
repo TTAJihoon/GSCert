@@ -2,6 +2,7 @@ import asyncio
 import os
 import shutil
 import socket
+import sys
 import time
 import unicodedata
 from dataclasses import dataclass
@@ -120,6 +121,29 @@ def run_worker_once(*, dry_run=False, sleep_seconds=0, headless=True, source_nam
 
 
 
+def _run_on_proactor(coro):
+    """coro 를 ProactorEventLoop 에서 실행한다.
+
+    Windows 에서 Playwright 가 브라우저 서브프로세스를 띄우려면 ProactorEventLoop
+    가 필요하다. INSTALLED_APPS 에 'daphne' 가 추가되면서 전역 이벤트 루프 정책이
+    WindowsSelectorEventLoopPolicy 로 바뀌어, worker 의 asyncio.run() 이 Selector
+    루프를 만들고 create_subprocess_exec 가 NotImplementedError 로 실패했다.
+    전역 정책과 무관하게 명시적으로 Proactor 루프를 만들어 실행한다.
+    """
+    if sys.platform == "win32":
+        loop = asyncio.ProactorEventLoop()
+    else:
+        loop = asyncio.new_event_loop()
+    try:
+        asyncio.set_event_loop(loop)
+        return loop.run_until_complete(coro)
+    finally:
+        try:
+            loop.close()
+        finally:
+            asyncio.set_event_loop(None)
+
+
 def _run_live_worker(*, headless=True, source_name=None):
     """실제 자동화(기본 ECM, source_name 으로 변경 가능)를 사용하는 worker 실행."""
     claim = claim_next_job()
@@ -132,7 +156,7 @@ def _run_live_worker(*, headless=True, source_name=None):
 
     job = claim
     try:
-        asyncio.run(_run_live_job(job, headless=headless, source_name=source_name))
+        _run_on_proactor(_run_live_job(job, headless=headless, source_name=source_name))
         job.refresh_from_db()
         return WorkerRunResult(
             processed=True,
