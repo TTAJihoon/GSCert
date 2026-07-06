@@ -1,4 +1,4 @@
-# 런처(start_server.ps1 / start_worker.ps1)가 로드하는 환경 설정 파일.
+﻿# 런처(start_server.ps1 / start_worker.ps1)가 로드하는 환경 설정 파일.
 #
 # ★ 이 파일에는 비밀값(비밀번호/API 키)을 두지 않는다 → 안전하게 버전관리/푸시 가능.
 #   비밀값은 set-secrets.ps1 로 시스템(Machine) 환경변수에 저장하고, 여기서 읽어온다.
