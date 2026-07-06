@@ -2204,8 +2204,21 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
             report_date = _sheet_top_rows_report_date(sheet) if sheet else ""
             actual_text = (header_text + (" / 보고일자: " + report_date if report_date else "")).strip()
             expected_date = expected_dates.get(sheet_name, "")
-            passed = bool(
+            # 라운드(N차) 결함리포트는 표지 제목이 'TTA-XX-XXXXX 결함리포트'처럼 적히고
+            # 'N차'는 시트 탭 이름에만 존재한다. 따라서 표지 존재 여부를 시트명 그대로가
+            # 아니라 'N차 ' 접두어를 뗀 기본 명칭(예: '결함리포트')으로도 확인한다.
+            # (이 완화가 없으면 보고일자가 일치해도 표지 문구 불일치로 부적합 처리된다.)
+            base_sheet_name = re.sub(r"^\s*\d+차\s*", "", sheet_name)
+            header_found = bool(
                 sheet_text
+                or (
+                    sheet
+                    and base_sheet_name != sheet_name
+                    and _sheet_top_rows_cell_containing(sheet, base_sheet_name)
+                )
+            )
+            passed = bool(
+                header_found
                 and _same_date_text(report_date, expected_date)
             )
             detail = {
