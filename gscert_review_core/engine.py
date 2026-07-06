@@ -3878,18 +3878,32 @@ def _soffice_executable():
 
 
 def _convert_doc_to_docx_bytes(doc_bytes):
-    """구형 .doc 바이트를 LibreOffice headless로 .docx로 변환해 바이트를 반환한다."""
+    """구형 .doc 바이트를 .docx 로 변환해 바이트를 반환한다.
+
+    우선순위: LibreOffice(soffice) → 없으면 MS Word(win32com) 폴백.
+    서버는 LibreOffice, 로컬 앱(Office 설치 PC)은 MS Word 로 각각 처리된다.
+    """
+    soffice = _soffice_executable()
+    if soffice:
+        return _convert_doc_via_soffice(doc_bytes, soffice)
+
+    converted = _convert_doc_via_msword(doc_bytes)
+    if converted is not None:
+        return converted
+
+    raise DownloadReviewInspectionError(
+        ".doc 파일은 LibreOffice 또는 MS Word 가 있어야 변환·점검할 수 있습니다. "
+        "LibreOffice 설치(또는 AGENT_SOFFICE_PATH 지정) 하거나 MS Word 가 설치된 "
+        "환경에서 실행하세요. (또는 .docx 로 재제출 요청)"
+    )
+
+
+def _convert_doc_via_soffice(doc_bytes, soffice):
+    """LibreOffice headless 로 .doc → .docx 변환."""
     import subprocess
     import tempfile
     import shutil as _shutil
 
-    soffice = _soffice_executable()
-    if not soffice:
-        raise DownloadReviewInspectionError(
-            ".doc 파일은 LibreOffice가 있어야 변환·점검할 수 있습니다. "
-            "서버에 LibreOffice를 설치하거나 AGENT_SOFFICE_PATH 환경변수로 soffice 경로를 지정하세요. "
-            "(또는 .docx로 재제출 요청)"
-        )
     tmpdir = tempfile.mkdtemp(prefix="docconv_")
     try:
         doc_path = os.path.join(tmpdir, "input.doc")
@@ -3910,6 +3924,64 @@ def _convert_doc_to_docx_bytes(doc_bytes):
         with open(out_path, "rb") as handle:
             return handle.read()
     finally:
+        _shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def _convert_doc_via_msword(doc_bytes):
+    """MS Word(win32com) 로 .doc → .docx 변환. Word 미설치/미지원 시 None 반환.
+
+    LibreOffice 가 없는 로컬 앱(Office 설치 PC)에서 .doc 를 처리하기 위한 폴백.
+    Windows + pywin32 + MS Word 가 있어야 동작한다.
+    """
+    try:
+        import pythoncom
+        import win32com.client as win32
+    except Exception:
+        return None
+
+    import os as _os
+    import tempfile
+    import shutil as _shutil
+
+    tmpdir = tempfile.mkdtemp(prefix="docword_")
+    doc_path = _os.path.join(tmpdir, "input.doc")
+    out_path = _os.path.join(tmpdir, "input.docx")
+    word = None
+    coinit = False
+    try:
+        with open(doc_path, "wb") as handle:
+            handle.write(doc_bytes)
+        try:
+            pythoncom.CoInitialize()
+            coinit = True
+        except Exception:
+            coinit = False
+        word = win32.DispatchEx("Word.Application")
+        try:
+            word.Visible = False
+            word.DisplayAlerts = 0
+        except Exception:
+            pass
+        document = word.Documents.Open(doc_path, ReadOnly=True)
+        document.SaveAs2(out_path, FileFormat=16)  # 16 = wdFormatXMLDocument(.docx)
+        document.Close(False)
+        if _os.path.exists(out_path):
+            with open(out_path, "rb") as handle:
+                return handle.read()
+        return None
+    except Exception:
+        return None
+    finally:
+        try:
+            if word is not None:
+                word.Quit()
+        except Exception:
+            pass
+        if coinit:
+            try:
+                pythoncom.CoUninitialize()
+            except Exception:
+                pass
         _shutil.rmtree(tmpdir, ignore_errors=True)
 
 

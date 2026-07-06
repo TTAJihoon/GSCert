@@ -1131,7 +1131,7 @@ class MainWindow(QMainWindow):
         agreement = next(
             (
                 f for f in scan.files
-                if "합의서" in f.name and f.extension in (".docx", ".docm")
+                if "합의서" in f.name and f.extension in (".docx", ".docm", ".doc")
             ),
             None,
         )

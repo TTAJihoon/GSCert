@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import re
+from io import BytesIO
 from pathlib import Path
 from xml.etree import ElementTree
 from zipfile import BadZipFile, ZipFile
@@ -112,10 +113,9 @@ def _product_kr(rows: list[list[str]]) -> str:
     return ""
 
 
-def extract_agreement_names(path: Path) -> tuple[str, str]:
-    """합의서 .docx 에서 (회사명 국문, 제품명 국문) 을 반환한다. 실패 시 ("", "")."""
+def _parse_docx_bytes(data: bytes) -> tuple[str, str]:
     try:
-        with ZipFile(path) as archive:
+        with ZipFile(BytesIO(data)) as archive:
             document_xml = archive.read("word/document.xml")
     except (OSError, BadZipFile, KeyError):
         return "", ""
@@ -125,3 +125,31 @@ def extract_agreement_names(path: Path) -> tuple[str, str]:
         return "", ""
     rows = _all_table_rows(root)
     return _company_kr(rows), _product_kr(rows)
+
+
+def extract_agreement_names(path: Path) -> tuple[str, str]:
+    """합의서에서 (회사명 국문, 제품명 국문) 을 반환한다. 실패 시 ("", "").
+
+    - .docx/.docm: 그대로 파싱.
+    - .doc(구형 바이너리): 공유 엔진의 변환(MS Word/LibreOffice)으로 .docx 로 바꿔 파싱.
+      (변환 도구가 없으면 빈 값을 반환하고, 사용자는 수동 입력한다.)
+    """
+    try:
+        data = Path(path).read_bytes()
+    except OSError:
+        return "", ""
+    if not data:
+        return "", ""
+
+    # PK(zip) 시그니처면 .docx 로 간주하고 바로 파싱.
+    if data[:2] == b"PK":
+        return _parse_docx_bytes(data)
+
+    # 그 외(구형 .doc OLE)는 공유 엔진 변환을 재사용한다.
+    try:
+        from gscert_review_core import engine
+
+        docx_bytes = engine._convert_doc_to_docx_bytes(data)
+    except Exception:
+        return "", ""
+    return _parse_docx_bytes(docx_bytes)
