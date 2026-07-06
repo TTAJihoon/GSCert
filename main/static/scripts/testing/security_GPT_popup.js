@@ -441,7 +441,11 @@
 
     const remaining = Math.max(targetText.length - visibleText.length, 0);
     if (remaining > 0) {
-      const step = remaining > 120 ? TYPEWRITER_FAST_STEP : TYPEWRITER_BASE_STEP;
+      // 스트리밍 중 토큰이 빠르게 도착하면 고정 속도 타자기가 뒤처져 체감 지연이
+      // 커진다. 밀린 양(remaining)에 비례해 표시 속도를 올려 몇 프레임 안에 따라잡되,
+      // 소량 증가분은 기존처럼 부드럽게 표시한다.
+      const base = remaining > 120 ? TYPEWRITER_FAST_STEP : TYPEWRITER_BASE_STEP;
+      const step = Math.max(base, Math.ceil(remaining / 5));
       visibleText = targetText.slice(0, visibleText.length + step);
     }
 

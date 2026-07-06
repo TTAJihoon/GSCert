@@ -129,4 +129,8 @@ def stream_gpt_recommendation_view(request):
 
     response = StreamingHttpResponse(stream(), content_type="text/plain; charset=utf-8")
     response["Cache-Control"] = "no-cache"
+    # nginx(프록시)가 스트리밍 응답을 통째로 버퍼링하면 토큰이 생성되는 대로
+    # 전달되지 못해 사용자는 전체 생성이 끝날 때까지(≈90초) 아무것도 못 본다.
+    # 이 헤더는 해당 응답만 버퍼링을 끄게 해 첫 토큰부터 즉시 흘려보낸다.
+    response["X-Accel-Buffering"] = "no"
     return response
