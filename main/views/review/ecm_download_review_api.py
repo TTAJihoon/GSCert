@@ -32,6 +32,7 @@ from main.views.review.ecm_reference_db import (
 )
 from main.views.review.ecm_download_review_centers import (
     allowed_centers_for_host,
+    center_choices,
     default_center_for_host,
     is_center_allowed_for_host,
     normalize_center_code,
@@ -94,9 +95,11 @@ def local_review_project_metadata(request, project_number):
             # 명시된 센터로만 조회
             centers_to_search = [_ensure_request_center_allowed(request, requested_center)]
         else:
-            # 센터 미지정(로컬 앱) → 이 서버가 허용하는 전체 센터에서 프로젝트번호로 조회.
-            # 프로젝트번호는 센터 간 고유하므로 첫 매치를 사용한다.
-            centers_to_search = sorted(allowed_centers_for_host(request.get_host()))
+            # 센터 미지정(로컬 앱) → 모든 센터에서 프로젝트번호로 조회한다.
+            # reference_project(공유 PostgreSQL)에는 전 센터 데이터가 있고 프로젝트번호는
+            # 센터 간 고유하므로, 호스트 허용 센터로 제한하지 않고 전 센터를 검색해야
+            # 다른 센터(예: 상암/영남) 프로젝트도 로컬 앱에서 조회된다. 첫 매치를 사용.
+            centers_to_search = [choice["code"] for choice in center_choices()]
         project = None
         for center_code in centers_to_search:
             projects_payload = get_projects_by_numbers([project_number], center_code=center_code)
