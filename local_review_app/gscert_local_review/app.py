@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QThread, QSettings, QTimer, Signal
+from PySide6.QtCore import Qt, QDate, QThread, QSettings, QTimer, Signal
 from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
+    QDateEdit,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
@@ -440,35 +441,73 @@ class ManualMetadataDialog(QDialog):
     오프라인은 이 직접 입력 경로로 메타데이터를 채운다.
     """
 
-    FIELDS = [
+    TEXT_FIELDS = [
         ("company_name", "회사명"),
         ("product_name", "제품명"),
         ("pl_name", "시험PL"),
-        ("wd_name", "WD담당"),
-        ("start_date", "시험 시작일 (예: 2026.01.01)"),
-        ("end_date", "시험 종료일 (예: 2026.03.31)"),
-        ("cert_date", "인증일자"),
+        ("wd_name", "WD"),
+    ]
+    # (attr, label, required)
+    DATE_FIELDS = [
+        ("start_date", "시험 시작일", True),
+        ("end_date", "시험 종료일", True),
+        ("cert_date", "인증일자", False),
     ]
 
-    def __init__(self, project_number: str, initial: "ProjectMetadata | None" = None, parent=None):
+    def __init__(
+        self,
+        project_number: str,
+        initial: "ProjectMetadata | None" = None,
+        prefill: dict | None = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.setWindowTitle("기준정보 직접 입력")
-        self.setMinimumWidth(420)
+        self.setMinimumWidth(440)
         self.result_metadata: ProjectMetadata | None = None
         self._project_number = project_number
+        prefill = prefill or {}
 
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(f"프로젝트번호: {project_number or '(미입력)'}"))
         grid = QGridLayout()
+        row = 0
+
         self._edits: dict[str, QLineEdit] = {}
-        for i, (attr, label) in enumerate(self.FIELDS):
-            grid.addWidget(QLabel(label), i, 0)
+        for attr, label in self.TEXT_FIELDS:
+            grid.addWidget(QLabel(label), row, 0)
             edit = QLineEdit()
-            if initial is not None:
-                edit.setText(str(getattr(initial, attr, "") or ""))
-            grid.addWidget(edit, i, 1)
+            value = str(getattr(initial, attr, "") or "") if initial is not None else ""
+            if not value:
+                value = str(prefill.get(attr, "") or "")
+            edit.setText(value)
+            grid.addWidget(edit, row, 1)
             self._edits[attr] = edit
+            row += 1
+
+        # 날짜는 달력 팝업(QDateEdit)으로 입력한다. 미선택 상태는 최소 날짜로 표시한다.
+        self._date_edits: dict[str, tuple[QDateEdit, bool]] = {}
+        for attr, label, required in self.DATE_FIELDS:
+            grid.addWidget(QLabel(label), row, 0)
+            date_edit = QDateEdit()
+            date_edit.setCalendarPopup(True)
+            date_edit.setDisplayFormat("yyyy.MM.dd")
+            date_edit.setMinimumDate(QDate(2000, 1, 1))
+            date_edit.setSpecialValueText("(미선택)")
+            date_edit.setDate(date_edit.minimumDate())  # 기본 = 미선택
+            init_value = str(getattr(initial, attr, "") or "") if initial is not None else ""
+            parsed = self._parse_date(init_value)
+            if parsed is not None:
+                date_edit.setDate(parsed)
+            grid.addWidget(date_edit, row, 1)
+            self._date_edits[attr] = (date_edit, required)
+            row += 1
+
         layout.addLayout(grid)
+
+        hint = QLabel("날짜 칸을 클릭하면 달력에서 선택할 수 있습니다.")
+        hint.setStyleSheet(f"color: {C_MUTED}; font-size: 11px; border: none;")
+        layout.addWidget(hint)
 
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
@@ -477,8 +516,27 @@ class ManualMetadataDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    @staticmethod
+    def _parse_date(text: str) -> "QDate | None":
+        text = (text or "").strip()
+        if not text:
+            return None
+        normalized = text.replace("-", ".").replace("/", ".")
+        for fmt in ("yyyy.M.d", "yyyy.MM.dd"):
+            qd = QDate.fromString(normalized, fmt)
+            if qd.isValid():
+                return qd
+        return None
+
+    def _date_value(self, date_edit: QDateEdit) -> str:
+        if date_edit.date() == date_edit.minimumDate():
+            return ""  # 미선택
+        return date_edit.date().toString("yyyy.MM.dd")
+
     def _accept(self):
         values = {attr: edit.text().strip() for attr, edit in self._edits.items()}
+        for attr, (date_edit, _required) in self._date_edits.items():
+            values[attr] = self._date_value(date_edit)
         # 시험기간(시작/종료일)은 날짜 규칙에 필수
         if not values.get("start_date") or not values.get("end_date"):
             QMessageBox.warning(self, "기준정보 직접 입력", "시험 시작일과 종료일은 필수입니다.")
@@ -1028,9 +1086,9 @@ class MainWindow(QMainWindow):
         inferred = infer_project_number(folder)
         if inferred and not self.project_number.text().strip():
             self.project_number.setText(inferred)
-        # 폴더 선택 시 기준정보 조회 + 파일 스캔을 자동으로 실행한다.
-        if self.project_number.text().strip():
-            self.fetch_metadata()
+        # 폴더 선택 시 파일 스캔을 먼저 하고, 스캔 완료 후 기준정보 조회를 자동 실행한다.
+        # (스캔이 끝나야 조회 실패 시 합의서에서 회사/제품명을 추출해 채울 수 있다.)
+        self._auto_fetch_after_scan = bool(self.project_number.text().strip())
         self.scan_files()
 
     def fetch_metadata(self):
@@ -1056,10 +1114,41 @@ class MainWindow(QMainWindow):
 
     def enter_metadata_manually(self):
         project_number = self.project_number.text().strip()
-        dialog = ManualMetadataDialog(project_number, initial=self.current_metadata, parent=self)
+        prefill = self._agreement_prefill()
+        dialog = ManualMetadataDialog(
+            project_number, initial=self.current_metadata, prefill=prefill, parent=self
+        )
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.result_metadata is not None:
             self._set_metadata(dialog.result_metadata)
             self._set_action_status("기준정보 입력됨", C_SUCCESS)
+
+    def _agreement_prefill(self) -> dict:
+        """파일 스캔이 완료된 경우, '합의서' Word(.docx) 파일에서 회사명/제품명을 추출해
+        직접 입력 창의 초기값으로 제공한다(구글시트 자동 조회 실패 시 보조)."""
+        scan = self.scan
+        if scan is None:
+            return {}
+        agreement = next(
+            (
+                f for f in scan.files
+                if "합의서" in f.name and f.extension in (".docx", ".docm")
+            ),
+            None,
+        )
+        if agreement is None:
+            return {}
+        try:
+            from .agreement_parser import extract_agreement_names
+
+            company, product = extract_agreement_names(scan.folder / agreement.relative_path)
+        except Exception:
+            return {}
+        prefill: dict = {}
+        if company:
+            prefill["company_name"] = company
+        if product:
+            prefill["product_name"] = product
+        return prefill
 
     def scan_files(self):
         if self._scan_worker is not None:
@@ -1096,6 +1185,11 @@ class MainWindow(QMainWindow):
         self.scan = scan
         self._set_file_rows(scan)
         self._set_action_status("점검 실행 가능", C_SUCCESS)
+        # 폴더 선택으로 시작된 스캔이면, 스캔 완료 후 기준정보 조회를 자동 실행한다.
+        if getattr(self, "_auto_fetch_after_scan", False):
+            self._auto_fetch_after_scan = False
+            if self.project_number.text().strip():
+                self.fetch_metadata()
 
     def _on_scan_failed(self, message: str):
         self.scan = None
