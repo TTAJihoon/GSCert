@@ -1,7 +1,22 @@
+import re
+
 from django.shortcuts import render
 
 from main.models import SwData
 from main.request_logging import set_request_log_context
+
+
+def _cert_date_sort_key(row):
+    """인증일자를 실제 날짜 순으로 정렬하기 위한 키.
+
+    sw_data.cert_date 는 '2026.6.8' 처럼 0-패딩 없는 텍스트라, 문자열 정렬 시
+    '2026.6.8' 이 '2026.6.29' 보다 크게(최신으로) 잡힌다. 숫자(연,월,일)를 뽑아
+    튜플로 비교해 올바른 날짜 순서를 만든다. (파싱 불가 시 맨 뒤로)
+    """
+    nums = re.findall(r"\d+", str(row.get("인증일자") or ""))
+    if len(nums) >= 3:
+        return (int(nums[0]), int(nums[1]), int(nums[2]))
+    return (0, 0, 0)
 
 _FIELD_TO_KR = {
     'serial_number': '일련번호',
@@ -75,7 +90,10 @@ def history(request):
             }
             clean_tables.append(clean_table)
 
-        context['response_tables'] = clean_tables[::-1]
+        # 인증일자 내림차순(최신순) 정렬 — 예전의 단순 역순([::-1])은 DB 기본 순서에
+        # 의존해 최신(예: 6.29)이 목록 맨 아래로 밀리는 문제가 있었다.
+        clean_tables.sort(key=_cert_date_sort_key, reverse=True)
+        context['response_tables'] = clean_tables
 
         return render(request, 'testing/history.html', context)
 
