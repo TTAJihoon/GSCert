@@ -244,24 +244,25 @@ while ($true) {
         'P' {
             Write-Host ""
             Write-Host "=== PostgreSQL 접속 설정 ===" -ForegroundColor Cyan
-            $EnvFile = Join-Path $ScriptDir "env.ps1"
-            $curHost = if ($env:REFERENCE_PG_HOST) { $env:REFERENCE_PG_HOST } else { "(미설정)" }
-            $curPort = if ($env:REFERENCE_PG_PORT) { $env:REFERENCE_PG_PORT } else { "5432" }
+            # env.ps1 이 시스템 환경변수(Machine→User)를 참조하므로, 여기서도
+            # 파일이 아니라 OS 환경변수에 저장한다. (관리자면 Machine, 아니면 User)
+            $curHost = [Environment]::GetEnvironmentVariable('REFERENCE_PG_HOST','Machine')
+            if (-not $curHost) { $curHost = [Environment]::GetEnvironmentVariable('REFERENCE_PG_HOST','User') }
+            if (-not $curHost) { $curHost = "(미설정 → 기본 localhost)" }
             Write-Host "  현재 HOST : $curHost" -ForegroundColor Yellow
-            Write-Host "  현재 PORT : $curPort" -ForegroundColor Yellow
             Write-Host ""
             $newHost = Read-Host "새 HOST 입력 (생략 시 변경 없음)"
             if ($newHost) {
-                if (Test-Path $EnvFile) {
-                    $content = Get-Content $EnvFile -Raw
-                    $content = $content -replace '(\$env:REFERENCE_PG_HOST\s*=\s*")[^"]*(")', "`${1}$newHost`${2}"
-                    [System.IO.File]::WriteAllText($EnvFile, $content, [System.Text.Encoding]::UTF8)
-                    $env:REFERENCE_PG_HOST = $newHost
-                    Write-Host "[OK] REFERENCE_PG_HOST 변경 완료: $newHost" -ForegroundColor Green
-                    Write-Host "     서버/워커를 재시작해야 변경이 반영됩니다." -ForegroundColor Yellow
-                } else {
-                    Write-Host "[ERROR] env.ps1 파일이 없습니다. S(setup)를 먼저 실행하세요." -ForegroundColor Red
+                $scope = 'Machine'
+                try {
+                    [Environment]::SetEnvironmentVariable('REFERENCE_PG_HOST', $newHost, 'Machine')
+                } catch {
+                    $scope = 'User'
+                    [Environment]::SetEnvironmentVariable('REFERENCE_PG_HOST', $newHost, 'User')
                 }
+                $env:REFERENCE_PG_HOST = $newHost
+                Write-Host "[OK] REFERENCE_PG_HOST 저장 ($scope): $newHost" -ForegroundColor Green
+                Write-Host "     서버/워커를 재시작하면 반영됩니다." -ForegroundColor Yellow
             }
         }
         'D' {
