@@ -302,9 +302,48 @@ while ($true) {
                 $branch = (git rev-parse --abbrev-ref HEAD 2>$null)
                 if ($branch) { Write-Host "  현재 브랜치: $($branch.Trim())" -ForegroundColor Gray }
                 if ($sub -eq '1') {
-                    git pull
-                    if ($LASTEXITCODE -eq 0) { Write-Host "[OK] git pull 완료. 코드 변경이 있으면 서버/워커를 재시작하세요(R)." -ForegroundColor Green }
-                    else { Write-Host "[ERROR] git pull 실패. 위 출력을 확인하세요." -ForegroundColor Red }
+                    # 워킹트리에 커밋되지 않은(수정된 추적) 파일이 있으면 rebase pull 이
+                    # "cannot pull with rebase: You have unstaged changes" 로 막힌다.
+                    # 이때 어떤 파일인지 콘솔에서 바로 보여주고 처리 방법을 고르게 한다.
+                    $dirty = (git status --porcelain)
+                    if ($dirty) {
+                        Write-Host "[!] 커밋되지 않은 로컬 변경이 있어 pull 이 막힙니다. 변경된 파일:" -ForegroundColor Yellow
+                        git status --short
+                        Write-Host ""
+                        Write-Host "  s) stash 후 pull  - 변경을 임시 보관 → pull → 자동 복원 (안전)" -ForegroundColor Gray
+                        Write-Host "  d) 버리고 pull    - 로컬 변경 폐기 후 pull (되돌릴 수 없음)" -ForegroundColor Gray
+                        Write-Host "  c) 취소" -ForegroundColor Gray
+                        $act = Read-Host "선택"
+                        if ($act -eq 's') {
+                            git stash push -u -m "console-pull-autostash"
+                            if ($LASTEXITCODE -ne 0) {
+                                Write-Host "[ERROR] stash 실패. 중단합니다." -ForegroundColor Red
+                            } else {
+                                git pull
+                                $pullOk = ($LASTEXITCODE -eq 0)
+                                Write-Host "  보관한 변경을 복원(stash pop)합니다..." -ForegroundColor Gray
+                                git stash pop
+                                if (-not $pullOk) {
+                                    Write-Host "[ERROR] git pull 실패. 위 출력을 확인하세요." -ForegroundColor Red
+                                } elseif ($LASTEXITCODE -ne 0) {
+                                    Write-Host "[!] pull 은 됐으나 stash 복원 중 충돌이 있습니다. 'git status'로 해결하세요." -ForegroundColor Yellow
+                                } else {
+                                    Write-Host "[OK] git pull + 변경 복원 완료. 코드 변경이 있으면 재시작(R)." -ForegroundColor Green
+                                }
+                            }
+                        } elseif ($act -eq 'd') {
+                            git restore .
+                            git pull
+                            if ($LASTEXITCODE -eq 0) { Write-Host "[OK] 로컬 변경 폐기 후 git pull 완료. 코드 변경이 있으면 재시작(R)." -ForegroundColor Green }
+                            else { Write-Host "[ERROR] git pull 실패. 위 출력을 확인하세요." -ForegroundColor Red }
+                        } else {
+                            Write-Host "취소했습니다." -ForegroundColor Yellow
+                        }
+                    } else {
+                        git pull
+                        if ($LASTEXITCODE -eq 0) { Write-Host "[OK] git pull 완료. 코드 변경이 있으면 서버/워커를 재시작하세요(R)." -ForegroundColor Green }
+                        else { Write-Host "[ERROR] git pull 실패. 위 출력을 확인하세요." -ForegroundColor Red }
+                    }
                 } elseif ($sub -eq '2') {
                     git status --short
                     Write-Host ""
