@@ -293,6 +293,11 @@ QSplitter::handle:vertical {{
 def _panel() -> QFrame:
     f = QFrame()
     f.setObjectName("panel")
+    # objectName 선택자로 이 프레임에만 흰 배경 지정(자식 위젯에는 전파 안 됨).
+    f.setStyleSheet(
+        f"QFrame#panel {{ background-color: {C_SURFACE};"
+        f" border: 1px solid {C_LINE}; border-radius: 4px; }}"
+    )
     return f
 
 
@@ -605,7 +610,10 @@ class MainWindow(QMainWindow):
         self._settings = QSettings("TTA", "GSCertLocalReview")
 
         root = QWidget()
-        root.setStyleSheet(f"background-color: {C_SOFT};")  # 회색 캔버스 위 흰 패널 (pgAdmin)
+        root.setObjectName("appRoot")
+        # objectName 선택자로 root 에만 적용 → 자식 패널로 회색이 전파되지 않는다.
+        # (bare background-color 는 자식에 전파되어 패널 흰색을 덮어버린다.)
+        root.setStyleSheet(f"QWidget#appRoot {{ background-color: {C_SOFT}; }}")
         outer = QVBoxLayout(root)
         outer.setContentsMargins(12, 12, 12, 12)
         outer.setSpacing(8)
@@ -676,6 +684,11 @@ class MainWindow(QMainWindow):
     def _build_header(self) -> QFrame:
         frame = _panel()
         frame.setObjectName("headerBar")  # pgAdmin 스타일 상단 툴바 밴드
+        # objectName 을 바꿨으므로 #headerBar 로 흰 배경을 다시 지정한다.
+        frame.setStyleSheet(
+            f"QFrame#headerBar {{ background-color: {C_SURFACE};"
+            f" border: 1px solid {C_LINE}; border-radius: 4px; }}"
+        )
         layout = QHBoxLayout(frame)
         layout.setContentsMargins(18, 11, 18, 11)
         layout.setSpacing(0)
@@ -834,7 +847,17 @@ class MainWindow(QMainWindow):
         self.run_btn.setObjectName("primaryBtn")
         self.run_btn.setMinimumWidth(116)
         self.run_btn.setFixedHeight(38)
-        # 전역 QSS의 #primaryBtn(스틸블루) 스타일을 그대로 사용한다.
+        # 짙은 네이비를 위젯에 직접 지정(전역 QSS 미적용 상황까지 방지).
+        self.run_btn.setStyleSheet(
+            "QPushButton {"
+            " background-color: #0a357f; color: #ffffff;"
+            " border: 1px solid #082a66; border-radius: 3px;"
+            " font-weight: 800; font-size: 12px; padding: 0 12px; }"
+            "QPushButton:hover { background-color: #082a66; }"
+            "QPushButton:pressed { background-color: #061f4d; }"
+            "QPushButton:disabled { background-color: #aebfd9; color: #eef2fb;"
+            " border: 1px solid #93a6c9; }"
+        )
         self.run_btn.clicked.connect(self.run_local_review)
         self.action_status = QLabel("대기")
         self.action_status.setMinimumWidth(130)
@@ -872,7 +895,8 @@ class MainWindow(QMainWindow):
 
     def _build_left_panel(self) -> QWidget:
         w = QWidget()
-        w.setStyleSheet(f"background-color: {C_BG};")
+        # 배경 미지정(투명) → 회색 캔버스가 그대로 보이고, 내부 카드(#panel)만 흰색.
+        # (bare 흰색을 주면 자식에 전파되어 왼쪽 컬럼만 흰색이 되는 불일치가 생긴다.)
         layout = QVBoxLayout(w)
         layout.setContentsMargins(0, 0, 6, 0)
         layout.setSpacing(10)
