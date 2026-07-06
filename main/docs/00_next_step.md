@@ -4,6 +4,7 @@
 
 - 1~18번 실제 점검규칙은 `seed_download_review_rules --only-real --enable --update-existing` 기준으로 모두 구현된 상태다.
 - 세부 규칙의 단일 원본은 `main/docs/19_inspection_rule_manual.md`로 유지한다.
+- `main/docs/19_inspection_rule_manual.md`에 `1-1`~`18-3` 형식의 세부 점검 규칙 ID 표를 추가했고, `docs/INSPECTION_RULES_TABLE.md`에는 해당 ID 범위와 화면 표시 기준을 연결했다.
 - `main/docs/05_zip_inspection.md`는 과거 1~5번 초안 중심 내용을 걷어내고, 현재 18개 규칙의 설계 요약과 공통 기준만 남겼다.
 - `main/docs/08_ui_api_design.md`에 Windows 로컬 앱용 rulebase API(`/api/local-review/rules/manifest/`, `/api/local-review/rules/bundle/`)와 `engine_min_version=0.2.0` 계약을 추가했다.
 - 최근 규칙 변경점:
