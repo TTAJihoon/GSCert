@@ -498,8 +498,7 @@ class ManualMetadataDialog(QDialog):
             date_edit.setCalendarPopup(True)
             date_edit.setDisplayFormat("yyyy.MM.dd")
             date_edit.setMinimumDate(QDate(2000, 1, 1))
-            date_edit.setSpecialValueText("(미선택)")
-            date_edit.setDate(date_edit.minimumDate())  # 기본 = 미선택
+            date_edit.setDate(QDate.currentDate())  # 기본값=오늘 → 달력이 오늘 기준으로 열림
             init_value = str(getattr(initial, attr, "") or "") if initial is not None else ""
             parsed = self._parse_date(init_value)
             if parsed is not None:
@@ -534,8 +533,6 @@ class ManualMetadataDialog(QDialog):
         return None
 
     def _date_value(self, date_edit: QDateEdit) -> str:
-        if date_edit.date() == date_edit.minimumDate():
-            return ""  # 미선택
         return date_edit.date().toString("yyyy.MM.dd")
 
     def _accept(self):
