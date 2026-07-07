@@ -101,6 +101,15 @@ DOWNLOAD_REVIEW_END_HOUR = 24
 DOWNLOAD_REVIEW_ACTIVE_JOB_LIMIT = 5
 DOWNLOAD_REVIEW_MAX_PROJECTS_PER_JOB = 100
 ECM_BASE_URL = os.environ.get("ECM_BASE_URL", "http://210.96.71.85")
+ECM_BASE_URL_BUNDANG = os.environ.get("ECM_BASE_URL_BUNDANG", "http://210.104.181.10")
+# HTTP 직접연동(ecm-http) 자격증명/ root OID — 환경변수로만 주입.
+ECM_USERNAME = os.environ.get("ECM_USERNAME", "")
+ECM_PASSWORD = os.environ.get("ECM_PASSWORD", "")
+ECM_USERNAME_BUNDANG = os.environ.get("ECM_USERNAME_BUNDANG", "")
+ECM_PASSWORD_BUNDANG = os.environ.get("ECM_PASSWORD_BUNDANG", "")
+ECM_ROOT_OID_SANGAM = os.environ.get("ECM_ROOT_OID_SANGAM", "")
+ECM_ROOT_OID_YEONGNAM = os.environ.get("ECM_ROOT_OID_YEONGNAM", "")
+ECM_ROOT_OID_BUNDANG = os.environ.get("ECM_ROOT_OID_BUNDANG", "")
 ECM_BROWSER_CHANNEL = os.environ.get("ECM_BROWSER_CHANNEL", "chrome")
 ECM_BROWSER_ARGS = [
     arg.strip()
@@ -118,6 +127,7 @@ AGENT_DOWNLOAD_BASE_DIR = os.environ.get(
     str(Path.home() / "Downloads"),
 )
 # 산출물 source 선택(main/docs/33_artifact_source_boundary.md 참고).
+# 'ecm'(Playwright) / 'ecm-http'(HTTP 직접연동) / 'local'(fake-live).
 # 'local' + LOCAL_ARTIFACT_SOURCE_ROOT 로 ECM 없이 워커 흐름을 돌릴 수 있다(fake-live).
 DOWNLOAD_REVIEW_SOURCE = os.environ.get("DOWNLOAD_REVIEW_SOURCE", "ecm")
 LOCAL_ARTIFACT_SOURCE_ROOT = os.environ.get("LOCAL_ARTIFACT_SOURCE_ROOT", "")

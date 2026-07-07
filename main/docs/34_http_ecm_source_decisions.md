@@ -115,17 +115,29 @@ AGENT_DOWNLOAD_BASE_DIR/
 - [x] 결정 1~12 전부 확정(위 목록 모두 ✅).
 - [x] 결정 4·6 실측 확인(project_number == test_no, 레이아웃 규격 코드 확정).
 
-**구현 단계(진행 예정):**
-1. 설정: `ecm_download_review_centers.py`에 센터별 `root_oid`·`username_setting`·`password_setting` 추가.
-   `settings.py`/`ui_mock_settings.py`/`env.ps1.example`에 `ECM_USERNAME[_BUNDANG]`/`ECM_PASSWORD[_BUNDANG]` 추가.
-2. HTTP 클라이언트 모듈(`ECM-API-SHARE.md`의 `DestinyECM` 이식, 의존성 `requests`) 추가.
-3. `HttpEcmArtifactSource`(artifact_source.py) 구현 — open=로그인, fetch=프로젝트 탐색→재귀 순회→
-   `base/<project_number>/<relative_path>/`에 다운로드(NFC + 무결성 검증) + on_progress/is_canceled, 락 없음.
-   팩토리에 `ecm-http` 분기 추가(기존 `ecm` 폴백 유지).
-4. `requests`를 `requirements-automation.txt`에 추가.
-5. 계약 테스트(세션·다운로드 mock, 네트워크 없음): 로그인/폴더순회/다운로드/무결성/취소/레이아웃.
-6. 실서버 통합 검증 스크립트(12b: 사용자 PC 실행용) 제공.
-7. `33_artifact_source_boundary.md`·settings 주석·`env.ps1.example` 문서화, 이 문서 상태 갱신.
+**구현 단계 — 2026-07-07 코드 착수 완료(실서버 실측 검증만 남음):**
+1. [x] 설정: `ecm_download_review_centers.py`에 센터별 `default_ecm_root_oid`·`ecm_root_oid_setting`·
+   `username_setting`·`password_setting` 추가 + `ecm_root_oid()`/`ecm_credentials()` 접근자.
+   `settings.py`/`ui_mock_settings.py`/`env.ps1.example`에 `ECM_USERNAME[_BUNDANG]`/`ECM_PASSWORD[_BUNDANG]`·
+   `ECM_ROOT_OID_*`·`ECM_BASE_URL_BUNDANG` 추가.
+2. [x] HTTP 클라이언트 모듈 `main/views/review/ecm_http_client.py`(`DestinyECM` 이식 + 세션만료 1회 재로그인,
+   `build_client(center)` 팩토리). 의존성 `requests`.
+3. [x] `HttpEcmArtifactSource`(artifact_source.py) 구현 — lazy 로그인(센터별 세션 재사용), fetch=프로젝트
+   탐색→재귀 순회→`base/<NFC project_number>/<NFC relative_path>/`에 다운로드(NFC + 무결성 검증 + 1회 재시도)
+   + on_progress/is_canceled, 락 없음. 팩토리에 `ecm-http` 분기 추가(기존 `ecm` 폴백 유지).
+4. [x] `requests`를 `requirements-automation.txt`에 추가.
+5. [x] 계약 테스트(mock 클라이언트, 네트워크 없음): 레이아웃/NFC/진행보고/무결성실패+재시도/취소/미탐색/팩토리
+   + 순수함수(test_no zero-padding·연도·점수·파일수집). `main/tests.py`
+   (`HttpEcmArtifactSourceTests`, `EcmHttpClientPureFunctionTests`).
+6. [x] 실서버 통합 검증 명령(12b: 사용자 PC 실행용) `manage.py verify_ecm_http` 제공
+   (로그인→탐색→개수, `--download` 시 무결성까지).
+7. [x] `33_artifact_source_boundary.md`·settings 주석·`env.ps1.example` 문서화, 이 문서 상태 갱신.
+
+**남은 것(실서버 = 사용자 PC, 결정 12b):**
+- root OID 실측(결정 3): `verify_ecm_http` 로 각 센터 로그인→탐색 확인.
+- 후보 폴더 선택이 현 Playwright 결과와 일치하는지 골든 비교(결정 5).
+- `--download` 로 실제 파일 무결성(매직바이트·크기) 통과 확인 후, 워커를 `--source=ecm-http` 로 시범 운영.
+- 안정화 후 `DOWNLOAD_REVIEW_SOURCE` 기본값을 `ecm-http` 로 전환(결정 11).
 
 ---
 
@@ -173,7 +185,8 @@ headers: `Authorization: Basic base64(SESSION_KEY)`, `User-Agent: DestinyECM`, `
 
 ## 이어받기 (실서버) 시작 지점
 
-**상태:** 결정 1~12 전부 확정(위 목록 ✅). 코드 미착수. 아래 순서로 시작하면 된다.
+**상태:** 결정 1~12 전부 확정(위 목록 ✅). **코드 착수 완료(2026-07-07)** — 위 "구현 단계" 1~7 구현·단위테스트 통과.
+실서버 실측(로그인/탐색/다운로드)만 남음. 아래 순서로 검증하면 된다.
 
 **0) 준비 — 환경변수 (결정 1, 실서버에서만)**
 ```powershell
@@ -183,11 +196,17 @@ $env:ECM_USERNAME = "..."; $env:ECM_PASSWORD = "..."
 $env:ECM_USERNAME_BUNDANG = "..."; $env:ECM_PASSWORD_BUNDANG = "..."
 ```
 
-**1) 실서버에서 먼저 검증할 것 (결정 12=사용자 실행):** 코드 착수 전, 원본 가이드 §8의 독립 실행 클라이언트로
-로그인→locate→download가 실제로 되는지 프로젝트 1건으로 확인. (샌드박스는 210.x 접속 불가하므로 사용자 PC에서 실행)
+**1) 실서버에서 검증할 것 (결정 12=사용자 실행):** 코드는 이미 착수됐으므로, 운영 코드 경로를 그대로 타는
+검증 명령으로 프로젝트 1건 확인(샌드박스는 210.x 접속 불가하므로 사용자 PC에서 실행):
+```powershell
+# 로그인 → 프로젝트 폴더 탐색 → 폴더별 파일 개수(다운로드 없음)
+.\.venv\Scripts\python.exe manage.py verify_ecm_http --center sangam --test-no GS-C-24-0003 --date 2024-01-01
+# 실제 다운로드 + 무결성 검증까지(임시 폴더)
+.\.venv\Scripts\python.exe manage.py verify_ecm_http --center bundang --test-no GS-A-23-0336 --download --limit 3
+```
 
-**2) 구현 순서:** 위 "구현 단계" 1→7. 심(seam) 위쪽(워커/검증/점검/상태전이)은 불변, 새 어댑터만 추가.
-문제 시 `--source=ecm`(Playwright) 즉시 롤백.
+**2) 시범 운영:** 검증 통과 후 워커를 `--source=ecm-http` 로 실행. 심(seam) 위쪽(워커/검증/점검/상태전이)은
+불변이라 새 어댑터만 갈아끼운다. 문제 시 `--source=ecm`(Playwright) 즉시 롤백.
 
 **3) 착수 파일 지도:**
 - 설정: `main/views/review/ecm_download_review_centers.py`(센터 dict에 root_oid·계정키), `myproject/settings.py`·`ui_mock_settings.py`·`env.ps1.example`.

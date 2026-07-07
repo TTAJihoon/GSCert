@@ -187,6 +187,17 @@ DOWNLOAD_REVIEW_NAV_HOME_BY_HOST = {
 
 # --- ECM 다운로드 자동화 설정 ---
 ECM_BASE_URL = os.environ.get('ECM_BASE_URL', 'http://210.96.71.85')
+ECM_BASE_URL_BUNDANG = os.environ.get('ECM_BASE_URL_BUNDANG', 'http://210.104.181.10')
+# HTTP 직접연동(ecm-http) 자격증명 — 코드/DB 에 평문 저장 금지, 환경변수로만 주입.
+# 상암·영남 공유 계정 / 분당 별도 계정. (main/docs/34_http_ecm_source_decisions.md 결정 1)
+ECM_USERNAME = os.environ.get('ECM_USERNAME', '')
+ECM_PASSWORD = os.environ.get('ECM_PASSWORD', '')
+ECM_USERNAME_BUNDANG = os.environ.get('ECM_USERNAME_BUNDANG', '')
+ECM_PASSWORD_BUNDANG = os.environ.get('ECM_PASSWORD_BUNDANG', '')
+# HTTP 직접연동 트리 탐색 시작 root OID(센터별). 미설정 시 센터 정의 기본값 사용.
+ECM_ROOT_OID_SANGAM = os.environ.get('ECM_ROOT_OID_SANGAM', '')
+ECM_ROOT_OID_YEONGNAM = os.environ.get('ECM_ROOT_OID_YEONGNAM', '')
+ECM_ROOT_OID_BUNDANG = os.environ.get('ECM_ROOT_OID_BUNDANG', '')
 ECM_BROWSER_CHANNEL = os.environ.get('ECM_BROWSER_CHANNEL', '')
 ECM_BROWSER_ARGS = [
     arg.strip()
@@ -203,9 +214,11 @@ AGENT_DOWNLOAD_BASE_DIR = os.environ.get(
     'AGENT_DOWNLOAD_BASE_DIR',
     str(Path.home() / 'download'),
 )
-# 산출물 source 선택: 'ecm'(운영 기본) 또는 'local'(LOCAL_ARTIFACT_SOURCE_ROOT 에서 복사).
-# 'local' 은 ECM 없이 워커 전체 흐름을 돌리는 fake-live 용. 자세한 내용은
-# main/docs/33_artifact_source_boundary.md 참고.
+# 산출물 source 선택: 'ecm'(Playwright, 현 운영 기본) / 'ecm-http'(서버 HTTP 직접연동)
+# / 'local'(LOCAL_ARTIFACT_SOURCE_ROOT 에서 복사, ECM 없이 워커 흐름을 돌리는 fake-live).
+# 'ecm-http' 는 requests 로 ECM 을 직접 호출하며 Playwright/pywinauto 가 필요 없다.
+# 안정화 후 기본값을 'ecm-http' 로 전환한다. 자세한 내용은
+# main/docs/33_artifact_source_boundary.md, main/docs/34_http_ecm_source_decisions.md 참고.
 DOWNLOAD_REVIEW_SOURCE = os.environ.get('DOWNLOAD_REVIEW_SOURCE', 'ecm')
 LOCAL_ARTIFACT_SOURCE_ROOT = os.environ.get('LOCAL_ARTIFACT_SOURCE_ROOT', '')
 AGENT_ARCHIVE_BASE_DIR = os.environ.get(

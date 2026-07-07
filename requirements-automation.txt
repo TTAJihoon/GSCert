@@ -1,4 +1,6 @@
 -r requirements.txt
+# ECM HTTP 직접연동(source=ecm-http)용. Playwright/pywinauto 없이 requests 만 필요.
+requests>=2.31
 playwright>=1.59,<1.60
 pywin32>=311
 pywinauto>=0.6.9,<0.7

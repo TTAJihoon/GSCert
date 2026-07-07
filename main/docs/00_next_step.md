@@ -1,21 +1,32 @@
 # GSCert Next Step
 
-## 2026-07-07: ECM 다운로드 HTTP 직접연동 전환 (실서버에서 이어서)
+## 2026-07-07: ECM 다운로드 HTTP 직접연동 — 코드 착수 완료 (실서버 실측만 남음)
 
-- **현재 상태:** ECM 산출물 다운로드를 Playwright + 네이티브 클라이언트 + pywinauto 팝업 방식에서
-  **서버측 HTTP 직접 호출(`requests`)** 방식으로 교체하기로 하고, 관련 결정 12개를 모두 확정했다. **코드는 미착수.**
-- **결정/계약/이어받기 지점은 단일 문서에 정리:** `main/docs/34_http_ecm_source_decisions.md`
-  (아키텍처 대전제, 결정 1~12, API 계약 요약, 착수 파일 지도, 실서버 검증 절차 포함).
-- **설계 핵심:** 이미 만들어 둔 `ArtifactSource` 심(seam) 덕분에 "Playwright를 뜯는" 게 아니라
-  "`HttpEcmArtifactSource` 어댑터 하나를 추가"하는 작업이다. 워커·검증·점검·상태전이(심 위쪽)는 불변,
-  문제 시 `--source=ecm`으로 즉시 롤백. 경계 정의는 `main/docs/33_artifact_source_boundary.md`.
-- **왜 실서버에서 이어가나:** 실제 착수 전 검증(로그인/폴더탐색/다운로드)과 통합 테스트가 ECM(210.x) 접속을
-  요구하는데, 개발 샌드박스는 외부 네트워크가 막혀 있어 사용자 PC(실서버)에서 진행해야 한다(결정 12 = 사용자 실행).
-- **실서버에서 바로 할 일:** `34_http_ecm_source_decisions.md`의 "이어받기 (실서버) 시작 지점" 절차 —
-  (0) 환경변수 설정 → (1) 원본 가이드 §8 독립 클라이언트로 프로젝트 1건 로그인→locate→download 확인 →
-  (2) 구현 단계 1~7 순차 진행.
-- **참고 자료:** 원본 구현 가이드 `ECM-API-SHARE.md`는 저장소 밖(Telegram 공유)에 있다. 핵심 계약은
-  `34_http_ecm_source_decisions.md`에 요약해 두어 원본 없이도 착수 가능. (원본을 저장소에 포함할지는 미결.)
+- **완료:** ECM 산출물 다운로드의 **서버측 HTTP 직접 호출(`requests`)** 방식(`ecm-http` source)을
+  구현했다. 결정 1~12(`main/docs/34_http_ecm_source_decisions.md`)를 코드로 옮겼고 단위 테스트를 통과했다.
+  **아직 남은 것은 실서버(사용자 PC) 실측뿐**(결정 12b: 샌드박스는 210.x 접속 불가).
+- **설계대로 어댑터만 추가:** `ArtifactSource` 심(seam) 위쪽(워커·검증·점검·상태전이)은 불변이고,
+  `HttpEcmArtifactSource` 어댑터 하나를 추가했다. 문제 시 `--source=ecm`(Playwright) 즉시 롤백.
+- **추가/변경 파일:**
+  - 신규 `main/views/review/ecm_http_client.py` — `DestinyECM`(로그인·폴더/파일 조회·다운로드·프로젝트
+    자동 탐색) 이식 + 세션만료 1회 재로그인, `build_client(center)` 팩토리.
+  - `main/views/review/artifact_source.py` — `HttpEcmArtifactSource`(lazy 로그인/센터별 세션 재사용,
+    재귀 순회 → `base/<NFC 프로젝트번호>/<NFC 상대경로>/`에 다운로드 + 무결성 검증 + 1회 재시도, 락 없음),
+    `verify_downloaded_bytes()`, 팩토리 `ecm-http` 분기.
+  - `ecm_download_review_centers.py` — 센터 dict 에 `root_oid`·계정 설정 키 + `ecm_root_oid()`/`ecm_credentials()`.
+  - `settings.py`/`ui_mock_settings.py`/`env.ps1.example` — `ECM_USERNAME[_BUNDANG]`/`ECM_PASSWORD[_BUNDANG]`·
+    `ECM_ROOT_OID_*`·`ECM_BASE_URL_BUNDANG`, `DOWNLOAD_REVIEW_SOURCE` 주석에 `ecm-http` 추가.
+  - `requirements-automation.txt` — `requests` 추가.
+  - 신규 검증 명령 `main/management/commands/verify_ecm_http.py`(결정 12b, 사용자 PC 실행용).
+  - 테스트 `main/tests.py` — `HttpEcmArtifactSourceTests`, `EcmHttpClientPureFunctionTests`.
+- **실서버에서 할 일(사용자 PC):**
+  1. 환경변수 설정(`env.ps1` 에 `ECM_USERNAME`/`ECM_PASSWORD`[`_BUNDANG`]).
+  2. `python manage.py verify_ecm_http --center <센터> --test-no <시험번호> [--date ...]` 로 로그인·탐색 확인,
+     `--download --limit 3` 으로 무결성까지 확인.
+  3. 통과하면 워커를 `run_download_worker --live --source=ecm-http` 로 시범 운영, 안정화 후
+     `DOWNLOAD_REVIEW_SOURCE` 기본값을 `ecm-http` 로 전환(결정 11).
+- **참고 자료:** 원본 구현 가이드 `ECM-API-SHARE.md`는 저장소 밖(공유). 핵심 계약은
+  `34_http_ecm_source_decisions.md`에 요약돼 있고, 코드도 그 요약 기준으로 이식했다.
 
 ## 2026-07-03: 점검규칙 대규모 검토 후 문서 최신화
 

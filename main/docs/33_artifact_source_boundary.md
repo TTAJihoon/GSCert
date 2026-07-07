@@ -39,11 +39,17 @@ class ArtifactSource(Protocol):
 
 ### 구현체
 
-- `EcmArtifactSource`: 기존 ECM 함수(`launch_browser`/`run_ecm_recursive_downloads`/
+- `EcmArtifactSource`(`ecm`): 기존 ECM 함수(`launch_browser`/`run_ecm_recursive_downloads`/
   `handle_folder_popup_and_download`/`close_browser`) 래핑. **ECM 에이전트 락도 이 안에서** 건다.
-- `LocalFolderArtifactSource`: `source_root/<프로젝트번호>` → 다운로드 폴더로 복사.
+- `HttpEcmArtifactSource`(`ecm-http`): 서버측 HTTP 직접 호출(`requests`)로 ECM 을 부른다.
+  `open`=lazy 로그인(job 내 센터별 세션 재사용), `fetch`=프로젝트 폴더 탐색→재귀 순회→
+  `AGENT_DOWNLOAD_BASE_DIR/<NFC 프로젝트번호>/<NFC 상대경로>/` 에 다운로드(NFC + 무결성 검증).
+  Playwright/pywinauto/에이전트 락 **불필요**. HTTP 클라이언트는 `ecm_http_client.DestinyECM`.
+  설계·결정: `34_http_ecm_source_decisions.md`.
+- `LocalFolderArtifactSource`(`local`): `source_root/<프로젝트번호>` → 다운로드 폴더로 복사.
   다른 저장소 연결 첫 구현이자 fake-live 더블.
-- `build_artifact_source(name, *, headless, source_root)`: 이름으로 구현체 생성.
+- `build_artifact_source(name, *, headless, source_root)`: 이름으로 구현체 생성
+  (`ecm` / `ecm-http` / `local`).
 
 ## 4. 워커가 쓰는 방식
 
@@ -88,11 +94,16 @@ finally:
 
 | 설정 | 기본 | 의미 |
 |---|---|---|
-| `DOWNLOAD_REVIEW_SOURCE` | `ecm` | source 기본값. `ecm` / `local` |
+| `DOWNLOAD_REVIEW_SOURCE` | `ecm` | source 기본값. `ecm` / `ecm-http` / `local` |
 | `LOCAL_ARTIFACT_SOURCE_ROOT` | `""` | local source 가 복사해 올 루트(`<root>/<프로젝트번호>`) |
+| `ECM_USERNAME` / `ECM_PASSWORD` | `""` | ecm-http 상암·영남 공유 계정(환경변수 전용) |
+| `ECM_USERNAME_BUNDANG` / `ECM_PASSWORD_BUNDANG` | `""` | ecm-http 분당 계정 |
+| `ECM_ROOT_OID_{SANGAM,YEONGNAM,BUNDANG}` | 센터 기본값 | ecm-http 트리 탐색 시작 OID 덮어쓰기 |
 | CLI `--source` | (없음) | 이 실행만 source 덮어쓰기. settings 보다 우선 |
 
-- 운영(ECM): `python manage.py run_download_worker --live`
+- 운영(ECM, Playwright): `python manage.py run_download_worker --live`
+- **HTTP 직접연동(ECM, requests)**: `python manage.py run_download_worker --live --source=ecm-http`
+  (자격증명 환경변수 필요. 실서버 사전 검증: `python manage.py verify_ecm_http --center <센터> --test-no <시험번호> [--download]`)
 - **fake-live(ECM 없이 전체 흐름)**:
   `LOCAL_ARTIFACT_SOURCE_ROOT=<폴더> python manage.py run_download_worker --once --live --source=local`
   → `<폴더>/<프로젝트번호>` 를 다운로드 폴더로 복사한 뒤, 이후 검증·점검 파이프라인을 그대로 실행.

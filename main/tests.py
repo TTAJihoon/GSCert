@@ -3226,14 +3226,215 @@ class ArtifactSourceSeamTests(SimpleTestCase):
     def test_factory_builds_known_sources_and_rejects_unknown(self):
         from main.views.review.artifact_source import (
             EcmArtifactSource,
+            HttpEcmArtifactSource,
             LocalFolderArtifactSource,
             build_artifact_source,
         )
 
         self.assertIsInstance(build_artifact_source("ecm"), EcmArtifactSource)
+        self.assertIsInstance(build_artifact_source("ecm-http"), HttpEcmArtifactSource)
         self.assertIsInstance(build_artifact_source("local"), LocalFolderArtifactSource)
         with self.assertRaises(ValueError):
             build_artifact_source("dropbox")
+
+
+class _FakeEcmClient:
+    """HttpEcmArtifactSource 계약 테스트용 mock ECM 클라이언트(네트워크 없음).
+
+    트리는 {oid: {"contents": {"folders":[{name,oid}],"files":[meta...]}}} 로 표현.
+    """
+
+    def __init__(self, *, project_oid, tree, blobs, project_name="GS-A-23-336(완료)"):
+        self._project_oid = project_oid
+        self._tree = tree
+        self._blobs = blobs
+        self._project_name = project_name
+        self.login_calls = 0
+        self.download_calls = []
+
+    def login(self):
+        self.login_calls += 1
+
+    def find_project_folder(self, test_no, cert_date="", grade=""):
+        if self._project_oid is None:
+            return None
+        return {"oid": self._project_oid, "name": self._project_name}
+
+    def folder_contents(self, oid):
+        return self._tree.get(oid, {"folders": [], "files": []})
+
+    def download_bytes(self, meta):
+        self.download_calls.append(meta.get("storageFileID"))
+        return self._blobs[meta["storageFileID"]]
+
+
+class HttpEcmArtifactSourceTests(SimpleTestCase):
+    """HTTP 직접연동 source 계약: 레이아웃/진행/무결성/취소/미탐색(네트워크 없음)."""
+
+    def _run(self, coro):
+        import asyncio
+
+        return asyncio.run(coro)
+
+    def _project(self, number="GS-A-23-0336", center="sangam"):
+        from types import SimpleNamespace
+
+        return SimpleNamespace(project_number=number, center_code=center, ecm_row_json={})
+
+    def _fetch(self, source, project, *, canceled=False):
+        progressed = []
+
+        async def _on_progress(rel, count):
+            progressed.append((list(rel), count))
+
+        async def _is_canceled():
+            return canceled
+
+        result = self._run(
+            source.fetch(project, on_progress=_on_progress, is_canceled=_is_canceled)
+        )
+        return result, progressed
+
+    def test_downloads_reproduce_project_relative_layout_with_nfc(self):
+        from main.views.review.artifact_source import HttpEcmArtifactSource
+
+        tree = {
+            "P": {
+                "folders": [{"name": "계약", "oid": "C"}],
+                "files": [{"fileName": "표지.pdf", "storageFileID": "f0", "fileSize": 5}],
+            },
+            "C": {
+                "folders": [],
+                "files": [{"fileName": "계약서.pdf", "storageFileID": "f1", "fileSize": 8}],
+            },
+        }
+        blobs = {"f0": b"%PDF-", "f1": b"%PDF-1.4"}
+        client = _FakeEcmClient(project_oid="P", tree=tree, blobs=blobs)
+        source = HttpEcmArtifactSource(client_factory=lambda center: client)
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
+                result, progressed = self._fetch(source, self._project())
+
+            self.assertTrue(result.success, result.error_message)
+            dst = Path(base) / "GS-A-23-0336"
+            self.assertTrue((dst / "표지.pdf").exists())
+            self.assertTrue((dst / "계약" / "계약서.pdf").exists())
+            self.assertEqual(result.download_dir, str(dst))
+            self.assertEqual(result.downloaded_folder_count, 2)
+            # on_progress 는 파일이 있는 폴더마다 상대경로+건수로 호출된다.
+            self.assertIn(([], 1), progressed)
+            self.assertIn((["계약"], 1), progressed)
+
+    def test_integrity_failure_fails_project_after_retry(self):
+        from main.views.review.artifact_source import HttpEcmArtifactSource
+
+        tree = {"P": {"folders": [], "files": [
+            {"fileName": "계약서.pdf", "storageFileID": "f1", "fileSize": 10},
+        ]}}
+        # 매직바이트가 %PDF 가 아니고 크기도 다름 → 검증 실패.
+        blobs = {"f1": b"garbage"}
+        client = _FakeEcmClient(project_oid="P", tree=tree, blobs=blobs)
+        source = HttpEcmArtifactSource(client_factory=lambda center: client)
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
+                result, _ = self._fetch(source, self._project())
+
+            self.assertFalse(result.success)
+            self.assertEqual(result.error_step, "무결성 검증")
+            # 1회 재다운로드까지 시도한다.
+            self.assertEqual(len(client.download_calls), 2)
+
+    def test_missing_project_folder_reports_error(self):
+        from main.views.review.artifact_source import HttpEcmArtifactSource
+
+        client = _FakeEcmClient(project_oid=None, tree={}, blobs={})
+        source = HttpEcmArtifactSource(client_factory=lambda center: client)
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
+                result, _ = self._fetch(source, self._project())
+
+            self.assertFalse(result.success)
+            self.assertEqual(result.error_step, "프로젝트 폴더 탐색")
+
+    def test_fetch_raises_when_canceled(self):
+        from main.views.review.artifact_source import (
+            HttpEcmArtifactSource,
+            JobCanceledError,
+        )
+
+        client = _FakeEcmClient(project_oid="P", tree={}, blobs={})
+        source = HttpEcmArtifactSource(client_factory=lambda center: client)
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
+                with self.assertRaises(JobCanceledError):
+                    self._fetch(source, self._project(), canceled=True)
+
+    def test_verify_downloaded_bytes_helper(self):
+        from main.views.review.artifact_source import verify_downloaded_bytes
+
+        self.assertEqual(verify_downloaded_bytes(b"%PDF-1.4", "a.pdf", 8), "")
+        self.assertEqual(verify_downloaded_bytes(b"PK\x03\x04", "a.xlsx", 4), "")
+        self.assertIn("빈 파일", verify_downloaded_bytes(b"", "a.pdf", 0))
+        self.assertIn("크기", verify_downloaded_bytes(b"%PDF", "a.pdf", 999))
+        self.assertIn("매직바이트", verify_downloaded_bytes(b"nope", "a.pdf", 4))
+
+
+class EcmHttpClientPureFunctionTests(SimpleTestCase):
+    """ecm_http_client 의 순수 함수(네트워크 없음): 매칭/연도/점수/파일수집."""
+
+    def test_xor_encrypt_roundtrip_is_deterministic(self):
+        from main.views.review.ecm_http_client import xor_encrypt
+
+        self.assertEqual(xor_encrypt("abc"), xor_encrypt("abc"))
+        self.assertTrue(xor_encrypt("secret"))
+
+    def test_test_no_patterns_match_zero_padding_both_ways(self):
+        from main.views.review.ecm_http_client import DestinyECM
+
+        patterns = DestinyECM.test_no_patterns("GS-A-23-0336")
+        self.assertTrue(any(p.search("GS-A-23-336(완료)") for p in patterns))
+        self.assertTrue(any(p.search("GS-A-23-0336 계약") for p in patterns))
+        # 뒤 숫자 경계: 336 이 3360 에 매칭되면 안 된다.
+        self.assertFalse(any(p.search("GS-A-23-3360") for p in patterns))
+
+    def test_year_candidates_prefers_cert_date_then_test_no(self):
+        from main.views.review.ecm_http_client import DestinyECM
+
+        self.assertEqual(
+            DestinyECM.year_candidates("GS-A-23-0336", "2024-01-01"),
+            ["2024", "2023"],
+        )
+        self.assertEqual(DestinyECM.year_candidates("GS-A-23-0336"), ["2023"])
+
+    def test_project_match_score_prioritizes_completed(self):
+        from main.views.review.ecm_http_client import DestinyECM
+
+        self.assertGreater(
+            DestinyECM.project_match_score("GS-A-23-336(완료)"),
+            DestinyECM.project_match_score("GS-A-23-336(신청)"),
+        )
+        self.assertLess(DestinyECM.project_match_score("GS-A-23-336(취소)"), 0)
+
+    def test_collect_files_recurses_and_needs_filename_and_storageid(self):
+        from main.views.review.ecm_http_client import DestinyECM
+
+        payload = {
+            "params": {
+                "rows": [
+                    {"fileName": "a.pdf", "storageFileID": "s1", "OID": "o1", "fileSize": "10"},
+                    {"fileName": "no_storage.pdf"},  # storageFileID 없음 → 제외
+                    {"nested": {"fileName": "b.xlsx", "storageFileID": "s2", "fileSize": 20}},
+                ]
+            }
+        }
+        out = []
+        DestinyECM.collect_files(payload, out)
+        ids = {f["storageFileID"] for f in out}
+        self.assertEqual(ids, {"s1", "s2"})
 
 
 class WorkerSourceSelectionTests(SimpleTestCase):

@@ -20,6 +20,12 @@ _CENTER_DEFINITIONS = {
         "default_tree_root_index": 0,
         "ecm_url_setting": "ECM_BASE_URL",
         "default_ecm_base_url": "http://210.96.71.85",
+        # HTTP 직접연동(ecm-http): root OID + 자격증명 설정 키. 상암·영남은 같은
+        # 서버(210.96.71.85)를 공유하고 계정도 공유(ECM_USERNAME/ECM_PASSWORD)한다.
+        "ecm_root_oid_setting": "ECM_ROOT_OID_SANGAM",
+        "default_ecm_root_oid": "1PQSYcuFhzv",
+        "username_setting": "ECM_USERNAME",
+        "password_setting": "ECM_PASSWORD",
     },
     CENTER_BUNDANG: {
         "label": "분당",
@@ -31,6 +37,11 @@ _CENTER_DEFINITIONS = {
         "test_type_contains": "GS 시험인증(1등급)",
         "ecm_url_setting": "ECM_BASE_URL_BUNDANG",
         "default_ecm_base_url": "http://210.104.181.10",
+        # 분당은 별도 서버(210.104.181.10) + 별도 계정.
+        "ecm_root_oid_setting": "ECM_ROOT_OID_BUNDANG",
+        "default_ecm_root_oid": "C_ROOT",
+        "username_setting": "ECM_USERNAME_BUNDANG",
+        "password_setting": "ECM_PASSWORD_BUNDANG",
     },
     CENTER_YEONGNAM: {
         "label": "영남",
@@ -42,6 +53,11 @@ _CENTER_DEFINITIONS = {
         "test_type_label": "01 GS시험인증(1등급)",
         "ecm_url_setting": "ECM_BASE_URL",
         "default_ecm_base_url": "http://210.96.71.85",
+        # 영남은 상암과 같은 서버·계정을 공유하고 최상위 폴더 OID로만 구분한다.
+        "ecm_root_oid_setting": "ECM_ROOT_OID_YEONGNAM",
+        "default_ecm_root_oid": "1EBnGfHdFwe",
+        "username_setting": "ECM_USERNAME",
+        "password_setting": "ECM_PASSWORD",
     },
 }
 
@@ -156,6 +172,27 @@ def ecm_base_url(center_code=""):
     if configured:
         return str(configured)
     return definition["default_ecm_base_url"]
+
+
+def ecm_root_oid(center_code=""):
+    """HTTP 직접연동 트리 탐색 시작 폴더 OID. 설정으로 덮어쓸 수 있고 없으면 기본값."""
+    definition = _definition(center_code)
+    configured = getattr(settings, definition["ecm_root_oid_setting"], None)
+    if configured:
+        return str(configured)
+    return definition["default_ecm_root_oid"]
+
+
+def ecm_credentials(center_code=""):
+    """HTTP 직접연동 로그인용 (username, password). 환경변수(settings)에서만 읽는다.
+
+    상암·영남은 같은 설정 키(ECM_USERNAME/ECM_PASSWORD)를 가리켜 계정을 공유한다.
+    코드/DB 에 평문을 저장하지 않으므로, 미설정 시 빈 문자열을 돌려준다(호출부에서 판단).
+    """
+    definition = _definition(center_code)
+    username = getattr(settings, definition["username_setting"], "") or ""
+    password = getattr(settings, definition["password_setting"], "") or ""
+    return str(username), str(password)
 
 
 def ecm_test_type_label(center_code):
