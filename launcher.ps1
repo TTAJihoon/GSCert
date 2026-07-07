@@ -9,43 +9,61 @@ $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $EnvFile = Join-Path $ScriptDir "env.ps1"
 if (Test-Path $EnvFile) { . $EnvFile }
 
+# PID 파일 기반 실행 여부 확인 (서버/워커)
+function Test-PidRunning($pidFile) {
+    if (-not (Test-Path $pidFile)) { return $false }
+    try {
+        $procId = [int]((Get-Content $pidFile -Raw).Trim())
+    } catch {
+        return $false
+    }
+    return (Get-Process -Id $procId -ErrorAction SilentlyContinue) -ne $null
+}
+
 function Show-Menu {
     $venvOk = (Test-Path (Join-Path $ScriptDir ".venv\Scripts\python.exe")) -or
               (Test-Path (Join-Path $ScriptDir "venv\Scripts\python.exe"))
-    $venvOk    = (Test-Path (Join-Path $ScriptDir ".venv\Scripts\python.exe")) -or
-                  (Test-Path (Join-Path $ScriptDir "venv\Scripts\python.exe"))
     $nginxOk   = (Get-Process -Name nginx -ErrorAction SilentlyContinue) -ne $null
-    $venvWarn  = if (-not $venvOk) { " [!S 실행 필요]" } else { "" }
-    $nginxStat = if ($nginxOk) { "[실행중]" } else { "[중지됨]" }
+    $serverOk  = Test-PidRunning (Join-Path $ScriptDir "run\django_runserver.pid")
+    $workerOk  = Test-PidRunning (Join-Path $ScriptDir "run\download_worker.pid")
+    $venvWarn  = if (-not $venvOk) { " [!setup 실행 필요]" } else { "" }
+
+    $srvStat = if ($serverOk) { "[실행중]" } else { "[중지됨]" }
+    $wrkStat = if ($workerOk) { "[실행중]" } else { "[중지됨]" }
+    $ngxStat = if ($nginxOk)  { "[실행중]" } else { "[중지됨]" }
+    $srvColor = if ($serverOk) { "Green" } else { "DarkGray" }
+    $wrkColor = if ($workerOk) { "Green" } else { "DarkGray" }
+    $ngxColor = if ($nginxOk)  { "Green" } else { "DarkGray" }
 
     Clear-Host
     Write-Host "=======================================" -ForegroundColor Cyan
     Write-Host "       GSCert 서버 관리 메뉴" -ForegroundColor Yellow
     if (-not $venvOk) {
-        Write-Host "  [경고] 가상환경이 없습니다. S를 먼저 실행하세요." -ForegroundColor Red
+        Write-Host "  [경고] 가상환경이 없습니다. 'setup'을 먼저 실행하세요." -ForegroundColor Red
     }
     Write-Host "=======================================" -ForegroundColor Cyan
-    Write-Host "  1. start_all      - Django 서버 + 워커 함께 시작$venvWarn"
-    Write-Host "  2. start_server   - Django 개발 서버만 시작 (백그라운드)$venvWarn"
-    Write-Host "  3. start_worker   - download_worker만 시작 (백그라운드)$venvWarn"
-    Write-Host "  4. stop_all       - 서버 + 워커 함께 중지"
-    Write-Host "  5. stop_server    - Django 서버만 중지"
-    Write-Host "  6. stop_worker    - download_worker만 중지"
-    Write-Host "  7. status         - 서버/워커 상태 확인"
-    Write-Host "  C. collectstatic  - 정적 파일(css/js) 수집 (nginx 반영)$venvWarn"
-    Write-Host "  R. restart        - 서버/워커 재시작$venvWarn"
-    $nginxColor = if ($nginxOk) { "Green" } else { "Red" }
-    Write-Host "  N. nginx          - nginx 시작/중지/reload  $nginxStat" -ForegroundColor $nginxColor
-    Write-Host "  S. setup          - 초기 환경 설정 (최초 1회 / 새 PC)"
-    Write-Host "  W. weekly 동기화  - ECM xlsx 다운로드 → PostgreSQL reference DB 적재$venvWarn"
-    Write-Host "  G. Google Sheets  - 인증위 시트 → PostgreSQL reference_project 적재$venvWarn"
-    Write-Host "  I. FAISS 임베딩   - reference DB 신규 데이터 증분 임베딩$venvWarn"
+    # 실행 상태 요약 (서버 / 워커 / nginx)
+    Write-Host "  상태  " -NoNewline
+    Write-Host "서버 $srvStat" -ForegroundColor $srvColor -NoNewline
+    Write-Host "   워커 $wrkStat" -ForegroundColor $wrkColor -NoNewline
+    Write-Host "   nginx $ngxStat" -ForegroundColor $ngxColor
+    Write-Host "---------------------------------------" -ForegroundColor DarkGray
+    Write-Host "  1.    start        - 서버/워커 시작 (all/server/worker 선택)$venvWarn"
+    Write-Host "  2.    stop         - 서버/워커 중지 (all/server/worker 선택)"
+    Write-Host "  R.    restart      - 서버/워커 재시작$venvWarn"
+    Write-Host "  s.    status       - 서버/워커 상태 확인"
+    Write-Host "  C.    collectstatic- 정적 파일(css/js) 수집 (nginx 반영)$venvWarn"
+    Write-Host "  N.    nginx        - nginx 시작/중지/reload  $ngxStat" -ForegroundColor $ngxColor
+    Write-Host "  W.    weekly 동기화 - ECM xlsx → PostgreSQL reference DB 적재$venvWarn"
+    Write-Host "  G.    Google Sheets- 인증위 시트 → PostgreSQL reference_project 적재$venvWarn"
+    Write-Host "  f.    FAISS 임베딩  - reference DB 신규 데이터 증분 임베딩$venvWarn"
+    Write-Host "  D.    규칙 DB 반영  - 점검규칙(config)을 PostgreSQL에 반영 (seed)$venvWarn"
+    Write-Host "  B.    앱 빌드       - 로컬 검토 앱(GSCertLocalReview.exe) 재빌드"
+    Write-Host "  git.  Git 관리      - 원격 pull / 로컬 커밋·push"
     $pgHost = if ($env:REFERENCE_PG_HOST) { $env:REFERENCE_PG_HOST } else { "미설정" }
-    Write-Host "  P. PostgreSQL 설정 - 현재 HOST: $pgHost"
-    Write-Host "  D. 규칙 DB 반영    - 점검규칙(config)을 PostgreSQL에 반영 (seed)$venvWarn"
-    Write-Host "  B. 앱 빌드         - 로컬 검토 앱(GSCertLocalReview.exe) 재빌드"
-    Write-Host "  U. Git 관리        - 원격 pull / 로컬 커밋·push"
-    Write-Host "  0. 종료"
+    Write-Host "  P.    PostgreSQL 설정- 현재 HOST: $pgHost"
+    Write-Host "  setup. 초기 환경 설정 - 최초 1회 / 새 PC"
+    Write-Host "  0.    종료"
     Write-Host "=======================================" -ForegroundColor Cyan
 }
 
@@ -58,6 +76,21 @@ function Ask-YesNo($prompt) {
     }
 }
 
+# 서버/워커 대상 선택 (start/stop 공용). 반환: 'all' | 'server' | 'worker' | $null(취소)
+function Select-Target($verb) {
+    Write-Host "$verb 대상을 선택하세요:"
+    Write-Host "  1) all     - 서버 + 워커"
+    Write-Host "  2) server  - Django 서버만"
+    Write-Host "  3) worker  - download_worker만"
+    $sel = Read-Host "선택 (1/2/3)"
+    switch ($sel) {
+        '1' { return 'all' }
+        '2' { return 'server' }
+        '3' { return 'worker' }
+        default { return $null }
+    }
+}
+
 while ($true) {
     Show-Menu
     $choice = Read-Host "`n번호 선택"
@@ -65,35 +98,35 @@ while ($true) {
     switch ($choice.ToUpper()) {
         '1' {
             Write-Host ""
-            & (Join-Path $ScriptDir "start_all.ps1") -Live
+            $target = Select-Target "시작"
+            Write-Host ""
+            switch ($target) {
+                'all'    { & (Join-Path $ScriptDir "start_all.ps1") -Live }
+                'server' { & (Join-Path $ScriptDir "start_server.ps1") }
+                'worker' {
+                    $once   = Ask-YesNo "--once 모드로 실행할까요?"
+                    $nohead = Ask-YesNo "브라우저 창을 표시할까요? (No = headless)"
+                    Write-Host ""
+                    $params = @{ Live = $true }
+                    if ($once)   { $params['Once'] = $true }
+                    if ($nohead) { $params['NoHeadless'] = $true }
+                    & (Join-Path $ScriptDir "start_worker.ps1") @params
+                }
+                default  { Write-Host "취소했습니다." -ForegroundColor Yellow }
+            }
         }
         '2' {
             Write-Host ""
-            & (Join-Path $ScriptDir "start_server.ps1")
-        }
-        '3' {
+            $target = Select-Target "중지"
             Write-Host ""
-            $once   = Ask-YesNo "--once 모드로 실행할까요?"
-            $nohead = Ask-YesNo "브라우저 창을 표시할까요? (No = headless)"
-            Write-Host ""
-            $params = @{ Live = $true }
-            if ($once)   { $params['Once'] = $true }
-            if ($nohead) { $params['NoHeadless'] = $true }
-            & (Join-Path $ScriptDir "start_worker.ps1") @params
+            switch ($target) {
+                'all'    { & (Join-Path $ScriptDir "stop_all.ps1") }
+                'server' { & (Join-Path $ScriptDir "stop_server.ps1") }
+                'worker' { & (Join-Path $ScriptDir "stop_worker.ps1") }
+                default  { Write-Host "취소했습니다." -ForegroundColor Yellow }
+            }
         }
-        '4' {
-            Write-Host ""
-            & (Join-Path $ScriptDir "stop_all.ps1")
-        }
-        '5' {
-            Write-Host ""
-            & (Join-Path $ScriptDir "stop_server.ps1")
-        }
-        '6' {
-            Write-Host ""
-            & (Join-Path $ScriptDir "stop_worker.ps1")
-        }
-        '7' {
+        'S' {
             Write-Host ""
             & (Join-Path $ScriptDir "status.ps1")
         }
@@ -163,7 +196,7 @@ while ($true) {
                 & (Join-Path $ScriptDir "start_nginx.ps1")
             }
         }
-        'S' {
+        'SETUP' {
             Write-Host ""
             Write-Host "=== 초기 환경 설정 ===" -ForegroundColor Cyan
             $automation = Ask-YesNo "Automation 패키지도 설치할까요? (playwright, pywin32 등)"
@@ -227,7 +260,7 @@ while ($true) {
                 }
             }
         }
-        'I' {
+        'F' {
             Write-Host ""
             Write-Host "=== FAISS 증분 임베딩 (신규 데이터만) ===" -ForegroundColor Cyan
             $VenvPython = Join-Path $ScriptDir ".venv\Scripts\python.exe"
@@ -289,7 +322,7 @@ while ($true) {
                 }
             }
         }
-        'U' {
+        'GIT' {
             Write-Host ""
             Write-Host "=== Git 관리 ===" -ForegroundColor Cyan
             Write-Host "  1) pull  - 원격 최신 코드 받기"
