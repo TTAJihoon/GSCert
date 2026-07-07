@@ -2,6 +2,7 @@ import sys
 import time
 
 from django.core.management.base import BaseCommand
+from django.db import close_old_connections
 
 from main.views.review.ecm_download_review_worker import run_worker_once
 
@@ -80,6 +81,13 @@ class Command(BaseCommand):
         source_name = options["source"]
 
         while True:
+            # 장시간 실행되는 워커는 요청 사이클이 없어 Django가 DB 연결을 자동으로
+            # 정리하지 않는다. 그러면 워커가 처음 연 reference(PostgreSQL) 연결을
+            # 프로세스 수명 내내 재사용하게 되어, Django admin에서 점검규칙을 수정해도
+            # 워커를 재시작하기 전까지는 예전 규칙으로 점검이 돌 수 있다.
+            # 루프마다 오래된 연결을 닫아(다음 쿼리에서 새로 열림) 항상 최신 규칙을 읽게 한다.
+            close_old_connections()
+
             result = run_worker_once(
                 dry_run=dry_run,
                 sleep_seconds=step_sleep,
