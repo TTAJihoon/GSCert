@@ -82,8 +82,22 @@ def run_cached_rules(
     # 같은 객체를 모든 규칙 호출에 재사용 → zip 확장 캐시 공유(규칙마다 다시 풀지 않음).
     shared_files = _SharedFiles(_engine_files(scan))
     rules = [_rule_spec(raw_rule) for raw_rule in rule_bundle.get("rules") or []]
-    results: list[LocalRuleResult] = []
+    supported = [rule for rule in rules if rule.rule_type in CORE_RULE_TYPES]
 
+    # 지원 규칙은 한 번의 호출로 평가한다(웹과 동일).
+    # 규칙마다 evaluate_rules 를 호출하면 그때마다 문서 변환 캐시(_DOC_CONVERT_CACHE)가
+    # 초기화되어 같은 .doc/.xls 를 규칙 수만큼 다시 변환(win32com MS Office 실행)하므로
+    # 앱 점검이 크게 느려졌다. 한 번에 넘기면 변환 결과가 규칙 간에 재사용된다.
+    eval_by_rule: dict[int, engine.RuleEvaluation] = {}
+    if supported:
+        try:
+            evaluations = engine.evaluate_rules(supported, context, shared_files)
+            eval_by_rule = {id(ev.rule): ev for ev in evaluations}
+        except Exception:
+            # 배치 호출이 예외를 내면(예상외) 규칙별 재실행으로 폴백해 오류를 격리한다.
+            eval_by_rule = {}
+
+    results: list[LocalRuleResult] = []
     for rule in rules:
         if rule.rule_type not in CORE_RULE_TYPES:
             results.append(
@@ -98,6 +112,12 @@ def run_cached_rules(
             )
             continue
 
+        evaluation = eval_by_rule.get(id(rule))
+        if evaluation is not None:
+            results.append(_local_result(evaluation))
+            continue
+
+        # 배치 결과에 없으면(폴백 경로) 이 규칙만 단독 실행해 오류를 격리한다.
         try:
             evaluations = engine.evaluate_rules([rule], context, shared_files)
         except Exception as exc:  # pragma: no cover - defensive UI boundary
