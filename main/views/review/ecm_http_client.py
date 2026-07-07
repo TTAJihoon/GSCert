@@ -315,12 +315,20 @@ class DestinyECM:
             if not service_oid:
                 continue
             for root_oid, root_name in self.gs_candidate_roots(service_oid, grade):
+                # 같은 프로젝트의 변형 폴더(신청/계약/완료…)는 폴더 목록에서 항상 연속으로
+                # 붙어 있다. 따라서 매칭 블록이 시작된 뒤 다른 프로젝트 폴더가 나오면 그
+                # 폴더 스캔을 멈춘다 — 대상이 앞쪽이면 뒤쪽 수백 개를 훑지 않는다.
+                # (메모리 순회라 비용은 작지만, 대량 폴더에서 불필요한 매칭을 줄인다.)
+                matched_block = False
                 for child in self.children(root_oid):
                     name = str(child.get("name", ""))
                     if self.is_template_folder(name):
+                        if matched_block:
+                            break
                         continue
                     exact = bool(re.search(re.escape(test_no) + r"(?!\d)", name))
                     if exact or any(p.search(name) for p in patterns):
+                        matched_block = True
                         candidates.append({
                             "oid": self.oid(child),
                             "name": name,
@@ -328,6 +336,8 @@ class DestinyECM:
                             "root": root_name,
                             "_score": self.project_match_score(name, exact=exact, root=root_name),
                         })
+                    elif matched_block:
+                        break
         if not candidates:
             return None
         candidates.sort(key=lambda x: x["_score"], reverse=True)

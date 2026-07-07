@@ -3419,6 +3419,41 @@ class EcmHttpClientPureFunctionTests(SimpleTestCase):
         )
         self.assertLess(DestinyECM.project_match_score("GS-A-23-336(취소)"), 0)
 
+    def test_find_project_folder_stops_after_contiguous_match_block(self):
+        from main.views.review.ecm_http_client import DestinyECM
+
+        # 같은 프로젝트 3개(신청/계약/완료) 뒤에 다른 프로젝트 폴더 1000개가 이어진 목록.
+        children = (
+            [{"name": f"GS-A-23-336({s})", "OID": s} for s in ("신청", "계약", "완료")]
+            + [{"name": f"GS-A-23-{n}", "OID": str(n)} for n in range(400, 1400)]
+        )
+
+        class _CountingClient(DestinyECM):
+            def __init__(self):
+                self.root_oid = "R"
+                self.scanned = 0
+
+            def year_candidates(self, test_no, cert_date=""):
+                return ["2023"]
+
+            def find_year_folder(self, year):
+                return "SVC"
+
+            def gs_candidate_roots(self, service_oid, grade=""):
+                return [("GROOT", "GS")]
+
+            def children(self, oid):
+                for c in children:
+                    self.scanned += 1
+                    yield c
+
+        client = _CountingClient()
+        best = client.find_project_folder("GS-A-23-336")
+        # 완료 폴더가 점수로 선택된다.
+        self.assertIn("완료", best["name"])
+        # 블록(3) + 종료를 유발한 다른 프로젝트 1개 = 4개만 훑고 멈춘다(1003개 아님).
+        self.assertEqual(client.scanned, 4)
+
     def test_collect_files_recurses_and_needs_filename_and_storageid(self):
         from main.views.review.ecm_http_client import DestinyECM
 
