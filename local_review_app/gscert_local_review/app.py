@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QDate, QThread, QSettings, QTimer, Signal
@@ -67,6 +68,7 @@ C_WARNING      = "#b54708"
 C_WARNING_SOFT = "#fff4e5"
 C_DANGER       = "#b42318"
 C_DANGER_SOFT  = "#fdecec"
+C_FAIL_ROW     = "#eef1f4"   # 부적합 세부 항목 행 배경 (밝은 회색)
 
 STATUS_META = {
     PASS:        (C_SUCCESS, C_SUCCESS_SOFT, "적합"),
@@ -522,15 +524,21 @@ class ManualMetadataDialog(QDialog):
 
     @staticmethod
     def _parse_date(text: str) -> "QDate | None":
+        """조회된 날짜 문자열을 관대하게 파싱한다.
+
+        구글시트/DB에서 온 값은 "2026.04.15", "2026-04-15", "2026/4/5",
+        "2026. 4. 15", "2026년 4월 15일", "2026-04-15 00:00" 등 형식이 제각각이라
+        엄격한 QDate 포맷 매칭으로는 실패하고 오늘 날짜로 되돌아가는 문제가 있었다.
+        연-월-일 숫자 3개만 뽑아 QDate로 조립한다."""
         text = (text or "").strip()
         if not text:
             return None
-        normalized = text.replace("-", ".").replace("/", ".")
-        for fmt in ("yyyy.M.d", "yyyy.MM.dd"):
-            qd = QDate.fromString(normalized, fmt)
-            if qd.isValid():
-                return qd
-        return None
+        m = re.search(r"(\d{4})\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})", text)
+        if not m:
+            return None
+        year, month, day = (int(g) for g in m.groups())
+        qd = QDate(year, month, day)
+        return qd if qd.isValid() else None
 
     def _date_value(self, date_edit: QDateEdit) -> str:
         return date_edit.date().toString("yyyy.MM.dd")
@@ -1430,10 +1438,10 @@ class MainWindow(QMainWindow):
             return []
         return [part.strip() for part in str(value).split(" / ")]
 
-    def _sub_checks(self, result: "LocalRuleResult") -> list[tuple[str, str, bool | None]]:
-        """규칙 결과를 하위 검사 [(기대값, 실제값, 통과여부)] 로 분해한다(웹 ruleSubChecks 동일).
+    def _sub_checks(self, result: "LocalRuleResult") -> list[tuple[str, str, bool | None, str]]:
+        """규칙 결과를 하위 검사 [(기대값, 실제값, 통과여부, 메시지)] 로 분해한다(웹 ruleSubChecks 동일).
 
-        - raw_detail.sub_checks 가 있으면 그대로 사용(각 항목별 통과여부 포함).
+        - raw_detail.sub_checks 가 있으면 그대로 사용(각 항목별 통과여부/메시지 포함).
         - 없으면 기대값/실제값을 " / " 로 분해. file_checks/content_checks 개수가 맞으면
           행별 통과여부를 부여한다.
         - 1건 이하이면 빈 리스트를 반환해 호출부가 단일 행으로 처리하게 한다.
@@ -1446,10 +1454,12 @@ class MainWindow(QMainWindow):
                 exp = sub.get("expected")
                 act = sub.get("actual")
                 passed = sub.get("passed")
+                msg = sub.get("message")
                 out.append((
                     str(exp) if exp not in (None, "") else "-",
                     str(act) if act not in (None, "") else "-",
                     passed if isinstance(passed, bool) else None,
+                    str(msg) if msg not in (None, "") else "",
                 ))
             return out
 
@@ -1461,15 +1471,20 @@ class MainWindow(QMainWindow):
 
         file_checks = rd.get("file_checks") if isinstance(rd.get("file_checks"), list) else []
         content_checks = rd.get("content_checks") if isinstance(rd.get("content_checks"), list) else []
-        flags = [c.get("passed") for c in [*file_checks, *content_checks]]
+        merged = [*file_checks, *content_checks]
+        flags = [c.get("passed") for c in merged]
         use_per_row = len(flags) == row_count and all(isinstance(f, bool) for f in flags)
 
         rows = []
         for i in range(row_count):
+            msg = ""
+            if use_per_row and i < len(merged) and isinstance(merged[i], dict):
+                msg = str(merged[i].get("message") or "")
             rows.append((
                 exp_parts[i] if i < len(exp_parts) else "-",
                 act_parts[i] if i < len(act_parts) else "-",
                 flags[i] if use_per_row else None,
+                msg,
             ))
         return rows
 
@@ -1484,13 +1499,15 @@ class MainWindow(QMainWindow):
         if span > 1:
             self.result_table.setSpan(row, col, span, 1)
 
-    def _put_text_cell(self, row, col, value, result, span=1):
+    def _put_text_cell(self, row, col, value, result, span=1, bg=None):
         text = value if value not in (None, "") else "-"
         item = QTableWidgetItem(text)
         if span > 1:
             item.setTextAlignment(Qt.AlignLeft | Qt.AlignTop)
         item.setToolTip(text)
         item.setData(Qt.ItemDataRole.UserRole, result)
+        if bg is not None:
+            item.setBackground(QColor(bg))
         self.result_table.setItem(row, col, item)
         if span > 1:
             self.result_table.setSpan(row, col, span, 1)
@@ -1527,21 +1544,26 @@ class MainWindow(QMainWindow):
 
             n = len(subs)
             per_row = subs[0][2] is not None
-            # 점검항목/메시지는 규칙 단위이므로 rowspan 으로 묶는다.
+            # 점검항목은 규칙 단위이므로 rowspan 으로 묶는다.
             self._put_text_cell(row, 1, result.rule_name, result, span=n)
-            self._put_text_cell(row, 4, result.message, result, span=n)
             if not per_row:
-                # 하위 통과여부가 없으면 결과 열도 규칙 전체 배지 하나로 묶는다.
+                # 하위 통과여부가 없으면 결과/메시지 열도 규칙 전체 하나로 묶는다.
                 self._put_status_cell(row, 0, label, fg, bg, result, result.message or label, span=n)
-            for i, (exp, act, passed) in enumerate(subs):
+                self._put_text_cell(row, 4, result.message, result, span=n)
+            for i, (exp, act, passed, sub_msg) in enumerate(subs):
                 r = row + i
+                # 부적합 세부 항목은 밝은 회색 배경으로 강조한다.
+                row_bg = C_FAIL_ROW if (per_row and not passed) else None
                 if per_row:
                     if passed:
                         self._put_status_cell(r, 0, "정상", C_SUCCESS, C_SUCCESS_SOFT, result, exp)
                     else:
-                        self._put_status_cell(r, 0, "부적합", C_DANGER, C_DANGER_SOFT, result, exp)
-                self._put_text_cell(r, 2, exp, result)
-                self._put_text_cell(r, 3, act, result)
+                        self._put_status_cell(r, 0, "부적합", C_DANGER, C_FAIL_ROW, result, sub_msg or exp)
+                self._put_text_cell(r, 2, exp, result, bg=row_bg)
+                self._put_text_cell(r, 3, act, result, bg=row_bg)
+                if per_row:
+                    # 세부 항목마다 메시지를 생성한다(적합이면 message가 비어 '-' 표시).
+                    self._put_text_cell(r, 4, sub_msg, result, bg=row_bg)
             row += n
 
         self._stat_labels["total"].setText(f"전체 {len(summary.results)}")

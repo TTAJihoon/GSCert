@@ -811,7 +811,8 @@ def _evaluate_excel_feature_list_check(rule, sequence, project, context, verify_
         })
 
     details["sub_checks"] = [
-        {"expected": c["expected"], "actual": c["actual"], "passed": c["passed"]} for c in checks
+        {"expected": c["expected"], "actual": c["actual"], "passed": c["passed"],
+         "message": c.get("message", "")} for c in checks
     ]
     all_passed = all(c["passed"] for c in checks)
     first_fail = next((c for c in checks if not c["passed"]), None)
@@ -982,6 +983,7 @@ def _checks_to_sub_checks(checks):
             "expected": check.get("expected", ""),
             "actual": check.get("actual", ""),
             "passed": check.get("passed"),
+            "message": check.get("message", ""),
         })
     return sub_checks
 
@@ -1454,7 +1456,8 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
     })
 
     raw_detail["sub_checks"] = [
-        {"expected": item["expected"], "actual": item["actual"], "passed": item["passed"]}
+        {"expected": item["expected"], "actual": item["actual"], "passed": item["passed"],
+         "message": item.get("message", "")}
         for item in sub_checks
     ]
     all_passed = all(item["passed"] for item in sub_checks)
@@ -1815,7 +1818,8 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
         })
 
     raw_detail["sub_checks"] = [
-        {"expected": c["expected"], "actual": c["actual"], "passed": c["passed"]} for c in sub_checks
+        {"expected": c["expected"], "actual": c["actual"], "passed": c["passed"],
+         "message": c.get("message", "")} for c in sub_checks
     ]
     all_passed = all(c["passed"] for c in sub_checks)
     first_fail = next((c for c in sub_checks if not c["passed"]), None)
@@ -2669,6 +2673,7 @@ def _evaluate_inspection_checklist_check(rule, sequence, project, context, verif
             "expected": f"[{label}] {_stringify_check_value(expected_value)}",
             "actual": _stringify_check_value(check.get("actual", "")),
             "passed": bool(check.get("passed")),
+            "message": _message_override if _message_override is not None else check.get("message", ""),
         })
     raw_detail["sub_checks"] = sub_checks
 
@@ -3353,7 +3358,8 @@ def _evaluate_quality_inspection_table_check(rule, sequence, project, context, v
         })
 
     raw_detail["sub_checks"] = [
-        {"expected": c["expected"], "actual": c["actual"], "passed": c["passed"]} for c in checks
+        {"expected": c["expected"], "actual": c["actual"], "passed": c["passed"],
+         "message": c.get("message", "")} for c in checks
     ]
     all_passed = all(c["passed"] for c in checks)
     first_fail = next((c for c in checks if not c["passed"]), None)
@@ -3590,7 +3596,8 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
     })
 
     raw_detail["sub_checks"] = [
-        {"expected": item["expected"], "actual": item["actual"], "passed": item["passed"]}
+        {"expected": item["expected"], "actual": item["actual"], "passed": item["passed"],
+         "message": item.get("message", "")}
         for item in sub_checks
     ]
     all_passed = all(item["passed"] for item in sub_checks)
