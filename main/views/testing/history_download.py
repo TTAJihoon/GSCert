@@ -104,3 +104,89 @@ def download_history_documents(
 
     (base / _SCOPE_MARKER).write_text(_scope_value(report_only), encoding="utf-8")
     return {"download_dir": str(base), "doc_count": len(selected)}
+
+
+def _resolve_project_center(test_no: str):
+    """점검과 동일한 방식으로 프로젝트가 속한 센터/기준정보를 찾는다.
+
+    reference_project(센터별 PL 목록 기반, 공유 reference DB)에는 전 센터 데이터가 있고
+    프로젝트번호는 센터 간 고유하므로, 전 센터를 훑어 첫 매치를 사용한다.
+    반환: (center_code, project_dict) 또는 (None, None).
+    """
+    from main.views.review.ecm_download_review_centers import center_choices
+    from main.views.review.ecm_reference_db import get_projects_by_numbers
+
+    number = unicodedata.normalize("NFC", str(test_no or "")).strip()
+    for choice in center_choices():
+        code = choice["code"]
+        try:
+            payload = get_projects_by_numbers([number], center_code=code)
+        except Exception:
+            continue
+        if payload and payload[0]:
+            return code, payload[0]
+    return None, None
+
+
+def download_full_project_documents(
+    test_no: str,
+    cert_date: str = "",
+    *,
+    dest_base: str | None = None,
+) -> dict:
+    """'전체 다운로드' 버튼: 프로젝트가 속한 센터 ECM 에 접속해 프로젝트 폴더 전체를 받는다.
+
+    센터는 점검과 동일한 reference_project(센터별 PL 목록) 기준으로 해석한다. 폴더 탐색은
+    점검 워커와 같은 `find_project_folder`({연도} 시험서비스 → GS 포함 폴더 → 프로젝트번호 폴더)
+    를 재사용하고, 그 폴더 아래 모든 파일을 상대경로 그대로 report\\<시험번호> 에 받아
+    (이후 download_report 가 ZIP 으로 전달) 저장한다.
+    """
+    from main.views.review.artifact_source import verify_downloaded_bytes
+    from main.views.review.ecm_http_client import build_client
+
+    center, project = _resolve_project_center(test_no)
+    if not center:
+        raise RuntimeError(f"{test_no} 의 센터를 확인할 수 없습니다(reference_project 미등록).")
+    proj_cert_date = (project.get("cert_date") if project else "") or cert_date
+
+    client = build_client(center)
+    client.login()
+
+    folder = client.find_project_folder(test_no, proj_cert_date, "")
+    if not folder or not folder.get("oid"):
+        raise RuntimeError(f"{center} ECM 에서 프로젝트 폴더를 찾지 못했습니다: {test_no}")
+
+    items = list(client.walk_files(folder["oid"]))
+    if not items:
+        raise RuntimeError(f"{test_no} 프로젝트 폴더에 파일이 없습니다.")
+
+    name = unicodedata.normalize("NFC", str(test_no))
+    base = Path(dest_base or _report_base()) / name
+    if base.exists():
+        shutil.rmtree(base, ignore_errors=True)
+    base.mkdir(parents=True, exist_ok=True)
+
+    count = 0
+    for rel, meta in items:
+        file_name = unicodedata.normalize("NFC", str(meta.get("fileName") or ""))
+        expected_size = int(meta.get("fileSize") or 0)
+        data = client.download_bytes(meta)
+        reason = verify_downloaded_bytes(data, file_name, expected_size)
+        if reason:
+            data = client.download_bytes(meta)
+            reason = verify_downloaded_bytes(data, file_name, expected_size)
+            if reason:
+                raise RuntimeError(f"무결성 검증 실패: {file_name} ({reason})")
+        target_dir = base.joinpath(*[unicodedata.normalize("NFC", str(p)) for p in rel])
+        target_dir.mkdir(parents=True, exist_ok=True)
+        safe_name = file_name
+        for ch in '\\/:*?"<>|':
+            safe_name = safe_name.replace(ch, " ")
+        dest = target_dir / safe_name
+        tmp = dest.with_name(dest.name + ".part")
+        tmp.write_bytes(data)
+        tmp.replace(dest)
+        count += 1
+
+    (base / _SCOPE_MARKER).write_text(_scope_value(False), encoding="utf-8")
+    return {"download_dir": str(base), "doc_count": count, "center": center}

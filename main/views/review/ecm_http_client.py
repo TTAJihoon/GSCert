@@ -396,6 +396,17 @@ class DestinyECM:
                 return {"oid": self.oid(child), "name": name}
         return None
 
+    def walk_files(self, oid: str, _rel=None):
+        """폴더 OID 아래 모든 파일을 재귀적으로 (상대경로 리스트, 파일 meta) 로 순회한다."""
+        rel = list(_rel or [])
+        contents = self.folder_contents(oid)
+        for meta in contents.get("files") or []:
+            yield rel, meta
+        for child in contents.get("folders") or []:
+            child_oid = child.get("oid")
+            if child_oid:
+                yield from self.walk_files(child_oid, rel + [child.get("name", "")])
+
     # 시험성적서로 인정하는 파일: 이름에 '시험성적서' 포함 + Word 확장자.
     REPORT_DOC_KEYWORD = "시험성적서"
     REPORT_DOC_EXTS = (".doc", ".docx", ".docm")

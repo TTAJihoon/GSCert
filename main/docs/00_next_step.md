@@ -50,7 +50,14 @@
   - 인증위원회는 분당 ECM(210.104.181.10)이라 `center=bundang`. 자격증명은 `ECM_USERNAME_BUNDANG` 등.
   - 검증: `manage.py verify_ecm_http --history --center bundang --test-no GS-B-22-355 --date 2022-08-15 [--download] [--all]`.
     테스트 `HistoryDocumentHttpTests`(트리 탐색/성적서 필터/캐시 마커, 네트워크 없음).
-  - **실서버 확인 필요:** 위 verify 로 인증일자 폴더 규칙(회차 유무·이름), 시험성적서 Word 존재 확인.
+  - **실측 통과(2026-07-07):** `GS-B-23-067`(2023.07.24) → 폴더 `바. GS-B-23-067`, 시험성적서 Word 1개 다운로드 OK.
+  - **두 버튼 분리:**
+    - `문서 다운로드`(scope=report, 기본): 위 그대로 — 분당 인증위원회 트리의 **시험성적서 Word**.
+    - `전체 다운로드`(scope=all): **프로젝트가 속한 센터**(reference_project = 점검 센터별 PL 목록)로 접속해
+      점검과 동일한 `find_project_folder`({연도} 시험서비스 → GS 포함 폴더 → 프로젝트 폴더)로 폴더를 찾고,
+      그 아래 **모든 파일을 상대경로 그대로** report\\<시험번호> 에 받아 ZIP. `download_full_project_documents()`.
+      센터 해석은 `_resolve_project_center()`(전 센터를 `get_projects_by_numbers` 로 훑어 첫 매치).
+  - **실서버 확인 필요:** 인증일자 폴더 규칙(회차 유무), 시험성적서 Word 존재 / 전체 버튼은 상암·영남 프로젝트로도 센터 자동해석·탐색 확인.
 
 ## 2026-07-03: 점검규칙 대규모 검토 후 문서 최신화
 

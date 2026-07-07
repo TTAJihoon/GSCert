@@ -344,6 +344,7 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
         from urllib.parse import quote
 
         from main.views.testing.history_download import (
+            download_full_project_documents,
             download_history_documents,
             report_cache_valid,
         )
@@ -363,12 +364,19 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
             return
 
         # 2) ECM HTTP 다운로드
+        #  - report(기본): 분당 인증위원회 트리의 시험성적서 Word 만.
+        #  - all(전체): 프로젝트 센터 ECM 의 프로젝트 폴더 전체(점검과 동일한 탐색).
         label = "시험성적서" if report_only else "전체 문서"
         await self._safe_send({"status": "processing", "message": f"ECM에서 {label}를 다운로드 중입니다..."})
         try:
-            result = await asyncio.to_thread(
-                download_history_documents, cert_date, test_no, report_only=report_only
-            )
+            if report_only:
+                result = await asyncio.to_thread(
+                    download_history_documents, cert_date, test_no, report_only=True
+                )
+            else:
+                result = await asyncio.to_thread(
+                    download_full_project_documents, test_no, cert_date
+                )
             await self._safe_send(
                 {
                     "status": "success",

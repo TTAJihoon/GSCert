@@ -3536,6 +3536,64 @@ class HistoryDocumentHttpTests(SimpleTestCase):
                 self.assertTrue(history_download.report_cache_valid("GS-B-22-355", report_only=True))
                 self.assertFalse(history_download.report_cache_valid("GS-B-22-355", report_only=False))
 
+    def test_walk_files_yields_relative_paths(self):
+        from main.views.review.ecm_http_client import DestinyECM
+
+        tree = {
+            "P": {"folders": [{"name": "4.시험", "oid": "S"}],
+                  "files": [{"fileName": "a.doc", "storageFileID": "1"}]},
+            "S": {"folders": [], "files": [{"fileName": "b.xlsx", "storageFileID": "2"}]},
+        }
+
+        class _C(DestinyECM):
+            def __init__(self):
+                pass
+
+            def folder_contents(self, oid):
+                return tree.get(oid, {"folders": [], "files": []})
+
+        items = list(_C().walk_files("P"))
+        rels = {tuple(r): m["storageFileID"] for r, m in items}
+        self.assertEqual(rels, {(): "1", ("4.시험",): "2"})
+
+    def test_full_project_download_writes_tree_and_all_marker(self):
+        from unittest.mock import patch
+        from main.views.testing import history_download
+
+        class _FakeClient:
+            def login(self):
+                pass
+
+            def find_project_folder(self, test_no, cert_date, grade):
+                return {"oid": "P", "name": "GS-B-23-067(완료)"}
+
+            def walk_files(self, oid):
+                yield [], {"fileName": "성적서.docx", "storageFileID": "1", "fileSize": 4}
+                yield ["4.시험"], {"fileName": "계획.docx", "storageFileID": "2", "fileSize": 4}
+
+            def download_bytes(self, meta):
+                return b"PK\x03\x04"
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_REPORT_BASE_DIR=base):
+                with patch.object(
+                    history_download, "_resolve_project_center",
+                    return_value=("bundang", {"cert_date": "2023.07.24"}),
+                ), patch(
+                    "main.views.review.ecm_http_client.build_client",
+                    return_value=_FakeClient(),
+                ):
+                    result = history_download.download_full_project_documents(
+                        "GS-B-23-067", "2023-07-24"
+                    )
+
+            self.assertEqual(result["doc_count"], 2)
+            self.assertEqual(result["center"], "bundang")
+            folder = Path(base) / "GS-B-23-067"
+            self.assertTrue((folder / "성적서.docx").exists())
+            self.assertTrue((folder / "4.시험" / "계획.docx").exists())
+            self.assertEqual((folder / ".scope").read_text(encoding="utf-8"), "all")
+
 
 class WeeklyHttpDownloadTests(SimpleTestCase):
     """weekly.py HTTP 전환: 00 폴더에서 가장 최근 날짜 목록 파일 선택(네트워크 없음)."""
