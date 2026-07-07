@@ -225,6 +225,22 @@
         </div>
     </div>
 
+    <!-- 4. 다운로드 검토 워커 -->
+    <div class="task-card">
+        <h2>다운로드 검토 워커</h2>
+        <p class="desc">
+            ECM 산출물 다운로드 방식을 선택해 워커를 시작합니다.
+            <code>HTTP</code>는 서버 직접연동(권장), <code>Playwright</code>는 레거시 브라우저 방식입니다.<br>
+            이미 실행 중이면 <code>중지</code> 후 다시 시작하세요.
+        </p>
+        <div class="controls">
+            <button class="run-btn" id="btn-worker-http" onclick="runTask('worker-http')">HTTP로 시작</button>
+            <button class="run-btn" id="btn-worker-playwright" onclick="runTask('worker-playwright')">Playwright로 시작</button>
+            <button class="clear-btn" id="btn-worker-stop" onclick="runTask('worker-stop')">중지</button>
+            <span class="badge" id="badge-worker"></span>
+        </div>
+    </div>
+
     <!-- 콘솔 출력 -->
     <div class="console-wrap">
         <div class="console-head">
@@ -245,6 +261,9 @@ const TASKS = {
     'embedding':   { btn: 'btn-embedding',   badge: 'badge-embedding',   url: '/api/server/embedding/',   title: '임베딩 (유사 시험 조회)' },
     'weekly':      { btn: 'btn-weekly',       badge: 'badge-weekly',      url: '/api/server/weekly/',      title: 'ECM 인증획득목록 동기화' },
     'sync-sheets': { btn: 'btn-sync-sheets',  badge: 'badge-sync-sheets', url: '/api/server/sync-sheets/', title: 'Google Sheets 동기화' },
+    'worker-http':       { btn: 'btn-worker-http',       badge: 'badge-worker', url: '/api/server/worker/start/', title: '다운로드 워커 시작 (HTTP 직접연동)', body: { source: 'http' } },
+    'worker-playwright': { btn: 'btn-worker-playwright', badge: 'badge-worker', url: '/api/server/worker/start/', title: '다운로드 워커 시작 (Playwright)',   body: { source: 'playwright' } },
+    'worker-stop':       { btn: 'btn-worker-stop',       badge: 'badge-worker', url: '/api/server/worker/stop/',  title: '다운로드 워커 중지' },
 };
 
 let pollTimer = null;
@@ -289,7 +308,7 @@ async function runTask(key) {
 
     const body = key === 'weekly'
         ? JSON.stringify({ date: document.getElementById('weekly-date').value.trim() })
-        : '{}';
+        : (cfg.body ? JSON.stringify(cfg.body) : '{}');
 
     let taskId;
     try {

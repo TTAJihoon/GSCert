@@ -124,6 +124,45 @@ def api_run_sync_sheets(request):
     return JsonResponse({"task_id": task_id})
 
 
+_POWERSHELL = "powershell.exe"
+
+
+def _run_ps1(script_name: str, extra_args: list, task: dict):
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
+    args = [
+        _POWERSHELL, "-NoProfile", "-ExecutionPolicy", "Bypass",
+        "-File", os.path.join(_CLAUDE_ROOT, script_name),
+    ] + extra_args
+    _launch(args, cwd=_CLAUDE_ROOT, env=env, task=task)
+
+
+@csrf_exempt
+@require_POST
+def api_run_worker(request):
+    """다운로드 검토 워커를 시작한다. source=http(기본)→ecm-http / playwright→ecm.
+
+    start_worker.ps1 -Live -Source <source> 를 호출한다(백그라운드 기동 + PID 파일 관리).
+    ps1 은 env.ps1 을 로드하므로 ECM 자격증명도 함께 적용된다.
+    """
+    body = json.loads(request.body or b"{}")
+    choice = (body.get("source") or "http").strip().lower()
+    source = "ecm" if choice == "playwright" else "ecm-http"
+    label = "다운로드 워커 시작 (Playwright)" if source == "ecm" else "다운로드 워커 시작 (HTTP 직접연동)"
+    task_id, task = _new_task(label)
+    _run_ps1("start_worker.ps1", ["-Live", "-Source", source], task)
+    return JsonResponse({"task_id": task_id, "source": source})
+
+
+@csrf_exempt
+@require_POST
+def api_stop_worker(request):
+    """다운로드 검토 워커를 중지한다(stop_worker.ps1)."""
+    task_id, task = _new_task("다운로드 워커 중지")
+    _run_ps1("stop_worker.ps1", [], task)
+    return JsonResponse({"task_id": task_id})
+
+
 @require_GET
 def api_task_status(request, task_id: str):
     with _tasks_lock:

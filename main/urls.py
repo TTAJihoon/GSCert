@@ -19,6 +19,8 @@ from main.views.server_console import (
     api_run_embedding,
     api_run_weekly,
     api_run_sync_sheets,
+    api_run_worker,
+    api_stop_worker,
     api_task_status,
 )
 
@@ -91,5 +93,7 @@ urlpatterns = [
     path('api/server/embedding/', api_run_embedding, name='api_server_embedding'),
     path('api/server/weekly/', api_run_weekly, name='api_server_weekly'),
     path('api/server/sync-sheets/', api_run_sync_sheets, name='api_server_sync_sheets'),
+    path('api/server/worker/start/', api_run_worker, name='api_server_worker_start'),
+    path('api/server/worker/stop/', api_stop_worker, name='api_server_worker_stop'),
     path('api/server/tasks/<str:task_id>/', api_task_status, name='api_server_task_status'),
 ]
