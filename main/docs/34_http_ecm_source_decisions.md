@@ -137,10 +137,18 @@ AGENT_DOWNLOAD_BASE_DIR/
    (로그인→탐색→개수, `--download` 시 무결성까지).
 7. [x] `33_artifact_source_boundary.md`·settings 주석·`env.ps1.example` 문서화, 이 문서 상태 갱신.
 
+**실측 결과(2026-07-07, 분당 210.104.181.10):**
+- ✅ `verify_ecm_http --center bundang --test-no GS-A-23-0336 --download` 통과.
+  로그인(SESSION_KEY)→프로젝트 폴더 자동 탐색→재귀 순회(11개 폴더/30개 파일)→다운로드+무결성 OK.
+- 검증된 항목: XOR 로그인, zero-padding 매칭(`GS-A-23-0336`↔폴더 `0336 GS-A-23-0336`),
+  **GS root 자동 발견**(실제 root=`03 GS시험인증(1등급)` — 기존 Playwright 워커의 하드코딩 `01`과 달라
+  옛 방식으로는 못 찾았을 폴더를 새 방식이 찾음), 폴더 레이아웃 재현, `.xls/.doc/.xlsx` 무결성(크기 검증).
+- root OID 실측(결정 3): 분당 `C_ROOT` 정상 동작 확인. 상암/영남은 미실측.
+
 **남은 것(실서버 = 사용자 PC, 결정 12b):**
-- root OID 실측(결정 3): `verify_ecm_http` 로 각 센터 로그인→탐색 확인.
-- 후보 폴더 선택이 현 Playwright 결과와 일치하는지 골든 비교(결정 5).
-- `--download` 로 실제 파일 무결성(매직바이트·크기) 통과 확인 후, 워커를 `--source=ecm-http` 로 시범 운영.
+- 상암/영남 `verify_ecm_http` 로그인→탐색 확인(분당만 실측됨).
+- 후보 폴더 선택이 현 Playwright 결과와 일치하는지 골든 비교(결정 5) — 신청/계약/완료 공존 프로젝트로.
+- 워커를 `--source=ecm-http`(또는 `DOWNLOAD_REVIEW_SOURCE=ecm-http`)로 시범 운영 후 결과 비교.
 - 안정화 후 `DOWNLOAD_REVIEW_SOURCE` 기본값을 `ecm-http` 로 전환(결정 11).
 
 ---
