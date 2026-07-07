@@ -9,13 +9,16 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from openpyxl import load_workbook, Workbook
-from playwright.sync_api import sync_playwright
 
-# Windows UI Automation
-from pywinauto import Desktop
-from pywinauto.keyboard import send_keys
+# playwright / pywinauto 는 레거시 'playwright' 다운로드 경로에서만 필요하므로
+# top-level 에서 import 하지 않는다(HTTP 직접연동 경로는 requests 만 있으면 동작).
+# 각각 해당 분기/함수 안에서 lazy import 한다.
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    # `python main/utils/weekly.py` 로 실행하면 script 디렉터리만 path 에 들어가므로,
+    # main.views.review.ecm_http_client 를 import 할 수 있도록 저장소 루트를 추가한다.
+    sys.path.insert(0, str(PROJECT_ROOT))
 DATA_DIR = PROJECT_ROOT / "main" / "data"
 DATA_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = DATA_DIR / "weekly_gs_sync.log"
@@ -67,10 +70,17 @@ class Config:
     # 이미 받은 xlsx를 직접 기준 파일에 반영할 때 사용한다.
     source_xlsx: Path | None = _env_optional_path("GSCERT_WEEKLY_SOURCE_XLSX")
 
-    # 시작 URL
+    # 시작 URL (= 분당 Destiny ECM 서버)
     start_url: str = os.environ.get("GSCERT_WEEKLY_START_URL", "http://210.104.181.10")
 
-    # 로그인 세션 저장(최초 1회 로그인 후 자동 재사용)
+    # 다운로드 방식: "http"(서버 HTTP 직접연동, 기본) / "playwright"(레거시 브라우저+팝업).
+    # 문제 시 GSCERT_WEEKLY_SOURCE=playwright 로 즉시 롤백한다.
+    download_source: str = os.environ.get("GSCERT_WEEKLY_SOURCE", "http").strip().lower()
+
+    # HTTP 직접연동 root OID(분당 = C_ROOT). 자격증명은 ECM_USERNAME_BUNDANG/ECM_PASSWORD_BUNDANG.
+    ecm_root_oid: str = os.environ.get("ECM_ROOT_OID_BUNDANG", "") or "C_ROOT"
+
+    # 로그인 세션 저장(레거시 playwright 경로에서만 사용: 최초 1회 로그인 후 재사용)
     storage_state: Path = _env_path("GSCERT_EDM_STORAGE_STATE", DATA_DIR / "edm_storage_state.json")
 
     # reference.xlsx -> PostgreSQL 적재
@@ -346,7 +356,11 @@ def confirm_browse_dialog_by_enter(wait_popup_sec: int = 15, after_popup_sec: fl
     """
     '폴더 찾아보기' 팝업이 뜬 뒤 after_popup_sec(기본 3초) 기다렸다가 Enter만 눌러 진행.
     - 기본 폴더/최근 폴더가 이미 원하는 경로로 선택되어 있다는 전제
+    - 레거시 playwright 경로 전용(HTTP 직접연동에서는 이 팝업 자체가 없다).
     """
+    from pywinauto import Desktop
+    from pywinauto.keyboard import send_keys
+
     # 1) 팝업이 뜰 때까지 최대 wait_popup_sec 동안 기다림 (Win32로 가볍게 체크)
     dlg = None
     end = time.time() + max(1, int(wait_popup_sec))
@@ -558,6 +572,94 @@ def sync_reference_db():
 
 
 # =========================
+# HTTP 직접연동 다운로드 (서버 → ECM, requests)
+# =========================
+_LIST_DATE_RE = re.compile(r"(\d{8})")
+
+
+def _weekly_http_client():
+    """분당 ECM(HTTP 직접연동) 클라이언트 생성 + 로그인.
+
+    XOR 로그인이 브라우저 SSO(storage_state)를 대체한다. 자격증명은 워커와 동일하게
+    ECM_USERNAME_BUNDANG/ECM_PASSWORD_BUNDANG 환경변수에서만 읽는다.
+    """
+    from main.views.review.ecm_http_client import DestinyECM
+
+    user = os.environ.get("ECM_USERNAME_BUNDANG", "") or os.environ.get("ECM_USERNAME", "")
+    pw = os.environ.get("ECM_PASSWORD_BUNDANG", "") or os.environ.get("ECM_PASSWORD", "")
+    if not user or not pw:
+        raise RuntimeError(
+            "HTTP 다운로드에는 ECM_USERNAME_BUNDANG/ECM_PASSWORD_BUNDANG 환경변수가 필요합니다."
+        )
+    client = DestinyECM(CFG.start_url, CFG.ecm_root_oid, user, pw)
+    client.login()
+    logging.info("ECM HTTP 로그인 완료: %s (root=%s)", CFG.start_url, CFG.ecm_root_oid)
+    return client
+
+
+def _find_zero_folder_oid(client, year: int):
+    """{year} 시험서비스 아래의 '00 …' 폴더 OID 를 찾는다."""
+    service_oid = client.find_year_folder(str(year))
+    if not service_oid:
+        return None
+    for child in client.children(service_oid):
+        name = str(child.get("name", "")).strip()
+        if CFG.zero_folder_prefix_re.match(name):
+            return client.oid(child)
+    return None
+
+
+def select_latest_list_file(client, years):
+    """00 폴더의 파일 중 '인증획득제품…(YYYYMMDD).xlsx' 이름의 날짜가 가장 최근인 파일 메타 반환.
+
+    years 를 순서대로 훑어(예: 올해→전년) 후보가 나오면 그 연도에서 최댓값을 고른다.
+    """
+    for year in years:
+        oid = _find_zero_folder_oid(client, year)
+        if not oid:
+            continue
+        candidates = []
+        for f in client.files(oid):
+            name = f.get("fileName") or ""
+            if CFG.doc_prefix in name and name.lower().endswith(".xlsx"):
+                m = _LIST_DATE_RE.search(name)
+                if m:
+                    candidates.append((m.group(1), f))
+        if candidates:
+            candidates.sort(key=lambda x: x[0], reverse=True)
+            latest_date, meta = candidates[0]
+            logging.info(
+                "최근 목록 파일 선택: %s (날짜 %s, 후보 %d개, %d년 폴더)",
+                meta.get("fileName"), latest_date, len(candidates), year,
+            )
+            return meta
+    return None
+
+
+def download_latest_list_via_http() -> Path:
+    """HTTP 직접연동으로 가장 최근 날짜의 인증획득제품 목록 xlsx 를 내려받는다."""
+    client = _weekly_http_client()
+    this_year = int(this_week_monday_yyyymmdd()[:4])
+    meta = select_latest_list_file(client, [this_year, this_year - 1])
+    if not meta:
+        raise RuntimeError(
+            f"ECM 에서 '{CFG.doc_prefix} …(YYYYMMDD).xlsx' 목록 파일을 찾지 못했습니다."
+        )
+    data = client.download_bytes(meta)
+    if not data.startswith(b"PK"):
+        raise RuntimeError(
+            f"다운로드 결과가 xlsx(PK) 형식이 아닙니다: {meta.get('fileName')} ({data[:4]!r})"
+        )
+    CFG.download_folder.mkdir(parents=True, exist_ok=True)
+    out = CFG.download_folder / meta["fileName"]
+    tmp = out.with_name(out.name + ".part")
+    tmp.write_bytes(data)
+    tmp.replace(out)
+    logging.info("HTTP 다운로드 완료: %s (%d bytes)", out, len(data))
+    return out
+
+
+# =========================
 # main
 # =========================
 def main():
@@ -581,7 +683,15 @@ def main():
     if CFG.source_xlsx:
         downloaded = _resolve_source_xlsx(CFG.source_xlsx)
         logging.info("다운로드 단계 생략, 지정된 xlsx 사용: %s", downloaded)
+    elif CFG.download_source == "http":
+        # 3-a) HTTP 직접연동: 브라우저/팝업 없이 가장 최근 날짜의 목록 파일을 내려받는다.
+        logging.info("다운로드 방식: HTTP 직접연동(requests)")
+        downloaded = download_latest_list_via_http()
     else:
+        # 3-b) 레거시 playwright: 브라우저 탐색 + 폴더 선택 팝업 처리 + 파일 생성 대기.
+        from playwright.sync_api import sync_playwright
+
+        logging.info("다운로드 방식: 레거시 playwright(브라우저+팝업)")
         if expected_path.exists():
             try:
                 expected_path.unlink()
@@ -590,7 +700,6 @@ def main():
 
         year = int(monday[:4])
 
-        # 3) 웹에서 저장 트리거 + 폴더 선택 팝업 처리 + 파일 생성 대기
         with sync_playwright() as p:
             browser, ctx, page = ensure_page(p)
             try:

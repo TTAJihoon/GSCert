@@ -3437,6 +3437,56 @@ class EcmHttpClientPureFunctionTests(SimpleTestCase):
         self.assertEqual(ids, {"s1", "s2"})
 
 
+class WeeklyHttpDownloadTests(SimpleTestCase):
+    """weekly.py HTTP 전환: 00 폴더에서 가장 최근 날짜 목록 파일 선택(네트워크 없음)."""
+
+    class _FakeWeeklyClient:
+        def __init__(self, files_by_oid):
+            self._files_by_oid = files_by_oid
+
+        def find_year_folder(self, year):
+            return "S" + str(year)
+
+        def children(self, oid):
+            year = oid[1:]
+            return [{"name": f"00 {year}년 시험서비스", "OID": "Z" + year}, {"name": "GS", "OID": "g"}]
+
+        @staticmethod
+        def oid(row):
+            return row.get("OID") or row.get("oid") or ""
+
+        def files(self, oid):
+            return self._files_by_oid.get(oid, [])
+
+    def test_selects_most_recent_dated_list_file(self):
+        from main.utils import weekly
+
+        client = self._FakeWeeklyClient({
+            "Z2026": [
+                {"fileName": "인증획득제품(20260629).xlsx", "storageFileID": "a", "fileSize": 9},
+                {"fileName": "인증획득제품(20260706).xlsx", "storageFileID": "b", "fileSize": 9},
+                {"fileName": "관련없음.xlsx", "storageFileID": "c", "fileSize": 1},
+            ],
+        })
+        meta = weekly.select_latest_list_file(client, [2026, 2025])
+        self.assertEqual(meta["storageFileID"], "b")
+
+    def test_falls_back_to_previous_year_when_current_empty(self):
+        from main.utils import weekly
+
+        client = self._FakeWeeklyClient({
+            "Z2025": [{"fileName": "인증획득제품(20251230).xlsx", "storageFileID": "p", "fileSize": 5}],
+        })
+        meta = weekly.select_latest_list_file(client, [2026, 2025])
+        self.assertEqual(meta["storageFileID"], "p")
+
+    def test_returns_none_when_no_dated_list_file(self):
+        from main.utils import weekly
+
+        client = self._FakeWeeklyClient({"Z2026": [{"fileName": "메모.txt", "storageFileID": "x"}]})
+        self.assertIsNone(weekly.select_latest_list_file(client, [2026, 2025]))
+
+
 class WorkerSourceSelectionTests(SimpleTestCase):
     """source 선택이 CLI(--source)에서 워커까지 전달되는지 검증."""
 

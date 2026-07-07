@@ -27,6 +27,16 @@
      `DOWNLOAD_REVIEW_SOURCE` 기본값을 `ecm-http` 로 전환(결정 11).
 - **참고 자료:** 원본 구현 가이드 `ECM-API-SHARE.md`는 저장소 밖(공유). 핵심 계약은
   `34_http_ecm_source_decisions.md`에 요약돼 있고, 코드도 그 요약 기준으로 이식했다.
+- **weekly.py(인증획득제품 목록 주간 동기화)도 HTTP 전환:** `main/utils/weekly.py`의 다운로드 단계를
+  브라우저 SSO + Playwright + pywinauto '폴더 찾아보기' 팝업 방식에서 **`DestinyECM` HTTP 직접연동**으로 바꿨다.
+  - XOR 로그인이 SSO(`edm_storage_state.json`)를 대체한다(분당 서버, `ECM_USERNAME_BUNDANG`/`ECM_PASSWORD_BUNDANG`).
+  - **월요일 날짜로 문서를 지목하던 방식 → 00 폴더 파일 중 이름의 `(YYYYMMDD)`가 가장 최근인 xlsx 자동 선택**
+    (올해 폴더 비면 전년도 폴백). `select_latest_list_file()`.
+  - `servlet/blob` 바이트를 받아 PK(zip) 검증 후 저장 → 저장 위치 지정 팝업/pywinauto/headful 브라우저 소멸.
+  - `GSCERT_WEEKLY_SOURCE=http`(기본) / `playwright`(레거시 폴백) 토글. playwright·pywinauto import는 lazy 로
+    바꿔 HTTP 실행 시 두 패키지가 없어도 동작한다. 이후(행 추출→master append→PostgreSQL 적재)는 불변.
+  - 테스트 `main/tests.py` `WeeklyHttpDownloadTests`(최근 날짜 선택/전년 폴백/미탐색, 네트워크 없음).
+  - **실서버 확인 필요:** 분당 계정이 `인증획득제품` 00 폴더에 접근되는지 + `--limit` 없이 실제 다운로드 1회.
 
 ## 2026-07-03: 점검규칙 대규모 검토 후 문서 최신화
 
