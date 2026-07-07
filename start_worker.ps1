@@ -9,12 +9,16 @@
   --once 모드로 실행한다.
 .PARAMETER NoHeadless
   live 모드에서 브라우저 창을 표시한다.
+.PARAMETER Source
+  산출물 다운로드 방식을 이 실행에 한해 덮어쓴다. 예: ecm-http(HTTP 직접연동) / ecm(Playwright) / local.
+  미지정 시 settings/env.ps1 의 DOWNLOAD_REVIEW_SOURCE(기본 ecm)를 따른다.
 #>
 param(
     [switch]$DryRun,
     [switch]$Live,
     [switch]$Once,
-    [switch]$NoHeadless
+    [switch]$NoHeadless,
+    [string]$Source = ""
 )
 $ErrorActionPreference = "Stop"
 
@@ -64,6 +68,7 @@ if ($Live) {
 }
 if ($Once)       { $ArgumentList += "--once" }
 if ($NoHeadless) { $ArgumentList += "--no-headless" }
+if ($Source)     { $ArgumentList += "--source=$Source" }
 
 $ts     = Get-Date -Format "yyyyMMdd_HHmmss"
 $OutLog = Join-Path $LogsDir "download_worker_${ts}_out.log"
