@@ -333,52 +333,56 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
         except Exception:
             pass
 
-    async def _handle_document_action(self, cert_date: str, test_no: str, request_ip: str) -> None:
-        """'문서' 버튼: report\\<시험번호> 폴더에 파일이 있으면 그 ZIP 링크를 즉시 반환하고,
-        없으면 ECM 에서 전체 문서를 다운로드한 뒤 링크를 반환한다."""
+    async def _handle_document_action(
+        self, cert_date: str, test_no: str, request_ip: str, scope: str = "report"
+    ) -> None:
+        """'문서' 버튼: 인증위원회 트리에서 문서를 report\\<시험번호> 로 HTTP 직접 다운로드한 뒤
+        ZIP 링크를 반환한다. scope='report'(기본)면 시험성적서 Word 만, 'all'이면 전체.
+
+        기존 Playwright + pywinauto 팝업 방식을 대체한다(브라우저/에이전트/락 불필요).
+        """
         from urllib.parse import quote
 
-        download_url = f"/history/report/{quote(test_no)}/download/"
+        from main.views.testing.history_download import (
+            download_history_documents,
+            report_cache_valid,
+        )
 
-        # 1) 캐시: report 폴더에 파일이 이미 있으면 ECM 접속 없이 즉시 전달
+        download_url = f"/history/report/{quote(test_no)}/download/"
+        report_only = scope != "all"
+
+        # 1) 캐시: 같은 범위로 이미 받아둔 폴더가 있으면 ECM 접속 없이 즉시 전달
         try:
-            has_files = await asyncio.to_thread(_report_dir_has_files, test_no)
+            cached = await asyncio.to_thread(report_cache_valid, test_no, report_only)
         except Exception:
-            has_files = False
-        if has_files:
+            cached = False
+        if cached:
             await self._safe_send({"status": "processing", "message": "저장된 문서 확인 완료..."})
             await self._safe_send({"status": "success", "download_url": download_url, "source": "cache"})
             await self.close()
             return
 
-        # 2) ECM 다운로드
+        # 2) ECM HTTP 다운로드
+        label = "시험성적서" if report_only else "전체 문서"
+        await self._safe_send({"status": "processing", "message": f"ECM에서 {label}를 다운로드 중입니다..."})
         try:
-            await asyncio.to_thread(_ensure_worker_thread)
-            await self._safe_send({"status": "wait", "message": "ECM 작업 큐에 등록 중..."})
-        except Exception:
-            pass
-        await self._safe_send({"status": "processing", "message": "ECM에서 문서를 다운로드 중입니다..."})
-
-        try:
-            await enqueue_playwright_job(cert_date, test_no, request_ip=request_ip, action="document")
-            if not await asyncio.to_thread(_report_dir_has_files, test_no):
-                raise RuntimeError("다운로드된 문서를 찾을 수 없습니다.")
-            await self._safe_send({"status": "success", "download_url": download_url, "source": "ecm"})
-        except StepError as e:
+            result = await asyncio.to_thread(
+                download_history_documents, cert_date, test_no, report_only=report_only
+            )
             await self._safe_send(
                 {
-                    "status": "error",
-                    "message": f"{test_no}의 ECM 문서 다운로드를 실패하였습니다. 다시 요청해주세요.",
-                    "step": getattr(e, "step_no", None),
-                    "error_kind": getattr(e, "error_kind", None),
-                    "screenshot": getattr(e, "screenshot", None),
+                    "status": "success",
+                    "download_url": download_url,
+                    "source": "ecm",
+                    "doc_count": result.get("doc_count", 0),
                 }
             )
-        except Exception:
+        except Exception as exc:
             await self._safe_send(
                 {
                     "status": "error",
                     "message": f"{test_no}의 ECM 문서 다운로드를 실패하였습니다. 다시 요청해주세요.",
+                    "detail": str(exc),
                 }
             )
         finally:
@@ -409,9 +413,11 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
 
         action = (payload.get("action") or "url").strip()
 
-        # === '문서' 버튼: report\<시험번호> 로 ECM 문서 전체 다운로드 → ZIP 링크 반환 ===
+        # === '문서' 버튼: 인증위원회 트리에서 HTTP 직접 다운로드 → ZIP 링크 반환 ===
+        # scope='report'(기본)=시험성적서 Word 만, 'all'=전체 문서.
         if action == "document":
-            await self._handle_document_action(cert_date, test_no, request_ip)
+            scope = (payload.get("scope") or "report").strip().lower()
+            await self._handle_document_action(cert_date, test_no, request_ip, scope=scope)
             return
 
         # 2) DB 캐시 먼저 조회 (hit면 ECM 접속/큐 없이 바로 success)

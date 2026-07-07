@@ -37,6 +37,20 @@
     바꿔 HTTP 실행 시 두 패키지가 없어도 동작한다. 이후(행 추출→master append→PostgreSQL 적재)는 불변.
   - 테스트 `main/tests.py` `WeeklyHttpDownloadTests`(최근 날짜 선택/전년 폴백/미탐색, 네트워크 없음).
   - **실서버 확인 필요:** 분당 계정이 `인증획득제품` 00 폴더에 접근되는지 + `--limit` 없이 실제 다운로드 1회.
+- **시험 이력 '문서 다운로드'(테스팅 에이전트)도 HTTP 전환:** `playwright_job`의 document 액션을
+  Playwright + pywinauto('폴더 찾아보기' 팝업)에서 **HTTP 직접연동**으로 교체.
+  - 트리: `{year} 시험서비스 → GS인증심의위원회 → (회차) → 인증일자(yyyymmdd) → 시험번호`.
+    `DestinyECM.find_committee_test_folder()`(인증일자 폴더가 회차 폴더 밑이면 한 단계 더 탐색).
+  - **기본은 시험성적서 Word 파일만** 다운로드(UI 안내문의 원래 의도와 일치. 기존 코드는 전체를 받았음).
+    `select_report_documents(report_only=True)` = 이름에 `시험성적서` + `.doc/.docx/.docm`. 전체도 옵션.
+  - `main/views/testing/history_download.py` 신규(login→locate→필터→report 폴더 정리→다운로드+무결성+`.scope` 마커).
+    `playwright_job/consumers.py` document 액션이 이 함수를 호출(브라우저/pywinauto/에이전트 락 제거).
+  - 프런트: `history.html`에 `시험성적서`/`전체 문서` 버튼(`data-scope`), `history_document.js`가 `scope` 전달.
+    `.scope` 마커로 범위별 캐시 구분(같은 범위면 ECM 재접속 없이 report ZIP 재사용).
+  - 인증위원회는 분당 ECM(210.104.181.10)이라 `center=bundang`. 자격증명은 `ECM_USERNAME_BUNDANG` 등.
+  - 검증: `manage.py verify_ecm_http --history --center bundang --test-no GS-B-22-355 --date 2022-08-15 [--download] [--all]`.
+    테스트 `HistoryDocumentHttpTests`(트리 탐색/성적서 필터/캐시 마커, 네트워크 없음).
+  - **실서버 확인 필요:** 위 verify 로 인증일자 폴더 규칙(회차 유무·이름), 시험성적서 Word 존재 확인.
 
 ## 2026-07-03: 점검규칙 대규모 검토 후 문서 최신화
 

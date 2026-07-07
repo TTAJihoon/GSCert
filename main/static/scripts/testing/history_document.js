@@ -98,7 +98,9 @@
       return;
     }
 
-    runDocumentJob({ "인증일자": certDate, "시험번호": testNo, "action": "document" })
+    // data-scope="all" 이면 전체 문서, 기본은 시험성적서(Word)만.
+    const scope = btn.dataset.scope === "all" ? "all" : "report";
+    runDocumentJob({ "인증일자": certDate, "시험번호": testNo, "action": "document", "scope": scope })
       .then((downloadUrl) => triggerDownload(downloadUrl))
       .catch((err) => {
         console.error(err);

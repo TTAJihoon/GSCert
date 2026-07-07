@@ -3472,6 +3472,71 @@ class EcmHttpClientPureFunctionTests(SimpleTestCase):
         self.assertEqual(ids, {"s1", "s2"})
 
 
+class HistoryDocumentHttpTests(SimpleTestCase):
+    """시험 이력 '문서 다운로드' HTTP 전환: 인증위원회 트리 탐색 + 시험성적서 Word 필터."""
+
+    def test_parse_cert_date_parts(self):
+        from main.views.review.ecm_http_client import DestinyECM
+
+        self.assertEqual(DestinyECM.parse_cert_date_parts("2022-08-15"), ("2022", "20220815"))
+        self.assertEqual(DestinyECM.parse_cert_date_parts("2022.8.5"), ("2022", "20220805"))
+        self.assertEqual(DestinyECM.parse_cert_date_parts("bad"), ("", ""))
+
+    def test_select_report_documents_keeps_only_report_word_by_default(self):
+        from main.views.review.ecm_http_client import DestinyECM
+
+        files = [
+            {"fileName": "GS-B-22-355 시험성적서 v1.0.docx", "storageFileID": "a"},
+            {"fileName": "GS-B-22-355 시험성적서 v1.0.pdf", "storageFileID": "b"},  # PDF 제외
+            {"fileName": "GS-B-22-355 시험계획서 v1.0.docx", "storageFileID": "c"},  # 성적서 아님
+            {"fileName": "GS-B-22-355 시험성적서.doc", "storageFileID": "d"},
+        ]
+        report = DestinyECM.select_report_documents(files, report_only=True)
+        self.assertEqual({f["storageFileID"] for f in report}, {"a", "d"})
+        # report_only=False 면 전체 유지.
+        self.assertEqual(len(DestinyECM.select_report_documents(files, report_only=False)), 4)
+
+    def test_find_committee_test_folder_navigates_year_committee_date_test(self):
+        from main.views.review.ecm_http_client import DestinyECM
+
+        tree = {
+            "ROOT": [{"name": "2022 시험서비스", "OID": "SVC"}],
+            "SVC": [{"name": "00 2022년 GS인증심의위원회", "OID": "COM"}, {"name": "03 GS시험인증(1등급)", "OID": "GS"}],
+            # 인증일자 폴더가 위원회 직속이 아니라 회차 폴더 밑에 있는 경우.
+            "COM": [{"name": "01 1차 품질인증심의위원회", "OID": "ROUND"}],
+            "ROUND": [{"name": "20220815 심의", "OID": "DATE"}],
+            "DATE": [
+                {"name": "GS-B-22-354 something", "OID": "X"},
+                {"name": "GS-B-22-355 대상", "OID": "TARGET"},
+            ],
+        }
+
+        class _TreeClient(DestinyECM):
+            def __init__(self):
+                self.root_oid = "ROOT"
+
+            def children(self, oid):
+                return tree.get(oid, [])
+
+        client = _TreeClient()
+        found = client.find_committee_test_folder("GS-B-22-355", "2022-08-15")
+        self.assertIsNotNone(found)
+        self.assertEqual(found["oid"], "TARGET")
+
+    def test_report_cache_valid_matches_scope_marker(self):
+        from main.views.testing import history_download
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_REPORT_BASE_DIR=base):
+                folder = Path(base) / "GS-B-22-355"
+                folder.mkdir()
+                (folder / "시험성적서.docx").write_bytes(b"PK\x03\x04")
+                (folder / ".scope").write_text("report", encoding="utf-8")
+                # 같은 범위(report)면 캐시 유효, 다른 범위(all)면 무효.
+                self.assertTrue(history_download.report_cache_valid("GS-B-22-355", report_only=True))
+                self.assertFalse(history_download.report_cache_valid("GS-B-22-355", report_only=False))
+
+
 class WeeklyHttpDownloadTests(SimpleTestCase):
     """weekly.py HTTP 전환: 00 폴더에서 가장 최근 날짜 목록 파일 선택(네트워크 없음)."""
 

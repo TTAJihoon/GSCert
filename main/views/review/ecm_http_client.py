@@ -345,6 +345,73 @@ class DestinyECM:
         best.pop("_score", None)
         return best
 
+    # ----- 시험 이력(인증위원회 트리) 탐색 (history '문서 다운로드' 용) -----
+    @staticmethod
+    def parse_cert_date_parts(cert_date: str):
+        """'yyyy.mm.dd' / 'yyyy-mm-dd' → (year, yyyymmdd). 실패 시 ("", "")."""
+        m = re.match(r"^\s*(\d{4})[-.](\d{1,2})[-.](\d{1,2})", cert_date or "")
+        if not m:
+            return "", ""
+        y, mo, d = m.groups()
+        return y, f"{y}{mo.zfill(2)}{d.zfill(2)}"
+
+    def _first_child_oid(self, oid: str, predicate):
+        for child in self.children(oid):
+            name = str(child.get("name", ""))
+            if predicate(name):
+                return self.oid(child)
+        return None
+
+    def find_committee_test_folder(self, test_no: str, cert_date: str):
+        """인증위원회 트리에서 시험번호 폴더를 찾는다.
+
+        경로: {year} 시험서비스 → GS인증심의위원회 → (회차) → 인증일자(yyyymmdd) → 시험번호.
+        Playwright 경로(click_year→click_committee→click_date_folder→click_test_folder)와 동일 트리.
+        인증일자 폴더가 위원회 직속이 아니라 회차 폴더 밑에 있을 수 있어 한 단계 더 내려가 본다.
+        """
+        year, yyyymmdd = self.parse_cert_date_parts(cert_date)
+        if not year or not yyyymmdd:
+            return None
+        service_oid = self.find_year_folder(year)
+        if not service_oid:
+            return None
+        committee_oid = self._first_child_oid(service_oid, lambda n: "GS인증심의위원회" in n)
+        if not committee_oid:
+            return None
+        date_oid = self._first_child_oid(committee_oid, lambda n: yyyymmdd in n)
+        if not date_oid:
+            for round_child in self.children(committee_oid):
+                round_oid = self.oid(round_child)
+                if not round_oid:
+                    continue
+                date_oid = self._first_child_oid(round_oid, lambda n: yyyymmdd in n)
+                if date_oid:
+                    break
+        if not date_oid:
+            return None
+        patterns = self.test_no_patterns(test_no)
+        for child in self.children(date_oid):
+            name = str(child.get("name", ""))
+            if any(p.search(name) for p in patterns):
+                return {"oid": self.oid(child), "name": name}
+        return None
+
+    # 시험성적서로 인정하는 파일: 이름에 '시험성적서' 포함 + Word 확장자.
+    REPORT_DOC_KEYWORD = "시험성적서"
+    REPORT_DOC_EXTS = (".doc", ".docx", ".docm")
+
+    @classmethod
+    def select_report_documents(cls, files, report_only: bool = True) -> list:
+        """report_only=True 면 시험성적서 Word 파일만, False 면 전체 파일."""
+        if not report_only:
+            return list(files)
+        out = []
+        for f in files:
+            name = f.get("fileName") or ""
+            if cls.REPORT_DOC_KEYWORD in name and name.lower().endswith(cls.REPORT_DOC_EXTS):
+                out.append(f)
+        return out
+
 
 def build_client(center_code: str = "") -> DestinyECM:
     """센터 정의(설정)에서 base_url·root_oid·자격증명을 읽어 클라이언트를 만든다."""

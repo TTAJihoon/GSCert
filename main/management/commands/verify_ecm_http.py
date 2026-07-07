@@ -35,6 +35,16 @@ class Command(BaseCommand):
         parser.add_argument("--download", action="store_true", help="파일을 실제로 내려받아 무결성까지 검증")
         parser.add_argument("--dest", default="", help="다운로드 대상 폴더(미지정 시 임시 폴더)")
         parser.add_argument("--limit", type=int, default=0, help="다운로드할 최대 파일 수(0=무제한)")
+        parser.add_argument(
+            "--history",
+            action="store_true",
+            help="시험 이력 '문서 다운로드' 경로(인증위원회 트리) 검증. --date(인증일자) 필요.",
+        )
+        parser.add_argument(
+            "--all",
+            action="store_true",
+            help="--history 에서 시험성적서만이 아니라 전체 문서를 대상으로 한다.",
+        )
 
     def handle(self, *args, **options):
         from main.views.review.artifact_source import verify_downloaded_bytes
@@ -61,6 +71,11 @@ class Command(BaseCommand):
         except Exception as exc:
             raise CommandError(f"로그인 실패: {exc}")
         self.stdout.write(self.style.SUCCESS("로그인 OK (SESSION_KEY 확보)"))
+
+        # 시험 이력(인증위원회 트리) 경로 검증
+        if options["history"]:
+            self._verify_history(client, test_no, options, verify_downloaded_bytes)
+            return
 
         # 2) 프로젝트 폴더 탐색
         found = client.find_project_folder(test_no, options["date"], options["grade"])
@@ -126,6 +141,59 @@ class Command(BaseCommand):
                 break
 
         self.stdout.write(f"다운로드 위치: {dest_root}")
+        if failures:
+            raise CommandError(f"무결성 검증 실패 {len(failures)}건:\n  " + "\n  ".join(failures))
+        self.stdout.write(self.style.SUCCESS(f"다운로드 + 무결성 검증 OK ({done}개)"))
+
+    def _verify_history(self, client, test_no, options, verify_downloaded_bytes):
+        """시험 이력 '문서 다운로드' 경로(인증위원회 트리) 검증."""
+        cert_date = options["date"]
+        if not cert_date:
+            raise CommandError("--history 는 인증일자(--date, 예: 2022-08-15)가 필요합니다.")
+        report_only = not options["all"]
+
+        folder = client.find_committee_test_folder(test_no, cert_date)
+        if not folder or not folder.get("oid"):
+            raise CommandError(
+                f"인증위원회 트리에서 시험번호 {test_no}(인증일자 {cert_date}) 폴더를 찾지 못했습니다."
+            )
+        self.stdout.write(self.style.SUCCESS(f"시험번호 폴더: {folder['name']} (oid={folder['oid']})"))
+
+        files = client.files(folder["oid"])
+        self.stdout.write(f"폴더 내 전체 파일 {len(files)}개")
+        for f in files:
+            self.stdout.write(f"  - {f.get('fileName')}")
+
+        selected = client.select_report_documents(files, report_only=report_only)
+        kind = "전체 문서" if options["all"] else "시험성적서(Word)"
+        self.stdout.write(self.style.SUCCESS(f"{kind} 대상: {len(selected)}개"))
+        if not selected:
+            raise CommandError(f"{kind} 문서를 찾지 못했습니다.")
+
+        if not options["download"]:
+            self.stdout.write("(--download 미지정 → 다운로드 생략. 탐색/필터까지만 검증)")
+            return
+
+        dest = Path(options["dest"]) if options["dest"] else Path(tempfile.mkdtemp(prefix="ecm_http_history_"))
+        dest.mkdir(parents=True, exist_ok=True)
+        limit = options["limit"]
+        failures = []
+        done = 0
+        for meta in selected:
+            if limit and done >= limit:
+                break
+            name = unicodedata.normalize("NFC", meta.get("fileName") or "")
+            data = client.download_bytes(meta)
+            reason = verify_downloaded_bytes(data, name, int(meta.get("fileSize") or 0))
+            if reason:
+                failures.append(f"{name}: {reason}")
+                self.stdout.write(self.style.ERROR(f"  FAIL {name}: {reason}"))
+            else:
+                (dest / name).write_bytes(data)
+                self.stdout.write(f"  OK   {name} ({len(data)} bytes)")
+            done += 1
+
+        self.stdout.write(f"다운로드 위치: {dest}")
         if failures:
             raise CommandError(f"무결성 검증 실패 {len(failures)}건:\n  " + "\n  ".join(failures))
         self.stdout.write(self.style.SUCCESS(f"다운로드 + 무결성 검증 OK ({done}개)"))

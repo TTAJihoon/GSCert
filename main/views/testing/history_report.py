@@ -26,7 +26,8 @@ def download_report(request, test_no):
     if not folder.is_dir():
         return JsonResponse({"error": "다운로드할 문서 폴더가 없습니다."}, status=404)
 
-    files = [p for p in folder.rglob("*") if p.is_file()]
+    # `.scope` 는 다운로드 범위 캐시 마커라 ZIP 에 포함하지 않는다.
+    files = [p for p in folder.rglob("*") if p.is_file() and p.name != ".scope"]
     if not files:
         return JsonResponse({"error": "폴더에 파일이 없습니다."}, status=404)
 
