@@ -799,13 +799,9 @@ class MainWindow(QMainWindow):
         manifest_btn = QPushButton("버전 확인")
         manifest_btn.setMinimumWidth(84)
         manifest_btn.clicked.connect(self.check_rule_manifest)
-        update_btn = QPushButton("규칙 업데이트")
-        update_btn.setMinimumWidth(108)
-        update_btn.clicked.connect(self.update_rules)
 
         row.addWidget(self.rulebase_status)
         row.addWidget(manifest_btn)
-        row.addWidget(update_btn)
 
         vbox.addWidget(cap)
         vbox.addLayout(row)
@@ -1059,25 +1055,36 @@ class MainWindow(QMainWindow):
         QMessageBox.information(self, "연결 확인", f"서버 연결 정상\n{payload.get('server_time', '')}")
 
     def check_rule_manifest(self):
+        """서버와 로컬 규칙 버전을 확인하고, 다르면 자동으로 동기화(업데이트)한다.
+
+        - 버전이 같으면 조회만 하고 '업데이트가 필요 없습니다.' 안내.
+        - 버전이 다르면 서버에서 규칙 번들을 내려받아 동기화 후 '업데이트가 완료 되었습니다.' 안내.
+        """
         try:
             manifest = self._client().rule_manifest()
         except ApiClientError as exc:
             self._show_error(str(exc))
             return
-        cached = self.rule_cache.rulebase_version or "(없음)"
-        server = manifest.get("rulebase_version") or "(없음)"
-        QMessageBox.information(
-            self,
-            "규칙 버전 확인",
-            "\n".join([
-                f"서버 규칙 버전: {server}",
-                f"로컬 규칙 버전: {cached}",
-                f"규칙 개수: {manifest.get('rule_count', 0)}",
-                f"필요 엔진 버전: {manifest.get('engine_min_version', '')}",
-            ]),
-        )
+        cached = self.rule_cache.rulebase_version or ""
+        server = manifest.get("rulebase_version") or ""
 
-    def update_rules(self):
+        version_lines = [
+            f"서버 규칙 버전: {server or '(없음)'}",
+            f"로컬 규칙 버전: {cached or '(없음)'}",
+            f"규칙 개수: {manifest.get('rule_count', 0)}",
+            f"필요 엔진 버전: {manifest.get('engine_min_version', '')}",
+        ]
+
+        # 버전이 같으면 업데이트 불필요 → 조회만 한다.
+        if cached and server and cached == server:
+            QMessageBox.information(
+                self,
+                "규칙 버전 확인",
+                "\n".join([*version_lines, "", "업데이트가 필요 없습니다."]),
+            )
+            return
+
+        # 버전이 다르면(또는 로컬 규칙 없음) 서버와 동기화한다.
         try:
             bundle = self._client().rule_bundle()
             self.rule_cache = save_rule_cache(bundle)
@@ -1100,8 +1107,14 @@ class MainWindow(QMainWindow):
             return
         QMessageBox.information(
             self,
-            "규칙 업데이트",
-            f"규칙을 업데이트했습니다.\n버전: {self.rule_cache.rulebase_version}\n규칙 수: {self.rule_cache.rule_count}",
+            "규칙 버전 확인",
+            "\n".join([
+                f"서버 규칙 버전: {server or '(없음)'}",
+                f"로컬 규칙 버전: {self.rule_cache.rulebase_version}",
+                f"규칙 수: {self.rule_cache.rule_count}",
+                "",
+                "업데이트가 완료 되었습니다.",
+            ]),
         )
 
     def choose_folder(self):
@@ -1249,7 +1262,7 @@ class MainWindow(QMainWindow):
         rule_bundle = load_rule_bundle()
         if not rule_bundle:
             self._set_action_status("규칙 업데이트 필요", C_WARNING)
-            self._show_error("먼저 Rulebase에서 규칙 업데이트를 실행하세요.")
+            self._show_error("먼저 Rulebase에서 '버전 확인'을 눌러 규칙을 내려받으세요.")
             return
         # 규칙셋이 요구하는 엔진 버전보다 이 앱의 엔진이 낡았으면 오작동하므로 막는다.
         required_engine = str(rule_bundle.get("engine_min_version") or "")
@@ -1599,7 +1612,8 @@ class MainWindow(QMainWindow):
             "<ol style='margin-left:-18px; line-height:1.6;'>"
             "<li><b>서버 연결</b> — 상단에 서버 URL을 입력하고 <b>연결 확인</b>을 누릅니다."
             " (필요 시 API 토큰 입력)</li>"
-            "<li><b>규칙 준비</b> — <b>규칙 업데이트</b>로 서버의 최신 점검규칙을 내려받습니다."
+            "<li><b>규칙 준비</b> — <b>버전 확인</b>으로 서버와 규칙 버전을 비교합니다."
+            " 버전이 다르면 자동으로 최신 규칙을 내려받아 동기화합니다."
             " 왼쪽 RULEBASE에 현재 규칙 버전이 표시됩니다.</li>"
             "<li><b>폴더 선택</b> — <b>폴더 선택</b>으로 점검할 프로젝트 폴더를 지정합니다.</li>"
             "<li><b>기준정보</b> — 프로젝트 번호를 확인한 뒤 <b>기준정보 조회</b>(서버 조회)"
