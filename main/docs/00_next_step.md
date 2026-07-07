@@ -1,5 +1,22 @@
 # GSCert Next Step
 
+## 2026-07-07: ECM 다운로드 HTTP 직접연동 전환 (실서버에서 이어서)
+
+- **현재 상태:** ECM 산출물 다운로드를 Playwright + 네이티브 클라이언트 + pywinauto 팝업 방식에서
+  **서버측 HTTP 직접 호출(`requests`)** 방식으로 교체하기로 하고, 관련 결정 12개를 모두 확정했다. **코드는 미착수.**
+- **결정/계약/이어받기 지점은 단일 문서에 정리:** `main/docs/34_http_ecm_source_decisions.md`
+  (아키텍처 대전제, 결정 1~12, API 계약 요약, 착수 파일 지도, 실서버 검증 절차 포함).
+- **설계 핵심:** 이미 만들어 둔 `ArtifactSource` 심(seam) 덕분에 "Playwright를 뜯는" 게 아니라
+  "`HttpEcmArtifactSource` 어댑터 하나를 추가"하는 작업이다. 워커·검증·점검·상태전이(심 위쪽)는 불변,
+  문제 시 `--source=ecm`으로 즉시 롤백. 경계 정의는 `main/docs/33_artifact_source_boundary.md`.
+- **왜 실서버에서 이어가나:** 실제 착수 전 검증(로그인/폴더탐색/다운로드)과 통합 테스트가 ECM(210.x) 접속을
+  요구하는데, 개발 샌드박스는 외부 네트워크가 막혀 있어 사용자 PC(실서버)에서 진행해야 한다(결정 12 = 사용자 실행).
+- **실서버에서 바로 할 일:** `34_http_ecm_source_decisions.md`의 "이어받기 (실서버) 시작 지점" 절차 —
+  (0) 환경변수 설정 → (1) 원본 가이드 §8 독립 클라이언트로 프로젝트 1건 로그인→locate→download 확인 →
+  (2) 구현 단계 1~7 순차 진행.
+- **참고 자료:** 원본 구현 가이드 `ECM-API-SHARE.md`는 저장소 밖(Telegram 공유)에 있다. 핵심 계약은
+  `34_http_ecm_source_decisions.md`에 요약해 두어 원본 없이도 착수 가능. (원본을 저장소에 포함할지는 미결.)
+
 ## 2026-07-03: 점검규칙 대규모 검토 후 문서 최신화
 
 - 1~18번 실제 점검규칙은 `seed_download_review_rules --only-real --enable --update-existing` 기준으로 모두 구현된 상태다.
