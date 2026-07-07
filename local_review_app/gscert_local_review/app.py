@@ -767,32 +767,29 @@ class MainWindow(QMainWindow):
 
     # ── Controls bar ─────────────────────────────────────────────────────────
 
-    def _build_controls(self) -> QSplitter:
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(8)
-        splitter.setChildrenCollapsible(False)
+    def _build_controls(self) -> QWidget:
+        controls = QWidget()
+        layout = QHBoxLayout(controls)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
 
-        # 왼쪽: Rulebase 영역
+        # 왼쪽: Rulebase 독립 패널
         rulebase_frame = _panel()
         rulebase_layout = self._build_rulebase_section()
         rulebase_layout.setContentsMargins(18, 12, 18, 12)
         rulebase_frame.setLayout(rulebase_layout)
 
-        # 오른쪽: 점검 폴더 영역
+        # 오른쪽: 점검 폴더 독립 패널
         folder_frame = _panel()
         folder_layout = self._build_folder_section()
         folder_layout.setContentsMargins(18, 12, 18, 12)
         folder_frame.setLayout(folder_layout)
 
-        splitter.addWidget(rulebase_frame)
-        splitter.addWidget(folder_frame)
+        # 고정 비율에 가깝게 좌우 배치
+        layout.addWidget(rulebase_frame, stretch=0)
+        layout.addWidget(folder_frame, stretch=1)
 
-        # 왼쪽은 필요한 최소 크기, 오른쪽은 남은 공간을 주로 사용
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([300, 1000])
-
-        return splitter
+        return controls
 
     def _build_rulebase_section(self) -> QVBoxLayout:
         vbox = QVBoxLayout()
@@ -896,15 +893,23 @@ class MainWindow(QMainWindow):
 
     # ── Body: left sidebar + result panel ────────────────────────────────────
 
-    def _build_body(self) -> QSplitter:
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setHandleWidth(10)
-        splitter.setChildrenCollapsible(False)
+    def _build_body(self) -> QWidget:
+        body = QWidget()
+        layout = QHBoxLayout(body)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(10)
+    
+        # 왼쪽: 프로젝트 정보 + 파일 목록
+        left_panel = self._build_left_panel()
+        left_panel.setFixedWidth(320)
 
-        splitter.addWidget(self._build_left_panel())
-        splitter.addWidget(self._build_result_panel())
-        splitter.setSizes([320, 940])
-        return splitter
+        # 오른쪽: 점검 결과
+        result_panel = self._build_result_panel()
+
+        layout.addWidget(left_panel)
+        layout.addWidget(result_panel, stretch=1)
+
+        return body
 
     # ── Left panel: metadata + file list ─────────────────────────────────────
 
@@ -913,7 +918,6 @@ class MainWindow(QMainWindow):
         # 배경 미지정(투명) → 회색 캔버스가 그대로 보이고, 내부 카드(#panel)만 흰색.
         # (bare 흰색을 주면 자식에 전파되어 왼쪽 컬럼만 흰색이 되는 불일치가 생긴다.)
         layout = QVBoxLayout(w)
-        layout.setContentsMargins(0, 0, 6, 0)
         layout.setSpacing(10)
         layout.addWidget(self._build_metadata_card())
         layout.addWidget(self._build_file_card(), stretch=1)
