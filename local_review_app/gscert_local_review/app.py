@@ -767,17 +767,32 @@ class MainWindow(QMainWindow):
 
     # ── Controls bar ─────────────────────────────────────────────────────────
 
-    def _build_controls(self) -> QFrame:
-        frame = _panel()
-        layout = QHBoxLayout(frame)
-        layout.setContentsMargins(18, 12, 18, 12)
-        layout.setSpacing(0)
+    def _build_controls(self) -> QSplitter:
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        splitter.setHandleWidth(8)
+        splitter.setChildrenCollapsible(False)
 
-        layout.addLayout(self._build_rulebase_section())
-        layout.addWidget(_vsep())
-        layout.addSpacing(16)
-        layout.addLayout(self._build_folder_section(), stretch=1)
-        return frame
+        # 왼쪽: Rulebase 영역
+        rulebase_frame = _panel()
+        rulebase_layout = self._build_rulebase_section()
+        rulebase_layout.setContentsMargins(18, 12, 18, 12)
+        rulebase_frame.setLayout(rulebase_layout)
+
+        # 오른쪽: 점검 폴더 영역
+        folder_frame = _panel()
+        folder_layout = self._build_folder_section()
+        folder_layout.setContentsMargins(18, 12, 18, 12)
+        folder_frame.setLayout(folder_layout)
+
+        splitter.addWidget(rulebase_frame)
+        splitter.addWidget(folder_frame)
+
+        # 왼쪽은 필요한 최소 크기, 오른쪽은 남은 공간을 주로 사용
+        splitter.setStretchFactor(0, 0)
+        splitter.setStretchFactor(1, 1)
+        splitter.setSizes([300, 1000])
+
+        return splitter
 
     def _build_rulebase_section(self) -> QVBoxLayout:
         vbox = QVBoxLayout()
@@ -810,7 +825,6 @@ class MainWindow(QMainWindow):
     def _build_folder_section(self) -> QVBoxLayout:
         vbox = QVBoxLayout()
         vbox.setSpacing(6)
-        vbox.setContentsMargins(16, 0, 0, 0)
 
         cap = QLabel("점검 폴더")
         cap.setStyleSheet(
