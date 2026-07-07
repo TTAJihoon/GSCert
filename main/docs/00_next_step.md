@@ -57,7 +57,11 @@
       점검과 동일한 `find_project_folder`({연도} 시험서비스 → GS 포함 폴더 → 프로젝트 폴더)로 폴더를 찾고,
       그 아래 **모든 파일을 상대경로 그대로** report\\<시험번호> 에 받아 ZIP. `download_full_project_documents()`.
       센터 해석은 `_resolve_project_center()`(전 센터를 `get_projects_by_numbers` 로 훑어 첫 매치).
-  - **실서버 확인 필요:** 인증일자 폴더 규칙(회차 유무), 시험성적서 Word 존재 / 전체 버튼은 상암·영남 프로젝트로도 센터 자동해석·탐색 확인.
+  - **상암/영남 트리:** 전체 트리는 `{센터명}AX센터 > {년도} 시험서비스 > GS 폴더 > 프로젝트`지만,
+    HTTP 는 센터 root OID(상암 `1PQSYcuFhzv`/영남 `1EBnGfHdFwe`)가 이미 `{센터명}` 폴더라 그 단계를 건너뛴다.
+    배포에 따라 root 가 한 단계 위일 수 있어 `find_year_folder` 가 root 직속 → 실패 시 한 단계 아래까지 폴백한다.
+  - **실서버 확인 필요:** 인증일자 폴더 규칙(회차 유무), 시험성적서 Word 존재 / 전체 버튼은 상암·영남 프로젝트로도
+    센터 자동해석·root OID·탐색이 맞는지(분당 C_ROOT 만 실측됨) `verify_ecm_http --center sangam|yeongnam` 로 확인.
 
 ## 2026-07-03: 점검규칙 대규모 검토 후 문서 최신화
 

@@ -281,10 +281,26 @@ class DestinyECM:
         return score
 
     def find_year_folder(self, year: str):
+        """'{year} 시험서비스' 폴더 OID 를 찾는다.
+
+        분당(C_ROOT)은 root 직속에 년도 폴더가 있다. 상암/영남은 root OID 가 보통 센터
+        최상위 폴더(예: 상암AX센터)를 가리켜 마찬가지로 직속이지만, 배포에 따라 root 가
+        한 단계 위(서버 루트)일 수 있어 그때는 {센터명} 폴더 안까지 한 단계 더 내려가 본다.
+        """
+        def _match(name: str) -> bool:
+            return year in name and "시험서비스" in name
+
+        direct = self._first_child_oid(self.root_oid, _match)
+        if direct:
+            return direct
+        # 폴백: root 직속 폴더(예: 상암AX센터/영남AX센터)들의 자식에서 한 단계 더 탐색.
         for child in self.children(self.root_oid):
-            name = str(child.get("name", ""))
-            if year in name and "시험서비스" in name:
-                return self.oid(child)
+            child_oid = self.oid(child)
+            if not child_oid:
+                continue
+            nested = self._first_child_oid(child_oid, _match)
+            if nested:
+                return nested
         return None
 
     def gs_candidate_roots(self, service_oid: str, grade: str = "") -> list:

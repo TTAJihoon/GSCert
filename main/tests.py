@@ -3454,6 +3454,28 @@ class EcmHttpClientPureFunctionTests(SimpleTestCase):
         # 블록(3) + 종료를 유발한 다른 프로젝트 1개 = 4개만 훑고 멈춘다(1003개 아님).
         self.assertEqual(client.scanned, 4)
 
+    def test_find_year_folder_handles_direct_and_nested_center_layout(self):
+        from main.views.review.ecm_http_client import DestinyECM
+
+        class _Client(DestinyECM):
+            def __init__(self, tree):
+                self.root_oid = "ROOT"
+                self._tree = tree
+
+            def children(self, oid):
+                return self._tree.get(oid, [])
+
+        # 분당식: root 직속에 년도 폴더.
+        direct = _Client({"ROOT": [{"name": "2023 시험서비스", "OID": "Y"}]})
+        self.assertEqual(direct.find_year_folder("2023"), "Y")
+
+        # 상암/영남식: root 아래 {센터명} 폴더가 한 단계 더 있는 경우.
+        nested = _Client({
+            "ROOT": [{"name": "상암AX센터", "OID": "C"}],
+            "C": [{"name": "2023 시험서비스", "OID": "Y2"}],
+        })
+        self.assertEqual(nested.find_year_folder("2023"), "Y2")
+
     def test_collect_files_recurses_and_needs_filename_and_storageid(self):
         from main.views.review.ecm_http_client import DestinyECM
 
