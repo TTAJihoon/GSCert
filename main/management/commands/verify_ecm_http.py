@@ -45,6 +45,11 @@ class Command(BaseCommand):
             action="store_true",
             help="--history 에서 시험성적서만이 아니라 전체 문서를 대상으로 한다.",
         )
+        parser.add_argument(
+            "--full",
+            action="store_true",
+            help="history '전체 다운로드'(#2) 전용 경로로 탐색: 상암/영남 센터폴더 + GS·1등급 폴더.",
+        )
 
     def handle(self, *args, **options):
         from main.views.review.artifact_source import verify_downloaded_bytes
@@ -77,8 +82,11 @@ class Command(BaseCommand):
             self._verify_history(client, test_no, options, verify_downloaded_bytes)
             return
 
-        # 2) 프로젝트 폴더 탐색
-        found = client.find_project_folder(test_no, options["date"], options["grade"])
+        # 2) 프로젝트 폴더 탐색 (--full: #2 전용 센터별 경로 / 기본: 워커 #4 경로)
+        if options["full"]:
+            found = client.find_full_project_folder(test_no, options["date"], center)
+        else:
+            found = client.find_project_folder(test_no, options["date"], options["grade"])
         if not found:
             raise CommandError(f"프로젝트 폴더를 찾지 못했습니다: {test_no}")
         self.stdout.write(

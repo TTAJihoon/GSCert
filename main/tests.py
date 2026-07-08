@@ -3518,6 +3518,52 @@ class HistoryDocumentHttpTests(SimpleTestCase):
         # report_only=False 면 전체 유지.
         self.assertEqual(len(DestinyECM.select_report_documents(files, report_only=False)), 4)
 
+    def test_find_full_project_folder_bundang_requires_gs_and_grade1(self):
+        from main.views.review.ecm_http_client import DestinyECM
+
+        tree = {
+            "ROOT": [{"name": "2023 시험서비스", "OID": "SVC"}],
+            "SVC": [
+                {"name": "02 GS시험인증(2등급)", "OID": "GS2"},   # 1등급 아님 → 제외
+                {"name": "03 GS시험인증(1등급)", "OID": "GS1"},
+            ],
+            "GS2": [{"name": "GS-B-23-067(완료)", "OID": "WRONG"}],
+            "GS1": [{"name": "바. GS-B-23-067(완료)", "OID": "RIGHT"}],
+        }
+
+        class _C(DestinyECM):
+            def __init__(self):
+                self.root_oid = "ROOT"
+
+            def children(self, oid):
+                return tree.get(oid, [])
+
+        found = _C().find_full_project_folder("GS-B-23-067", "2023-07-24", "bundang")
+        self.assertEqual(found["oid"], "RIGHT")
+
+    def test_find_full_project_folder_sangam_enters_center_folder_first(self):
+        from main.views.review.ecm_http_client import DestinyECM
+
+        tree = {
+            "ROOT": [{"name": "상암AX센터", "OID": "SANGAM"}, {"name": "영남AX센터", "OID": "YN"}],
+            "SANGAM": [{"name": "2026 시험서비스", "OID": "SVC"}],
+            "YN": [{"name": "2026 시험서비스", "OID": "SVC_YN"}],
+            "SVC": [{"name": "01 GS인증시험(1등급)", "OID": "GS1"}],
+            "SVC_YN": [{"name": "01 GS인증시험(1등급)", "OID": "GS_YN"}],
+            "GS1": [{"name": "00266 TTA-26-00266(완료)", "OID": "RIGHT"}],
+            "GS_YN": [{"name": "00266 TTA-26-00266(완료)", "OID": "WRONG"}],
+        }
+
+        class _C(DestinyECM):
+            def __init__(self):
+                self.root_oid = "ROOT"
+
+            def children(self, oid):
+                return tree.get(oid, [])
+
+        found = _C().find_full_project_folder("TTA-26-00266", "2026-01-01", "sangam")
+        self.assertEqual(found["oid"], "RIGHT")  # 영남 폴더로 새지 않는다
+
     def test_find_committee_test_folder_navigates_year_committee_date_test(self):
         from main.views.review.ecm_http_client import DestinyECM
 
@@ -3586,7 +3632,7 @@ class HistoryDocumentHttpTests(SimpleTestCase):
             def login(self):
                 pass
 
-            def find_project_folder(self, test_no, cert_date, grade):
+            def find_full_project_folder(self, test_no, cert_date, center_code):
                 return {"oid": "P", "name": "GS-B-23-067(완료)"}
 
             def walk_files(self, oid):

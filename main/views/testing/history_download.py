@@ -152,7 +152,9 @@ def download_full_project_documents(
     client = build_client(center)
     client.login()
 
-    folder = client.find_project_folder(test_no, proj_cert_date, "")
+    # #2 전용 경로: 분당은 {연도} 시험서비스 → (GS+1등급) → 프로젝트,
+    # 상암/영남은 그 앞에 '상암'/'영남' 센터 폴더 단계를 더 탄다.
+    folder = client.find_full_project_folder(test_no, proj_cert_date, center)
     if not folder or not folder.get("oid"):
         raise RuntimeError(f"{center} ECM 에서 프로젝트 폴더를 찾지 못했습니다: {test_no}")
 

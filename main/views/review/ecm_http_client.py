@@ -361,6 +361,71 @@ class DestinyECM:
         best.pop("_score", None)
         return best
 
+    # 센터명 폴더 키워드(상암/영남만). 분당은 root 아래 바로 {연도} 시험서비스.
+    _CENTER_FOLDER_KEYWORD = {"sangam": "상암", "yeongnam": "영남"}
+
+    def find_full_project_folder(self, test_no: str, cert_date: str = "", center_code: str = ""):
+        """history '전체 다운로드'(#2) 전용 프로젝트 폴더 탐색. 센터별 정확한 경로를 따른다.
+
+        - 분당: root → {연도} 시험서비스 → ('GS'+'1등급' 폴더) → 프로젝트번호 폴더
+        - 상암/영남: root → ('상암'|'영남' 포함 폴더) → {연도} 시험서비스 → ('GS'+'1등급') → 프로젝트
+          (상암/영남 root OID 가 이미 센터 폴더면 그 단계는 root 자신으로 처리한다.)
+
+        워커(#4)의 `find_project_folder`(GS 포함이면 후보, 센터폴더 단계 없음)와 달리
+        'GS'와 '1등급'을 **함께** 요구하고 상암/영남 센터 폴더 단계를 명시적으로 탄다.
+        """
+        patterns = self.test_no_patterns(test_no)
+        years = self.year_candidates(test_no, cert_date)
+
+        # 시작 폴더: 상암/영남은 '상암'/'영남' 포함 폴더, 없으면 root 자신.
+        keyword = self._CENTER_FOLDER_KEYWORD.get(center_code, "")
+        if keyword:
+            center_roots = [
+                self.oid(c) for c in self.children(self.root_oid)
+                if keyword in str(c.get("name", "")) and self.oid(c)
+            ] or [self.root_oid]
+        else:
+            center_roots = [self.root_oid]
+
+        candidates = []
+        for base_oid in center_roots:
+            for year in years:
+                service_oid = self._first_child_oid(
+                    base_oid, lambda n: year in n and "시험서비스" in n
+                )
+                if not service_oid:
+                    continue
+                for gs_child in self.children(service_oid):
+                    gname = str(gs_child.get("name", ""))
+                    gs_oid = self.oid(gs_child)
+                    if not gs_oid or "GS" not in gname or "1등급" not in gname:
+                        continue
+                    matched_block = False
+                    for child in self.children(gs_oid):
+                        name = str(child.get("name", ""))
+                        if self.is_template_folder(name):
+                            if matched_block:
+                                break
+                            continue
+                        exact = bool(re.search(re.escape(test_no) + r"(?!\d)", name))
+                        if exact or any(p.search(name) for p in patterns):
+                            matched_block = True
+                            candidates.append({
+                                "oid": self.oid(child),
+                                "name": name,
+                                "year": year,
+                                "root": gname,
+                                "_score": self.project_match_score(name, exact=exact, root=gname),
+                            })
+                        elif matched_block:
+                            break
+        if not candidates:
+            return None
+        candidates.sort(key=lambda x: x["_score"], reverse=True)
+        best = dict(candidates[0])
+        best.pop("_score", None)
+        return best
+
     # ----- 시험 이력(인증위원회 트리) 탐색 (history '문서 다운로드' 용) -----
     @staticmethod
     def parse_cert_date_parts(cert_date: str):

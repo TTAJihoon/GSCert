@@ -5,6 +5,13 @@
 - **네 경로 모두 HTTP 직접연동으로 확인/구현 완료:**
   1. history **문서** 버튼 → 분당 인증심의위원회 트리 → **시험성적서 Word 만** (`download_history_documents`, center 고정 bundang).
   2. history **폴더** 버튼 → 프로젝트 센터 ECM → **프로젝트 폴더 전체 zip** (`download_full_project_documents` + `_resolve_project_center`).
+     탐색은 #2 전용 `find_full_project_folder(center)`:
+     - 분당(210.104.181.10): `{연도} 시험서비스 > ('GS'+'1등급' 포함 폴더) > 프로젝트번호 폴더`.
+     - 상암(210.96.71.85): `'상암' 포함 폴더 > {연도} 시험서비스 > ('GS'+'1등급') > 프로젝트`.
+     - 영남(210.96.71.85): `'영남' 포함 폴더 > {연도} 시험서비스 > ('GS'+'1등급') > 프로젝트`.
+     (상암/영남 root OID 가 이미 센터 폴더면 그 단계는 root 자신으로 처리. GS 폴더는 'GS'와 '1등급'을 **함께** 요구.)
+     워커(#4)의 `find_project_folder`(GS 포함이면 후보)와는 별개 함수라 워커 동작은 불변.
+     CLI 검증: `verify_ecm_http --full --center <센터> --test-no <번호> [--date ...] [--download]`.
   3. similar 다운로드 버튼 → `action:document`(scope 미지정=report) → **#1과 동일(성적서만)**.
   4. download-review 워커(`ecm-http`) → project.center_code 로 해당 ECM 접속 → 서버 다운로드 → 저장소 복사 → 점검 → 원본 삭제.
 - **분당 실측 통과:** `GS-A-23-0336`(전체), `GS-B-23-067`(성적서). 상암 로그인/탐색도 `TTA-26-00266` 로 확인.
