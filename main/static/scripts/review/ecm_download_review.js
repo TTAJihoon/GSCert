@@ -426,6 +426,10 @@ const statusLabel = {
   scheduled: ["예약중", "badge-warn"],
   queued: ["대기중", "badge-run"],
   canceled: ["취소", "badge-muted"],
+  pass: ["정상", "badge-success"],
+  fail: ["부적합", "badge-danger"],
+  unsupported: ["미지원", "badge-muted"],
+  error: ["오류", "badge-danger"],
   "예약됨": ["예약중", "badge-warn"],
   "예약중": ["예약중", "badge-warn"],
   "대기중": ["대기중", "badge-run"],
@@ -1600,7 +1604,8 @@ function renderLatestInspectionResult(payload) {
     return;
   }
 
-  const rows = renderInspectionRows(payload.items);
+  const displayItems = payload.display_items || payload.items;
+  const rows = renderInspectionRows(displayItems);
 
   qs("modalBody").innerHTML = `
     <p class="modal-lead">최근 작업 ${escapeHtml(payload.job?.id || "-")}의 규칙 결과입니다.</p>
@@ -1614,6 +1619,7 @@ function renderLatestInspectionResult(payload) {
             <th>파일명</th>
             <th>기대값</th>
             <th>실제값</th>
+            <th>메시지</th>
             <th>산출물</th>
           </tr>
         </thead>
@@ -1746,62 +1752,18 @@ function ruleSubChecks(rule) {
 // 규칙 결과 목록을 8열 테이블 행 HTML로 렌더링한다.
 // 하위 검사가 여러 개면 행으로 분리하고, 번호/점검항목/파일명/상세/산출물은 rowspan으로 묶는다.
 function renderInspectionRows(items) {
-  return items.map((rule) => {
-    const subs = ruleSubChecks(rule);
-    const overallBadge = badge(rule.status_label || rule.status);
-    const fileCell = escapeHtml(rule.file_name || "-");
-    const artifactCell = renderRuleArtifacts(rule);
-
-    if (subs.length <= 1) {
-      return `
-        <tr>
-          <td>${rule.sequence}</td>
-          <td>${escapeHtml(rule.rule_name)}</td>
-          <td>${overallBadge}</td>
-          <td>${fileCell}</td>
-          <td>${escapeMultiline(friendlyExpected(rule))}</td>
-          <td>${escapeMultiline(rule.actual)}</td>
-          <td>${artifactCell}</td>
-        </tr>
-      `;
-    }
-
-    const n = subs.length;
-    const perRow = subs[0].passed !== null;
-
-    return subs.map((sub, i) => {
-      const expTd = `<td>${escapeMultiline(friendlyExpected(sub))}</td>`;
-      const actTd = `<td>${escapeMultiline(sub.actual)}</td>`;
-      const resultTd = perRow
-        ? `<td>${badge(sub.passed ? "정상" : "부적합")}</td>`
-        : "";
-
-      if (i === 0) {
-        const firstResultTd = perRow
-          ? `<td>${badge(sub.passed ? "정상" : "부적합")}</td>`
-          : `<td rowspan="${n}">${overallBadge}</td>`;
-        return `
-        <tr>
-          <td rowspan="${n}">${rule.sequence}</td>
-          <td rowspan="${n}">${escapeHtml(rule.rule_name)}</td>
-          ${firstResultTd}
-          <td rowspan="${n}">${fileCell}</td>
-          ${expTd}
-          ${actTd}
-          <td rowspan="${n}">${artifactCell}</td>
-        </tr>
-      `;
-      }
-
-      return `
-        <tr>
-          ${resultTd}
-          ${expTd}
-          ${actTd}
-        </tr>
-      `;
-    }).join("");
-  }).join("");
+  return items.map((rule) => `
+    <tr>
+      <td>${escapeHtml(rule.display_number || rule.sequence || "-")}</td>
+      <td>${escapeHtml(rule.rule_name || "-")}</td>
+      <td>${badge(rule.status_label || rule.status || "-")}</td>
+      <td>${escapeHtml(rule.file_name || "-")}</td>
+      <td>${escapeMultiline(rule.expected || "-")}</td>
+      <td>${escapeMultiline(rule.actual || "-")}</td>
+      <td>${escapeMultiline(rule.message || "-")}</td>
+      <td>${renderRuleArtifacts(rule)}</td>
+    </tr>
+  `).join("");
 }
 
 function findErrorItem(source, number) {
@@ -1823,10 +1785,11 @@ async function openJobProjectRulesModal(jobProjectId, project = null) {
 
   try {
     const payload = await requestJson(`/api/job-projects/${jobProjectId}/results/`);
-    const rows = renderInspectionRows(payload.items);
+    const displayItems = payload.display_items || payload.items;
+    const rows = renderInspectionRows(displayItems);
     setModalDownload(`/api/job-projects/${encodeURIComponent(jobProjectId)}/results.xlsx`);
 
-    qs("modalBody").innerHTML = payload.items.length
+    qs("modalBody").innerHTML = displayItems.length
       ? `
         <div class="table-wrap modal-table inspection-result-table">
           <table class="data-table">
@@ -1838,6 +1801,7 @@ async function openJobProjectRulesModal(jobProjectId, project = null) {
                 <th>파일명</th>
                 <th>기대값</th>
                 <th>실제값</th>
+                <th>메시지</th>
                 <th>산출물</th>
               </tr>
             </thead>
@@ -1873,10 +1837,11 @@ async function openResultRulesModal(jobProjectId) {
 
   try {
     const payload = await requestJson(`/api/job-projects/${jobProjectId}/results/`);
-    const rows = renderInspectionRows(payload.items);
+    const displayItems = payload.display_items || payload.items;
+    const rows = renderInspectionRows(displayItems);
     setModalDownload(`/api/job-projects/${encodeURIComponent(jobProjectId)}/results.xlsx`);
 
-    qs("modalBody").innerHTML = payload.items.length
+    qs("modalBody").innerHTML = displayItems.length
       ? `
         <div class="table-wrap modal-table inspection-result-table">
           <table class="data-table">
@@ -1888,6 +1853,7 @@ async function openResultRulesModal(jobProjectId) {
                 <th>파일명</th>
                 <th>기대값</th>
                 <th>실제값</th>
+                <th>메시지</th>
                 <th>산출물</th>
               </tr>
             </thead>

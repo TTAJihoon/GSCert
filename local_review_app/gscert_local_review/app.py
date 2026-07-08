@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QDate, QThread, QSettings, QTimer, Signal
@@ -49,26 +50,35 @@ from .scanner import FolderScan, scan_folder
 
 DEFAULT_SERVER_URL = "http://127.0.0.1:8000"
 
-# ── Design tokens (pgAdmin 스타일: 스틸블루 강조 + 조밀/평면 UI) ───────────────
-C_BG           = "#ffffff"
+# ── Design tokens (Codex Light: 쿨 뉴트럴 + 부드러운 블루 액센트) ─────────────
+C_BG           = "#f6f8fb"
 C_SURFACE      = "#ffffff"
-C_SOFT         = "#f2f4f7"   # 헤더/보조 배경 (쿨 그레이)
-C_LINE         = "#c9d0d9"   # 테두리 (pgAdmin처럼 또렷하게)
-C_LINE_STRONG  = "#a7b0bd"
-C_TEXT         = "#243142"   # 쿨 다크
-C_MUTED        = "#6b7683"
-C_PRIMARY      = "#326690"   # pgAdmin 시그니처 스틸블루
-C_PRIMARY_SOFT = "#e2ecf4"
-C_HEADER_BG    = "#e9edf2"   # 상단 툴바 밴드 / 테이블 헤더
-C_GRID         = "#dfe4ea"   # 데이터 그리드 선
-C_SELECT       = "#d6e6f4"   # 행 선택 하이라이트
-C_SUCCESS      = "#067647"
-C_SUCCESS_SOFT = "#e7f6ee"
-C_WARNING      = "#b54708"
-C_WARNING_SOFT = "#fff4e5"
-C_DANGER       = "#b42318"
-C_DANGER_SOFT  = "#fdecec"
-C_FAIL_ROW     = "#eef1f4"   # 부적합 세부 항목 행 배경 (밝은 회색)
+C_SOFT         = "#f8fafc"
+C_LINE         = "#e2e8f0"
+C_LINE_STRONG  = "#cbd5e1"
+C_TEXT         = "#172033"
+C_MUTED        = "#64748b"
+C_PRIMARY      = "#2563eb"
+C_PRIMARY_HOVER = "#1d4ed8"
+C_PRIMARY_PRESSED = "#1e40af"
+C_PRIMARY_DISABLED = "#b7c8f5"
+C_PRIMARY_SOFT = "#e8f1ff"
+C_HEADER_BG    = "#f8fafc"
+C_GRID         = "#edf2f7"
+C_SELECT       = "#e8f1ff"
+C_SUCCESS      = "#087f5b"
+C_SUCCESS_SOFT = "#e8f7f0"
+C_WARNING      = "#b7791f"
+C_WARNING_SOFT = "#fff7e6"
+C_DANGER       = "#c2410c"
+C_DANGER_SOFT  = "#fff1f0"
+C_FAIL_ROW     = "#fff8f7"
+C_TABLE_SOFT   = "#fcfdff"
+C_RESULT_HEAD  = "#f8fafc"
+C_RESULT_LINE  = "#eef2f7"
+C_RESULT_ALT   = "#f9fbfd"
+C_RESULT_SELECT = "#e6f0ff"
+FONT_STACK     = '"Pretendard", "Malgun Gothic", "Segoe UI Variable Text", "Segoe UI", Arial, sans-serif'
 
 STATUS_META = {
     PASS:        (C_SUCCESS, C_SUCCESS_SOFT, "적합"),
@@ -86,139 +96,146 @@ REVIEW_COLOR = {
 APP_QSS = f"""
 /* ── Base ─────────────────────────────────── */
 QMainWindow, QDialog {{
-    background-color: {C_SOFT};
+    background-color: {C_BG};
 }}
 QWidget {{
-    font-family: "Malgun Gothic", "Segoe UI", Arial, sans-serif;
+    font-family: {FONT_STACK};
     font-size: 13px;
     color: {C_TEXT};
 }}
 
 /* ── Scrollbars ────────────────────────────── */
 QScrollBar:vertical {{
-    width: 12px;
-    background: {C_SOFT};
+    width: 10px;
+    background: transparent;
     margin: 0;
 }}
 QScrollBar::handle:vertical {{
     background: {C_LINE_STRONG};
-    border-radius: 2px;
+    border-radius: 4px;
     min-height: 24px;
     margin: 2px;
 }}
+QScrollBar::handle:vertical:hover {{
+    background: #94a3b8;
+}}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar:horizontal {{
-    height: 12px;
-    background: {C_SOFT};
+    height: 10px;
+    background: transparent;
 }}
 QScrollBar::handle:horizontal {{
     background: {C_LINE_STRONG};
-    border-radius: 2px;
+    border-radius: 4px;
     min-width: 24px;
     margin: 2px;
 }}
+QScrollBar::handle:horizontal:hover {{
+    background: #94a3b8;
+}}
 QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 
-/* ── Panel cards (평면, 작은 라운드) ─────────── */
+/* ── Panel cards ───────────────────────────── */
 QFrame#panel {{
     background-color: {C_SURFACE};
     border: 1px solid {C_LINE};
-    border-radius: 4px;
+    border-radius: 8px;
 }}
 
-/* ── 상단 헤더 (흰색 패널; 프로그램 배경만 회색) ── */
+/* ── Header ────────────────────────────────── */
 QFrame#headerBar {{
     background-color: {C_SURFACE};
     border: 1px solid {C_LINE};
-    border-radius: 4px;
+    border-radius: 8px;
 }}
 
 /* ── Inputs ────────────────────────────────── */
 QLineEdit, QComboBox {{
-    min-height: 30px;
-    padding: 0 8px;
+    min-height: 32px;
+    padding: 0 10px;
     border: 1px solid {C_LINE};
-    border-radius: 3px;
+    border-radius: 6px;
     background-color: {C_SURFACE};
     color: {C_TEXT};
 }}
 QLineEdit:focus, QComboBox:focus {{
-    border-color: {C_PRIMARY};
+    border-color: #93c5fd;
+    background-color: #ffffff;
 }}
 QLineEdit:read-only {{
-    background-color: {C_SURFACE};
+    background-color: #fbfdff;
     color: {C_TEXT};
 }}
 QComboBox::drop-down {{
     border: none;
-    width: 22px;
+    width: 24px;
 }}
 QComboBox QAbstractItemView {{
     border: 1px solid {C_LINE};
-    border-radius: 3px;
+    border-radius: 6px;
     background: {C_SURFACE};
     selection-background-color: {C_SELECT};
     selection-color: {C_TEXT};
     outline: none;
 }}
 
-/* ── Buttons (평면, 조밀) ───────────────────── */
+/* ── Buttons ───────────────────────────────── */
 QPushButton {{
-    min-height: 30px;
+    min-height: 32px;
     padding: 0 12px;
-    border: 1px solid {C_LINE_STRONG};
-    border-radius: 3px;
+    border: 1px solid {C_LINE};
+    border-radius: 6px;
     background-color: {C_SURFACE};
     color: {C_TEXT};
     font-weight: 600;
-    font-size: 12px;  /* 기본 13px 대비 약 5% 축소 */
+    font-size: 12px;
 }}
 QPushButton:hover {{
-    background-color: {C_HEADER_BG};
+    background-color: #f8fbff;
     border-color: {C_PRIMARY};
 }}
 QPushButton:pressed {{
-    background-color: #dde3ea;
+    background-color: {C_PRIMARY_SOFT};
 }}
 QPushButton:disabled {{
-    color: #9aa4b0;
+    color: #9aa6b2;
     background-color: {C_SOFT};
     border-color: {C_LINE};
 }}
 QPushButton#primaryBtn {{
-    background-color: #0a357f;
+    background-color: {C_PRIMARY};
     color: #ffffff;
-    border: 1px solid #082a66;
+    border: 1px solid {C_PRIMARY};
     font-weight: 800;
 }}
 QPushButton#primaryBtn:hover {{
-    background-color: #082a66;
+    background-color: {C_PRIMARY_HOVER};
     color: #ffffff;
-    border: 1px solid #061f4d;
+    border: 1px solid {C_PRIMARY_HOVER};
 }}
 QPushButton#primaryBtn:pressed {{
-    background-color: #061f4d;
+    background-color: {C_PRIMARY_PRESSED};
     color: #ffffff;
-    border: 1px solid #061f4d;
+    border: 1px solid {C_PRIMARY_PRESSED};
 }}
 QPushButton#primaryBtn:disabled {{
-    background-color: #aebfd9;
-    color: #eef2fb;
-    border: 1px solid #93a6c9;
+    background-color: {C_PRIMARY_DISABLED};
+    color: #eef4ff;
+    border: 1px solid {C_PRIMARY_DISABLED};
 }}
 
-/* ── Tables (pgAdmin 데이터 그리드) ──────────── */
+/* ── Tables ────────────────────────────────── */
 QTableWidget {{
     background-color: {C_SURFACE};
     border: 1px solid {C_LINE};
-    border-radius: 4px;
+    border-radius: 8px;
     gridline-color: {C_GRID};
     selection-background-color: {C_SELECT};
     selection-color: {C_TEXT};
     outline: none;
 }}
 QTableWidget::item {{
-    padding: 4px 8px;
+    padding: 6px 9px;
     border-bottom: 1px solid {C_GRID};
     border-right: 1px solid {C_GRID};
 }}
@@ -227,44 +244,80 @@ QTableWidget::item:selected {{
     color: {C_TEXT};
 }}
 QTableWidget[alternatingRowColors="true"]::item:alternate {{
-    background-color: {C_SURFACE};
+    background-color: {C_TABLE_SOFT};
 }}
 QHeaderView::section {{
-    background-color: {C_SURFACE};
-    color: #3a4756;
+    background-color: {C_HEADER_BG};
+    color: #475569;
     font-weight: 700;
     font-size: 12px;
-    padding: 6px 8px;
+    padding: 7px 9px;
     border: none;
-    border-bottom: 1px solid {C_LINE_STRONG};
+    border-bottom: 1px solid {C_LINE};
     border-right: 1px solid {C_LINE};
 }}
 QHeaderView::section:last {{
     border-right: none;
 }}
 QTableCornerButton::section {{
-    background-color: {C_SURFACE};
+    background-color: {C_HEADER_BG};
     border: none;
-    border-bottom: 1px solid {C_LINE_STRONG};
+    border-bottom: 1px solid {C_LINE};
+}}
+
+/* ── Result table (soft review grid) ───────── */
+QTableWidget#resultTable {{
+    background-color: {C_TABLE_SOFT};
+    alternate-background-color: {C_RESULT_ALT};
+    border: 1px solid {C_LINE};
+    border-radius: 8px;
+    gridline-color: transparent;
+    selection-background-color: {C_RESULT_SELECT};
+    selection-color: {C_TEXT};
+    font-family: {FONT_STACK};
+    font-size: 12px;
+}}
+QTableWidget#resultTable::item {{
+    padding: 8px 10px;
+    border-bottom: 1px solid {C_RESULT_LINE};
+    border-right: none;
+}}
+QTableWidget#resultTable::item:selected {{
+    background-color: {C_RESULT_SELECT};
+    color: {C_TEXT};
+}}
+QTableWidget#resultTable QHeaderView::section {{
+    background-color: {C_RESULT_HEAD};
+    color: #526173;
+    font-weight: 800;
+    font-size: 11px;
+    padding: 9px 10px;
+    border: none;
+    border-bottom: 1px solid {C_LINE};
+}}
+QTableWidget#resultTable QTableCornerButton::section {{
+    background-color: {C_RESULT_HEAD};
+    border: none;
+    border-bottom: 1px solid {C_LINE};
 }}
 
 /* ── Progress bar (busy indicator) ─────────── */
 QProgressBar {{
     border: 1px solid {C_LINE};
-    border-radius: 2px;
+    border-radius: 4px;
     background-color: {C_SOFT};
     max-height: 8px;
     text-align: center;
 }}
 QProgressBar::chunk {{
     background-color: {C_PRIMARY};
-    border-radius: 2px;
+    border-radius: 4px;
 }}
 
-/* ── Status bar (pgAdmin 하단 상태 표시줄) ────── */
+/* ── Status bar ────────────────────────────── */
 QStatusBar {{
-    background-color: {C_HEADER_BG};
-    border-top: 1px solid {C_LINE_STRONG};
+    background-color: {C_SURFACE};
+    border-top: 1px solid {C_LINE};
     color: {C_MUTED};
     font-size: 12px;
 }}
@@ -298,7 +351,7 @@ def _panel() -> QFrame:
     # objectName 선택자로 이 프레임에만 흰 배경 지정(자식 위젯에는 전파 안 됨).
     f.setStyleSheet(
         f"QFrame#panel {{ background-color: {C_SURFACE};"
-        f" border: 1px solid {C_LINE}; border-radius: 4px; }}"
+        f" border: 1px solid {C_LINE}; border-radius: 8px; }}"
     )
     return f
 
@@ -306,8 +359,8 @@ def _panel() -> QFrame:
 def _section_title(text: str) -> QLabel:
     lbl = QLabel(text)
     font = lbl.font()
-    font.setPointSize(11)
-    font.setBold(True)
+    font.setPointSize(12)
+    font.setWeight(QFont.Weight.DemiBold)
     lbl.setFont(font)
     lbl.setStyleSheet(f"color: {C_TEXT}; background: transparent; border: none;")
     return lbl
@@ -338,9 +391,9 @@ def _stat_badge(text: str, fg: str, bg: str) -> QLabel:
     lbl.setStyleSheet(f"""
         background-color: {bg};
         color: {fg};
-        border-radius: 10px;
-        padding: 2px 10px;
-        font-size: 12px;
+        border-radius: 11px;
+        padding: 3px 10px;
+        font-size: 11px;
         font-weight: 700;
         border: none;
     """)
@@ -474,6 +527,7 @@ class ManualMetadataDialog(QDialog):
         self.result_metadata: ProjectMetadata | None = None
         self._project_number = project_number
         prefill = prefill or {}
+        year_hint = self._year_hint(project_number, initial, prefill)
 
         layout = QVBoxLayout(self)
         layout.addWidget(QLabel(f"프로젝트번호: {project_number or '(미입력)'}"))
@@ -502,7 +556,9 @@ class ManualMetadataDialog(QDialog):
             date_edit.setMinimumDate(QDate(2000, 1, 1))
             date_edit.setDate(QDate.currentDate())  # 기본값=오늘 → 달력이 오늘 기준으로 열림
             init_value = str(getattr(initial, attr, "") or "") if initial is not None else ""
-            parsed = self._parse_date(init_value)
+            if not init_value:
+                init_value = str(prefill.get(attr, "") or "")
+            parsed = self._parse_date(init_value, year_hint=year_hint)
             if parsed is not None:
                 date_edit.setDate(parsed)
             grid.addWidget(date_edit, row, 1)
@@ -522,23 +578,64 @@ class ManualMetadataDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+    @classmethod
+    def _year_hint(
+        cls,
+        project_number: str,
+        initial: "ProjectMetadata | None" = None,
+        prefill: dict | None = None,
+    ) -> int | None:
+        for value in [
+            project_number,
+            getattr(initial, "cert_date", "") if initial is not None else "",
+            getattr(initial, "start_date", "") if initial is not None else "",
+            getattr(initial, "end_date", "") if initial is not None else "",
+            *((prefill or {}).get(key, "") for key in ("cert_date", "start_date", "end_date")),
+        ]:
+            text = str(value or "")
+            m = re.search(r"(20\d{2})", text)
+            if m:
+                return int(m.group(1))
+            m = re.search(r"(?:^|[-_/])(\d{2})(?=[-_/])", text)
+            if m:
+                return cls._expand_two_digit_year(int(m.group(1)))
+        return None
+
     @staticmethod
-    def _parse_date(text: str) -> "QDate | None":
+    def _expand_two_digit_year(year: int) -> int:
+        return 2000 + year if year < 70 else 1900 + year
+
+    @classmethod
+    def _parse_date(cls, text: str, year_hint: int | None = None) -> "QDate | None":
         """조회된 날짜 문자열을 관대하게 파싱한다.
 
         구글시트/DB에서 온 값은 "2026.04.15", "2026-04-15", "2026/4/5",
-        "2026. 4. 15", "2026년 4월 15일", "2026-04-15 00:00" 등 형식이 제각각이라
-        엄격한 QDate 포맷 매칭으로는 실패하고 오늘 날짜로 되돌아가는 문제가 있었다.
-        연-월-일 숫자 3개만 뽑아 QDate로 조립한다."""
+        "2026. 4. 15", "2026년 4월 15일", "2026-04-15 00:00", "26/04/17,금",
+        "6/1" 등 형식이 제각각이라 엄격한 QDate 포맷 매칭으로는 실패하고 오늘 날짜로
+        되돌아가는 문제가 있었다. 숫자를 관대하게 뽑아 QDate로 조립한다."""
         text = (text or "").strip()
         if not text:
             return None
         m = re.search(r"(\d{4})\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})", text)
-        if not m:
-            return None
-        year, month, day = (int(g) for g in m.groups())
-        qd = QDate(year, month, day)
-        return qd if qd.isValid() else None
+        if m:
+            year, month, day = (int(g) for g in m.groups())
+            qd = QDate(year, month, day)
+            return qd if qd.isValid() else None
+
+        m = re.search(r"(?<!\d)(\d{2})\D{1,3}(\d{1,2})\D{1,3}(\d{1,2})(?!\d)", text)
+        if m:
+            year = cls._expand_two_digit_year(int(m.group(1)))
+            month, day = (int(g) for g in m.groups()[1:])
+            qd = QDate(year, month, day)
+            return qd if qd.isValid() else None
+
+        if year_hint:
+            m = re.search(r"(?<!\d)(\d{1,2})\D{1,3}(\d{1,2})(?!\d)", text)
+            if m:
+                month, day = (int(g) for g in m.groups())
+                qd = QDate(year_hint, month, day)
+                return qd if qd.isValid() else None
+        return None
 
     def _date_value(self, date_edit: QDateEdit) -> str:
         return date_edit.date().toString("yyyy.MM.dd")
@@ -629,7 +726,7 @@ class MainWindow(QMainWindow):
 
         self.setCentralWidget(root)
 
-        # ── 하단 상태 표시줄 (pgAdmin 스타일) ──────────────────────────────
+        # ── 하단 상태 표시줄 ───────────────────────────────────────────────
         # 좌측: 현재 동작 상태(액션 상태 미러) / 우측: 서버·규칙 버전 상시 표시.
         self._status_perm = QLabel("")
         self.statusBar().addPermanentWidget(self._status_perm)
@@ -653,14 +750,23 @@ class MainWindow(QMainWindow):
         saved_token = self._settings.value("api_token", "")
         if saved_token:
             self.api_token.setText(str(saved_token))
+        saved_project_number = self._settings.value("project_number", "")
+        if saved_project_number:
+            self.project_number.setText(str(saved_project_number))
         saved_folder = self._settings.value("last_folder", "")
         if saved_folder and Path(str(saved_folder)).is_dir():
-            self.selected_folder = Path(str(saved_folder))
+            saved_path = Path(str(saved_folder))
+            self.selected_folder = saved_path
             self.folder_path.setText(str(saved_folder))
+            if not self.project_number.text().strip():
+                inferred = infer_project_number(saved_path)
+                if inferred:
+                    self.project_number.setText(inferred)
 
     def _save_settings(self):
         self._settings.setValue("server_url", self.server_url.text().strip())
         self._settings.setValue("api_token", self.api_token.text().strip())
+        self._settings.setValue("project_number", self.project_number.text().strip())
         if self.selected_folder is not None:
             self._settings.setValue("last_folder", str(self.selected_folder))
 
@@ -688,14 +794,14 @@ class MainWindow(QMainWindow):
 
     def _build_header(self) -> QFrame:
         frame = _panel()
-        frame.setObjectName("headerBar")  # pgAdmin 스타일 상단 툴바 밴드
+        frame.setObjectName("headerBar")
         # objectName 을 바꿨으므로 #headerBar 로 흰 배경을 다시 지정한다.
         frame.setStyleSheet(
             f"QFrame#headerBar {{ background-color: {C_SURFACE};"
-            f" border: 1px solid {C_LINE}; border-radius: 4px; }}"
+            f" border: 1px solid {C_LINE}; border-radius: 8px; }}"
         )
         layout = QHBoxLayout(frame)
-        layout.setContentsMargins(18, 11, 18, 11)
+        layout.setContentsMargins(18, 12, 18, 12)
         layout.setSpacing(0)
 
         # Left: title
@@ -859,16 +965,18 @@ class MainWindow(QMainWindow):
         self.run_btn.setObjectName("primaryBtn")
         self.run_btn.setMinimumWidth(116)
         self.run_btn.setFixedHeight(38)
-        # 짙은 네이비를 위젯에 직접 지정(전역 QSS 미적용 상황까지 방지).
+        # 전역 QSS가 적용되지 않는 환경에서도 주요 실행 버튼의 톤을 유지한다.
         self.run_btn.setStyleSheet(
             "QPushButton {"
-            " background-color: #0a357f; color: #ffffff;"
-            " border: 1px solid #082a66; border-radius: 3px;"
+            f" background-color: {C_PRIMARY}; color: #ffffff;"
+            f" border: 1px solid {C_PRIMARY}; border-radius: 6px;"
             " font-weight: 800; font-size: 12px; padding: 0 12px; }"
-            "QPushButton:hover { background-color: #082a66; }"
-            "QPushButton:pressed { background-color: #061f4d; }"
-            "QPushButton:disabled { background-color: #aebfd9; color: #eef2fb;"
-            " border: 1px solid #93a6c9; }"
+            f"QPushButton:hover {{ background-color: {C_PRIMARY_HOVER};"
+            f" border: 1px solid {C_PRIMARY_HOVER}; }}"
+            f"QPushButton:pressed {{ background-color: {C_PRIMARY_PRESSED};"
+            f" border: 1px solid {C_PRIMARY_PRESSED}; }}"
+            f"QPushButton:disabled {{ background-color: {C_PRIMARY_DISABLED}; color: #eef4ff;"
+            f" border: 1px solid {C_PRIMARY_DISABLED}; }}"
         )
         self.run_btn.clicked.connect(self.run_local_review)
         self.action_status = QLabel("대기")
@@ -1041,10 +1149,13 @@ class MainWindow(QMainWindow):
 
         # Result table
         self.result_table = QTableWidget(0, 5)
+        self.result_table.setObjectName("resultTable")
         self.result_table.setHorizontalHeaderLabels(["결과", "점검항목", "기대값", "실제값", "메시지"])
         hdr = self.result_table.horizontalHeader()
+        hdr.setHighlightSections(False)
+        hdr.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        self.result_table.setColumnWidth(0, 70)
+        self.result_table.setColumnWidth(0, 82)
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
@@ -1052,10 +1163,16 @@ class MainWindow(QMainWindow):
         hdr.setSectionResizeMode(4, QHeaderView.ResizeMode.Stretch)
         hdr.setStretchLastSection(False)
         self.result_table.verticalHeader().setVisible(False)
+        self.result_table.verticalHeader().setDefaultSectionSize(44)
+        self.result_table.verticalHeader().setMinimumSectionSize(38)
         # 하위 검사를 rowspan으로 묶어 표시하므로 헤더 클릭 정렬은 끈다(정렬 시 그룹이 깨짐).
         self.result_table.setSortingEnabled(False)
+        self.result_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.result_table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
         self.result_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self.result_table.setShowGrid(False)
         self.result_table.setWordWrap(True)
+        self.result_table.setTextElideMode(Qt.TextElideMode.ElideNone)
         self.result_table.setAlternatingRowColors(True)
         # 행을 더블클릭하면 엔진이 계산한 상세 근거(raw_detail)를 팝업으로 보여준다.
         self.result_table.cellDoubleClicked.connect(self._show_result_detail)
@@ -1146,6 +1263,7 @@ class MainWindow(QMainWindow):
         inferred = infer_project_number(folder)
         if inferred and not self.project_number.text().strip():
             self.project_number.setText(inferred)
+        self._save_settings()
         # 폴더 선택 시 파일 스캔을 먼저 하고, 스캔 완료 후 기준정보 조회를 자동 실행한다.
         # (스캔이 끝나야 조회 실패 시 합의서에서 회사/제품명을 추출해 채울 수 있다.)
         self._auto_fetch_after_scan = bool(self.project_number.text().strip())
@@ -1170,17 +1288,142 @@ class MainWindow(QMainWindow):
             if answer == QMessageBox.StandardButton.Yes:
                 self.enter_metadata_manually()
             return
+        metadata = self._complete_metadata_from_reference(metadata, project_number)
         self._set_metadata(metadata)
+        self._save_settings()
 
     def enter_metadata_manually(self):
         project_number = self.project_number.text().strip()
+        if self.current_metadata is not None:
+            completed = self._complete_metadata_from_reference(self.current_metadata, project_number)
+            if completed != self.current_metadata:
+                self._set_metadata(completed)
+                self._save_settings()
         prefill = self._agreement_prefill()
         dialog = ManualMetadataDialog(
             project_number, initial=self.current_metadata, prefill=prefill, parent=self
         )
         if dialog.exec() == QDialog.DialogCode.Accepted and dialog.result_metadata is not None:
             self._set_metadata(dialog.result_metadata)
+            self._save_settings()
             self._set_action_status("기준정보 입력됨", C_SUCCESS)
+
+    def _complete_metadata_from_reference(
+        self,
+        metadata: ProjectMetadata,
+        project_number: str,
+    ) -> ProjectMetadata:
+        """프로젝트 조회 응답에 시험 기간이 없으면 GS 검색 기준정보로 날짜만 보강한다."""
+        if metadata.start_date and metadata.end_date and metadata.cert_date:
+            return metadata
+        items: list[ReferenceItem] = []
+        seen: set[tuple[int, str, str]] = set()
+        for query in self._reference_search_queries(metadata, project_number):
+            try:
+                candidates = self._client().search_reference(query, limit=20)
+            except ApiClientError:
+                continue
+            for candidate in candidates:
+                key = (candidate.serial_number, candidate.cert_number, candidate.test_number)
+                if key in seen:
+                    continue
+                seen.add(key)
+                items.append(candidate)
+        item = self._matching_reference_item(items, metadata, project_number)
+        if item is None:
+            return metadata
+        return replace(
+            metadata,
+            project_number=metadata.project_number or project_number,
+            company_name=metadata.company_name or item.company,
+            product_name=metadata.product_name or item.product,
+            cert_date=metadata.cert_date or item.cert_date,
+            start_date=metadata.start_date or item.start_date,
+            end_date=metadata.end_date or item.end_date,
+        )
+
+    @staticmethod
+    def _reference_search_queries(metadata: ProjectMetadata, project_number: str) -> list[str]:
+        raw_queries = [
+            project_number,
+            metadata.company_name,
+            metadata.product_name,
+            (metadata.product_name or "").splitlines()[0],
+            (metadata.product_name or "").split(" v", 1)[0],
+        ]
+        queries: list[str] = []
+        for query in raw_queries:
+            query = (query or "").strip()
+            if len(query) < 2 or query in queries:
+                continue
+            queries.append(query)
+        return queries
+
+    @classmethod
+    def _matching_reference_item(
+        cls,
+        items: list[ReferenceItem],
+        metadata: ProjectMetadata,
+        project_number: str,
+    ) -> ReferenceItem | None:
+        if not items:
+            return None
+        best_item = None
+        best_score = 0
+        for item in items:
+            score = cls._reference_match_score(item, metadata, project_number)
+            if score > best_score:
+                best_score = score
+                best_item = item
+        return best_item if best_score >= 40 else None
+
+    @classmethod
+    def _reference_match_score(
+        cls,
+        item: ReferenceItem,
+        metadata: ProjectMetadata,
+        project_number: str,
+    ) -> int:
+        score = 0
+        project_key = cls._match_key(project_number)
+        company_key = cls._match_key(metadata.company_name)
+        product_key = cls._match_key(metadata.product_name)
+        cert_date_key = cls._date_match_key(metadata.cert_date)
+
+        if project_key and project_key in {
+            cls._match_key(item.test_number),
+            cls._match_key(item.cert_number),
+        }:
+            score += 100
+
+        item_company_key = cls._match_key(item.company)
+        if company_key and item_company_key:
+            if company_key == item_company_key:
+                score += 45
+            elif company_key in item_company_key or item_company_key in company_key:
+                score += 30
+
+        item_product_key = cls._match_key(item.product)
+        if product_key and item_product_key:
+            if product_key == item_product_key:
+                score += 45
+            elif product_key in item_product_key or item_product_key in product_key:
+                score += 35
+
+        if cert_date_key and cert_date_key == cls._date_match_key(item.cert_date):
+            score += 15
+        return score
+
+    @staticmethod
+    def _match_key(value: str) -> str:
+        return re.sub(r"[\W_]+", "", str(value or "").lower())
+
+    @classmethod
+    def _date_match_key(cls, value: str) -> str:
+        parsed = ManualMetadataDialog._parse_date(value, year_hint=None)
+        if parsed is not None:
+            return parsed.toString("MMdd")
+        return cls._match_key(value)
 
     def _agreement_prefill(self) -> dict:
         """파일 스캔이 완료된 경우, '합의서' Word(.docx) 파일에서 회사명/제품명을 추출해
@@ -1521,7 +1764,11 @@ class MainWindow(QMainWindow):
 
     def _put_status_cell(self, row, col, label, fg, bg, result, tooltip, span=1):
         item = QTableWidgetItem(label)
-        item.setTextAlignment(Qt.AlignCenter | Qt.AlignTop if span > 1 else Qt.AlignCenter)
+        status_font = item.font()
+        status_font.setPointSize(9)
+        status_font.setBold(True)
+        item.setFont(status_font)
+        item.setTextAlignment(Qt.AlignCenter)
         item.setForeground(QColor(fg))
         item.setBackground(QColor(bg))
         item.setData(Qt.ItemDataRole.UserRole, result)  # 더블클릭 상세용
@@ -1533,8 +1780,12 @@ class MainWindow(QMainWindow):
     def _put_text_cell(self, row, col, value, result, span=1, bg=None):
         text = value if value not in (None, "") else "-"
         item = QTableWidgetItem(text)
-        if span > 1:
-            item.setTextAlignment(Qt.AlignLeft | Qt.AlignTop)
+        body_font = item.font()
+        body_font.setPointSize(9)
+        body_font.setBold(col == 1)
+        item.setFont(body_font)
+        item.setTextAlignment(Qt.AlignLeft | (Qt.AlignTop if span > 1 else Qt.AlignVCenter))
+        item.setForeground(QColor(C_MUTED if text == "-" else "#435064"))
         item.setToolTip(text)
         item.setData(Qt.ItemDataRole.UserRole, result)
         if bg is not None:

@@ -14,6 +14,11 @@ from .types import (
     RuleEvaluation,
     RuleSpec,
 )
+from .result_display import (
+    DisplayResultRow,
+    build_display_rows,
+    serialize_display_row,
+)
 
 # 공유 점검 엔진 버전. 규칙셋이 요구하는 최소 엔진 버전(rulebase manifest 의
 # engine_min_version)과 비교해, 낡은 앱/서버에 신규 규칙이 적용되는 것을 막는다.
@@ -29,5 +34,8 @@ __all__ = [
     "RuleContext",
     "RuleEvaluation",
     "RuleSpec",
+    "DisplayResultRow",
+    "build_display_rows",
+    "serialize_display_row",
     "ENGINE_VERSION",
 ]

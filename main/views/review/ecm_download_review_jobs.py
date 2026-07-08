@@ -15,6 +15,8 @@ from django.db.utils import DatabaseError
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 
+from gscert_review_core.result_display import build_display_rows, serialize_display_row
+
 from main.models import (
     DownloadReviewJob,
     DownloadReviewJobStatus,
@@ -340,12 +342,14 @@ def get_latest_project_results_payload(project_number, center_code=None):
     if project is None:
         raise DownloadReviewNotFoundError("점검 이력을 찾을 수 없습니다.")
 
-    results = project.rule_results.order_by("sequence", "id")
+    results = list(project.rule_results.order_by("sequence", "id"))
+    items = [serialize_rule_result(result) for result in results]
     return {
         "success": True,
         "job": serialize_job(project.job),
         "project": serialize_project(project),
-        "items": [serialize_rule_result(result) for result in results],
+        "items": items,
+        "display_items": _display_items_for_results(results, items),
     }
 
 
@@ -494,48 +498,12 @@ def _write_project_to_ws(ws, project, results):
             cell.alignment = top_wrap
         return
 
-    for result in results:
-        subs = _rule_result_sub_rows(result)
-        base_status = rule_status_label(result.status)
-        display_path = _display_path(result.file_path, project.project_number)
-        created = _iso(result.created_at) or ""
-
-        if not subs:
-            ws.append([
-                result.sequence, result.rule_name, base_status, result.file_name,
-                result.expected, result.actual, result.message, display_path, created,
-            ])
-            for cell in ws[ws.max_row]:
-                cell.alignment = top_wrap
-            continue
-
-        per_row_status = all(passed is not None for _, _, passed in subs)
-        first_row_idx = ws.max_row + 1
-
-        for i, (exp, act, passed) in enumerate(subs):
-            if per_row_status:
-                row_status = "정상" if passed is True else ("부적합" if passed is False else base_status)
-            else:
-                row_status = base_status if i == 0 else ""
-
-            if i == 0:
-                row_data = [
-                    result.sequence, result.rule_name, row_status, result.file_name,
-                    exp, act, result.message, display_path, created,
-                ]
-            else:
-                row_data = ["", "", row_status, "", exp, act, "", "", ""]
-
-            ws.append(row_data)
-            for cell in ws[ws.max_row]:
-                cell.alignment = top_wrap
-
-        last_row_idx = ws.max_row
-        # col indices: 1=규칙번호, 2=점검항목, 3=결과, 4=파일명, 5=기대값, 6=실제값, 7=메시지, 8=파일경로, 9=생성일시
-        merge_cols = [1, 2, 4, 7, 8, 9] if per_row_status else [1, 2, 3, 4, 7, 8, 9]
-        for col in merge_cols:
-            ws.merge_cells(start_row=first_row_idx, start_column=col, end_row=last_row_idx, end_column=col)
-            ws.cell(row=first_row_idx, column=col).alignment = top_wrap
+    result_list = list(results)
+    for row in build_display_rows(result_list):
+        parent = result_list[row.parent_index - 1]
+        ws.append(_rule_display_excel_row(project, row, parent))
+        for cell in ws[ws.max_row]:
+            cell.alignment = top_wrap
 
 
 def _xlsx_project_bytes(project, results):
@@ -758,12 +726,14 @@ def get_project_results_payload(job_project_id):
     except DownloadReviewProject.DoesNotExist as exc:
         raise DownloadReviewNotFoundError("작업 프로젝트를 찾을 수 없습니다.") from exc
 
-    results = project.rule_results.order_by("sequence", "id")
+    results = list(project.rule_results.order_by("sequence", "id"))
+    items = [serialize_rule_result(result) for result in results]
     return {
         "success": True,
         "job": serialize_job(project.job),
         "project": serialize_project(project),
-        "items": [serialize_rule_result(result) for result in results],
+        "items": items,
+        "display_items": _display_items_for_results(results, items),
     }
 
 
@@ -1118,6 +1088,22 @@ def serialize_rule_result(result):
     }
 
 
+def _display_items_for_results(results, serialized_items=None):
+    serialized_items = serialized_items or [serialize_rule_result(result) for result in results]
+    display_items = []
+    for row in build_display_rows(results):
+        item = serialize_display_row(row, status_labeler=rule_status_label)
+        parent = serialized_items[row.parent_index - 1] if row.parent_index - 1 < len(serialized_items) else {}
+        item.update({
+            "id": parent.get("id", ""),
+            "job_project_id": parent.get("job_project_id", ""),
+            "artifacts": parent.get("artifacts", []),
+            "created_at": parent.get("created_at", ""),
+        })
+        display_items.append(item)
+    return display_items
+
+
 def _project_excel_rows(project, results):
     rows = [
         ["프로젝트번호", project.project_number],
@@ -1130,9 +1116,11 @@ def _project_excel_rows(project, results):
         [],
         _rule_result_excel_header(),
     ]
-    for result in results:
-        rows.append(_rule_result_excel_row(project, result))
-    if not results:
+    result_list = list(results)
+    for row in build_display_rows(result_list):
+        parent = result_list[row.parent_index - 1]
+        rows.append(_rule_display_excel_row(project, row, parent))
+    if not result_list:
         rows.append(["", "", "", "", "", "", "", "생성된 규칙 결과가 없습니다.", ""])
     return rows
 
@@ -1145,7 +1133,7 @@ def _project_summary_excel_header():
         "작업상태",
         "점검결과",
         "현재단계",
-        "규칙번호",
+        "번호",
         "점검항목",
         "결과",
         "파일명",
@@ -1157,7 +1145,7 @@ def _project_summary_excel_header():
 
 def _rule_result_excel_header():
     return [
-        "규칙번호",
+        "번호",
         "점검항목",
         "결과",
         "파일명",
@@ -1181,17 +1169,18 @@ def _project_summary_excel_rows(project, results):
     ]
     if not results:
         return [base + ["", "", "", "", "", "", project.error_message or "생성된 규칙 결과가 없습니다."]]
+    result_list = list(results)
     return [
         base + [
-            result.sequence,
-            result.rule_name,
-            rule_status_label(result.status),
-            result.file_name,
-            result.expected,
-            result.actual,
-            result.message,
+            row.display_number,
+            row.rule_name,
+            rule_status_label(row.status),
+            row.file_name,
+            row.expected,
+            row.actual,
+            row.message,
         ]
-        for result in results
+        for row in build_display_rows(result_list)
     ]
 
 
@@ -1206,6 +1195,20 @@ def _rule_result_excel_row(project, result):
         result.message,
         _display_path(result.file_path, project.project_number),
         _iso(result.created_at) or "",
+    ]
+
+
+def _rule_display_excel_row(project, row, parent_result):
+    return [
+        row.display_number,
+        row.rule_name,
+        rule_status_label(row.status),
+        row.file_name,
+        row.expected,
+        row.actual,
+        row.message,
+        _display_path(row.file_path or parent_result.file_path, project.project_number),
+        _iso(parent_result.created_at) or "",
     ]
 
 
