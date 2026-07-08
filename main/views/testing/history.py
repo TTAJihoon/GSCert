@@ -35,6 +35,8 @@ _FIELD_TO_KR = {
     'test_lab': '시험원',
     'start_date': '시작일자',
     'end_date': '종료일자',
+    'recert_type': '재인증구분',
+    'prev_cert_info': '기인증번호제품정보버전',
 }
 
 

@@ -29,6 +29,8 @@ SQLITE_COLUMNS = [
     "시험원",
     "시작일자",
     "종료일자",
+    "재인증구분",
+    "기인증번호제품정보버전",
 ]
 
 MODEL_FIELDS = [
@@ -48,6 +50,8 @@ MODEL_FIELDS = [
     "test_lab",
     "start_date",
     "end_date",
+    "recert_type",
+    "prev_cert_info",
 ]
 
 BATCH_SIZE = 500
@@ -178,6 +182,8 @@ class Command(BaseCommand):
                 "test_lab": get_val(row_data, "시험원"),
                 "start_date": get_val(row_data, "시작일자"),
                 "end_date": get_val(row_data, "종료일자"),
+                "recert_type": get_val(row_data, "재인증구분"),
+                "prev_cert_info": get_val(row_data, "기인증번호제품정보버전"),
             })
 
         return rows

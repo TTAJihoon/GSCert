@@ -195,9 +195,9 @@ def read_last_serial_from_master_xlsx(xlsx_path: Path) -> int:
     raise ValueError("A열(일련번호)에서 마지막 숫자를 찾지 못했습니다. (xlsx)")
 
 
-def append_rows_to_master_xlsx(master_xlsx: Path, rows: list[list], ensure_14_cols: bool = True) -> None:
+def append_rows_to_master_xlsx(master_xlsx: Path, rows: list[list], ensure_cols: bool = True) -> None:
     """
-    master.xlsx 마지막 행 다음에 A~N(14컬럼) 값을 append.
+    master.xlsx 마지막 행 다음에 A~N(14) + Y(재인증구분) + Z(기인증번호제품정보버전) = 16컬럼 append.
     줄바꿈(\n) 포함 문자열은 그대로 셀에 들어감.
     """
     master_xlsx.parent.mkdir(parents=True, exist_ok=True)
@@ -209,6 +209,13 @@ def append_rows_to_master_xlsx(master_xlsx: Path, rows: list[list], ensure_14_co
 
     ws = _reference_sheet(wb)
 
+    # 헤더행이 있으면 Y/Z 헤더(15/16열)를 보강한다. import 는 헤더명으로 매핑하므로 필요.
+    if not _is_blank(ws.cell(row=1, column=1).value):
+        if _is_blank(ws.cell(row=1, column=15).value):
+            ws.cell(row=1, column=15, value="재인증구분")
+        if _is_blank(ws.cell(row=1, column=16).value):
+            ws.cell(row=1, column=16, value="기인증번호제품정보버전")
+
     # 마지막 "의미 있는" 행 찾기: A열이 비어있지 않은 마지막 행 기준
     last = ws.max_row
     while last > 1 and _is_blank(ws.cell(row=last, column=1).value):
@@ -216,10 +223,10 @@ def append_rows_to_master_xlsx(master_xlsx: Path, rows: list[list], ensure_14_co
     write_row = last + 1
 
     for row in rows:
-        if ensure_14_cols:
-            row = (row + [None] * 14)[:14]
+        if ensure_cols:
+            row = (row + [None] * 16)[:16]
 
-        for c_idx in range(1, 15):  # 1..14 (A..N)
+        for c_idx in range(1, 17):  # 1..16 (A..N + Y + Z)
             v = row[c_idx - 1]
             ws.cell(row=write_row, column=c_idx, value=v)
         write_row += 1
@@ -270,10 +277,12 @@ def extract_a_to_n_rows_after_serial(xlsx_path: Path, start_serial: int, sheet_n
 
     out = []
     for r in range(start_row, last_data_row + 1):
-        vals = [ws.cell(row=r, column=c).value for c in range(1, 15)]
-        if all(v in (None, "") for v in vals):
+        an = [ws.cell(row=r, column=c).value for c in range(1, 15)]  # A..N (1~14)
+        if all(v in (None, "") for v in an):
             continue
-        out.append(vals)
+        # ECM 시트 Y열(25, 재인증 구분) / Z열(26, 기 인증번호/제품정보/버전) 추가.
+        yz = [ws.cell(row=r, column=25).value, ws.cell(row=r, column=26).value]
+        out.append(an + yz)
     return out
 
 
@@ -297,7 +306,7 @@ def normalize_rows(rows: list[list]) -> list[list]:
     out: list[list] = []
 
     for row in rows:
-        row = (row + [None] * 14)[:14]  # A..N 고정
+        row = (row + [None] * 16)[:16]  # A..N(14) + Y + Z 고정
 
         # 완전 빈 행 제거
         if all(_is_blank(v) for v in row):
@@ -728,7 +737,7 @@ def main():
         logging.info("정규화 후 행 수(A~N): %d", len(rows2))
 
         if rows2:
-            append_rows_to_master_xlsx(CFG.master_xlsx, rows2, ensure_14_cols=True)
+            append_rows_to_master_xlsx(CFG.master_xlsx, rows2, ensure_cols=True)
             logging.info("master append 완료(xlsx): %s", CFG.master_xlsx)
         else:
             logging.info("정규화 결과 추가할 데이터가 없습니다. master 변경 없음.")

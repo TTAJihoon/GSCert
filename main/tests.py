@@ -3721,6 +3721,30 @@ class WeeklyHttpDownloadTests(SimpleTestCase):
         def files(self, oid):
             return self._files_by_oid.get(oid, [])
 
+    def test_extract_includes_y_z_columns(self):
+        from openpyxl import Workbook
+        from main.utils.weekly import extract_a_to_n_rows_after_serial, REFERENCE_SHEET_NAME
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = REFERENCE_SHEET_NAME
+        ws.cell(row=1, column=1, value="일련번호")   # 헤더
+        ws.cell(row=2, column=1, value=100)          # 앵커(일련번호)
+        ws.cell(row=3, column=1, value=101)          # A
+        ws.cell(row=3, column=2, value="24-0001")    # B
+        ws.cell(row=3, column=25, value="재인증")     # Y
+        ws.cell(row=3, column=26, value="기인증 v1")  # Z
+
+        with tempfile.TemporaryDirectory() as d:
+            path = Path(d) / "t.xlsx"
+            wb.save(path)
+            rows = extract_a_to_n_rows_after_serial(path, 100, REFERENCE_SHEET_NAME)
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(len(rows[0]), 16)          # A..N(14) + Y + Z
+        self.assertEqual(rows[0][14], "재인증")       # Y(25열)
+        self.assertEqual(rows[0][15], "기인증 v1")    # Z(26열)
+
     def test_selects_most_recent_dated_list_file(self):
         from main.utils import weekly
 

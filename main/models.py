@@ -291,6 +291,9 @@ class SwData(models.Model):
     test_lab = models.TextField(blank=True, default='')
     start_date = models.TextField(blank=True, default='')
     end_date = models.TextField(blank=True, default='')
+    # ECM 시트 Y열(재인증 구분) / Z열(기 인증번호/제품정보/버전)
+    recert_type = models.TextField(blank=True, default='')
+    prev_cert_info = models.TextField(blank=True, default='')
 
     class Meta:
         app_label = 'main'
