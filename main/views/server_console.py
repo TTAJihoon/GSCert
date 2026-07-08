@@ -140,16 +140,14 @@ def _run_ps1(script_name: str, extra_args: list, task: dict):
 @csrf_exempt
 @require_POST
 def api_run_worker(request):
-    """다운로드 검토 워커를 시작한다. source=http(기본)→ecm-http / playwright→ecm.
+    """다운로드 검토 워커를 시작한다(ECM HTTP 직접연동, source=ecm-http).
 
-    start_worker.ps1 -Live -Source <source> 를 호출한다(백그라운드 기동 + PID 파일 관리).
+    start_worker.ps1 -Live -Source ecm-http 를 호출한다(백그라운드 기동 + PID 파일 관리).
     ps1 은 env.ps1 을 로드하므로 ECM 자격증명도 함께 적용된다.
+    (레거시 Playwright 다운로드 방식은 제거됨.)
     """
-    body = json.loads(request.body or b"{}")
-    choice = (body.get("source") or "http").strip().lower()
-    source = "ecm" if choice == "playwright" else "ecm-http"
-    label = "다운로드 워커 시작 (Playwright)" if source == "ecm" else "다운로드 워커 시작 (HTTP 직접연동)"
-    task_id, task = _new_task(label)
+    source = "ecm-http"
+    task_id, task = _new_task("다운로드 워커 시작 (HTTP 직접연동)")
     _run_ps1("start_worker.ps1", ["-Live", "-Source", source], task)
     return JsonResponse({"task_id": task_id, "source": source})
 

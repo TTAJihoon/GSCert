@@ -39,9 +39,7 @@ class ArtifactSource(Protocol):
 
 ### 구현체
 
-- `EcmArtifactSource`(`ecm`): 기존 ECM 함수(`launch_browser`/`run_ecm_recursive_downloads`/
-  `handle_folder_popup_and_download`/`close_browser`) 래핑. **ECM 에이전트 락도 이 안에서** 건다.
-- `HttpEcmArtifactSource`(`ecm-http`): 서버측 HTTP 직접 호출(`requests`)로 ECM 을 부른다.
+- `HttpEcmArtifactSource`(`ecm-http`, **운영 기본**): 서버측 HTTP 직접 호출(`requests`)로 ECM 을 부른다.
   `open`=lazy 로그인(job 내 센터별 세션 재사용), `fetch`=프로젝트 폴더 탐색→재귀 순회→
   `AGENT_DOWNLOAD_BASE_DIR/<NFC 프로젝트번호>/<NFC 상대경로>/` 에 다운로드(NFC + 무결성 검증).
   Playwright/pywinauto/에이전트 락 **불필요**. HTTP 클라이언트는 `ecm_http_client.DestinyECM`.
@@ -49,7 +47,7 @@ class ArtifactSource(Protocol):
 - `LocalFolderArtifactSource`(`local`): `source_root/<프로젝트번호>` → 다운로드 폴더로 복사.
   다른 저장소 연결 첫 구현이자 fake-live 더블.
 - `build_artifact_source(name, *, headless, source_root)`: 이름으로 구현체 생성
-  (`ecm` / `ecm-http` / `local`).
+  (`ecm-http` / `local`). 레거시 Playwright source(`ecm`)는 제거됨 — `ecm` 값은 `ecm-http` 로 별칭 처리.
 
 ## 4. 워커가 쓰는 방식
 
@@ -57,7 +55,7 @@ class ArtifactSource(Protocol):
 
 ```python
 source = build_artifact_source(
-    source_name or settings.DOWNLOAD_REVIEW_SOURCE,   # 기본 "ecm"
+    source_name or settings.DOWNLOAD_REVIEW_SOURCE,   # 기본 "ecm-http"
     headless=headless,
     source_root=settings.LOCAL_ARTIFACT_SOURCE_ROOT,
 )
@@ -74,7 +72,8 @@ finally:
 
 ### 책임 경계 주의
 
-- **ECM 에이전트 락**: `EcmArtifactSource.fetch` 내부(ECM 고유 동시성 정책). 다른 source 는 불필요.
+- **ECM 에이전트 락**: HTTP 직접연동(`ecm-http`)은 락이 불필요하다(팝업/단일 Windows 에이전트 없음).
+  (에이전트 락은 이제 이력 조회의 레거시 Playwright URL 조회 경로에서만 쓰인다.)
 - **다운로드 폴더 사전 정리(`_clear_project_download_dir`)**: 워커가 **모든 source 공통**으로 수행
   (같은 폴더로 다시 받을 때 덮어쓰기 팝업/혼입 방지). source-agnostic 한 "로컬 타깃 준비" 단계.
 
@@ -94,7 +93,7 @@ finally:
 
 | 설정 | 기본 | 의미 |
 |---|---|---|
-| `DOWNLOAD_REVIEW_SOURCE` | `ecm` | source 기본값. `ecm` / `ecm-http` / `local` |
+| `DOWNLOAD_REVIEW_SOURCE` | `ecm-http` | source 기본값. `ecm-http` / `local` (레거시 `ecm` 은 `ecm-http` 로 별칭) |
 | `LOCAL_ARTIFACT_SOURCE_ROOT` | `""` | local source 가 복사해 올 루트(`<root>/<프로젝트번호>`) |
 | `ECM_USERNAME` / `ECM_PASSWORD` | `""` | ecm-http 상암·영남 공유 계정(환경변수 전용) |
 | `ECM_USERNAME_BUNDANG` / `ECM_PASSWORD_BUNDANG` | `""` | ecm-http 분당 계정 |

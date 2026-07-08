@@ -1,11 +1,11 @@
 """산출물 획득 source 추상화.
 
 워커는 "프로젝트 → 로컬 다운로드 폴더"를 만들어 주는 source 에만 의존한다.
-ECM(Playwright + Windows Agent 팝업)은 그 한 구현일 뿐이며, 추후 로컬 폴더나
-다른 저장소로 갈아끼울 때 이 인터페이스를 구현한 새 source 만 붙이면 된다.
+ECM(HTTP 직접연동)은 그 한 구현일 뿐이며, 추후 로컬 폴더나 다른 저장소로 갈아끼울
+때 이 인터페이스를 구현한 새 source 만 붙이면 된다.
 
 경계:
-- source-specific(이 모듈): 어떻게 받아오는가(ECM 탐색/팝업, 로컬 복사 등).
+- source-specific(이 모듈): 어떻게 받아오는가(ECM HTTP 탐색/다운로드, 로컬 복사 등).
 - source-agnostic(워커): 받은 *로컬 폴더*에 대한 검증·보관·점검·상태 전이·정리.
 
 fetch() 는 산출물을 로컬 다운로드 폴더에 만들고 그 경로와 성패를 FetchResult 로 돌려준다.
@@ -65,66 +65,6 @@ class ArtifactSource(Protocol):
         on_progress: ProgressHook,
         is_canceled: CanceledHook,
     ) -> FetchResult: ...
-
-
-class EcmArtifactSource:
-    """ECM 웹(Playwright) + Windows Agent 팝업(pywinauto)으로 받아오는 source."""
-
-    name = "ecm"
-
-    def __init__(self, *, headless: bool = True):
-        self._headless = headless
-        self._browser = None
-
-    async def open(self) -> None:
-        from main.views.review.ecm_download import launch_browser
-
-        self._browser = await launch_browser(headless=self._headless)
-
-    async def close(self) -> None:
-        if self._browser is not None:
-            from main.views.review.ecm_download import close_browser
-
-            await close_browser(self._browser)
-            self._browser = None
-
-    async def fetch(self, project, *, on_progress, is_canceled) -> FetchResult:
-        from main.utils.ecm_agent_lock import async_ecm_agent_lock
-        from main.views.review.ecm_agent_popup import handle_folder_popup_and_download
-        from main.views.review.ecm_download import run_ecm_recursive_downloads
-
-        async def _download_folder(relative_path, doc_count):
-            # 폴더별 다운로드 직전마다 취소를 확인해, 한 프로젝트가 여러 폴더를
-            # 받는 도중에도 즉시 멈춘다.
-            if await is_canceled():
-                raise JobCanceledError()
-            await on_progress(relative_path, doc_count)
-            return await asyncio.to_thread(
-                handle_folder_popup_and_download,
-                project.project_number,
-                str(project.job_id),
-                2,
-                relative_path,
-                project.center_code,
-            )
-
-        # ECM 단일 Windows 에이전트 동시 사용 방지 락은 ECM 고유 정책이므로 이 어댑터가
-        # 소유한다(로컬 등 다른 source 는 락이 필요 없다).
-        lock_timeout = getattr(settings, "ECM_AGENT_LOCK_TIMEOUT_SECONDS", 600)
-        async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
-            result = await run_ecm_recursive_downloads(
-                self._browser,
-                project.project_number,
-                center_code=project.center_code,
-                download_callback=_download_folder,
-            )
-        return FetchResult(
-            success=result.success,
-            download_dir=result.download_dir,
-            downloaded_folder_count=result.downloaded_folder_count,
-            error_step=result.error_step,
-            error_message=result.error_message,
-        )
 
 
 # 무결성 검증(결정 8): 확장자별 매직바이트. 압축 기반 오피스 포맷은 모두 PK.
@@ -423,10 +363,10 @@ def build_artifact_source(
     - local: `source_root/<프로젝트번호>` 를 다운로드 폴더로 복사(다른 저장소 연결 첫 구현
       이자 fake-live 테스트용). source_root 미지정 시 settings.LOCAL_ARTIFACT_SOURCE_ROOT 사용.
     """
-    key = (name or "ecm").strip().lower()
-    if key == "ecm":
-        return EcmArtifactSource(headless=headless)
-    if key == "ecm-http":
+    key = (name or "ecm-http").strip().lower()
+    # 레거시 Playwright source('ecm')는 제거됨. 남아 있는 설정/env 값과의 호환을 위해
+    # 'ecm' 은 HTTP 직접연동('ecm-http')으로 별칭 처리한다(Playwright 는 더 이상 없음).
+    if key in ("ecm", "ecm-http"):
         return HttpEcmArtifactSource()
     if key == "local":
         return LocalFolderArtifactSource(source_root=source_root)

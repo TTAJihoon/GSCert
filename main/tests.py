@@ -3225,13 +3225,13 @@ class ArtifactSourceSeamTests(SimpleTestCase):
 
     def test_factory_builds_known_sources_and_rejects_unknown(self):
         from main.views.review.artifact_source import (
-            EcmArtifactSource,
             HttpEcmArtifactSource,
             LocalFolderArtifactSource,
             build_artifact_source,
         )
 
-        self.assertIsInstance(build_artifact_source("ecm"), EcmArtifactSource)
+        # 레거시 Playwright source('ecm')는 제거됨 — 호환을 위해 'ecm-http' 로 별칭 처리된다.
+        self.assertIsInstance(build_artifact_source("ecm"), HttpEcmArtifactSource)
         self.assertIsInstance(build_artifact_source("ecm-http"), HttpEcmArtifactSource)
         self.assertIsInstance(build_artifact_source("local"), LocalFolderArtifactSource)
         with self.assertRaises(ValueError):

@@ -10,8 +10,9 @@
 .PARAMETER NoHeadless
   live 모드에서 브라우저 창을 표시한다.
 .PARAMETER Source
-  산출물 다운로드 방식을 이 실행에 한해 덮어쓴다. 예: ecm-http(HTTP 직접연동) / ecm(Playwright) / local.
-  미지정 시 settings/env.ps1 의 DOWNLOAD_REVIEW_SOURCE(기본 ecm)를 따른다.
+  산출물 다운로드 방식을 이 실행에 한해 덮어쓴다. 예: ecm-http(HTTP 직접연동) / local(fake-live).
+  미지정 시 settings/env.ps1 의 DOWNLOAD_REVIEW_SOURCE(기본 ecm-http)를 따른다.
+  (레거시 Playwright 방식은 제거됨.)
 #>
 param(
     [switch]$DryRun,

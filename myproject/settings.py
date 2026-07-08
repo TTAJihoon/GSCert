@@ -230,12 +230,12 @@ AGENT_DOWNLOAD_BASE_DIR = os.environ.get(
     'AGENT_DOWNLOAD_BASE_DIR',
     str(Path.home() / 'download'),
 )
-# 산출물 source 선택: 'ecm'(Playwright, 현 운영 기본) / 'ecm-http'(서버 HTTP 직접연동)
+# 산출물 source 선택: 'ecm-http'(서버 HTTP 직접연동, 운영 기본)
 # / 'local'(LOCAL_ARTIFACT_SOURCE_ROOT 에서 복사, ECM 없이 워커 흐름을 돌리는 fake-live).
 # 'ecm-http' 는 requests 로 ECM 을 직접 호출하며 Playwright/pywinauto 가 필요 없다.
-# 안정화 후 기본값을 'ecm-http' 로 전환한다. 자세한 내용은
-# main/docs/33_artifact_source_boundary.md, main/docs/34_http_ecm_source_decisions.md 참고.
-DOWNLOAD_REVIEW_SOURCE = os.environ.get('DOWNLOAD_REVIEW_SOURCE', 'ecm')
+# 레거시 Playwright source('ecm')는 제거됨 — 'ecm' 값이 들어와도 팩토리가 'ecm-http' 로 처리한다.
+# 자세한 내용은 main/docs/11_artifact_source_boundary.md, main/docs/12_http_ecm_source_decisions.md 참고.
+DOWNLOAD_REVIEW_SOURCE = os.environ.get('DOWNLOAD_REVIEW_SOURCE', 'ecm-http')
 LOCAL_ARTIFACT_SOURCE_ROOT = os.environ.get('LOCAL_ARTIFACT_SOURCE_ROOT', '')
 AGENT_ARCHIVE_BASE_DIR = os.environ.get(
     'AGENT_ARCHIVE_BASE_DIR',

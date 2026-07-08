@@ -52,9 +52,10 @@ class Command(BaseCommand):
             "--source",
             default=None,
             help=(
-                "Artifact source for --live runs: 'ecm' (default) or 'local'. "
+                "Artifact source for --live runs: 'ecm-http' (default) or 'local'. "
+                "'ecm-http' calls Destiny ECM directly over HTTP (no Playwright/agent). "
                 "'local' copies from LOCAL_ARTIFACT_SOURCE_ROOT instead of ECM "
-                "(fake-live: full pipeline without ECM/Windows agent). "
+                "(fake-live: full pipeline without ECM). "
                 "Overrides settings.DOWNLOAD_REVIEW_SOURCE."
             ),
         )

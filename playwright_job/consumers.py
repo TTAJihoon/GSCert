@@ -14,7 +14,7 @@ from django.conf import settings
 from main.utils.ecm_agent_lock import async_ecm_agent_lock
 
 from .apps import get_browser_safe
-from .tasks import run_playwright_task_on_page, run_document_download_on_page, StepError
+from .tasks import run_playwright_task_on_page, StepError
 
 logger_ws = logging.getLogger("playwright_job.ws")
 logger_worker = logging.getLogger("playwright_job.worker")
@@ -248,24 +248,17 @@ async def _worker_loop() -> None:
                 ecm_page = await ecm_context.new_page()
                 logger_worker.info("context_page_ready")
 
-            # 3) 실제 작업 실행 (action 에 따라 URL 복사 / 문서 다운로드 분기)
-            action = job.get("action", "url")
+            # 3) 실제 작업 실행: URL 복사(Playwright).
+            #    '문서' 다운로드(action=="document")는 receive() 에서 HTTP 직접연동으로
+            #    가로채 처리하므로 이 큐/워커 루프까지 오지 않는다.
             lock_timeout = getattr(settings, "ECM_AGENT_LOCK_TIMEOUT_SECONDS", 600)
             async with async_ecm_agent_lock(timeout_seconds=lock_timeout):
-                if action == "document":
-                    result = await asyncio.wait_for(
-                        run_document_download_on_page(
-                            ecm_page, cert_date, test_no, request_ip=request_ip,
-                        ),
-                        timeout=600,  # 파일 다운로드는 URL 복사보다 오래 걸림
-                    )
-                else:
-                    result = await asyncio.wait_for(
-                        run_playwright_task_on_page(
-                            ecm_page, cert_date, test_no, request_ip=request_ip,
-                        ),
-                        timeout=120,
-                    )
+                result = await asyncio.wait_for(
+                    run_playwright_task_on_page(
+                        ecm_page, cert_date, test_no, request_ip=request_ip,
+                    ),
+                    timeout=120,
+                )
 
             if fut is not None and not fut.cancelled():
                 fut.set_result(result)

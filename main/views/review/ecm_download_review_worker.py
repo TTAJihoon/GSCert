@@ -200,9 +200,9 @@ async def _run_live_job(job, *, headless=True, source_name=None):
     """
     from main.views.review.ecm_download_verify import summarize_files, verify_downloaded_files
 
-    # 산출물 source 선택: 인자 > settings.DOWNLOAD_REVIEW_SOURCE > "ecm".
+    # 산출물 source 선택: 인자 > settings.DOWNLOAD_REVIEW_SOURCE > "ecm-http".
     # 추후 로컬/다른 저장소로 갈아끼우려면 이 source 만 교체한다(워커 흐름은 불변).
-    source_name = source_name or getattr(settings, "DOWNLOAD_REVIEW_SOURCE", "ecm")
+    source_name = source_name or getattr(settings, "DOWNLOAD_REVIEW_SOURCE", "ecm-http")
     source = build_artifact_source(
         source_name,
         headless=headless,
