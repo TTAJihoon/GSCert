@@ -2,17 +2,17 @@
 
 ## 목적
 
-이 문서는 download-review 점검규칙의 단일 기준 문서다. 1번부터 앞으로 추가될 모든 점검규칙은 이 문서에서 같은 형식으로 관리한다.
+이 문서는 download-review 점검규칙의 단일 기준 문서다. 1~18번 실제 규칙과 앞으로 추가될 모든 점검규칙은 이 문서에서 같은 형식으로 관리한다.
 
-`main/docs/05_zip_inspection.md`는 큰 설계 흐름을 설명하는 문서이고, 최신 세부 규칙의 원본은 이 문서로 본다.
+과거 산출물 점검 설계 원문은 `main/docs/archive/2026-07-doc-cleanup/05_zip_inspection.md`에 보관했다. 최신 세부 규칙의 원본은 이 문서로 본다.
 
 ## 관련 코드와 문서
 
 | 항목 | 위치 |
 | --- | --- |
-| 규칙 원본 문서 | `main/docs/19_inspection_rule_manual.md` |
-| 산출물 점검 설계 | `main/docs/05_zip_inspection.md` |
-| DB 구조 | `main/docs/02_database_design.md` |
+| 규칙 원본 문서 | `main/docs/03_inspection_rule_manual.md` |
+| 과거 산출물 점검 설계 | `main/docs/archive/2026-07-doc-cleanup/05_zip_inspection.md` |
+| DB 구조 | `main/docs/13_db_schema.md` |
 | 규칙 seed 명령 | `main/management/commands/seed_download_review_rules.py` |
 | 점검 엔진 | `main/views/review/ecm_download_review_inspection.py` |
 | 결과 write-back | `main/views/review/ecm_reference_db.py` |
@@ -53,8 +53,8 @@
 | `{PL}` | 시험PL | `ecm_row_json["시험PL"]` 또는 `ecm_row_json["pl"]` |
 | `{wd}` | WD | `ecm_row_json["WD"]` 또는 `ecm_row_json["wd"]` |
 | `{WD}` | WD | `ecm_row_json["WD"]` 또는 `ecm_row_json["wd"]` |
-| `{시작일}` | 시험 시작일 | `reference.db.sw_data`에서 `시험번호 = {프로젝트번호}`인 행의 `시작일자` |
-| `{종료일}` | 시험 종료일 | `reference.db.sw_data`에서 `시험번호 = {프로젝트번호}`인 행의 `종료일자` |
+| `{시작일}` | 시험 시작일 | `reference_project.start_date` 또는 API 응답 `project.start_date` |
+| `{종료일}` | 시험 종료일 | `reference_project.expected_end_date` 또는 API 응답 `project.end_date` |
 | `{연도}` | 프로젝트 연도 | `{프로젝트번호}`의 `TTA-YY-xxxxx`에서 `20YY`로 추출 |
 | `{잔여결함수}` | 잔여 결함 개수 | 10번 결함리포트 규칙에서 산출 |
 | `{결함차수}` | 결함 차수 | 13번 시험성적서 규칙에서 산출 |
@@ -63,9 +63,9 @@
 | `{R}` | 수정전 결함 개수 | 10번 결함리포트 규칙에서 산출 |
 | `{측정항목별점수표}` | 점검표의 측정항목별 점수표 값 목록 | 11번 점검표 규칙에서 산출 |
 | `{품질부특성측정값}` | 품질검사표의 품질부특성 측정값 목록 | 16번 품질검사표 규칙에서 산출 |
-| `{신청일}` | 신청일 | Google Sheet에서 `{프로젝트번호}`로 검색된 행의 H열 |
-| `{계약일}` | 계약일 | Google Sheet에서 `{프로젝트번호}`로 검색된 행의 I열 |
-| `{인증위}` | 품질인증심의위원회 일자 | `ecmlist.db`에서 `{프로젝트번호}`로 검색된 행의 `인증일자` 컬럼 |
+| `{신청일}` | 신청일 | `reference_project.request_date` |
+| `{계약일}` | 계약일 | `reference_project.contract_date` |
+| `{인증위}` | 품질인증심의위원회 일자 | `reference_project.cert_date` 또는 `cert_committee_date` |
 
 ### 변수 세부 규칙
 
@@ -74,7 +74,7 @@
 - 제품명에 공백이 없고 버전 패턴도 없으면 `{버전}`은 찾지 못한 것으로 처리한다.
 - `{제품명}`과 `{product}`는 원래 제품명에서 `{버전}`으로 추출된 부분을 제거한 값이다.
 - `{회사명}`/`{company}`와 `{제품명}` 원본 값에 줄바꿈(`\n`)이 포함되면 첫 줄만 사용한다. 기준 DB에 `㈜이든티앤에스\nEDEN TNS Inc`처럼 영문명이 함께 저장된 경우를 위해서다.
-- `{시작일}`과 `{종료일}`은 `reference.db`에서 기준 행을 찾지 못하거나 값이 비어 있으면 기준정보 없음으로 실패 처리한다.
+- `{시작일}`과 `{종료일}`은 기준정보 API 또는 `reference_project`에서 기준 행을 찾지 못하거나 값이 비어 있으면 기준정보 없음으로 실패 처리한다.
 - `{시작일}` 날짜 형식은 `yyyy.mm.dd.`를 기준으로 한다.
 - `{잔여결함수}`는 10번 결함리포트의 마지막 버전 파일 내 `최종결함리포트` 시트에서 산출한다.
 - `{1차}`, `{2차}` 등 차수별 보고일자는 13번 시험성적서의 `결함리포트 송부` 표에서 산출한다.
@@ -83,8 +83,8 @@
 - `{H}`와 `{R}`은 10번 결함리포트의 마지막 버전 파일 내 `시험분석자료` 시트에서 산출한다.
 - `{측정항목별점수표}`는 11번 점검표의 `측정항목별 점수표` 시트 D7~D90 값에서 산출한다.
 - `{품질부특성측정값}`은 16번 품질검사표의 E4:E85 실제 값 33개 중 27번째 값을 제외하고 `4~26, 28~33, 1~3` 순서로 재정렬해 산출한다.
-- `{신청일}`과 `{계약일}`은 이미 연결된 Google Sheet에서 `{프로젝트번호}` 기준으로 같은 행을 찾은 뒤 각각 H열, I열 값을 사용한다.
-- `{인증위}`는 `ecmlist.db`의 `인증일자` 컬럼 값을 사용한다.
+- `{신청일}`과 `{계약일}`은 Google Sheet 적재 결과인 `reference_project.request_date`, `reference_project.contract_date` 값을 사용한다.
+- `{인증위}`는 `reference_project.cert_date` 또는 정규화된 인증위 날짜 값을 사용한다.
 
 ## 센터별 이름 기준
 
@@ -296,7 +296,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
 - 변수 사용 목록: `{프로젝트번호}`
 - 실패 메시지: `파일이 없습니다.`
 - 저장 산출물: 없음
-- `ecmlist.db` write-back 컬럼: `계약서`
+- 산출물 결과 키: `계약서`
 - 구현 메모: 현재 seed 규칙은 `{project_number}` 표기를 사용하지만 의미는 `{프로젝트번호}`와 같다.
 
 ## 2. 합의서
@@ -319,7 +319,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 머리글 프로젝트번호 오류: `합의서 머리말에 프로젝트 번호가 잘못 작성됨`
   - 바닥글 양식번호 오류: `합의서 바닥글에 양식번호가 잘못 작성됨`
 - 저장 산출물: `.pdf` 1페이지 캡처 이미지
-- `ecmlist.db` write-back 컬럼: `합의서(PDF)`
+- 산출물 결과 키: `합의서(PDF)`
 - 구현 메모:
   - 파일/내용 검사와 PDF 캡처 저장/UI 조회 버튼이 구현되어 있다.
   - Word 머리글/바닥글은 섹션별 `word/header*.xml`, `word/footer*.xml` 전체를 합쳐 검사한다. 첫 페이지와 짝/홀수 페이지 설정이 분리된 문서도 같은 기준으로 본다.
@@ -337,7 +337,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
 - 변수 사용 목록: `{프로젝트번호}`
 - 실패 메시지: `파일이 없습니다.`
 - 저장 산출물: 없음
-- `ecmlist.db` write-back 컬럼: `수수료산정표`
+- 산출물 결과 키: `수수료산정표`
 - 구현 메모: 현재 `.xlsx`만 허용한다.
 
 ## 4. 시험환경구성도
@@ -355,7 +355,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 파일 누락: `시험환경구성도 파일을 찾을 수 없습니다`
   - 확장자 오류: `시험환경구성도 파일이 png/pptx가 아닙니다`
 - 저장 산출물: 없음
-- `ecmlist.db` write-back 컬럼: `시험환경구성도`
+- 산출물 결과 키: `시험환경구성도`
 - 구현 메모: `{프로젝트번호}`와 `구성도`가 포함된 `.png` 또는 `.pptx`가 1개 이상 있으면 통과한다.
 
 ## 5. 품질특성별제품정보기재사항
@@ -378,7 +378,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 날짜 오류: `1페이지 날짜가 잘못되었습니다.`
   - 바닥글 서식번호 오류: `바닥글에 서식번호가 작성되면 안됨`
 - 저장 산출물: 없음
-- `ecmlist.db` write-back 컬럼: `품질특성별제품정보기재사항`
+- 산출물 결과 키: `품질특성별제품정보기재사항`
 - 구현 메모: 날짜는 `yyyy-mm-dd`, `yyyy.mm.dd.`, `yyyy년 m월 d일`, 연도 생략 표기, 요일/괄호 표기까지 폭넓게 허용한다.
 
 ## 6. 기능리스트
@@ -406,7 +406,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 머리글 오류: `머리글에 프로젝트번호가 작성되면 안됨`
   - 바닥글 서식번호 오류: `바닥글에 서식번호가 작성되면 안됨`
 - 저장 산출물: `대분류` 기준 표 영역 스크린샷
-- `ecmlist.db` write-back 컬럼: `기능리스트`
+- 산출물 결과 키: `기능리스트`
 - 구현 메모:
   - `.xlsx`는 `openpyxl`, `.xls`는 `xlrd`로 읽는다.
   - 시트 수, 제목, 작성자, `대분류` 기준 영역 탐색은 구현됐다.
@@ -449,7 +449,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 바닥글 기관명 오류: `시험계획서 바닥글에 '소프트웨어시험인증연구소'라는 단어가 잘못 작성됨`
   - 세부사양 비교 오류: `시험환경 세부사양 표가 결과서와 다름`
 - 저장 산출물: `.pdf` 1페이지 캡처 이미지
-- `ecmlist.db` write-back 컬럼: `시험계획서(PDF)`
+- 산출물 결과 키: `시험계획서(PDF)`
 - 구현 메모:
   - 첫 번째 표의 좌표는 사람이 보는 기준인 1행 1열부터 계산한다.
   - 담당자 expected 값은 센터별 매핑을 우선 사용한다. 현재 기준은 분당 `임우섭`, 상암 `김진영`, 영남 `이재훈`, 기본 `김진영`이다.
@@ -482,7 +482,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 이미지 개수 부족: `제품 스크린샷 이미지가 부족함`
   - 날짜 범위 오류: `시험기간은 {시작일}~{종료일}인데 수정일자가 {범위밖수정일자목록}인 이미지가 {개수}개 존재함`
 - 저장 산출물: 날짜 범위 밖 이미지 목록과 후보 폴더 경로를 `raw_detail_json`에 저장
-- `ecmlist.db` write-back 컬럼: `최초/최종형상RawData`
+- 산출물 결과 키: `최초/최종형상RawData`
 - 구현 메모:
   - zip entry 수정일자는 zip 파일 내부 메타데이터를 사용한다.
   - 다운로드 폴더를 직접 검사하는 경우에는 파일 시스템 수정일자를 사용한다.
@@ -520,7 +520,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 바닥글 기관명 오류: `테스트케이스 바닥글에 '소프트웨어시험인증연구소'라는 단어가 잘못 작성됨`
   - 바닥글 TTA 누락: `바닥글에 TTA가 누락됨`
 - 저장 산출물: `상세 테스트 결과` 열의 `F` 개수와 해당 행 정보를 `raw_detail_json`에 저장
-- `ecmlist.db` write-back 컬럼: `테스트케이스`
+- 산출물 결과 키: `테스트케이스`
 - 구현 메모:
   - 작성자/검토자는 정확 비교가 아니라 포함 여부로 판정한다.
   - 검토자 expected 값은 센터별 매핑을 우선 사용한다. 현재 기준은 분당 `임우섭`, 상암 `김진영`, 영남 `이재훈`, 기본 `김진영`이다.
@@ -572,7 +572,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 파일별 시트 검사 결과
   - 시험환경 비교값
   - `{잔여결함수}`, `{H}`, `{R}` 산출 근거 셀 위치
-- `ecmlist.db` write-back 컬럼: `결함리포트`
+- 산출물 결과 키: `결함리포트`
 - 구현 메모:
   - `{결함차수}`, `{1차}`, `{2차}` 등 보고일자 변수는 13번 시험성적서 규칙에서 산출한다.
   - 13번 시험성적서 실제 규칙의 `sort_order`는 95로 고정되어, 10번 결함리포트 실제 규칙이 구현될 때 기본 `sort_order=100`보다 먼저 실행된다.
@@ -631,7 +631,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 신뢰성 시트의 `{WD}`, `{H}`, `{R}` 실제/기대값
   - `.pdf` 1페이지 캡처 이미지
   - `{측정항목별점수표}` 산출값
-- `ecmlist.db` write-back 컬럼: `점검표(PDF)`
+- 산출물 결과 키: `점검표(PDF)`
 - 구현 메모:
   - 기존 DB 컬럼명이 `점검표(PDF)`이므로 Excel 파일 검사라도 해당 컬럼에 write-back한다.
   - 표지 검토자 expected 값은 센터별 매핑을 우선 사용한다. 현재 기준은 분당 `임우섭`, 상암 `김진영`, 영남 `이재훈`, 기본 `김진영`이다.
@@ -665,7 +665,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 보안 폴더 구조 오류: `보안성 rawdata 확인 불가`
   - 성능 폴더 구조 오류: `성능 rawdata 확인 불가`
 - 저장 산출물: 탐색된 rawdata 폴더 경로와 각 하위 폴더 항목 개수
-- `ecmlist.db` write-back 컬럼: `1차/2차/성능/보안RawData`
+- 산출물 결과 키: `1차/2차/성능/보안RawData`
 - 구현 메모: rawdata zip만 다운로드된 경우에도 이 규칙은 실행된다. `raw_data.zip`, `raw-data.zip`, 중첩 zip도 rawdata 후보로 인식한다.
 
 ## 13. 시험성적서
@@ -687,7 +687,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
 - 변수 사용 목록: `{프로젝트번호}`, `{결함차수}`, `{1차}`, `{2차}`, `{3차}`, `{4차}`
 - 실패 메시지: 파일이 없다는 메시지 표시
 - 저장 산출물: `.pdf` 1페이지 캡처 이미지
-- `ecmlist.db` write-back 컬럼: `시험성적서(PDF)`
+- 산출물 결과 키: `시험성적서(PDF)`
 - 구현 메모:
   - `결함리포트 송부` 표에서 산출한 `{결함차수}`, `{1차}`, `{2차}` 등은 10번 결함리포트 파일 개수/보고일자 검사에 사용한다.
   - `결함리포트 송부` 단어가 포함된 표 전체 텍스트에서 `N차: yyyy.mm.dd` 형식의 날짜를 추출한다.
@@ -710,7 +710,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 파일 누락: `시험기록서 파일을 찾을 수 없습니다`
   - 확장자 오류: `시험기록서 파일이 pdf가 아닙니다`
 - 저장 산출물: PDF 1페이지 캡처 이미지
-- `ecmlist.db` write-back 컬럼: `시험기록서`
+- 산출물 결과 키: `시험기록서`
 - 구현 메모:
   - 내용 검사 없이 존재 여부만 판정하는 수동 검토 대상이다.
   - `downloadable_artifact_check`는 기본적으로 PDF 원본 다운로드를 제공할 수 있지만, 14번은 `artifact_first_page=True` 설정으로 1페이지 캡처 이미지를 제공한다.
@@ -753,9 +753,9 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 프로젝트번호 검색 위치/개수
   - 날짜 비교 실제/기대값
   - 품질부특성 측정값 비교 결과, 총 비교 개수, 불일치 개수
-- `ecmlist.db` write-back 컬럼: `품질평가보고서`
+- 산출물 결과 키: `품질평가보고서`
 - 구현 메모:
-  - `{신청일}`은 Google Sheet H열, `{계약일}`은 Google Sheet I열, `{인증위}`는 `ecmlist.db.인증일자`에서 가져온다.
+  - `{신청일}`은 `reference_project.request_date`, `{계약일}`은 `reference_project.contract_date`, `{인증위}`는 `reference_project.cert_date` 또는 `cert_committee_date`에서 가져온다.
   - `{품질부특성측정값}`은 16번 품질검사표 규칙 산출값과 연결한다.
   - `김성희`, `정성룡`은 향후 변경 가능성이 있으면 규칙 JSON expected 값으로 둔다.
   - 16번 품질검사표 실제 규칙의 `sort_order`는 145로 고정되어, 15번 품질평가보고서의 기본 `sort_order=150`보다 먼저 실행된다.
@@ -784,7 +784,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
 - 저장 산출물:
   - D4~D87 비교 실제/기대값
   - `{품질부특성측정값}` 산출값과 원본/재정렬 순서
-- `ecmlist.db` write-back 컬럼: `품질검사표`
+- 산출물 결과 키: `품질검사표`
 - 구현 메모:
   - `{측정항목별점수표}`는 11번 점검표 규칙에서 산출한다.
   - `{품질부특성측정값}`은 E4:E85에서 실제 값 33개를 추출한 뒤 27번째 값을 제외하고 `4~26, 28~33, 1~3` 순서로 재정렬해 저장한다.
@@ -805,7 +805,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 파일 누락: `저작권확인서 파일을 찾을 수 없습니다`
   - 확장자 오류: `저작권확인서 파일이 pdf가 아닙니다`
 - 저장 산출물: 매칭된 PDF 파일명/경로
-- `ecmlist.db` write-back 컬럼: `SW저작권확인서`
+- 산출물 결과 키: `SW저작권확인서`
 - 구현 메모: 파일명에 `{프로젝트번호}` 포함 여부는 요구하지 않는다.
 
 ## 18. 홍보이미지
@@ -823,7 +823,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 파일 누락: `홍보이미지 파일을 찾을 수 없습니다`
   - 파일명 금지어 오류: `홍보이미지 파일명에 '예시'가 포함되어 있습니다.`
 - 저장 산출물: 매칭된 파일명/경로
-- `ecmlist.db` write-back 컬럼: `홍보이미지`
+- 산출물 결과 키: `홍보이미지`
 - 구현 메모: 파일명에 `예시`가 포함되면 실패한다. 현재 seed는 확장자를 제한하지 않는다.
 
 ## 연결 예정 항목
@@ -834,7 +834,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
 | 10번 결함리포트 파일 개수/보고일자 검사 | 구현됨 | 13번 시험성적서에서 `{결함차수}`, `{1차}`, `{2차}` 등 차수별 보고일자를 산출하고, 10번 결함리포트가 해당 값을 읽어 파일 개수/버전/보고일자를 검사한다. |
 | 9번 테스트케이스 잔여 결함 개수 비교 | 구현됨 | 10번 결함리포트 규칙에서 산출한 `{잔여결함수}`를 9번 테스트케이스가 읽어 `상세 테스트 결과` 열의 `F` 개수와 비교한다. |
 | 11번 점검표 신뢰성 결함 개수 비교 | 구현됨 | 10번 결함리포트 규칙에서 산출한 `{H}`, `{R}`을 11번 점검표가 읽어 연결한다. |
-| Google Sheet H/I열 동기화 | 구현됨 | `sync_sheets.py`가 H열을 `{신청일}`, I열을 `{계약일}`로 `ecmlist.db`/`ecmlist2.db`에 저장한다. |
+| Google Sheet H/I열 동기화 | 구현됨 | `sync_reference_projects_from_sheet`가 H열을 `{신청일}`, I열을 `{계약일}`로 `reference_project`에 저장한다. |
 | 15번 품질평가보고서 품질부특성 측정값 비교 | 구현됨 | 16번 품질검사표에서 산출한 `{품질부특성측정값}`을 15번 품질평가보고서가 읽어 연결한다. |
 | 16번 품질검사표 측정항목별 점수표 비교 | 구현됨 | 11번 점검표에서 산출한 `{측정항목별점수표}`를 16번 품질검사표가 읽어 D4~D87과 비교한다. |
 | PDF/Excel 캡처 조회 | 구현됨 | PDF 1페이지 PNG와 Excel 영역 표 이미지 저장/조회 API가 구현됨. |
@@ -869,7 +869,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
 2. 확정된 조건을 이 문서에 먼저 추가한다.
 3. 구현 전 상태는 `정의 확정` 또는 `정의 중`으로 둔다.
 4. 코드와 seed에 반영한 뒤 상태를 `구현됨`으로 변경한다.
-5. 규칙 결과가 `ecmlist.db`의 어느 컬럼에 write-back되는지 반드시 적는다.
+5. 규칙 결과가 `reference_project.artifact_results_json`과 레거시 `ecm_list` 호환 경로에서 어떤 산출물 키로 저장되는지 반드시 적는다.
 6. 다음 PC에서 이어서 작업할 수 있도록 `main/docs/00_next_step.md`에는 바로 다음 작업만 요약한다.
 
 ## 검증 명령
@@ -889,5 +889,5 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
 문서 핵심 항목 확인:
 
 ```powershell
-rg "상태:|기능리스트|시험계획서|Copyright \{연도\} TTA|\{시작일\}|\{버전\}" main/docs/19_inspection_rule_manual.md
+rg "상태:|기능리스트|시험계획서|Copyright \{연도\} TTA|\{시작일\}|\{버전\}" main/docs/03_inspection_rule_manual.md
 ```

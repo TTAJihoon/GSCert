@@ -5,7 +5,7 @@ Destiny ECM 산출물 다운로드를 **Playwright + 네이티브 클라이언�
 
 - 근거 문서: `ECM-API-SHARE.md`(Destiny ECM 직접 연동 구현 가이드, 서버측 파이썬 `requests` 구현).
 - 갈아끼우는 자리: `main/views/review/artifact_source.py` 의 새 `ArtifactSource` 구현
-  (`HttpEcmArtifactSource`). 심(seam) 위쪽(워커·검증·점검·상태전이)은 불변. 상세: `33_artifact_source_boundary.md`.
+  (`HttpEcmArtifactSource`). 심(seam) 위쪽(워커·검증·점검·상태전이)은 불변. 상세: `11_artifact_source_boundary.md`.
 - 상태 범례: ✅확정 / 🔶전제 확인중 / ❓미결(추가 답변 필요) / ⏸보류.
 
 ---
@@ -135,7 +135,7 @@ AGENT_DOWNLOAD_BASE_DIR/
    (`HttpEcmArtifactSourceTests`, `EcmHttpClientPureFunctionTests`).
 6. [x] 실서버 통합 검증 명령(12b: 사용자 PC 실행용) `manage.py verify_ecm_http` 제공
    (로그인→탐색→개수, `--download` 시 무결성까지).
-7. [x] `33_artifact_source_boundary.md`·settings 주석·`env.ps1.example` 문서화, 이 문서 상태 갱신.
+7. [x] `11_artifact_source_boundary.md`·settings 주석·`env.ps1.example` 문서화, 이 문서 상태 갱신.
 
 **실측 결과(2026-07-07, 분당 210.104.181.10):**
 - ✅ `verify_ecm_http --center bundang --test-no GS-A-23-0336 --download` 통과.
@@ -223,5 +223,5 @@ $env:ECM_USERNAME_BUNDANG = "..."; $env:ECM_PASSWORD_BUNDANG = "..."
 **3) 착수 파일 지도:**
 - 설정: `main/views/review/ecm_download_review_centers.py`(센터 dict에 root_oid·계정키), `myproject/settings.py`·`ui_mock_settings.py`·`env.ps1.example`.
 - 신규: `main/views/review/ecm_http_client.py`(DestinyECM 이식), `HttpEcmArtifactSource`(=`main/views/review/artifact_source.py`), 팩토리 `ecm-http` 분기.
-- 재현 레이아웃 규격: 이 문서 "결정 6" 참조. 진입점 계약: `33_artifact_source_boundary.md`.
+- 재현 레이아웃 규격: 이 문서 "결정 6" 참조. 진입점 계약: `11_artifact_source_boundary.md`.
 - 테스트: `main/tests.py`(mock 세션, 네트워크 없음). 의존성: `requirements-automation.txt`에 `requests`.

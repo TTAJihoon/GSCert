@@ -45,7 +45,7 @@ class ArtifactSource(Protocol):
   `open`=lazy 로그인(job 내 센터별 세션 재사용), `fetch`=프로젝트 폴더 탐색→재귀 순회→
   `AGENT_DOWNLOAD_BASE_DIR/<NFC 프로젝트번호>/<NFC 상대경로>/` 에 다운로드(NFC + 무결성 검증).
   Playwright/pywinauto/에이전트 락 **불필요**. HTTP 클라이언트는 `ecm_http_client.DestinyECM`.
-  설계·결정: `34_http_ecm_source_decisions.md`.
+  설계·결정: `12_http_ecm_source_decisions.md`.
 - `LocalFolderArtifactSource`(`local`): `source_root/<프로젝트번호>` → 다운로드 폴더로 복사.
   다른 저장소 연결 첫 구현이자 fake-live 더블.
 - `build_artifact_source(name, *, headless, source_root)`: 이름으로 구현체 생성

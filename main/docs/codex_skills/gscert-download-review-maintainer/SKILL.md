@@ -1,6 +1,6 @@
 ---
 name: gscert-download-review-maintainer
-description: Maintain and continue the GSCert download-review feature. Use when working on the GSCert repository's `/download-review/` UI, APIs, workflow.db/ecmlist.db integration, ECM Playwright/Windows-agent automation, worker process, operational scripts, documentation handoff files, or when deciding what remains before implementing real inspection rules.
+description: Maintain and continue the GSCert download-review feature. Use when working on the GSCert repository's `/download-review/` UI, APIs, reference PostgreSQL/workflow.db integration, ECM HTTP/Playwright artifact sources, worker process, operational scripts, documentation handoff files, or inspection rules.
 ---
 
 # GSCert Download Review Maintainer
@@ -12,7 +12,7 @@ Use this skill only inside the GSCert repository, especially on the `codex-job-r
 Start by reading:
 
 1. `main/docs/00_next_step.md`
-2. `main/docs/15_open_decisions.md`
+2. `main/docs/02_open_decisions.md`
 3. The specific reference in this skill that matches the task.
 
 Treat `main/docs/00_next_step.md` as the current handoff, not as a history log. Keep it focused on the latest completed work and immediate next steps.
@@ -22,15 +22,16 @@ Treat `main/docs/00_next_step.md` as the current handoff, not as a history log. 
 - For system shape, DB split, center behavior, APIs, and key files: read `references/architecture.md`.
 - For worker, live ECM automation, server restart, validation commands, and git/doc expectations: read `references/operations.md`.
 - For ECM tree navigation prompts, folder-path resolution, and document-list checkbox selection: read `references/ecm_navigation.md`.
-- For draft rules, real rule transition, rule result storage, and ecmlist write-back expectations: read `references/rules.md`.
+- For rule storage, real rule execution, result storage, and artifact result write-back expectations: read `references/rules.md`.
 
 ## Core Rules
 
 - Keep numbered design documents under `main/docs/`, not the repository root.
 - Keep folder `readme.md` files as directory/file guides, not design-history logs.
 - Preserve the current split:
-  - `ecmlist.db` and `ecmlist2.db`: latest project list and latest review summary.
-  - `workflow.db`: job history, project history, logs, inspection rules, and all rule results.
+  - `reference` PostgreSQL: shared project list, PL mapping, certification history, and `inspection_rule`.
+  - `workflow.db`: local job history, project processing state, rule results, logs, and locks.
+  - legacy `ecmlist*.db`: compatibility path only when PostgreSQL project source is disabled.
 - Keep `GET` for reads and `POST` for state changes.
 - Do not expose server absolute paths, screenshots paths, or stack traces in user-facing API/UI responses.
 - Restart the local server after UI changes so the user can verify in the browser.
@@ -59,7 +60,8 @@ For UI changes, restart the server and verify `/download-review/`.
 
 - The active worker/current job view is global to the server, not center-specific.
 - Center tabs affect project list and job list filtering.
-- Sangam uses `main/data/ecmlist.db`; Yeongnam uses `main/data/ecmlist2.db`.
+- 194 is the main download-review server and handles bundang/sangam/yeongnam through `ecm-http`.
+- 241 is not a download-review worker target; it should route download-review traffic back to 194.
+- Project/rule data should come from shared PostgreSQL `reference` in normal operation.
 - Test-only start window is currently allowed all day. Restore operation to `20:00-07:00` when live testing ends.
 - Draft rules remain as test scaffolding until matching real rules are implemented.
-

@@ -6,33 +6,35 @@
 - UI script: `main/static/scripts/review/ecm_download_review.js`
 - UI style: `main/static/css/review/ecm_download_review.css`
 - API wrappers: `main/views/review/ecm_download_review_api.py`
-- Job logic: `main/views/review/ecm_download_review_jobs.py`
+- Job logic and serializers: `main/views/review/ecm_download_review_jobs.py`
 - Center definitions: `main/views/review/ecm_download_review_centers.py`
 - Reference DB access/write-back: `main/views/review/ecm_reference_db.py`
 - Worker: `main/views/review/ecm_download_review_worker.py`
-- ECM automation: `main/views/review/ecm_download.py`
-- Windows popup automation: `main/views/review/ecm_agent_popup.py`
-- Download verification: `main/views/review/ecm_download_verify.py`
+- Artifact source boundary: `main/views/review/artifact_source.py`
+- HTTP ECM client: `main/views/review/ecm_http_client.py`
+- Legacy Playwright ECM automation: `main/views/review/ecm_download.py`
+- Legacy Windows popup automation: `main/views/review/ecm_agent_popup.py`
 - Inspection execution: `main/views/review/ecm_download_review_inspection.py`
+- Shared result display: `gscert_review_core/result_display.py`
 
 ## DB Split
 
-- `main/data/ecmlist.db`: Sangam project list and latest review summary.
-- `main/data/ecmlist2.db`: Yeongnam project list and latest review summary.
-- `main/data/workflow.db`: job/project/rule/result/log/lock history.
+- `reference` PostgreSQL: shared project list, PL mapping, certification history, and `inspection_rule`.
+- `workflow` SQLite (`main/data/workflow.db`): server-local jobs, project processing state, `inspection_result`, logs, and locks.
+- `default` SQLite (`db.sqlite3`): Django default tables and legacy `Job`.
+- legacy `ecmlist*.db`: compatibility path when `DOWNLOAD_REVIEW_PROJECT_SOURCE` is not `postgres`.
 
-`ecmlist*.db` is the latest dashboard source. `workflow.db` is the durable evidence source.
+`inspection_rule` and `inspection_result` live in different DBs, so results identify rules with denormalized `rule_code` and `rule_name`.
 
 ## Center Behavior
 
-- UI center tabs: `sangam`, `yeongnam`.
-- Center tabs filter:
-  - `GET /api/projects/?center=sangam|yeongnam`
-  - `GET /api/jobs/?center=sangam|yeongnam`
-- Center tabs do not filter:
-  - `GET /api/jobs/active/`
-
-The worker and current job are global because the server and ECM automation resource are shared.
+- 194 is the main download-review server.
+- 194 handles `bundang`, `sangam`, and `yeongnam` through `ecm-http`.
+- 241 is not a download-review processing target; route download-review traffic back to 194.
+- Center tabs still filter project/job lists by center code:
+  - `GET /api/projects/?center=bundang|sangam|yeongnam`
+  - `GET /api/jobs/?center=bundang|sangam|yeongnam`
+- Active/current job view is global to the server.
 
 ## API Contract
 
@@ -40,10 +42,16 @@ The worker and current job are global because the server and ECM automation reso
 - State changes use `POST`.
 - Responses are JSON.
 - Responses set `Cache-Control: no-store`.
-- `POST /api/jobs/` validates selected project numbers against the selected center DB.
+- `POST /api/jobs/` validates selected project numbers against the selected center.
 - Active/queued/scheduled duplicate projects are rejected per center.
 - Completed projects are rejected as invalid/bug-bypass requests.
 - Job queue limit is 5 active jobs.
+
+## Result Display Contract
+
+- Web and Windows app result tables should use `gscert_review_core/result_display.py`.
+- Results should expose user-friendly `expected`, `actual`, and `message` values.
+- Internal evidence stays in `raw_detail_json` or admin logs.
 
 ## User-Facing Data Boundaries
 
@@ -62,4 +70,3 @@ Do not show:
 - screenshot path
 - internal stack trace
 - admin-only raw details
-

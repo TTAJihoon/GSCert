@@ -10,11 +10,15 @@ This skill guides Codex or another development agent while editing or testing th
 
 Primary files to inspect before changing behavior:
 
-- `main/views/review/ecm_download.py`
+- `main/views/review/ecm_http_client.py`
+- `main/views/review/artifact_source.py`
+- `main/views/review/ecm_download.py` (legacy Playwright fallback)
 - `main/views/review/ecm_selectors.py`
 - `main/views/review/ecm_agent_popup.py`
 - `main/views/review/ecm_download_review_worker.py`
-- `main/docs/03_webpage1_automation.md`
+- `main/docs/11_artifact_source_boundary.md`
+- `main/docs/12_http_ecm_source_decisions.md`
+- `main/docs/archive/2026-07-doc-cleanup/03_webpage1_automation.md` (legacy selector notes)
 
 ## Known Tree Shape
 
@@ -118,7 +122,7 @@ DocumentSelectionSpec(
 )
 ```
 
-When changing document selection behavior, add or update tests where possible and update `main/docs/03_webpage1_automation.md`.
+When changing document selection behavior, add or update tests where possible and update `main/docs/11_artifact_source_boundary.md` or `main/docs/12_http_ecm_source_decisions.md`. If the change is only for the legacy Playwright path, note it in `main/docs/archive/2026-07-doc-cleanup/03_webpage1_automation.md`.
 
 ## Safety Rules
 
@@ -136,4 +140,3 @@ Ask only if the prompt cannot be safely mapped:
 - Exact folder name or contains-match keyword?
 - Select all document-list rows, first row only, or file-name/extension filter?
 - Should this be a one-off live test or a reusable code path?
-

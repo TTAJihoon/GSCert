@@ -7,23 +7,23 @@ PostgreSQL에 직접 접속해서 `SELECT` 쿼리를 실행하는 대신, 아래
 기본 서버 주소 예시:
 
 ```text
-http://210.96.71.241:8000
+http://210.96.71.194:8000
 ```
 
-실제 운영 포트가 다르면 서버 배포 포트에 맞춰 바꾼다.
+194 서버가 download-review와 로컬 앱 API의 기준 진입점이다. 실제 운영 포트나 HTTPS 배포가 다르면 서버 배포 주소에 맞춰 바꾼다.
 
 | 목적 | API 주소 | 주요 파라미터 | 호출 예시 |
 | --- | --- | --- | --- |
-| 서버 연결 확인 | `GET /api/local-review/health/` | 없음 | `Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/health/" -Method Get` |
-| 프로젝트 1건 기준정보 조회 | `GET /api/local-review/projects/{project_number}/metadata/` | `center`: `sangam` 또는 `yeongnam` | `Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/projects/TTA-26-00727/metadata/?center=sangam" -Method Get` |
-| 프로젝트 목록 조회 | `GET /api/projects/` | `center`, `limit`, `offset`, `sort` | `Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&limit=100&offset=0&sort=cert_date_desc" -Method Get` |
-| 프로젝트 검색 | `GET /api/projects/` | `q`, `project_number`, `company`, `product`, `pl` | `Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&q=TTA-26-00727" -Method Get` |
-| 점검결과별 조회 | `GET /api/projects/` | `review`: `완료`, `실패`, `보류`, `미점검` | `Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&review=실패" -Method Get` |
+| 서버 연결 확인 | `GET /api/local-review/health/` | 없음 | `Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/local-review/health/" -Method Get` |
+| 프로젝트 1건 기준정보 조회 | `GET /api/local-review/projects/{project_number}/metadata/` | `center`: `bundang`, `sangam`, `yeongnam` | `Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/local-review/projects/TTA-26-00727/metadata/?center=sangam" -Method Get` |
+| 프로젝트 목록 조회 | `GET /api/projects/` | `center`, `limit`, `offset`, `sort` | `Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/projects/?center=sangam&limit=100&offset=0&sort=cert_date_desc" -Method Get` |
+| 프로젝트 검색 | `GET /api/projects/` | `q`, `project_number`, `company`, `product`, `pl` | `Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/projects/?center=sangam&q=TTA-26-00727" -Method Get` |
+| 점검결과별 조회 | `GET /api/projects/` | `review`: `완료`, `실패`, `보류`, `미점검` | `Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/projects/?center=sangam&review=실패" -Method Get` |
 
 가장 자주 쓰는 조회는 프로젝트 1건 기준정보 조회다.
 
 ```powershell
-$response = Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/projects/TTA-26-00727/metadata/?center=sangam" -Method Get
+$response = Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/local-review/projects/TTA-26-00727/metadata/?center=sangam" -Method Get
 $response.project
 ```
 
@@ -44,7 +44,7 @@ $response.project
 목록 조회 결과는 `items`에 들어 있다.
 
 ```powershell
-$response = Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&limit=100" -Method Get
+$response = Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/projects/?center=sangam&limit=100" -Method Get
 $response.items
 ```
 
@@ -54,7 +54,7 @@ $response.items
 
 | 파라미터 | 설명 | 예시 |
 | --- | --- | --- |
-| `center` | 센터 구분 | `sangam`, `yeongnam` |
+| `center` | 센터 구분 | `bundang`, `sangam`, `yeongnam` |
 | `project_number` | 프로젝트 번호 검색 | `TTA-26-00727` |
 | `company` | 회사명 일부 검색 | `테스트회사` |
 | `product` | 제품명 일부 검색 | `제품명` |
@@ -143,7 +143,7 @@ SELECT 1;
 API로는 다음처럼 호출한다.
 
 ```powershell
-Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/health/" -Method Get
+Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/local-review/health/" -Method Get
 ```
 
 정상 응답 예시는 다음과 같다.
@@ -179,7 +179,7 @@ WHERE 프로젝트번호 = 'TTA-26-00727'
 API로는 다음처럼 호출한다.
 
 ```powershell
-Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/projects/TTA-26-00727/metadata/?center=sangam" -Method Get
+Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/local-review/projects/TTA-26-00727/metadata/?center=sangam" -Method Get
 ```
 
 응답에서 SQL 컬럼에 대응되는 JSON 필드는 다음과 같다.
@@ -199,7 +199,7 @@ Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/projects/TTA-
 PowerShell에서 필요한 값만 꺼내려면 다음처럼 사용할 수 있다.
 
 ```powershell
-$response = Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/projects/TTA-26-00727/metadata/?center=sangam" -Method Get
+$response = Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/local-review/projects/TTA-26-00727/metadata/?center=sangam" -Method Get
 $response.project.project_number
 $response.project.company_name
 $response.project.product_name
@@ -230,13 +230,13 @@ OFFSET 0;
 API로는 다음처럼 호출한다.
 
 ```powershell
-Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&limit=100&offset=0&sort=cert_date_desc" -Method Get
+Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/projects/?center=sangam&limit=100&offset=0&sort=cert_date_desc" -Method Get
 ```
 
 응답의 `items` 배열이 SQL 결과 rows에 해당한다.
 
 ```powershell
-$response = Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&limit=100&offset=0&sort=cert_date_desc" -Method Get
+$response = Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/projects/?center=sangam&limit=100&offset=0&sort=cert_date_desc" -Method Get
 $response.items | Select-Object project_number, company, product, pl, wd, cert_date, review
 ```
 
@@ -257,19 +257,19 @@ ORDER BY 인증일자 DESC;
 API 예시는 다음과 같다.
 
 ```powershell
-Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&company=테스트회사&sort=cert_date_desc" -Method Get
+Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/projects/?center=sangam&company=테스트회사&sort=cert_date_desc" -Method Get
 ```
 
 제품명 검색은 다음과 같다.
 
 ```powershell
-Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&product=제품명일부" -Method Get
+Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/projects/?center=sangam&product=제품명일부" -Method Get
 ```
 
 통합 검색은 `q` 파라미터를 사용한다.
 
 ```powershell
-Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&q=TTA-26-00727" -Method Get
+Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/projects/?center=sangam&q=TTA-26-00727" -Method Get
 ```
 
 ### 5. 점검결과 기준 조회
@@ -286,13 +286,13 @@ WHERE center = 'sangam'
 API로는 다음처럼 호출한다.
 
 ```powershell
-Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&review=실패" -Method Get
+Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/projects/?center=sangam&review=실패" -Method Get
 ```
 
 완료 항목을 조회하려면 다음처럼 호출한다.
 
 ```powershell
-Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/projects/?center=sangam&review=완료" -Method Get
+Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/projects/?center=sangam&review=완료" -Method Get
 ```
 
 ### 6. Python에서 SELECT 대신 API 사용
@@ -312,7 +312,7 @@ API 방식에서는 다음처럼 작성한다.
 ```python
 import requests
 
-base_url = "http://210.96.71.241:8000"
+base_url = "http://210.96.71.194:8000"
 project_number = "TTA-26-00727"
 response = requests.get(
     f"{base_url}/api/local-review/projects/{project_number}/metadata/",
@@ -401,10 +401,10 @@ myproject/postgres_settings.py
 
 외부 PC에서는 PostgreSQL에 직접 접속하지 않고 API를 호출한다.
 
-서버 주소가 `http://210.96.71.241:8000`이라고 가정하면 health API는 다음과 같이 확인한다.
+서버 주소가 `http://210.96.71.194:8000`이라고 가정하면 health API는 다음과 같이 확인한다.
 
 ```powershell
-Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/health/" -Method Get
+Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/local-review/health/" -Method Get
 ```
 
 정상 응답 예시는 다음과 같다.
@@ -420,7 +420,7 @@ Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/health/" -Met
 프로젝트 기준정보 조회 예시는 다음과 같다.
 
 ```powershell
-Invoke-RestMethod -Uri "http://210.96.71.241:8000/api/local-review/projects/TTA-26-00727/metadata/?center=sangam" -Method Get
+Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/local-review/projects/TTA-26-00727/metadata/?center=sangam" -Method Get
 ```
 
 응답 주요 필드는 다음과 같다.

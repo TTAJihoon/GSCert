@@ -2,50 +2,45 @@
 
 ## 역할
 
-이 폴더는 GSCert download-review 기능의 설계, 운영, 개발, 인수인계 문서를 보관한다.
+이 폴더는 GSCert download-review 기능의 최신 인수인계, 운영, 개발, 점검규칙 문서를 보관한다.
 
-처음 보는 사람은 개별 설계 문서를 바로 열기보다 `18_manual_index.md`부터 읽는 것이 좋다. 이 문서는 어떤 상황에서 어떤 문서를 봐야 하는지 안내하는 목차 역할을 한다.
+처음 보는 사람은 개별 설계 문서를 바로 열지 말고 `01_manual_index.md`를 먼저 본다. `00_next_step.md`는 현재 상태와 바로 다음 작업만 담는 짧은 인수인계 문서로 유지한다.
 
-## 문서 구분
+## 현재 사용하는 문서
 
 | 구분 | 문서 | 용도 |
 | --- | --- | --- |
-| 빠른 인수인계 | `00_next_step.md` | 현재 브랜치, 최근 변경, 바로 다음 작업 |
-| 사용자 친화 목차 | `18_manual_index.md` | 운영자/개발자/규칙 수정자가 어디부터 봐야 하는지 안내 |
-| 점검규칙 매뉴얼 | `19_inspection_rule_manual.md` | `inspection_rule.config_json` 구조와 수정 방법 |
-| 운영 매뉴얼 | `20_download_review_operations_manual.md` | 서버, worker, DB 동기화, rule seed, 검증 절차 |
-| 개발 변경 매뉴얼 | `21_developer_change_manual.md` | 변경 유형별 수정 위치와 검증 체크리스트 |
-| 설계 원문 | `01_*.md` ~ `17_*.md` | 세부 설계, 결정 기록, 과거 진행 내역 |
-| 폴더 안내 | 각 폴더의 `readme.md` | 해당 폴더 안의 파일 역할 |
+| 빠른 인수인계 | `00_next_step.md` | 현재 브랜치, 최신 상태, 바로 다음 작업 |
+| 전체 목차 | `01_manual_index.md` | 상황별로 어느 문서를 볼지 안내 |
+| 남은 결정 | `02_open_decisions.md` | 아직 확정/검증이 필요한 항목 |
+| 점검규칙 | `03_inspection_rule_manual.md` | 1~18번 점검규칙의 단일 기준 문서 |
+| 운영 | `04_download_review_operations_manual.md` | 서버, worker, ECM HTTP, 검증 명령 |
+| 개발 | `05_developer_change_manual.md` | 변경 유형별 수정 위치와 검증 체크리스트 |
+| PostgreSQL/API | `06_postgresql_api_access_manual.md` | 기준정보/프로젝트 조회 API 사용법 |
+| Windows 앱 | `07_local_windows_app_test_manual.md` | 로컬 점검 앱 실행, 테스트, 패키징 |
+| 규칙 공유 구조 | `08_rulebase_shared_architecture.md` | 웹/Windows 앱의 공용 규칙 엔진 구조 |
+| 규칙 DB 수정 | `09_rule_db_edit_quick_guide.md` | `inspection_rule` 수정 절차 |
+| 기준 프로젝트 동기화 | `10_reference_project_sheet_sync.md` | Google Sheet -> `reference_project` 적재 |
+| 산출물 source 경계 | `11_artifact_source_boundary.md` | ECM/로컬/다른 저장소 source 추가 기준 |
+| ECM HTTP 결정 | `12_http_ecm_source_decisions.md` | Playwright -> HTTP 직접연동 ADR |
+| DB 스키마 | `13_db_schema.md` | `default`/`workflow`/`reference` DB와 테이블 구조 |
 | Codex skill | `codex_skills/` | 다른 PC에서 이어받을 때 설치할 유지보수 skill 원본 |
 
-## 주요 설계 문서
+## 보관 문서
 
-| 문서 | 역할 |
-| --- | --- |
-| `01_automation_flow.md` | 전체 자동화 흐름 |
-| `02_database_design.md` | `ecmlist.db`, `ecmlist2.db`, `workflow.db` 구조 |
-| `03_webpage1_automation.md` | ECM 웹 페이지 탐색 자동화 |
-| `04_agent_download.md` | Windows agent 다운로드 팝업/폴더 선택 |
-| `05_zip_inspection.md` | 다운로드 산출물 점검 규칙 설계 원문 |
-| `06_recovery_and_lock.md` | lock, heartbeat, 실패 복구 |
-| `07_skill_strategy.md` | Codex skill 운영 전략 |
-| `08_ui_api_design.md` | `/download-review/` UI/API 계약 |
-| `09_worker_process_design.md` | worker 처리 구조 |
-| `10_operations_scripts.md` | 운영 PowerShell 스크립트 |
-| `11_readme_policy.md` | readme 유지 정책 |
-| `12_implementation_roadmap.md` | 단계별 구현 로드맵과 진행 상태 |
-| `13_ui_mockup_design.md` | UI 목업 설계 |
-| `14_dependency_management.md` | 의존성 관리 |
-| `15_open_decisions.md` | 남은 결정 사항 |
-| `16_backend_foundation_progress.md` | 백엔드 기반 작업 이력 |
-| `16_download_review_backend_decisions.md` | 백엔드 결정 로그 |
-| `17_llm_review_interface.md` | LLM 기반 점검 인터페이스 |
+과거 설계 원문, 진행 로그, 중복된 설계 초안은 삭제하지 않고 아래로 이동했다.
+
+```text
+main/docs/archive/2026-07-doc-cleanup/
+```
+
+보관 문서의 전체 목록과 대체해서 볼 최신 문서는 `archive/2026-07-doc-cleanup/readme.md`에 정리한다.
 
 ## 관리 기준
 
-- `00_next_step.md`는 긴 설계 문서가 아니라, 바로 이어받기 위한 최신 상태만 남긴다.
-- 새로 기능을 바꾸면 관련 설계 문서와 `18_manual_index.md`의 연결 정보가 맞는지 확인한다.
-- 점검규칙 JSON을 바꾸거나 rule type을 추가하면 `19_inspection_rule_manual.md`를 먼저 갱신한다.
-- 운영 절차, 명령어, DB 동기화 방식이 바뀌면 `20_download_review_operations_manual.md`를 갱신한다.
-- 코드 위치나 검증 절차가 바뀌면 `21_developer_change_manual.md`를 갱신한다.
+- `00_next_step.md`는 누적 이력이 아니라 최신 인수인계만 남긴다.
+- 점검규칙을 바꾸면 `03_inspection_rule_manual.md`와 `09_rule_db_edit_quick_guide.md`를 확인한다.
+- 운영 절차, 환경변수, worker 실행 방식이 바뀌면 `04_download_review_operations_manual.md`를 갱신한다.
+- 코드 위치나 검증 절차가 바뀌면 `05_developer_change_manual.md`를 갱신한다.
+- DB 구조가 바뀌면 `13_db_schema.md`를 갱신한다.
+- 오래된 설계 문서는 루트로 되돌리기보다 archive 문서에서 최신 문서로 연결한다.

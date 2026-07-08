@@ -95,7 +95,7 @@ PL(프로젝트 리더) 이름을 센터에 매핑한다. `sync_reference_projec
 | `sw_category`/`product_desc`/`total_wd`/`renewal`/`notes`/`date_range`/`test_lab`/`start_date`/`end_date` | text | 부가 정보 |
 
 ### 3.4 `inspection_rule` — 점검규칙 정의
-점검규칙을 주 서버에 단일 저장 → 194/241 공유, Django admin에서 수정. 상세: `27_rule_db_edit_quick_guide.md`.
+점검규칙을 주 서버에 단일 저장 → 194/241 공유, Django admin에서 수정. 상세: `09_rule_db_edit_quick_guide.md`.
 
 | 컬럼 | 타입 | 비고 |
 |---|---|---|
@@ -202,7 +202,7 @@ Django 기본 테이블(auth/sessions/admin 등)도 `default` DB에 있다.
 ---
 
 ## 6. 참고
-- 점검규칙 수정 절차: `main/docs/27_rule_db_edit_quick_guide.md`
-- 규칙 공유 아키텍처: `main/docs/26_rulebase_shared_architecture.md`
-- PostgreSQL/API 조회 매뉴얼: `main/docs/24_postgresql_api_access_manual.md`
-- 시트 → reference_project 적재: `main/docs/28_reference_project_sheet_sync.md`
+- 점검규칙 수정 절차: `main/docs/09_rule_db_edit_quick_guide.md`
+- 규칙 공유 아키텍처: `main/docs/08_rulebase_shared_architecture.md`
+- PostgreSQL/API 조회 매뉴얼: `main/docs/06_postgresql_api_access_manual.md`
+- 시트 → reference_project 적재: `main/docs/10_reference_project_sheet_sync.md`

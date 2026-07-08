@@ -6,15 +6,18 @@
 
 | 구분 | 값 |
 | --- | --- |
-| DB alias | `workflow` |
-| 개발/현재 SQLite 파일 | `main/data/workflow.db` |
+| 운영 DB alias | `reference` |
+| 운영 DB | PostgreSQL `gscert_reference` |
 | 규칙 테이블 | `inspection_rule` |
-| 결과 테이블 | `inspection_result` |
+| 결과 테이블 | `inspection_result` (`workflow` DB) |
 | seed 코드 | `main/management/commands/seed_download_review_rules.py` |
-| 실행 코드 | `main/views/review/ecm_download_review_inspection.py` |
+| 실행 코드 | `gscert_review_core.engine` |
+| 웹 어댑터 | `main/views/review/ecm_download_review_inspection.py` |
 | Windows 앱 배포 API | `/api/local-review/rules/manifest/`, `/api/local-review/rules/bundle/` |
 
-PostgreSQL로 전환해도 앱이 보는 구조는 같다. DB 종류만 SQLite에서 PostgreSQL로 바뀌고, 테이블명과 컬럼 구조는 Django 모델 기준으로 유지된다.
+운영 기준으로 규칙 정의는 공유 PostgreSQL `reference` DB에 있고, 규칙 실행 결과는 각 서버의 로컬 `workflow.db`에 저장된다. Django는 서로 다른 DB 간 FK를 지원하지 않으므로 결과는 `rule_code`와 `rule_name` 문자열로 규칙을 식별한다.
+
+`myproject.ui_mock_settings`를 쓰는 일부 개발/테스트 환경은 로컬 SQLite `workflow.db`에 규칙을 둘 수 있다. 운영 구조를 확인할 때는 `13_db_schema.md`와 `myproject/settings.py`를 기준으로 본다.
 
 ## 규칙 저장 형태
 
@@ -24,6 +27,7 @@ PostgreSQL로 전환해도 앱이 보는 구조는 같다. DB 종류만 SQLite�
 | --- | --- | --- |
 | `code` | 규칙 고유 코드. 예: `artifact_01` | 거의 수정 금지 |
 | `name` | 화면에 보이는 규칙명 | 필요 시 수정 |
+| `target_file_pattern` | 대상 파일 매칭 보조 패턴 | 가끔 수정 |
 | `target_file_type` | 대표 파일 유형. 예: `pdf`, `xlsx`, `any` | 가끔 수정 |
 | `rule_type` | 어떤 검사 로직을 쓸지 지정 | 신중히 수정 |
 | `config_json` | 파일명 키워드, 확장자, 개수, 기대값, 메시지 등 실제 조건 | 가장 자주 수정 |
@@ -108,16 +112,6 @@ Word 1개와 PDF 1개가 있어야 하고, 문서 안의 시험신청번호도 �
 }
 ```
 
-해석:
-
-| 항목 | 의미 |
-| --- | --- |
-| `required_files` | 확장자별 필수 파일 개수 |
-| `content_checks.type` | 문서 내부 검사 방식 |
-| `label` | 문서에서 찾을 항목명 |
-| `expected` | 기대값. `{project_number}`는 실행 시 실제 프로젝트번호로 치환 |
-| `failure_message` | 내부 값이 다를 때 보여줄 메시지 |
-
 ## 실제 수정 방법
 
 ### 권장: seed 코드 수정 후 반영
@@ -142,7 +136,7 @@ dry-run 결과가 맞으면 실제 반영:
 
 ### 긴급: DB 직접 수정
 
-운영에서 즉시 끄거나 메시지만 바꾸는 정도는 DB 직접 수정도 가능하다.
+운영에서 즉시 끄거나 메시지만 바꾸는 정도는 DB 직접 수정도 가능하다. 단, 운영 PostgreSQL `reference` DB를 직접 수정하기 전에는 백업/승인을 확인한다.
 
 규칙 조회:
 
@@ -156,11 +150,11 @@ ORDER BY sort_order, name;
 
 ```sql
 UPDATE inspection_rule
-SET enabled = 0
+SET enabled = false
 WHERE code = 'artifact_07';
 ```
 
-SQLite에서는 `enabled`가 `0/1`이고, PostgreSQL에서는 보통 `false/true`로 쓴다.
+SQLite 개발 DB에서는 `enabled`가 `0/1`로 보일 수 있고, PostgreSQL에서는 `false/true`로 쓴다.
 
 ## 수정 전 확인할 정보
 
@@ -186,9 +180,9 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/local-review/rules/manifest/"
 Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/local-review/rules/bundle/"
 ```
 
-2. Windows 앱에서 `규칙 업데이트` 클릭
+2. Windows 앱에서 규칙 업데이트 또는 서버 연결 확인
 
-3. 테스트 폴더 선택 후 `점검 실행`
+3. 테스트 폴더 선택 후 점검 실행
 
 4. 서버 검증
 

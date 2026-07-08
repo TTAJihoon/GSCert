@@ -2,7 +2,7 @@
 
 ## Rule Storage
 
-Rules live in `workflow.db` through `DownloadReviewRule`:
+Rules live in shared PostgreSQL `reference` DB through `DownloadReviewRule` (`inspection_rule`):
 
 - `code`
 - `name`
@@ -15,14 +15,14 @@ Rules live in `workflow.db` through `DownloadReviewRule`:
 - `version`
 - `sort_order`
 
-Rule results live in `DownloadReviewRuleResult`. Store both pass and fail results for every rule executed.
+Rule results live in local `workflow.db` through `DownloadReviewRuleResult` (`inspection_result`). Store both pass and fail results for every rule executed. Because rules and results are in different DBs, results keep denormalized `rule_code` and `rule_name` instead of an FK.
 
 ## Canonical Rule Manual
 
 The source of truth for artifact rules is:
 
 ```text
-main/docs/19_inspection_rule_manual.md
+main/docs/03_inspection_rule_manual.md
 ```
 
 That document manages every rule from 1 through 18. When a new rule is discussed, update the manual first, then implement code and seed changes.
@@ -58,7 +58,7 @@ Current rule status:
 - `{버전}`: version parsed from product name; if no version prefix exists, use the final whitespace-delimited token; if no whitespace exists, treat version as missing
 - `{pl}`, `{PL}`: 시험PL
 - `{wd}`, `{WD}`: WD
-- `{시작일}`, `{종료일}`: `reference.db.sw_data` dates matched by `시험번호 = {프로젝트번호}`
+- `{시작일}`, `{종료일}`: `reference_project.start_date` and `reference_project.expected_end_date`, exposed through the project metadata API
 - `{연도}`: `20YY` parsed from `TTA-YY-xxxxx`
 - `{잔여결함수}`: residual defect count produced by rule 10 결함리포트
 - `{결함차수}`: defect report round count produced by rule 13 시험성적서
@@ -69,7 +69,7 @@ Current rule status:
 - `{품질부특성측정값}`: quality sub-characteristic values produced by rule 16 품질검사표
 - `{신청일}`: H column from the connected Google Sheet row matched by `{프로젝트번호}`
 - `{계약일}`: I column from the connected Google Sheet row matched by `{프로젝트번호}`
-- `{인증위}`: `ecmlist.db` `인증일자` value matched by `{프로젝트번호}`
+- `{인증위}`: `reference_project.cert_date` or normalized committee date matched by `{프로젝트번호}`
 
 Rules can publish derived variables by storing them in `raw_detail_json.variables`. Later rules in the same inspection run can resolve them through `{변수명}` placeholders, so seed `sort_order` must keep producer rules before consumer rules. Rule 13 시험성적서 is intentionally seeded with `sort_order=95` so it runs before rule 7 시험계획서 at `sort_order=96` and rule 10 결함리포트 at `sort_order=100`; rule 9 테스트케이스 is seeded with `sort_order=105` so it runs after rule 10 and can consume `{잔여결함수}`; rule 16 품질검사표 is seeded with `sort_order=145` so it runs before rule 15 품질평가보고서 at `sort_order=150`.
 
@@ -108,9 +108,9 @@ Policy:
 
 Project review:
 
-- all rules pass: `completed`, `ecmlist.db` `점검결과=O`
-- at least one rule fails: `needs_fix`, `ecmlist.db` `점검결과=X`
-- download/agent/analysis failure: held/failed in workflow only; do not write rule `O/X` to `ecmlist.db`
+- all rules pass: `completed`, `reference_project.review_result=O`
+- at least one rule fails: `needs_fix`, `reference_project.review_result=X`
+- download/source/analysis failure: held/failed in workflow only; do not write rule `O/X` as a successful inspection result
 
 Artifact columns:
 
@@ -179,7 +179,7 @@ Current files:
 
 - `main/views/review/ecm_llm_review.py`
 - `main/management/commands/build_llm_review_prompt.py`
-- `main/docs/17_llm_review_interface.md`
+- `main/docs/archive/2026-07-doc-cleanup/17_llm_review_interface.md`
 
 Use `build_llm_review_prompt` to create a provider-neutral JSON payload for manual Codex/LLM testing:
 
@@ -192,15 +192,15 @@ Policy:
 - Keep simple file existence/name/extension checks as deterministic program rules.
 - Use LLM only for rules that require document-text interpretation.
 - Do not add real API calls until provider, endpoint, key storage, timeout, retry, logging, and masking policies are decided.
-- Treat `warning` as manual review needed; do not write it as `O/X` in `ecmlist.db`.
+- Treat `warning` as manual review needed; do not write it as a normal `O/X` artifact result.
 - When LLM API is later connected, add a provider adapter rather than changing rule storage or UI contracts.
 
 ## Rule Implementation Checklist
 
-1. Update `main/docs/19_inspection_rule_manual.md`.
+1. Update `main/docs/03_inspection_rule_manual.md`.
 2. Add or update rule evaluation code in `ecm_download_review_inspection.py`.
 3. Ensure each result has user-friendly `expected`, `actual`, and `message`.
 4. Keep internal details in `raw_detail_json` or admin logs.
-5. Map one actual rule to one `ecmlist.db` artifact column when applicable.
+5. Map one actual rule to one artifact result key when applicable (`reference_project.artifact_results_json`, with legacy `ecm_list` compatibility where enabled).
 6. Add focused tests.
 7. Update `main/docs/00_next_step.md` with only the immediate next work.
