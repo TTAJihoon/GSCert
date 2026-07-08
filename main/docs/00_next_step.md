@@ -1,5 +1,19 @@
 # GSCert Next Step
 
+## 2026-07-08: ECM 접근 4경로 HTTP 전환 확인 + download-review 194 단일화
+
+- **네 경로 모두 HTTP 직접연동으로 확인/구현 완료:**
+  1. history **문서** 버튼 → 분당 인증심의위원회 트리 → **시험성적서 Word 만** (`download_history_documents`, center 고정 bundang).
+  2. history **폴더** 버튼 → 프로젝트 센터 ECM → **프로젝트 폴더 전체 zip** (`download_full_project_documents` + `_resolve_project_center`).
+  3. similar 다운로드 버튼 → `action:document`(scope 미지정=report) → **#1과 동일(성적서만)**.
+  4. download-review 워커(`ecm-http`) → project.center_code 로 해당 ECM 접속 → 서버 다운로드 → 저장소 복사 → 점검 → 원본 삭제.
+- **분당 실측 통과:** `GS-A-23-0336`(전체), `GS-B-23-067`(성적서). 상암 로그인/탐색도 `TTA-26-00266` 로 확인.
+- **download-review 194 단일화(결정):** HTTP 직접연동으로 194 가 모든 ECM 에 접속 가능하므로 웹/API/워커를
+  194 한 서버가 분당·상암·영남 세 센터를 모두 처리한다. 241 은 download-review 에서 제외(모든 요청을 194 로 라우팅).
+  `settings.py` 의 `*_BY_HOST` 맵을 194=세 센터 허용/무리다이렉트, 241=194 로 포워드로 변경.
+  **전제:** 194 워커는 `source=ecm-http` 로 떠 있어야 상암/영남 처리 가능(Playwright 불가). `DOWNLOAD_REVIEW_WORKER_CENTERS`
+  env 가 설정돼 있으면 세 센터를 포함하거나 비워 둔다(비면 호스트 허용센터=세 센터를 claim).
+
 ## 2026-07-07: ECM 다운로드 HTTP 직접연동 — 코드 착수 완료 (실서버 실측만 남음)
 
 - **완료:** ECM 산출물 다운로드의 **서버측 HTTP 직접 호출(`requests`)** 방식(`ecm-http` source)을

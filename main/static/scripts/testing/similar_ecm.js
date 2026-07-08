@@ -1,7 +1,8 @@
 // similar_ECM.js
-// - download-btn 클릭 → 문서 다운로드 방식(action:"document"):
-//   report\<시험번호> 폴더에 파일이 있으면 즉시, 없으면 ECM에서 전체 문서 다운로드 →
+// - download-btn 클릭 → 문서 다운로드 방식(action:"document", scope 미지정=report):
+//   분당 ECM 인증심의위원회 트리에서 해당 시험번호의 '시험성적서(Word)'만 받아
 //   서버가 ZIP으로 묶어 반환(download_url) → 브라우저에서 ZIP 다운로드.
+//   (history '문서 다운로드' 버튼과 동일 동작. 전체 문서가 필요하면 scope:"all")
 // - similar 페이지는 "테이블"이 아니라 카드 DOM에서 인증일자/시험번호를 뽑는다.
 
 (function () {
@@ -164,7 +165,7 @@
 
     setLoading(true, "문서 다운로드", "ECM에서 문서를 다운로드하는 중입니다...");
 
-    // 문서 다운로드 방식: report\<시험번호> 로 전체 문서 다운로드 → ZIP 링크 반환
+    // 문서 다운로드: scope 미지정 → 시험성적서(Word)만 받아 ZIP 링크 반환
     const payload = { "인증일자": certDate, "시험번호": testNo, "action": "document" };
 
     runJobOnce(payload, ({ title, desc }) => setLoading(true, title, desc))

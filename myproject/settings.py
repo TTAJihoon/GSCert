@@ -135,22 +135,27 @@ REFERENCE_DB_PATH_2 = BASE_DIR / 'main' / 'data' / 'ecmlist2.db'
 DOWNLOAD_REVIEW_ARTIFACT_DIR = BASE_DIR / 'main' / 'data' / 'download_review_artifacts'
 REFERENCE_DB_TABLE = 'ecm_list'
 # ── 서버 IP (설치 시 env.ps1 에서 주입; IP 하드코딩 금지) ──────────────
-# MAIN_SERVER_IP : 주 서버 — PostgreSQL(reference+규칙) + 웹 네비게이션 홈 + 분당 센터/워커
-# SUB_SERVER_IP  : 서브 서버 — 상암/영남 센터/워커
+# MAIN_SERVER_IP : 주 서버 — PostgreSQL(reference+규칙) + 웹 네비게이션 홈 + download-review 전 센터 처리
+# SUB_SERVER_IP  : (레거시) 서브 서버 — download-review 에서는 더 이상 쓰지 않고 194 로 넘긴다.
 # FILE_SHARE_HOST: 산출물 보관용 공유 폴더 호스트
 # 아래 기본값은 개발/기존 배포 호환용이며, 운영에서는 env.ps1 이 항상 덮어쓴다.
 MAIN_SERVER_IP = os.environ.get('MAIN_SERVER_IP', '210.96.71.194')
 SUB_SERVER_IP = os.environ.get('SUB_SERVER_IP', '210.96.71.241')
 FILE_SHARE_HOST = os.environ.get('FILE_SHARE_HOST', '210.96.71.99')
 
+# 194 단일화: ECM HTTP 직접연동으로 194 가 모든 센터의 ECM(분당 210.104.181.10 / 상암·영남
+# 210.96.71.85)에 직접 접속할 수 있으므로, download-review 웹/API/워커를 194 한 서버가
+# 분당·상암·영남 세 센터 모두 처리한다. 241 은 download-review 에서 제외(모든 요청을 194 로 보냄).
+# 주의: 194 워커는 반드시 source=ecm-http 로 떠 있어야 상암/영남을 처리할 수 있다
+# (Playwright 방식은 194 에 상암/영남 브라우저 환경이 없다).
 DOWNLOAD_REVIEW_DEFAULT_CENTER = 'bundang'
 DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_HOST = {
     MAIN_SERVER_IP: 'bundang',
-    SUB_SERVER_IP: 'sangam',
+    SUB_SERVER_IP: 'bundang',
 }
 DOWNLOAD_REVIEW_ALLOWED_CENTERS_BY_HOST = {
-    MAIN_SERVER_IP: {'bundang'},
-    SUB_SERVER_IP: {'sangam', 'yeongnam'},
+    MAIN_SERVER_IP: {'bundang', 'sangam', 'yeongnam'},
+    SUB_SERVER_IP: {'bundang', 'sangam', 'yeongnam'},
 }
 DOWNLOAD_REVIEW_WORKER_CENTERS = {
     value.strip()
@@ -158,15 +163,15 @@ DOWNLOAD_REVIEW_WORKER_CENTERS = {
     if value.strip()
 }
 DOWNLOAD_REVIEW_CENTER_ROUTES_BY_HOST = {
-    MAIN_SERVER_IP: {   # 분당 서버(메인, 웹 홈)
+    MAIN_SERVER_IP: {   # 194: 세 센터 모두 로컬 처리(리다이렉트 없음)
         'bundang': '',
-        'sangam': f'http://{SUB_SERVER_IP}/download-review/',
-        'yeongnam': f'http://{SUB_SERVER_IP}/download-review/',
-    },
-    SUB_SERVER_IP: {    # 상암/영남 서버(서브)
-        'bundang': f'http://{MAIN_SERVER_IP}/download-review/',
         'sangam': '',
         'yeongnam': '',
+    },
+    SUB_SERVER_IP: {    # 241: download-review 제외 → 모든 센터를 194 로 넘긴다
+        'bundang': f'http://{MAIN_SERVER_IP}/download-review/',
+        'sangam': f'http://{MAIN_SERVER_IP}/download-review/',
+        'yeongnam': f'http://{MAIN_SERVER_IP}/download-review/',
     },
 }
 DOWNLOAD_REVIEW_TIME_ZONE = 'Asia/Seoul'
