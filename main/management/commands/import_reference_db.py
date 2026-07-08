@@ -151,9 +151,23 @@ class Command(BaseCommand):
             if col not in df.columns:
                 return ""
             v = row_data[col]
+            if hasattr(v, "iloc"):
+                for item in v:
+                    if item is not None and str(item).strip():
+                        v = item
+                        break
+                else:
+                    return ""
             if v is None or (isinstance(v, float) and str(v).lower() == "nan"):
                 return ""
             return str(v).strip()
+
+        def get_first_val(row_data, cols):
+            for col in cols:
+                value = get_val(row_data, col)
+                if value:
+                    return value
+            return ""
 
         rows = []
         for _, row_data in df.iterrows():
@@ -182,8 +196,12 @@ class Command(BaseCommand):
                 "test_lab": get_val(row_data, "시험원"),
                 "start_date": get_val(row_data, "시작일자"),
                 "end_date": get_val(row_data, "종료일자"),
-                "recert_type": get_val(row_data, "재인증구분"),
-                "prev_cert_info": get_val(row_data, "기인증번호제품정보버전"),
+                "recert_type": get_first_val(row_data, ["재인증구분", "재인증"]),
+                "prev_cert_info": get_first_val(row_data, [
+                    "기인증번호제품정보버전",
+                    "기인증번호제품정보",
+                    "기인증제품",
+                ]),
             })
 
         return rows

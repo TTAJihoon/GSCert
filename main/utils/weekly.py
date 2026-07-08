@@ -24,6 +24,33 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 LOG_FILE = DATA_DIR / "weekly_gs_sync.log"
 REFERENCE_SHEET_NAME = "인증획득제품리스트"
 
+MASTER_BASE_COLUMN_COUNT = 14  # reference.xlsx A~N
+MASTER_RECERT_TYPE_COLUMN = 15  # reference.xlsx O
+MASTER_PREV_CERT_INFO_COLUMN = 16  # reference.xlsx P
+MASTER_TOTAL_COLUMN_COUNT = MASTER_PREV_CERT_INFO_COLUMN
+ECM_RECERT_TYPE_COLUMN = 25  # ECM 인증획득제품리스트 Y
+ECM_PREV_CERT_INFO_COLUMN = 26  # ECM 인증획득제품리스트 Z
+RECERT_TYPE_HEADER = "재인증구분"
+PREV_CERT_INFO_HEADER = "기인증번호제품정보버전"
+MASTER_HEADERS = [
+    "일련번호",
+    "인증번호",
+    "인증일자",
+    "회사명",
+    "제품",
+    "등급",
+    "시험번호",
+    "SW분류",
+    "제품설명",
+    "총WD",
+    "재계약",
+    "특이사항",
+    "시작날짜종료날짜",
+    "시험원",
+    RECERT_TYPE_HEADER,
+    PREV_CERT_INFO_HEADER,
+]
+
 
 def _env_path(name: str, default: Path) -> Path:
     value = os.environ.get(name)
@@ -146,6 +173,24 @@ def _reference_sheet(wb):
     return wb.active
 
 
+def _serial_value(value) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        try:
+            if float(value).is_integer():
+                return int(value)
+        except (OverflowError, ValueError):
+            return None
+    s = str(value).strip().strip('"').strip("'")
+    m = re.fullmatch(r"(\d+)(?:\.0+)?", s)
+    if m:
+        return int(m.group(1))
+    return None
+
+
 # =========================
 # 날짜(전 주 월요일)
 # =========================
@@ -176,6 +221,7 @@ def read_last_serial_from_master_xlsx(xlsx_path: Path) -> int:
     """
     reference.xlsx에서 A열(일련번호) 마지막 숫자를 robust하게 찾는다.
     - A열을 아래에서 위로 훑으며 가장 마지막 숫자(정수)를 반환
+    - 숫자가 하나도 없으면 최초 적재로 보고 0을 반환
     """
     if not xlsx_path.exists():
         raise FileNotFoundError(f"master file not found: {xlsx_path}")
@@ -184,20 +230,18 @@ def read_last_serial_from_master_xlsx(xlsx_path: Path) -> int:
     ws = _reference_sheet(wb)
 
     for r in range(ws.max_row, 0, -1):
-        v = ws.cell(row=r, column=1).value
-        if v is None:
-            continue
-        s = str(v).strip().strip('"').strip("'")
-        m = re.fullmatch(r"(\d+)(?:\.0+)?", s)
-        if m:
-            return int(m.group(1))
+        serial = _serial_value(ws.cell(row=r, column=1).value)
+        if serial is not None:
+            return serial
 
-    raise ValueError("A열(일련번호)에서 마지막 숫자를 찾지 못했습니다. (xlsx)")
+    logging.info("master A열에서 일련번호를 찾지 못했습니다. 최초 적재로 간주하고 0부터 시작합니다.")
+    return 0
 
 
 def append_rows_to_master_xlsx(master_xlsx: Path, rows: list[list], ensure_cols: bool = True) -> None:
     """
-    master.xlsx 마지막 행 다음에 A~N(14) + Y(재인증구분) + Z(기인증번호제품정보버전) = 16컬럼 append.
+    master.xlsx 마지막 행 다음에 다운로드 A~N + ECM Y/Z를 append.
+    ECM Y/Z는 reference.xlsx O/P(15/16열)에 입력한다.
     줄바꿈(\n) 포함 문자열은 그대로 셀에 들어감.
     """
     master_xlsx.parent.mkdir(parents=True, exist_ok=True)
@@ -209,12 +253,15 @@ def append_rows_to_master_xlsx(master_xlsx: Path, rows: list[list], ensure_cols:
 
     ws = _reference_sheet(wb)
 
-    # 헤더행이 있으면 Y/Z 헤더(15/16열)를 보강한다. import 는 헤더명으로 매핑하므로 필요.
-    if not _is_blank(ws.cell(row=1, column=1).value):
-        if _is_blank(ws.cell(row=1, column=15).value):
-            ws.cell(row=1, column=15, value="재인증구분")
-        if _is_blank(ws.cell(row=1, column=16).value):
-            ws.cell(row=1, column=16, value="기인증번호제품정보버전")
+    # 헤더행이 없으면 최초 적재 파일로 보고 A~P 헤더를 만든다.
+    # 이미 헤더가 있어도 O/P는 적재용 표준 헤더로 맞춘다. O열이 기존 K열 "재계약"과
+    # 중복되면 pandas 적재 단계에서 컬럼이 모호해지므로 여기서 바로잡는다.
+    if _is_blank(ws.cell(row=1, column=1).value):
+        for c_idx, header in enumerate(MASTER_HEADERS, start=1):
+            ws.cell(row=1, column=c_idx, value=header)
+    else:
+        ws.cell(row=1, column=MASTER_RECERT_TYPE_COLUMN, value=RECERT_TYPE_HEADER)
+        ws.cell(row=1, column=MASTER_PREV_CERT_INFO_COLUMN, value=PREV_CERT_INFO_HEADER)
 
     # 마지막 "의미 있는" 행 찾기: A열이 비어있지 않은 마지막 행 기준
     last = ws.max_row
@@ -224,9 +271,9 @@ def append_rows_to_master_xlsx(master_xlsx: Path, rows: list[list], ensure_cols:
 
     for row in rows:
         if ensure_cols:
-            row = (row + [None] * 16)[:16]
+            row = (row + [None] * MASTER_TOTAL_COLUMN_COUNT)[:MASTER_TOTAL_COLUMN_COUNT]
 
-        for c_idx in range(1, 17):  # 1..16 (A..N + Y + Z)
+        for c_idx in range(1, MASTER_TOTAL_COLUMN_COUNT + 1):  # A..P
             v = row[c_idx - 1]
             ws.cell(row=write_row, column=c_idx, value=v)
         write_row += 1
@@ -248,24 +295,33 @@ def extract_a_to_n_rows_after_serial(xlsx_path: Path, start_serial: int, sheet_n
     ws = wb[target_sheet]
 
     found_row = None
-    for r in range(1, ws.max_row + 1):
-        v = ws.cell(row=r, column=1).value
-        if isinstance(v, (int, float)) and int(v) == int(start_serial):
-            found_row = r
-            break
-        if isinstance(v, str) and v.strip().isdigit() and int(v.strip()) == int(start_serial):
-            found_row = r
-            break
+    if int(start_serial) <= 0:
+        for r in range(1, ws.max_row + 1):
+            serial = _serial_value(ws.cell(row=r, column=1).value)
+            if serial is not None and serial >= 1:
+                found_row = r
+                break
 
-    if found_row is None:
-        raise ValueError(f"다운로드 엑셀 A열에서 일련번호 {start_serial} 를 찾지 못했습니다.")
+        if found_row is None:
+            raise ValueError("다운로드 엑셀 A열에서 가져올 일련번호(1 이상)를 찾지 못했습니다.")
 
-    start_row = found_row + 1
+        start_row = found_row
+    else:
+        for r in range(1, ws.max_row + 1):
+            serial = _serial_value(ws.cell(row=r, column=1).value)
+            if serial == int(start_serial):
+                found_row = r
+                break
+
+        if found_row is None:
+            raise ValueError(f"다운로드 엑셀 A열에서 일련번호 {start_serial} 를 찾지 못했습니다.")
+
+        start_row = found_row + 1
 
     last_data_row = 0
     for r in range(1, ws.max_row + 1):
         any_val = False
-        for c in range(1, 15):  # A..N
+        for c in range(1, MASTER_BASE_COLUMN_COUNT + 1):  # A..N
             if ws.cell(row=r, column=c).value not in (None, ""):
                 any_val = True
                 break
@@ -277,11 +333,14 @@ def extract_a_to_n_rows_after_serial(xlsx_path: Path, start_serial: int, sheet_n
 
     out = []
     for r in range(start_row, last_data_row + 1):
-        an = [ws.cell(row=r, column=c).value for c in range(1, 15)]  # A..N (1~14)
+        an = [ws.cell(row=r, column=c).value for c in range(1, MASTER_BASE_COLUMN_COUNT + 1)]  # A..N
         if all(v in (None, "") for v in an):
             continue
-        # ECM 시트 Y열(25, 재인증 구분) / Z열(26, 기 인증번호/제품정보/버전) 추가.
-        yz = [ws.cell(row=r, column=25).value, ws.cell(row=r, column=26).value]
+        # ECM 시트 Y/Z 값을 reference.xlsx O/P로 쓰기 위해 A~N 뒤에 붙인다.
+        yz = [
+            ws.cell(row=r, column=ECM_RECERT_TYPE_COLUMN).value,
+            ws.cell(row=r, column=ECM_PREV_CERT_INFO_COLUMN).value,
+        ]
         out.append(an + yz)
     return out
 
@@ -306,7 +365,7 @@ def normalize_rows(rows: list[list]) -> list[list]:
     out: list[list] = []
 
     for row in rows:
-        row = (row + [None] * 16)[:16]  # A..N(14) + Y + Z 고정
+        row = (row + [None] * MASTER_TOTAL_COLUMN_COUNT)[:MASTER_TOTAL_COLUMN_COUNT]  # A..N + O/P 고정
 
         # 완전 빈 행 제거
         if all(_is_blank(v) for v in row):
@@ -727,14 +786,14 @@ def main():
                 ctx.close()
                 browser.close()
 
-    # 4) xlsx에서 last_serial 아래부터 A~N 추출 -> 정규화 -> master.xlsx append
+    # 4) xlsx에서 last_serial 아래부터 A~N + Y/Z 추출 -> 정규화 -> master.xlsx A~N + O/P append
     logging.info("추가분 추출 대상 xlsx: %s", downloaded)
     rows = extract_a_to_n_rows_after_serial(downloaded, start_serial=last_serial, sheet_name="인증획득제품리스트")
-    logging.info("추출된 행 수(A~N, 정규화 전): %d", len(rows))
+    logging.info("추출된 행 수(A~N + Y/Z, 정규화 전): %d", len(rows))
 
     if rows:
         rows2 = normalize_rows(rows)
-        logging.info("정규화 후 행 수(A~N): %d", len(rows2))
+        logging.info("정규화 후 행 수(A~N + O/P): %d", len(rows2))
 
         if rows2:
             append_rows_to_master_xlsx(CFG.master_xlsx, rows2, ensure_cols=True)
