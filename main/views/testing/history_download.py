@@ -132,27 +132,49 @@ def download_full_project_documents(
 ) -> dict:
     """'전체 다운로드' 버튼: 프로젝트가 속한 센터 ECM 에 접속해 프로젝트 폴더 전체를 받는다.
 
-    센터는 점검과 동일한 reference_project(센터별 PL 목록) 기준으로 해석한다. 폴더 탐색은
-    점검 워커와 같은 `find_project_folder`({연도} 시험서비스 → GS 포함 폴더 → 프로젝트번호 폴더)
-    를 재사용하고, 그 폴더 아래 모든 파일을 상대경로 그대로 report\\<시험번호> 에 받아
-    (이후 download_report 가 ZIP 으로 전달) 저장한다.
+    센터 결정:
+    1) reference_project(센터별 PL 목록)로 우선 해석해 그 센터를 먼저 시도한다.
+    2) 그래도 못 찾으면(미등록/오분류 포함) 분당 → 상암 → 영남 순으로 각 센터 ECM 을
+       직접 탐색(find_full_project_folder)해 프로젝트 폴더가 있는 첫 센터를 사용한다.
+    폴더 탐색은 #2 전용 `find_full_project_folder`(분당: {연도} 시험서비스 → GS·1등급 →
+    프로젝트 / 상암·영남: '상암'|'영남' 폴더 → {연도} 시험서비스 → GS·1등급 → 프로젝트)를
+    쓰고, 그 폴더 아래 모든 파일을 상대경로 그대로 report\\<시험번호> 에 받아 ZIP 으로 전달한다.
     """
     from main.views.review.artifact_source import verify_downloaded_bytes
     from main.views.review.ecm_http_client import build_client
 
-    center, project = _resolve_project_center(test_no)
-    if not center:
-        raise RuntimeError(f"{test_no} 의 센터를 확인할 수 없습니다(reference_project 미등록).")
+    resolved_center, project = _resolve_project_center(test_no)
     proj_cert_date = (project.get("cert_date") if project else "") or cert_date
 
-    client = build_client(center)
-    client.login()
+    # 시도 순서: 해석된 센터를 맨 앞에, 이어서 분당→상암→영남 폴백(중복 제거).
+    order = []
+    if resolved_center:
+        order.append(resolved_center)
+    for c in ("bundang", "sangam", "yeongnam"):
+        if c not in order:
+            order.append(c)
 
-    # #2 전용 경로: 분당은 {연도} 시험서비스 → (GS+1등급) → 프로젝트,
-    # 상암/영남은 그 앞에 '상암'/'영남' 센터 폴더 단계를 더 탄다.
-    folder = client.find_full_project_folder(test_no, proj_cert_date, center)
-    if not folder or not folder.get("oid"):
-        raise RuntimeError(f"{center} ECM 에서 프로젝트 폴더를 찾지 못했습니다: {test_no}")
+    client = None
+    center = None
+    folder = None
+    errors = []
+    for candidate in order:
+        try:
+            cl = build_client(candidate)
+            cl.login()
+            f = cl.find_full_project_folder(test_no, proj_cert_date, candidate)
+        except Exception as exc:  # 자격증명 없음/네트워크/로그인 실패 → 다음 센터 시도
+            errors.append(f"{candidate}: {exc}")
+            continue
+        if f and f.get("oid"):
+            client, center, folder = cl, candidate, f
+            break
+
+    if not folder:
+        detail = ("; ".join(errors)) if errors else "해당 없음"
+        raise RuntimeError(
+            f"어느 센터 ECM 에서도 프로젝트 폴더를 찾지 못했습니다: {test_no} (시도: {detail})"
+        )
 
     items = list(client.walk_files(folder["oid"]))
     if not items:

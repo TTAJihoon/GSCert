@@ -3567,6 +3567,38 @@ class HistoryDocumentHttpTests(SimpleTestCase):
         found = _C().find_full_project_folder("TTA-26-00266", "2026-01-01", "sangam")
         self.assertEqual(found["oid"], "RIGHT")  # 영남 폴더로 새지 않는다
 
+    def test_full_project_download_falls_back_across_centers(self):
+        from unittest.mock import patch
+        from main.views.testing import history_download
+
+        class _Client:
+            def __init__(self, center):
+                self.center = center
+
+            def login(self):
+                pass
+
+            def find_full_project_folder(self, test_no, cert_date, center_code):
+                # 분당/상암엔 없고 영남에만 있는 프로젝트.
+                if self.center == "yeongnam":
+                    return {"oid": "P", "name": "GS-C-24-0003(완료)"}
+                return None
+
+            def walk_files(self, oid):
+                yield [], {"fileName": "성적서.docx", "storageFileID": "1", "fileSize": 4}
+
+            def download_bytes(self, meta):
+                return b"PK\x03\x04"
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_REPORT_BASE_DIR=base):
+                # reference_project 미해석(None) → 분당→상암→영남 순으로 폴백.
+                with patch.object(history_download, "_resolve_project_center", return_value=(None, None)), \
+                     patch("main.views.review.ecm_http_client.build_client", side_effect=lambda c: _Client(c)):
+                    result = history_download.download_full_project_documents("GS-C-24-0003", "2024-01-01")
+                self.assertEqual(result["center"], "yeongnam")
+                self.assertEqual(result["doc_count"], 1)
+
     def test_find_committee_test_folder_navigates_year_committee_date_test(self):
         from main.views.review.ecm_http_client import DestinyECM
 

@@ -171,12 +171,14 @@
               <td>{{ table.총WD }}</td>
               <td>{{ table.재계약 }}</td>
               <td class="action-cell">
-                <button type="button" class="table-icon-btn document-download-btn" data-scope="report" title="시험성적서 다운로드" aria-label="시험성적서 다운로드">
-                  <i class="fas fa-file-arrow-down"></i>
-                </button>
-                <button type="button" class="table-icon-btn document-download-btn" data-scope="all" title="전체 문서 다운로드" aria-label="전체 문서 다운로드">
-                  <i class="fas fa-folder-open"></i>
-                </button>
+                <div style="display:flex; justify-content:center; align-items:center; gap:8px;">
+                  <button type="button" class="table-icon-btn document-download-btn" data-scope="report" title="시험성적서 다운로드" aria-label="시험성적서 다운로드">
+                    <i class="fas fa-file-arrow-down"></i>
+                  </button>
+                  <button type="button" class="table-icon-btn document-download-btn" data-scope="all" title="전체 문서 다운로드" aria-label="전체 문서 다운로드">
+                    <i class="fas fa-folder-open"></i>
+                  </button>
+                </div>
               </td>
             </tr>
             {% endfor %}
