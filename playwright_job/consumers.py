@@ -143,30 +143,6 @@ async def db_upsert_url(test_no: str, url: str) -> None:
         await asyncio.to_thread(_db_upsert_url_sync, test_no, url)
 
 
-# ---------------- report 폴더 캐시 ----------------
-def _report_base_dir() -> str:
-    return getattr(settings, "AGENT_REPORT_BASE_DIR", r"C:\Users\Administrator\report")
-
-
-def _report_dir(test_no: str):
-    import os
-    import unicodedata
-    from pathlib import Path
-    return Path(os.path.join(_report_base_dir(), unicodedata.normalize("NFC", str(test_no))))
-
-
-def _report_dir_has_files(test_no: str) -> bool:
-    """report\\<시험번호> 폴더가 있고 파일이 1개 이상이면 True(=캐시 hit)."""
-    import os
-    folder = str(_report_dir(test_no))
-    if not os.path.isdir(folder):
-        return False
-    for _root, _dirs, files in os.walk(folder):
-        if files:
-            return True
-    return False
-
-
 # ---------------- Worker orchestration ----------------
 def _ensure_worker_thread() -> asyncio.AbstractEventLoop:
     """Playwright 전용 워커 스레드(ProactorEventLoop)를 1회만 기동하고 그 루프를 반환한다.
@@ -346,7 +322,6 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
         from main.views.testing.history_download import (
             download_full_project_documents,
             download_history_documents,
-            report_cache_valid,
         )
 
         report_only = scope != "all"
@@ -356,18 +331,7 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
         else:
             download_url = f"/history/report/{quote(test_no)}/download/"
 
-        # 1) 캐시: 같은 범위로 이미 받아둔 폴더가 있으면 ECM 접속 없이 즉시 전달
-        try:
-            cached = await asyncio.to_thread(report_cache_valid, test_no, report_only)
-        except Exception:
-            cached = False
-        if cached:
-            await self._safe_send({"status": "processing", "message": "저장된 문서 확인 완료..."})
-            await self._safe_send({"status": "success", "download_url": download_url, "source": "cache"})
-            await self.close()
-            return
-
-        # 2) ECM HTTP 다운로드
+        # 캐시(서버 저장 재사용)는 폐기 — 요청 시 항상 ECM 에서 새로 받는다.
         #  - report(기본): 분당 인증위원회 트리의 시험성적서 Word 만.
         #  - all(전체): 프로젝트 센터 ECM 의 프로젝트 폴더 전체(점검과 동일한 탐색).
         label = "시험성적서" if report_only else "전체 문서"

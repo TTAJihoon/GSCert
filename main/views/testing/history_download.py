@@ -36,17 +36,6 @@ def doc_dir(test_no: str) -> Path:
     return Path(_report_base()) / _DOC_SUBDIR / unicodedata.normalize("NFC", str(test_no or "").strip())
 
 
-def report_cache_valid(test_no: str, report_only: bool) -> bool:
-    """해당 범위 전용 폴더에 파일이 이미 있으면 True(ECM 재접속 불필요).
-
-    범위별 폴더가 분리돼 있어 #1/#2 간 캐시 혼입이 발생하지 않는다.
-    """
-    if not str(test_no or "").strip():
-        return False
-    folder = doc_dir(test_no) if report_only else all_dir(test_no)
-    return folder.is_dir() and any(p.is_file() for p in folder.rglob("*"))
-
-
 def download_history_documents(
     cert_date: str,
     test_no: str,
