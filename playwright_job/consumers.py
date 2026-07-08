@@ -386,6 +386,10 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
                 }
             )
         except Exception as exc:
+            # 실패 원인이 서버 로그에 남도록 traceback 을 기록한다(브라우저로만 보내면 원인 추적 불가).
+            logger_worker.exception(
+                "document download failed: test_no=%s scope=%s: %s", test_no, scope, exc
+            )
             await self._safe_send(
                 {
                     "status": "error",
