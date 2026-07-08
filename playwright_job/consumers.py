@@ -349,8 +349,12 @@ class PlaywrightJobConsumer(AsyncWebsocketConsumer):
             report_cache_valid,
         )
 
-        download_url = f"/history/report/{quote(test_no)}/download/"
         report_only = scope != "all"
+        # #1(성적서)은 파일 그대로 서빙(/document/), #2(전체)는 ZIP(/download/).
+        if report_only:
+            download_url = f"/history/report/{quote(test_no)}/document/"
+        else:
+            download_url = f"/history/report/{quote(test_no)}/download/"
 
         # 1) 캐시: 같은 범위로 이미 받아둔 폴더가 있으면 ECM 접속 없이 즉시 전달
         try:

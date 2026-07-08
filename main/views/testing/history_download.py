@@ -16,32 +16,35 @@ from pathlib import Path
 
 from django.conf import settings
 
-# 캐시된 report 폴더가 어떤 범위(scope)로 받아졌는지 기록하는 마커 파일.
-_SCOPE_MARKER = ".scope"
+# #1(성적서)과 #2(전체)를 서로 다른 폴더에 저장해 캐시/ZIP 혼입을 원천 차단한다.
+#   - 전체(#2): <base>/<시험번호>            → ZIP 으로 서빙(download_report)
+#   - 성적서(#1): <base>/__report/<시험번호>  → 파일 그대로 서빙(download_report_document)
+_DOC_SUBDIR = "__report"
 
 
 def _report_base() -> str:
     return getattr(settings, "AGENT_REPORT_BASE_DIR", r"C:\Users\Administrator\report")
 
 
-def _scope_value(report_only: bool) -> str:
-    return "report" if report_only else "all"
+def all_dir(test_no: str) -> Path:
+    """#2 전체 다운로드 저장 폴더(ZIP 서빙 대상)."""
+    return Path(_report_base()) / unicodedata.normalize("NFC", str(test_no or "").strip())
+
+
+def doc_dir(test_no: str) -> Path:
+    """#1 성적서 저장 폴더(파일 그대로 서빙 대상)."""
+    return Path(_report_base()) / _DOC_SUBDIR / unicodedata.normalize("NFC", str(test_no or "").strip())
 
 
 def report_cache_valid(test_no: str, report_only: bool) -> bool:
-    """report 폴더에 요청한 범위(scope)와 일치하는 파일이 이미 있으면 True(ECM 재접속 불필요)."""
-    name = unicodedata.normalize("NFC", str(test_no or "")).strip()
-    if not name:
+    """해당 범위 전용 폴더에 파일이 이미 있으면 True(ECM 재접속 불필요).
+
+    범위별 폴더가 분리돼 있어 #1/#2 간 캐시 혼입이 발생하지 않는다.
+    """
+    if not str(test_no or "").strip():
         return False
-    folder = Path(_report_base()) / name
-    if not folder.is_dir():
-        return False
-    has_file = any(p.is_file() and p.name != _SCOPE_MARKER for p in folder.rglob("*"))
-    if not has_file:
-        return False
-    marker = folder / _SCOPE_MARKER
-    cached_scope = marker.read_text(encoding="utf-8").strip() if marker.exists() else "report"
-    return cached_scope == _scope_value(report_only)
+    folder = doc_dir(test_no) if report_only else all_dir(test_no)
+    return folder.is_dir() and any(p.is_file() for p in folder.rglob("*"))
 
 
 def download_history_documents(
@@ -54,8 +57,9 @@ def download_history_documents(
 ) -> dict:
     """인증위원회 트리에서 시험번호 폴더를 찾아 문서를 report 폴더로 다운로드한다.
 
-    report_only=True(기본): 시험성적서 Word 파일만. False: 전체 파일.
-    반환: {"download_dir", "doc_count"}. 실패 시 RuntimeError.
+    report_only=True(기본): 시험성적서 Word 파일만(성적서 폴더에 저장, 파일 그대로 서빙).
+    report_only=False: 인증위원회 트리 전체 파일.
+    반환: {"download_dir", "doc_count", "files"}. 실패 시 RuntimeError.
     """
     from main.views.review.artifact_source import verify_downloaded_bytes
     from main.views.review.ecm_http_client import build_client
@@ -76,13 +80,16 @@ def download_history_documents(
             raise RuntimeError(f"{test_no} 폴더에서 시험성적서(Word) 문서를 찾지 못했습니다.")
         raise RuntimeError(f"{test_no} 폴더에 다운로드할 문서가 없습니다.")
 
-    name = unicodedata.normalize("NFC", str(test_no))
-    base = Path(dest_base or _report_base()) / name
+    if dest_base is not None:
+        base = Path(dest_base) / unicodedata.normalize("NFC", str(test_no))
+    else:
+        base = doc_dir(test_no) if report_only else all_dir(test_no)
     # 요청 범위와 정확히 일치하도록 기존 폴더를 비우고 새로 받는다.
     if base.exists():
         shutil.rmtree(base, ignore_errors=True)
     base.mkdir(parents=True, exist_ok=True)
 
+    saved = []
     for meta in selected:
         file_name = unicodedata.normalize("NFC", str(meta.get("fileName") or ""))
         expected_size = int(meta.get("fileSize") or 0)
@@ -101,9 +108,9 @@ def download_history_documents(
         tmp = dest.with_name(dest.name + ".part")
         tmp.write_bytes(data)
         tmp.replace(dest)
+        saved.append(safe_name)
 
-    (base / _SCOPE_MARKER).write_text(_scope_value(report_only), encoding="utf-8")
-    return {"download_dir": str(base), "doc_count": len(selected)}
+    return {"download_dir": str(base), "doc_count": len(selected), "files": saved}
 
 
 def _resolve_project_center(test_no: str):
@@ -162,8 +169,10 @@ def download_full_project_documents(
     if not items:
         raise RuntimeError(f"{test_no} 프로젝트 폴더에 파일이 없습니다.")
 
-    name = unicodedata.normalize("NFC", str(test_no))
-    base = Path(dest_base or _report_base()) / name
+    if dest_base is not None:
+        base = Path(dest_base) / unicodedata.normalize("NFC", str(test_no))
+    else:
+        base = all_dir(test_no)
     if base.exists():
         shutil.rmtree(base, ignore_errors=True)
     base.mkdir(parents=True, exist_ok=True)
@@ -190,5 +199,4 @@ def download_full_project_documents(
         tmp.replace(dest)
         count += 1
 
-    (base / _SCOPE_MARKER).write_text(_scope_value(False), encoding="utf-8")
     return {"download_dir": str(base), "doc_count": count, "center": center}

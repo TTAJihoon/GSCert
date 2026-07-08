@@ -3591,18 +3591,23 @@ class HistoryDocumentHttpTests(SimpleTestCase):
         self.assertIsNotNone(found)
         self.assertEqual(found["oid"], "TARGET")
 
-    def test_report_cache_valid_matches_scope_marker(self):
+    def test_report_cache_valid_uses_separate_folders_per_scope(self):
         from main.views.testing import history_download
 
         with tempfile.TemporaryDirectory() as base:
             with override_settings(AGENT_REPORT_BASE_DIR=base):
-                folder = Path(base) / "GS-B-22-355"
-                folder.mkdir()
-                (folder / "시험성적서.docx").write_bytes(b"PK\x03\x04")
-                (folder / ".scope").write_text("report", encoding="utf-8")
-                # 같은 범위(report)면 캐시 유효, 다른 범위(all)면 무효.
+                # 성적서(#1)는 __report/<번호>, 전체(#2)는 <번호> 로 분리 저장된다.
+                doc = history_download.doc_dir("GS-B-22-355")
+                doc.mkdir(parents=True)
+                (doc / "시험성적서.docx").write_bytes(b"PK\x03\x04")
+                # report 폴더에만 파일이 있으므로 report 캐시만 유효, all 캐시는 무효.
                 self.assertTrue(history_download.report_cache_valid("GS-B-22-355", report_only=True))
                 self.assertFalse(history_download.report_cache_valid("GS-B-22-355", report_only=False))
+                # 전체(#2) 폴더는 별개라 성적서 캐시의 영향을 받지 않는다.
+                self.assertFalse(
+                    history_download.all_dir("GS-B-22-355").exists()
+                    and any(history_download.all_dir("GS-B-22-355").iterdir())
+                )
 
     def test_walk_files_yields_relative_paths(self):
         from main.views.review.ecm_http_client import DestinyECM
@@ -3660,7 +3665,6 @@ class HistoryDocumentHttpTests(SimpleTestCase):
             folder = Path(base) / "GS-B-23-067"
             self.assertTrue((folder / "성적서.docx").exists())
             self.assertTrue((folder / "4.시험" / "계획.docx").exists())
-            self.assertEqual((folder / ".scope").read_text(encoding="utf-8"), "all")
 
 
 class WeeklyHttpDownloadTests(SimpleTestCase):
