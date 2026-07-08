@@ -171,10 +171,10 @@
     runJobOnce(payload, ({ title, desc }) => setLoading(true, title, desc))
       .then((downloadUrl) => {
         setLoading(false);
-        // ZIP 첨부 다운로드 (새 탭 X)
+        // 첨부 다운로드(새 탭 X). download 속성을 두면 서버 Content-Disposition 파일명이
+        // 무시돼 "다운로드"로 저장되므로, 속성 없이 링크만 클릭해 CD 파일명을 그대로 쓴다.
         const a = document.createElement("a");
         a.href = downloadUrl;
-        a.download = "";
         document.body.appendChild(a);
         a.click();
         a.remove();

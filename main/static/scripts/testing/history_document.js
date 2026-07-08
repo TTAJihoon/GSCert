@@ -43,9 +43,11 @@
   }
 
   function triggerDownload(url) {
+    // download 속성을 두면 브라우저가 서버의 Content-Disposition 파일명을 무시하고
+    // "다운로드" 같은 기본 이름으로 저장한다. 서버가 attachment 로 내려주므로 속성 없이
+    // 링크만 클릭해 CD 파일명(성적서 .docx / <번호>.zip)을 그대로 쓰게 한다.
     const a = document.createElement("a");
     a.href = url;
-    a.download = "";
     document.body.appendChild(a);
     a.click();
     a.remove();
