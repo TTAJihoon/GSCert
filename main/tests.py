@@ -3378,7 +3378,10 @@ class HttpEcmArtifactSourceTests(SimpleTestCase):
 
         self.assertEqual(verify_downloaded_bytes(b"%PDF-1.4", "a.pdf", 8), "")
         self.assertEqual(verify_downloaded_bytes(b"PK\x03\x04", "a.xlsx", 4), "")
-        self.assertIn("빈 파일", verify_downloaded_bytes(b"", "a.pdf", 0))
+        # 원본이 0바이트인 파일(마커 등)은 빈 데이터도 정상.
+        self.assertEqual(verify_downloaded_bytes(b"", "홍보를 원치않음.txt", 0), "")
+        # expected>0 인데 비어 있으면 잘림/실패.
+        self.assertIn("빈 응답", verify_downloaded_bytes(b"", "a.pdf", 100))
         self.assertIn("크기", verify_downloaded_bytes(b"%PDF", "a.pdf", 999))
         self.assertIn("매직바이트", verify_downloaded_bytes(b"nope", "a.pdf", 4))
 

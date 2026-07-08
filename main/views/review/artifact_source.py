@@ -143,13 +143,17 @@ _MAGIC_BYTES = {
 def verify_downloaded_bytes(data: bytes, file_name: str, expected_size: int) -> str:
     """다운로드 바이트 무결성 검증. 문제 없으면 "", 있으면 사유 문자열(결정 8).
 
-    - 빈 응답 / 잘림 탐지: expected_size(API 보고값)와 실제 바이트 수 대조.
-    - 매직바이트: 확장자가 압축/서명 포맷이면 시작 바이트가 부합하는지 확인.
+    - 잘림/빈 응답 탐지: expected_size(API 보고값)와 실제 바이트 수 대조.
+      단, ECM 원본이 실제로 0바이트인 파일(예: '홍보를 원치않음.txt' 같은 마커 파일)은
+      정상이므로, expected_size 가 0 이면 빈 데이터도 통과시킨다.
+    - 매직바이트: 확장자가 압축/서명 포맷이면 시작 바이트가 부합하는지 확인(빈 파일은 생략).
     """
+    expected = int(expected_size or 0)
     if not data:
-        return "빈 파일(0바이트) 응답"
-    if expected_size and len(data) != int(expected_size):
-        return f"파일 크기 불일치(기대 {expected_size}, 실제 {len(data)})"
+        # 원본이 0바이트면 정상. expected>0 인데 비었으면 잘림/실패.
+        return "" if expected == 0 else f"빈 응답(기대 {expected}바이트)"
+    if expected and len(data) != expected:
+        return f"파일 크기 불일치(기대 {expected}, 실제 {len(data)})"
     ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
     magic = _MAGIC_BYTES.get(ext)
     if magic and not data.startswith(magic):
