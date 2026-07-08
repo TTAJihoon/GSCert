@@ -67,3 +67,7 @@ setup/nginx-1.29.8/
 playwright_error_*.png
 # - Windows 바로가기(예: 서버 관리 콘솔 링크)
 *.lnk
+
+# Local test artifacts / generated output (not for VCS)
+dummy/
+output/

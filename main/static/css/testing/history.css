@@ -76,6 +76,7 @@ body {
 /* 로딩/헤더/테이블 박스가 main-content 폭을 넘지 않도록 */
 #loadingIndicator,
 .content-header,
+.history-filter-panel,
 .table-container {
   width: 100%;
   max-width: 100%;
@@ -170,6 +171,156 @@ body {
   color: #666;
   font-size: 14px;
   margin-top: 6px;
+}
+
+/* 결과 테이블 컬럼 필터 */
+.history-filter-panel {
+  flex-shrink: 0;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--tta-border);
+  background: #fbfcfe;
+}
+
+.history-filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.history-filter-label {
+  flex: 0 0 auto;
+  color: #475569;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.history-filter-select,
+.history-filter-input {
+  height: 36px;
+  border: 1px solid #d9e2ec;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f2937;
+  font-size: 14px;
+}
+
+.history-filter-select {
+  flex: 0 0 130px;
+  padding: 0 30px 0 10px;
+}
+
+.history-filter-input {
+  flex: 1 1 auto;
+  min-width: 220px;
+  padding: 0 12px;
+}
+
+.history-filter-select:focus,
+.history-filter-input:focus {
+  outline: none;
+  border-color: var(--tta-blue);
+  box-shadow: 0 0 0 2px rgba(0, 102, 204, 0.15);
+}
+
+.history-filter-add-btn,
+.history-filter-reset-btn {
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.history-filter-add-btn {
+  gap: 6px;
+  padding: 0 14px;
+  border: 1px solid var(--tta-blue);
+  background: var(--tta-blue);
+  color: #fff;
+}
+
+.history-filter-add-btn:hover {
+  border-color: var(--tta-dark-blue);
+  background: var(--tta-dark-blue);
+}
+
+.history-filter-reset-btn {
+  width: 36px;
+  border: 1px solid #d9e2ec;
+  background: #fff;
+  color: #64748b;
+}
+
+.history-filter-reset-btn:hover {
+  border-color: var(--tta-blue);
+  background: #f0f7ff;
+  color: var(--tta-blue);
+}
+
+.history-filter-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 0;
+  margin-top: 10px;
+}
+
+.history-filter-chip-row:empty {
+  display: none;
+}
+
+.history-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  max-width: 360px;
+  min-height: 28px;
+  padding: 0 8px 0 10px;
+  border: 1px solid #cfe4ff;
+  border-radius: 999px;
+  background: #f0f7ff;
+  color: var(--tta-dark-blue);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.history-filter-chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.history-filter-chip-remove {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #64748b;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.history-filter-chip-remove:hover {
+  background: #dbeafe;
+  color: var(--tta-dark-blue);
+}
+
+.history-filter-empty-row td {
+  padding: 24px 12px;
+  color: #64748b;
+  font-weight: 600;
+  text-align: center;
 }
 
 /* ── 테이블 컨테이너: 남은 공간을 차지하며, 넘치면 스크롤 생성 ── */

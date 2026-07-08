@@ -6,10 +6,10 @@
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
 
-<link rel="stylesheet" href="{% static 'css/testing/history.css' %}"/>
+<link rel="stylesheet" href="{% static 'css/testing/history.css' %}?v=2"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 <script src="{% static 'scripts/testing/history_set_date.js' %}" defer></script>
-<script src="{% static 'scripts/testing/history_Listener.js' %}" defer></script>
+<script src="{% static 'scripts/testing/history_Listener.js' %}?v=2" defer></script>
 <script src="{% static 'scripts/testing/history_resizable_columns.js' %}" defer></script>
 <script src="{% static 'scripts/testing/history_document.js' %}" defer></script>
 {% endblock %}
@@ -120,6 +120,35 @@
       <div class="results-count" id="resultsCount">🔍 총 {{ response_tables|length }}건의 검색 결과</div>
     </div>
 
+    <div class="history-filter-panel" id="historyFilterPanel" aria-label="결과 컬럼 필터">
+      <div class="history-filter-row">
+        <label class="history-filter-label" for="historyFilterColumn">결과 내 필터</label>
+        <select class="history-filter-select" id="historyFilterColumn" aria-label="필터 컬럼 선택">
+          <option value="0">인증일자</option>
+          <option value="1">인증번호</option>
+          <option value="2">시험번호</option>
+          <option value="3">회사명</option>
+          <option value="4">제품명</option>
+          <option value="5">제품 개요</option>
+          <option value="6">SW분류</option>
+          <option value="7">시작 날짜</option>
+          <option value="8">종료 날짜</option>
+          <option value="9">시험원</option>
+          <option value="10">WD</option>
+          <option value="11">재계약</option>
+        </select>
+        <input type="text" class="history-filter-input" id="historyFilterValue"
+          placeholder="선택한 컬럼에서 찾을 값을 입력하세요" aria-label="필터 값 입력">
+        <button type="button" class="history-filter-add-btn" id="historyFilterAddBtn">
+          <i class="fas fa-plus"></i> 필터 추가
+        </button>
+        <button type="button" class="history-filter-reset-btn" id="historyFilterResetBtn" title="결과 필터 초기화" aria-label="결과 필터 초기화">
+          <i class="fas fa-rotate-left"></i>
+        </button>
+      </div>
+      <div class="history-filter-chip-row" id="historyFilterChips" aria-live="polite"></div>
+    </div>
+
     <div class="table-container">
       <div class="scrollable-table-wrapper">
         <table class="results-table">
@@ -196,6 +225,34 @@
       </h2>
       <div class="results-count" id="resultsCount">🔍 검색 결과가 없습니다.</div>
     </div>
+    <div class="history-filter-panel" id="historyFilterPanel" aria-label="결과 컬럼 필터">
+      <div class="history-filter-row">
+        <label class="history-filter-label" for="historyFilterColumn">결과 내 필터</label>
+        <select class="history-filter-select" id="historyFilterColumn" aria-label="필터 컬럼 선택">
+          <option value="0">인증일자</option>
+          <option value="1">인증번호</option>
+          <option value="2">시험번호</option>
+          <option value="3">회사명</option>
+          <option value="4">제품명</option>
+          <option value="5">제품 개요</option>
+          <option value="6">SW분류</option>
+          <option value="7">시작 날짜</option>
+          <option value="8">종료 날짜</option>
+          <option value="9">시험원</option>
+          <option value="10">WD</option>
+          <option value="11">재계약</option>
+        </select>
+        <input type="text" class="history-filter-input" id="historyFilterValue"
+          placeholder="선택한 컬럼에서 찾을 값을 입력하세요" aria-label="필터 값 입력">
+        <button type="button" class="history-filter-add-btn" id="historyFilterAddBtn">
+          <i class="fas fa-plus"></i> 필터 추가
+        </button>
+        <button type="button" class="history-filter-reset-btn" id="historyFilterResetBtn" title="결과 필터 초기화" aria-label="결과 필터 초기화">
+          <i class="fas fa-rotate-left"></i>
+        </button>
+      </div>
+      <div class="history-filter-chip-row" id="historyFilterChips" aria-live="polite"></div>
+    </div>
     <div class="table-container">
       <div class="scrollable-table-wrapper">
         <table class="results-table">
@@ -231,6 +288,7 @@
               <th class="col-document">문서</th>
             </tr>
           </thead>
+          <tbody id="resultsTableBody"></tbody>
         </table>
       </div>
     </div>
