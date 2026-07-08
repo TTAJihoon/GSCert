@@ -143,6 +143,17 @@ MAIN_SERVER_IP = os.environ.get('MAIN_SERVER_IP', '210.96.71.194')
 SUB_SERVER_IP = os.environ.get('SUB_SERVER_IP', '210.96.71.241')
 FILE_SHARE_HOST = os.environ.get('FILE_SHARE_HOST', '210.96.71.99')
 
+# HTTPS(nginx TLS) 도입에 따른 CSRF 신뢰 출처. Django 4+ 는 POST 시 Origin/Referer 를
+# 이 목록과 대조하므로, 서버 IP 의 http/https 를 모두 등록해야 https 화면의 POST(이력 검색,
+# 다운로드 검토 등)가 403 나지 않는다. (ALLOWED_HOSTS='*' 여도 CSRF 는 별도로 필요)
+CSRF_TRUSTED_ORIGINS = [
+    f'{scheme}://{host}'
+    for host in {MAIN_SERVER_IP, SUB_SERVER_IP, '127.0.0.1', 'localhost'}
+    for scheme in ('https', 'http')
+]
+# nginx 가 X-Forwarded-Proto 를 넘기므로 Django 가 https 요청을 https 로 인식하게 한다.
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+
 # 194 단일화: ECM HTTP 직접연동으로 194 가 모든 센터의 ECM(분당 210.104.181.10 / 상암·영남
 # 210.96.71.85)에 직접 접속할 수 있으므로, download-review 웹/API/워커를 194 한 서버가
 # 분당·상암·영남 세 센터 모두 처리한다. 241 은 download-review 에서 제외(모든 요청을 194 로 보냄).
