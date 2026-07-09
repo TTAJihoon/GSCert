@@ -343,6 +343,7 @@ body {
   table-layout: fixed;
   width: 100%;
   border-collapse: collapse;
+  font-family: 'Noto Sans KR', 'Segoe UI', 'Apple SD Gothic Neo', sans-serif;
   font-size: 14px;
 }
 
