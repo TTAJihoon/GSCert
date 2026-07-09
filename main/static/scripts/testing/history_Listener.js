@@ -25,11 +25,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const project = document.getElementById('project').value.trim();
         const company = document.getElementById('company').value.trim();
         const product = document.getElementById('product').value.trim();
-        const swType = document.getElementById('sw_type').value.trim();
         const tester = document.getElementById('tester').value.trim();
         const comment = document.getElementById('comment').value.trim();
 
-        if (!gsnum && !project && !company && !product && !swType && !tester && !comment) {
+        if (!gsnum && !project && !company && !product && !tester && !comment) {
             e.preventDefault();
             alert('검색 조건을 입력해주세요');
             return false;
