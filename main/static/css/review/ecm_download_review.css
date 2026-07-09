@@ -914,7 +914,7 @@
 .modal-panel {
   display: flex;
   flex-direction: column;
-  width: min(1210px, calc(100vw - 48px));
+  width: min(1400px, calc(100vw - 48px));
   height: min(742px, calc(100vh - 48px));
   min-width: min(720px, calc(100vw - 48px));
   min-height: min(430px, calc(100vh - 48px));

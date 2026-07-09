@@ -35,6 +35,7 @@
 ### Download-review UI
 
 - 규칙별 점검 결과 팝업은 상단 요약 카드와 고정 헤더 테이블을 사용하는 형태로 정리했다.
+- 팝업의 기본 폭은 1400px이고, 작은 화면에서는 화면 폭 안에 맞춰 줄어든다.
 - 팝업 창은 사용자가 크기를 조절할 수 있고, 내용이 넘치면 본문과 규칙 결과 테이블에 스크롤이 생긴다.
 - 팝업 우측 상단 다운로드 버튼은 현재 팝업 내용을 그대로 HTML 파일로 저장한다. 전체/선택 엑셀 다운로드 기능은 기존대로 유지한다.
 - 검증: `node --check main\static\scripts\review\ecm_download_review.js`, `manage.py check --settings=myproject.ui_mock_settings`, `git diff --check`, 로컬 `/download-review/` 로드 확인을 완료했다. `main.tests`는 기존 규칙/샘플 산출물 기대값 관련 4건 실패가 남아 있다.
