@@ -912,9 +912,16 @@
 }
 
 .modal-panel {
-  width: min(1104px, 100%);
-  max-height: min(912px, calc(100vh - 48px));
+  display: flex;
+  flex-direction: column;
+  width: min(1210px, calc(100vw - 48px));
+  height: min(742px, calc(100vh - 48px));
+  min-width: min(720px, calc(100vw - 48px));
+  min-height: min(430px, calc(100vh - 48px));
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 48px);
   overflow: hidden;
+  resize: both;
   border-radius: 8px;
   background: #fff;
   box-shadow: 0 24px 60px rgba(15, 23, 42, .28);
@@ -925,6 +932,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  flex: 0 0 auto;
   padding: 18px 20px;
   border-bottom: 1px solid var(--review-line);
 }
@@ -952,7 +960,9 @@
 }
 
 .modal-body {
-  max-height: min(768px, calc(100vh - 144px));
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
   overflow: auto;
   padding: 18px 20px 20px;
 }
@@ -1000,21 +1010,70 @@
   white-space: normal;
 }
 
-/* === 규칙별 점검 결과 테이블 (7열: 번호/점검항목/결과/파일명/기대값/실제값/산출물) === */
-/* 표 자체에는 스크롤을 두지 않는다. 래퍼를 inline-block으로 만들어 표의 고정 너비
-   (열 너비 합계 ≈ 1134px)에 정확히 맞춰 줄어들게 하고, 넘치는 부분은 모달 본문
-   (.modal-body, overflow:auto)이 가로/세로 스크롤로 처리한다.
-   max-content는 셀 내용을 줄바꿈 없이 펼쳐 열이 과도하게 넓어지므로 쓰지 않는다. */
+.inspection-result-shell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 100%;
+}
+
+.inspection-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.inspection-summary-card {
+  min-height: 66px;
+  padding: 12px 14px;
+  border: 1px solid var(--review-line);
+  border-radius: 8px;
+  background: var(--review-soft);
+}
+
+.inspection-summary-card span {
+  display: block;
+  color: var(--review-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.inspection-summary-card strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 23px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.inspection-summary-card.success strong {
+  color: var(--review-success);
+}
+
+.inspection-summary-card.danger strong {
+  color: var(--review-danger);
+}
+
+.inspection-summary-card.warning strong {
+  color: var(--review-warning);
+}
+
+/* === 규칙별 점검 결과 테이블 (8열: 번호/점검항목/결과/파일명/기대값/실제값/메시지/산출물) === */
 .inspection-result-table {
-  overflow: visible;
-  display: inline-block;
-  vertical-align: top;
-  max-width: none;
+  display: block;
+  flex: 1 1 auto;
+  min-height: 260px;
+  max-width: 100%;
+  overflow: auto;
+  border: 1px solid var(--review-line);
+  border-radius: 8px;
+  background: #fff;
 }
 
 .inspection-result-table .data-table {
   table-layout: fixed;
-  width: 1134px;
+  width: 1280px;
 }
 
 /* 기본: 모든 셀 자동 줄바꿈 + 위쪽 정렬 (여러 줄 표시 대비) */
@@ -1025,6 +1084,13 @@
   overflow-wrap: anywhere;
   vertical-align: top;
   line-height: 1.5;
+}
+
+.inspection-result-table .data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--review-soft);
 }
 
 /* 1. 번호 — 글자 크기만큼 좁게 */
@@ -1038,7 +1104,7 @@
 /* 2. 점검항목 — 기존 너비 유지, 넘어가면 줄바꿈 */
 .inspection-result-table .data-table th:nth-child(2),
 .inspection-result-table .data-table td:nth-child(2) {
-  width: 130px;
+  width: 170px;
 }
 
 /* 3. 결과 — 결과 내용(배지) 크기만큼 좁게 */
@@ -1052,7 +1118,7 @@
 /* 4. 파일명 — 줄바꿈 */
 .inspection-result-table .data-table th:nth-child(4),
 .inspection-result-table .data-table td:nth-child(4) {
-  width: 180px;
+  width: 210px;
 }
 
 /* 5~6. 기대값 / 실제값 — 넓게 + 줄바꿈 (nowrap 전역 규칙을 명시적으로 덮어씀) */
@@ -1060,15 +1126,21 @@
 .inspection-result-table .data-table td:nth-child(5),
 .inspection-result-table .data-table th:nth-child(6),
 .inspection-result-table .data-table td:nth-child(6) {
-  width: 280px;
+  width: 230px;
   white-space: normal;
   word-break: break-word;
   overflow-wrap: anywhere;
 }
 
-/* 7. 산출물 */
+/* 7. 메시지 */
 .inspection-result-table .data-table th:nth-child(7),
 .inspection-result-table .data-table td:nth-child(7) {
+  width: 250px;
+}
+
+/* 8. 산출물 */
+.inspection-result-table .data-table th:nth-child(8),
+.inspection-result-table .data-table td:nth-child(8) {
   width: 130px;
 }
 

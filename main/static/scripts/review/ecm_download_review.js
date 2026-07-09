@@ -405,7 +405,8 @@ const state = {
   resultProjects: [],
   resultLoadError: "",
   resultProjectLoadError: "",
-  lastCheckedIndex: -1
+  lastCheckedIndex: -1,
+  modalDownloadFilename: ""
 };
 
 const tableColumnDefaults = {
@@ -1310,11 +1311,11 @@ function renderResults() {
   bindErrorButtons();
 }
 
-function openModal({ eyebrow, title, body, downloadHref = "" }) {
+function openModal({ eyebrow, title, body, downloadName = "" }) {
   qs("modalEyebrow").textContent = eyebrow;
   qs("modalTitle").textContent = title;
   qs("modalBody").innerHTML = body;
-  setModalDownload(downloadHref);
+  setModalDownload(downloadName);
   qs("detailModal").hidden = false;
 }
 
@@ -1323,18 +1324,98 @@ function closeModal() {
   setModalDownload("");
 }
 
-function setModalDownload(href) {
+function safeDownloadFilename(value) {
+  const fallback = "download-review-popup";
+  const cleaned = String(value || fallback)
+    .replace(/[\\/:*?"<>|]+/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  const filename = cleaned || fallback;
+  return filename.toLowerCase().endsWith(".html") ? filename : `${filename}.html`;
+}
+
+function setModalDownload(filename) {
   const link = qs("modalDownload");
   if (!link) return;
 
-  if (href) {
-    link.href = href;
+  state.modalDownloadFilename = filename ? safeDownloadFilename(filename) : "";
+  link.href = "#";
+
+  if (state.modalDownloadFilename) {
     link.hidden = false;
     return;
   }
 
-  link.href = "#";
   link.hidden = true;
+}
+
+function collectDownloadStyles() {
+  const styles = [];
+  Array.from(document.styleSheets).forEach((sheet) => {
+    try {
+      const rules = Array.from(sheet.cssRules || []).map((rule) => rule.cssText).join("\n");
+      if (rules) styles.push(rules);
+    } catch (error) {
+      // Cross-origin stylesheets can be skipped; the export keeps local layout CSS.
+    }
+  });
+  styles.push(`
+    body { margin: 0; padding: 24px; background: #f4f6f8; color: #1f2937; font-family: "Malgun Gothic", "Noto Sans KR", "Segoe UI", Arial, sans-serif; }
+    .download-export { max-width: 1280px; margin: 0 auto; }
+    .download-export .modal-panel { width: auto; height: auto; min-width: 0; min-height: 0; max-width: none; max-height: none; overflow: visible; resize: none; box-shadow: none; }
+    .download-export .modal-body { max-height: none; overflow: visible; }
+    .download-export .inspection-result-shell { min-height: 0; }
+    .download-export .inspection-result-table { max-height: none; overflow: visible; }
+  `);
+  return styles.join("\n");
+}
+
+function modalHtmlForDownload() {
+  const panel = qs("detailModal")?.querySelector(".modal-panel");
+  if (!panel) return "";
+
+  const clone = panel.cloneNode(true);
+  clone.querySelector(".modal-header-actions")?.remove();
+  clone.querySelectorAll("a[href]").forEach((link) => {
+    const href = link.getAttribute("href");
+    if (href && href !== "#") {
+      link.setAttribute("href", new URL(href, window.location.href).toString());
+    }
+  });
+
+  const title = qs("modalTitle")?.textContent?.trim() || "규칙별 점검 결과";
+  return `<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>${escapeHtml(title)}</title>
+  <style>${collectDownloadStyles()}</style>
+</head>
+<body>
+  <main class="download-review-page download-export">
+    ${clone.outerHTML}
+  </main>
+</body>
+</html>`;
+}
+
+function downloadCurrentModalHtml(event) {
+  event?.preventDefault();
+  if (!state.modalDownloadFilename || qs("detailModal").hidden) return;
+
+  const html = modalHtmlForDownload();
+  if (!html) return;
+
+  const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = state.modalDownloadFilename;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 function downloadJobResults() {
@@ -1579,10 +1660,11 @@ function renderLocalInspectionFallback(project, error) {
 function renderLatestInspectionResult(payload) {
   const project = normalizeApiJobProject(payload.project);
   if (project.id) {
-    setModalDownload(`/api/job-projects/${encodeURIComponent(project.id)}/results.xlsx`);
+    setModalDownload(`${project.number || project.id}_규칙별_점검_결과.html`);
   }
 
-  if (!payload.items.length) {
+  const rawItems = Array.isArray(payload.items) ? payload.items : [];
+  if (!rawItems.length) {
     // 작업이 실패해 규칙 결과가 없는 경우: 작업 조회 탭의 '오류' 값(error_message)과
     // 상세 내용을 그대로 상세 모달에 표시한다.
     const titleEl = qs("modalTitle");
@@ -1604,29 +1686,12 @@ function renderLatestInspectionResult(payload) {
     return;
   }
 
-  const displayItems = payload.display_items || payload.items;
-  const rows = renderInspectionRows(displayItems);
+  const displayItems = Array.isArray(payload.display_items) ? payload.display_items : rawItems;
 
-  qs("modalBody").innerHTML = `
-    <p class="modal-lead">최근 작업 ${escapeHtml(payload.job?.id || "-")}의 규칙 결과입니다.</p>
-    <div class="table-wrap modal-table inspection-result-table">
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th>번호</th>
-            <th>점검항목</th>
-            <th>결과</th>
-            <th>파일명</th>
-            <th>기대값</th>
-            <th>실제값</th>
-            <th>메시지</th>
-            <th>산출물</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-  `;
+  qs("modalBody").innerHTML = renderInspectionResultContent(
+    displayItems,
+    `최근 작업 ${payload.job?.id || "-"}의 규칙 결과입니다.`
+  );
 }
 
 function renderRuleArtifacts(rule) {
@@ -1749,6 +1814,51 @@ function ruleSubChecks(rule) {
   return rows;
 }
 
+function inspectionStatusType(rule) {
+  const value = String(rule?.status_label || rule?.status || "").trim().toLowerCase();
+  if (["정상", "완료", "pass", "passed", "success", "ok", "o"].includes(value)) return "success";
+  if (value.includes("부적합") || value.includes("오류") || value.includes("실패") || value.includes("fail") || value === "x") return "danger";
+  if (value.includes("보류") || value.includes("경고") || value.includes("확인") || value.includes("warn")) return "warning";
+  return "muted";
+}
+
+function inspectionSummary(items) {
+  return items.reduce((summary, item) => {
+    summary.total += 1;
+    const type = inspectionStatusType(item);
+    if (type === "success") summary.success += 1;
+    else if (type === "danger") summary.danger += 1;
+    else if (type === "warning") summary.warning += 1;
+    else summary.other += 1;
+    return summary;
+  }, { total: 0, success: 0, danger: 0, warning: 0, other: 0 });
+}
+
+function renderInspectionSummary(items) {
+  const summary = inspectionSummary(items);
+  const reviewNeeded = summary.danger + summary.other;
+  return `
+    <div class="inspection-summary" aria-label="규칙별 점검 요약">
+      <div class="inspection-summary-card">
+        <span>전체 규칙</span>
+        <strong>${summary.total}</strong>
+      </div>
+      <div class="inspection-summary-card success">
+        <span>정상</span>
+        <strong>${summary.success}</strong>
+      </div>
+      <div class="inspection-summary-card danger">
+        <span>부적합</span>
+        <strong>${reviewNeeded}</strong>
+      </div>
+      <div class="inspection-summary-card warning">
+        <span>확인 필요</span>
+        <strong>${summary.warning}</strong>
+      </div>
+    </div>
+  `;
+}
+
 // 규칙 결과 목록을 8열 테이블 행 HTML로 렌더링한다.
 // 하위 검사가 여러 개면 행으로 분리하고, 번호/점검항목/파일명/상세/산출물은 rowspan으로 묶는다.
 function renderInspectionRows(items) {
@@ -1764,6 +1874,33 @@ function renderInspectionRows(items) {
       <td>${renderRuleArtifacts(rule)}</td>
     </tr>
   `).join("");
+}
+
+function renderInspectionResultContent(items, leadText = "") {
+  const rows = renderInspectionRows(items);
+  return `
+    <div class="inspection-result-shell">
+      ${leadText ? `<p class="modal-lead">${escapeHtml(leadText)}</p>` : ""}
+      ${renderInspectionSummary(items)}
+      <div class="table-wrap modal-table inspection-result-table">
+        <table class="data-table" aria-label="규칙별 점검 결과">
+          <thead>
+            <tr>
+              <th>번호</th>
+              <th>점검항목</th>
+              <th>결과</th>
+              <th>파일명</th>
+              <th>기대값</th>
+              <th>실제값</th>
+              <th>메시지</th>
+              <th>산출물</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
 }
 
 function findErrorItem(source, number) {
@@ -1785,30 +1922,15 @@ async function openJobProjectRulesModal(jobProjectId, project = null) {
 
   try {
     const payload = await requestJson(`/api/job-projects/${jobProjectId}/results/`);
-    const displayItems = payload.display_items || payload.items;
-    const rows = renderInspectionRows(displayItems);
-    setModalDownload(`/api/job-projects/${encodeURIComponent(jobProjectId)}/results.xlsx`);
+    const payloadProject = payload.project ? normalizeApiJobProject(payload.project) : {};
+    const projectNumber = payloadProject.number || project?.number || titleNumber;
+    const rawItems = Array.isArray(payload.items) ? payload.items : [];
+    const displayItems = Array.isArray(payload.display_items) ? payload.display_items : rawItems;
+    qs("modalTitle").textContent = `${projectNumber} 규칙별 점검 결과`;
+    setModalDownload(`${projectNumber}_규칙별_점검_결과.html`);
 
     qs("modalBody").innerHTML = displayItems.length
-      ? `
-        <div class="table-wrap modal-table inspection-result-table">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>번호</th>
-                <th>점검항목</th>
-                <th>결과</th>
-                <th>파일명</th>
-                <th>기대값</th>
-                <th>실제값</th>
-                <th>메시지</th>
-                <th>산출물</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
-      `
+      ? renderInspectionResultContent(displayItems, `작업 프로젝트 ${projectNumber}의 규칙 결과입니다.`)
       : `
         <div class="modal-message warning">
           <strong>생성된 규칙 결과가 없습니다.</strong>
@@ -1837,30 +1959,12 @@ async function openResultRulesModal(jobProjectId) {
 
   try {
     const payload = await requestJson(`/api/job-projects/${jobProjectId}/results/`);
-    const displayItems = payload.display_items || payload.items;
-    const rows = renderInspectionRows(displayItems);
-    setModalDownload(`/api/job-projects/${encodeURIComponent(jobProjectId)}/results.xlsx`);
+    const rawItems = Array.isArray(payload.items) ? payload.items : [];
+    const displayItems = Array.isArray(payload.display_items) ? payload.display_items : rawItems;
+    setModalDownload(`${project.number}_규칙별_점검_결과.html`);
 
     qs("modalBody").innerHTML = displayItems.length
-      ? `
-        <div class="table-wrap modal-table inspection-result-table">
-          <table class="data-table">
-            <thead>
-              <tr>
-                <th>번호</th>
-                <th>점검항목</th>
-                <th>결과</th>
-                <th>파일명</th>
-                <th>기대값</th>
-                <th>실제값</th>
-                <th>메시지</th>
-                <th>산출물</th>
-              </tr>
-            </thead>
-            <tbody>${rows}</tbody>
-          </table>
-        </div>
-      `
+      ? renderInspectionResultContent(displayItems, `작업 프로젝트 ${project.number}의 규칙 결과입니다.`)
       : `
         <div class="modal-message warning">
           <strong>생성된 규칙 결과가 없습니다.</strong>
@@ -2066,6 +2170,7 @@ function bindControls() {
   }
 
   qs("closeModal").addEventListener("click", closeModal);
+  qs("modalDownload").addEventListener("click", downloadCurrentModalHtml);
   qs("detailModal").addEventListener("click", (event) => {
     if (event.target === qs("detailModal")) closeModal();
   });
