@@ -140,7 +140,7 @@
   flex: 0 0 auto;
   width: max-content;
   gap: 3px;
-  margin: 0 4px 0 0;
+  margin: 0;
   padding: 3px;
   border: 1px solid var(--review-line);
   border-radius: 8px;
@@ -166,6 +166,10 @@
   border-color: var(--review-primary);
   background: var(--review-primary);
   color: #fff;
+}
+
+.project-center-tabs {
+  margin-right: 6px;
 }
 
 .tabs {
@@ -269,8 +273,10 @@
 
 .panel-actions {
   display: inline-flex;
-  align-items: flex-end;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .panel-header-actions {

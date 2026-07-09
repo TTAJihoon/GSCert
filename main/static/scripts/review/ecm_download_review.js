@@ -22,9 +22,15 @@ function readJsonScript(id, fallback) {
   }
 }
 
-const centerRoutes = readJsonScript("downloadReviewCenterRoutes", {});
-const allowedCenters = new Set(readJsonScript("downloadReviewAllowedCenters", Object.keys(centerLabels)));
-const initialCenter = readJsonScript("downloadReviewDefaultCenter", "sangam");
+const parsedCenterRoutes = readJsonScript("downloadReviewCenterRoutes", {});
+const centerRoutes = parsedCenterRoutes && typeof parsedCenterRoutes === "object" && !Array.isArray(parsedCenterRoutes)
+  ? parsedCenterRoutes
+  : {};
+const parsedAllowedCenters = readJsonScript("downloadReviewAllowedCenters", Object.keys(centerLabels));
+const allowedCenters = new Set(Array.isArray(parsedAllowedCenters) && parsedAllowedCenters.length
+  ? parsedAllowedCenters
+  : Object.keys(centerLabels));
+const initialCenter = readJsonScript("downloadReviewDefaultCenter", "sangam") || "sangam";
 
 const ruleNames = [
   "프로젝트번호 파일명 포함",
@@ -654,8 +660,7 @@ function projectsUrl() {
 function jobsUrl() {
   const params = new URLSearchParams({
     status: "all",
-    limit: "50",
-    center: state.center
+    limit: "50"
   });
   return `${apiEndpoints.jobs}?${params.toString()}`;
 }
@@ -2190,14 +2195,8 @@ async function switchCenter(center) {
   state.center = center;
   state.selectionMessage = "";
   state.selected.clear();
-  state.resultJobId = null;
-  state.resultProjects = [];
   syncCenterTabs();
-  await Promise.allSettled([
-    loadProjects(),
-    refreshActiveJob(),
-    loadResultJobs()
-  ]);
+  await loadProjects();
 }
 
 function buildCenterRouteUrl(baseUrl, center) {
