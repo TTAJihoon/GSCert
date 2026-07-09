@@ -31,10 +31,10 @@
 - 194 is the main download-review server.
 - 194 handles `bundang`, `sangam`, and `yeongnam` through `ecm-http`.
 - 241 is not a download-review processing target; route download-review traffic back to 194.
-- Center tabs still filter project/job lists by center code:
+- Center selection in the UI only filters the project list:
   - `GET /api/projects/?center=bundang|sangam|yeongnam`
-  - `GET /api/jobs/?center=bundang|sangam|yeongnam`
-- Active/current job view is global to the server.
+- Active/current job and job history views call `GET /api/jobs/` without a center and are global to the server queue, accumulating jobs from every center.
+- `GET /api/jobs/?center=...` remains accepted for explicit API diagnostics, but the UI does not use it for the progress/history tabs.
 
 ## API Contract
 

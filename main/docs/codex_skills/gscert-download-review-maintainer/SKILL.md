@@ -58,8 +58,8 @@ For UI changes, restart the server and verify `/download-review/`.
 
 ## Current Important Assumptions
 
-- The active worker/current job view is global to the server, not center-specific.
-- Center tabs affect project list and job list filtering.
+- Active/current job and job history views are global to the server queue and accumulate all centers.
+- Center selection in the UI affects only the project list.
 - 194 is the main download-review server and handles bundang/sangam/yeongnam through `ecm-http`.
 - 241 is not a download-review worker target; it should route download-review traffic back to 194.
 - Project/rule data should come from shared PostgreSQL `reference` in normal operation.

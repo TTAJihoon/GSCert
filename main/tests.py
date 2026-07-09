@@ -1097,7 +1097,7 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(completed_data["items"][0]["completed_project_count"], 1)
         self.assertEqual(completed_data["items"][0]["failed_project_count"], 1)
 
-    def test_jobs_list_endpoint_filters_center(self):
+    def test_jobs_list_endpoint_filters_explicit_center_query(self):
         DownloadReviewJob.objects.create(
             center_code="sangam",
             status=DownloadReviewJobStatus.COMPLETED,
@@ -1118,6 +1118,28 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(data["pagination"]["total"], 1)
         self.assertEqual(data["items"][0]["id"], str(yeongnam.id))
         self.assertEqual(data["items"][0]["center_code"], "yeongnam")
+
+    def test_jobs_list_endpoint_without_center_accumulates_all_centers(self):
+        DownloadReviewJob.objects.create(
+            center_code="sangam",
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        DownloadReviewJob.objects.create(
+            center_code="yeongnam",
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00011"],
+        )
+
+        response = jobs(self.factory.get("/api/jobs/", {"status": "all", "limit": "10"}))
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["pagination"]["total"], 2)
+        self.assertEqual({item["center_code"] for item in data["items"]}, {"sangam", "yeongnam"})
+        self.assertIsNone(data["center"])
 
     def test_cancel_scheduled_job_marks_projects_skipped(self):
         job = DownloadReviewJob.objects.create(

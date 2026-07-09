@@ -38,8 +38,8 @@
 - 팝업의 기본 폭은 1400px이고, 작은 화면에서는 화면 폭 안에 맞춰 줄어든다.
 - 팝업 창은 사용자가 크기를 조절할 수 있고, 내용이 넘치면 본문과 규칙 결과 테이블에 스크롤이 생긴다.
 - 팝업 우측 상단 다운로드 버튼은 현재 팝업 내용을 그대로 HTML 파일로 저장한다. 전체/선택 엑셀 다운로드 기능은 기존대로 유지한다.
-- 센터 선택은 프로젝트 선택 탭 안에서만 한다. 현재 작업 진행 상황과 작업 조회는 센터 탭에 종속되지 않는 전역 작업 화면으로 본다.
-- 검증: `node --check main\static\scripts\review\ecm_download_review.js`, `manage.py check --settings=myproject.ui_mock_settings`, `git diff --check`, 로컬 `/download-review/` 로드 확인을 완료했다. `main.tests`는 기존 규칙/샘플 산출물 기대값 관련 4건 실패가 남아 있다.
+- 센터 선택은 프로젝트 선택 탭 안에서만 한다. 현재 작업 진행 상황과 작업 조회는 서버 큐 기준으로 모든 센터 작업을 누적 표시하는 전역 작업 화면으로 본다.
+- 검증: `node --check main\static\scripts\review\ecm_download_review.js`, `manage.py check --settings=myproject.ui_mock_settings`, 작업 목록 센터 누적/명시 필터 테스트 2건, `git diff --check`, 로컬 `/download-review/` 로드 및 `/api/jobs/?status=all&limit=50` 센터 미주입 확인을 완료했다. `DownloadReviewJobsApiTests` 전체 실행 시 기존 규칙/샘플 산출물 기대값 관련 4건 실패가 남아 있다.
 
 ### Windows 로컬 앱
 

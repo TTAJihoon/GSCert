@@ -183,8 +183,9 @@ def jobs(request):
 
 def _jobs_list(request):
     try:
-        query_params = _query_params_with_host_default_center(request)
-        _ensure_request_center_allowed(request, query_params.get("center"))
+        query_params = request.GET.copy()
+        if query_params.get("center"):
+            query_params["center"] = _ensure_request_center_allowed(request, query_params.get("center"))
         payload = get_jobs_payload(query_params)
         status = 200
     except ReferenceQueryError as exc:
