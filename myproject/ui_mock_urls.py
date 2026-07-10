@@ -26,11 +26,17 @@ def download_review(request):
     return render(request, "review/ecm_download_review.html")
 
 
+def consultation(request):
+    return render(request, "consultation.html")
+
+
 urlpatterns = [
     path("", lambda request: redirect("download_review"), name="index"),
     path("history/", lambda request: redirect("download_review"), name="history"),
     path("similar/", lambda request: redirect("download_review"), name="similar"),
     path("security/", lambda request: redirect("download_review"), name="security"),
+    path("consultation", consultation, name="consultation"),
+    path("consultation/", consultation, name="consultation_slash"),
     path("prdinfo/", lambda request: redirect("download_review"), name="prdinfo"),
     path("checkreport/", lambda request: redirect("download_review"), name="checkreport"),
     path("download-review/", download_review, name="download_review"),

@@ -1,0 +1,33 @@
+{% extends 'header.html' %}
+{% load static %}
+{% block title %}상담 지원 에이전트{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{% static 'css/consultation.css' %}"/>
+{% endblock %}
+
+{% block content %}
+<main class="consultation-page">
+  <section class="consultation-shell" aria-labelledby="consultation-title">
+    <div class="consultation-header">
+      <div>
+        <p class="consultation-kicker">Consultation</p>
+        <h1 id="consultation-title">상담 지원 에이전트</h1>
+      </div>
+      <span class="consultation-status">준비 중</span>
+    </div>
+
+    <div class="consultation-workspace">
+      <div class="consultation-message">
+        <div class="message-label">상담 지원 에이전트</div>
+        <p>상담 지원 화면을 준비하고 있습니다.</p>
+      </div>
+
+      <div class="consultation-composer" aria-label="상담 입력 영역">
+        <textarea rows="4" placeholder="상담 내용을 입력하세요" disabled></textarea>
+        <button type="button" disabled>전송</button>
+      </div>
+    </div>
+  </section>
+</main>
+{% endblock %}

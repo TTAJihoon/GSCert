@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path, include
 from django.views.generic import RedirectView
-from main.views.init import index, similar, security, prdinfo, checkreport, test, download_review
+from main.views.init import index, similar, security, consultation, prdinfo, checkreport, test, download_review
 
 from main.views.testing.history import history
 from main.views.testing.history_report import download_report, download_report_document
@@ -58,6 +58,8 @@ urlpatterns = [
     path('similar/', similar, name='similar'),
     path('summarize_document/', summarize_document, name='summarize_document'),
     path('security/', security, name='security'),
+    path('consultation', consultation, name='consultation'),
+    path('consultation/', consultation, name='consultation_slash'),
     path('security/invicti/parse/', invicti_parse_view, name='invicti_parse'),
     path('security/gpt/recommend/', get_gpt_recommendation_view, name='gpt_recommend'),
     path('security/gpt/recommend/stream/', stream_gpt_recommendation_view, name='gpt_recommend_stream'),

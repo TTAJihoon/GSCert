@@ -31,6 +31,10 @@ def security(request):
     return render(request, 'testing/security.html')
 
 
+def consultation(request):
+    return render(request, 'consultation.html')
+
+
 def prdinfo(request):
     return render(request, 'certy/prdinfo.html')
 
