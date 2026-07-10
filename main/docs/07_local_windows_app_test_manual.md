@@ -31,11 +31,12 @@
 local_review_app/
   README.md
   requirements.txt
-  run.py
+  run_dashboard.py
   scripts/
-    package_windows.ps1
+    package_windows_dashboard.ps1
   gscert_local_review/
     app.py
+    app_dashboard.py
     api_client.py
     local_runner.py
     project.py
@@ -83,7 +84,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/local-review/health/" -Method 
 
 ```powershell
 cd local_review_app
-.\.venv\Scripts\python.exe run.py
+.\.venv\Scripts\python.exe run_dashboard.py
 ```
 
 앱이 실행되면 기본 서버 URL은 다음 값으로 표시된다.
@@ -216,7 +217,7 @@ GS-26-00386
 
 ```powershell
 cd local_review_app
-.\scripts\package_windows.ps1
+.\scripts\package_windows_dashboard.ps1
 ```
 
 기본적으로 다음 Python을 사용한다.
@@ -228,33 +229,33 @@ local_review_app\.venv\Scripts\python.exe
 다른 Python을 사용하려면 `-Python` 인자를 지정한다.
 
 ```powershell
-.\scripts\package_windows.ps1 -Python "C:\Path\To\python.exe"
+.\scripts\package_windows_dashboard.ps1 -Python "C:\Path\To\python.exe"
 ```
 
 빌드 결과는 다음 폴더에 생성된다.
 
 ```text
-local_review_app/dist/GSCertLocalReview/
+local_review_app/dist/GSCertLocalReviewDashboard/
 ```
 
 생성된 실행 파일은 다음 위치에 있다.
 
 ```text
-local_review_app/dist/GSCertLocalReview/GSCertLocalReview.exe
+local_review_app/dist/GSCertLocalReviewDashboard/GSCertLocalReviewDashboard.exe
 ```
 
 패키징 스크립트는 빌드 후 자동으로 다음 검사를 실행한다.
 
 ```powershell
-local_review_app\dist\GSCertLocalReview\GSCertLocalReview.exe --self-check
+local_review_app\dist\GSCertLocalReviewDashboard\GSCertLocalReviewDashboard.exe --self-check
 ```
 
 이 검사는 GUI를 띄우지 않고 `gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`, `openpyxl` import와 최소 공용 엔진 호출이 가능한지 확인한다. 이 단계가 실패하면 배포 폴더를 전달하지 말고 패키징 의존성을 먼저 수정한다.
 
-다른 PC에 배포할 때는 `GSCertLocalReview.exe` 파일 하나만 복사하지 말고 아래 폴더 전체를 복사한다.
+다른 PC에 배포할 때는 `GSCertLocalReviewDashboard.exe` 파일 하나만 복사하지 말고 아래 폴더 전체를 복사한다.
 
 ```text
-local_review_app/dist/GSCertLocalReview/
+local_review_app/dist/GSCertLocalReviewDashboard/
 ```
 
 ## 테스트 데이터 준비
@@ -282,7 +283,7 @@ TTA-26-00727_test/
 - 점검 결과 저장/내보내기
 - 로컬 실행 결과 서버 업로드
 
-`.exe` 패키징 결과물에 `gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`, `openpyxl`이 포함되는지는 `GSCertLocalReview.exe --self-check`로 검증한다.
+`.exe` 패키징 결과물에 `gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`, `openpyxl`이 포함되는지는 `GSCertLocalReviewDashboard.exe --self-check`로 검증한다.
 
 ## 문제 해결
 

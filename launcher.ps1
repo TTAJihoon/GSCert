@@ -58,7 +58,7 @@ function Show-Menu {
     Write-Host "  G.    Google Sheets- 인증위 시트 → PostgreSQL reference_project 적재$venvWarn"
     Write-Host "  f.    FAISS 임베딩  - reference DB 신규 데이터 증분 임베딩$venvWarn"
     Write-Host "  D.    규칙 DB 반영  - 점검규칙(config)을 PostgreSQL에 반영 (seed)$venvWarn"
-    Write-Host "  B.    앱 빌드       - 로컬 검토 앱(GSCertLocalReview.exe) 재빌드"
+    Write-Host "  B.    앱 빌드       - 로컬 검토 앱(GSCertLocalReviewDashboard.exe) 재빌드"
     Write-Host "  git.  Git 관리      - 원격 pull / 로컬 커밋·push"
     $pgHost = if ($env:REFERENCE_PG_HOST) { $env:REFERENCE_PG_HOST } else { "미설정" }
     Write-Host "  P.    PostgreSQL 설정- 현재 HOST: $pgHost"
@@ -407,9 +407,9 @@ while ($true) {
         }
         'B' {
             Write-Host ""
-            Write-Host "=== 로컬 검토 앱 빌드 (GSCertLocalReview.exe) ===" -ForegroundColor Cyan
+            Write-Host "=== 로컬 검토 앱 빌드 (GSCertLocalReviewDashboard.exe) ===" -ForegroundColor Cyan
             $AppDir      = Join-Path $ScriptDir "local_review_app"
-            $BuildScript = Join-Path $AppDir "scripts\package_windows.ps1"
+            $BuildScript = Join-Path $AppDir "scripts\package_windows_dashboard.ps1"
             $AppPython   = Join-Path $AppDir ".venv\Scripts\python.exe"
             if (-not (Test-Path $BuildScript)) {
                 Write-Host "[ERROR] 빌드 스크립트를 찾을 수 없습니다: $BuildScript" -ForegroundColor Red
@@ -419,15 +419,15 @@ while ($true) {
                 Write-Host "          cd `"$AppDir`"; python -m venv .venv" -ForegroundColor Gray
             } else {
                 Write-Host "  최신 gscert_review_core(엔진)를 포함해 exe 를 다시 빌드합니다. (수 분 소요)" -ForegroundColor Gray
-                Write-Host "  실행 중인 GSCertLocalReview.exe 가 있으면 종료합니다." -ForegroundColor Gray
+                Write-Host "  실행 중인 GSCertLocalReviewDashboard.exe 가 있으면 종료합니다." -ForegroundColor Gray
                 # taskkill 은 프로세스가 없으면 stderr 를 내므로 Stop-Process 로 대체(없어도 무해).
-                Get-Process -Name GSCertLocalReview -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+                Get-Process -Name GSCertLocalReviewDashboard -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
                 $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
                 & powershell -ExecutionPolicy Bypass -File $BuildScript
                 $buildOk = ($LASTEXITCODE -eq 0)
                 $ErrorActionPreference = $prevEAP
                 if ($buildOk) {
-                    Write-Host "[OK] 앱 빌드 완료. local_review_app\dist\GSCertLocalReview 의 exe 를 배포하세요." -ForegroundColor Green
+                    Write-Host "[OK] 앱 빌드 완료. local_review_app\dist\GSCertLocalReviewDashboard 의 exe 를 배포하세요." -ForegroundColor Green
                 } else {
                     Write-Host "[ERROR] 앱 빌드 실패. 위 출력을 확인하세요." -ForegroundColor Red
                 }

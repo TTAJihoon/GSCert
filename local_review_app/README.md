@@ -27,7 +27,7 @@ python -m venv .venv
 ## Run
 
 ```powershell
-.\.venv\Scripts\python.exe -m gscert_local_review
+.\.venv\Scripts\python.exe run_dashboard.py
 ```
 
 The default server URL is `http://127.0.0.1:8000`. It can be changed in the app UI.
@@ -35,9 +35,9 @@ The default server URL is `http://127.0.0.1:8000`. It can be changed in the app 
 ## Package
 
 ```powershell
-.\scripts\package_windows.ps1
+.\scripts\package_windows_dashboard.ps1
 ```
 
-The executable folder is created under `local_review_app/dist/GSCertLocalReview/`.
+The executable folder is created under `local_review_app/dist/GSCertLocalReviewDashboard/`.
 
-The packaging script runs `GSCertLocalReview.exe --self-check` after the build. This validates that the packaged app can import the shared engine and parser dependencies (`gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`, `openpyxl`) before the folder is distributed.
+The packaging script runs `GSCertLocalReviewDashboard.exe --self-check` after the build. This validates that the packaged app can import the shared engine and parser dependencies (`gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`, `openpyxl`) before the folder is distributed.

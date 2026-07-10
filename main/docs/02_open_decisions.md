@@ -73,10 +73,11 @@
 
 ### 4. Windows 앱 배포 기준
 
+결정됨: dashboard 앱(`GSCertLocalReviewDashboard`, `run_dashboard.py`)을 유일한 공식 배포 대상으로 확정했다. 기존 `run.py`/`GSCertLocalReview.exe` 빌드 경로는 제거했다.
+
 확인할 것:
 
-- 배포 대상 폴더는 `local_review_app/dist/GSCertLocalReview/` 전체인지.
-- 새 dashboard 앱(`GSCertLocalReviewDashboard`)을 공식 배포 대상으로 둘지, 기존 앱과 병행할지.
+- 배포 대상 폴더는 `local_review_app/dist/GSCertLocalReviewDashboard/` 전체인지.
 - 규칙 bundle 업데이트만으로 충분한 변경과 exe 재배포가 필요한 변경을 사용자에게 어떻게 안내할지.
 
 관련 문서:
