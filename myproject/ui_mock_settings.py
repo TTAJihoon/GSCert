@@ -65,6 +65,12 @@ ECM_AGENT_LOCK_TIMEOUT_SECONDS = 600
 REFERENCE_DB_PATH = BASE_DIR / "main" / "data" / "ecmlist.db"
 REFERENCE_DB_PATH_2 = BASE_DIR / "main" / "data" / "ecmlist2.db"
 DOWNLOAD_REVIEW_ARTIFACT_DIR = BASE_DIR / "main" / "data" / "download_review_artifacts"
+LOCAL_REVIEW_APP_PACKAGE_DIR = Path(
+    os.environ.get(
+        "LOCAL_REVIEW_APP_PACKAGE_DIR",
+        BASE_DIR / "local_review_app" / "dist" / "GSCertLocalReview",
+    )
+)
 REFERENCE_DB_TABLE = "ecm_list"
 DOWNLOAD_REVIEW_DEFAULT_CENTER = "sangam"
 DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_HOST = {

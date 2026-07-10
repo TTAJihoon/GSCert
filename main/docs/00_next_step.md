@@ -34,6 +34,8 @@
 
 ### Download-review UI
 
+- 상단 화면 탭 오른쪽에 `윈도우 프로그램 다운로드` 버튼을 추가했다.
+- 버튼은 `GET /api/local-review/app/download/`로 연결되며, 서버의 `local_review_app/dist/GSCertLocalReview/` 폴더를 `GSCertLocalReview.zip`으로 내려준다.
 - 규칙별 점검 결과 팝업은 상단 요약 카드와 고정 헤더 테이블을 사용하는 형태로 정리했다.
 - 팝업의 기본 폭은 1400px이고, 작은 화면에서는 화면 폭 안에 맞춰 줄어든다.
 - 팝업 창은 사용자가 크기를 조절할 수 있고, 내용이 넘치면 본문과 규칙 결과 테이블에 스크롤이 생긴다.

@@ -1,5 +1,9 @@
+from pathlib import Path
+from tempfile import SpooledTemporaryFile
+from zipfile import ZIP_DEFLATED, ZipFile
+
 from django.conf import settings
-from django.http import JsonResponse
+from django.http import FileResponse, Http404, JsonResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
@@ -170,6 +174,30 @@ def local_review_rules_bundle(request):
         return denied
     payload, status = get_rulebase_bundle_payload(request.GET.get("version"))
     response = JsonResponse(payload, status=status, json_dumps_params={"ensure_ascii": False})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_GET
+def local_review_app_download(request):
+    package_dir = _local_review_package_dir()
+    exe_path = package_dir / "GSCertLocalReview.exe"
+    if not package_dir.is_dir() or not exe_path.is_file():
+        raise Http404("로컬 점검 프로그램 패키지가 준비되지 않았습니다.")
+
+    archive = SpooledTemporaryFile(max_size=64 * 1024 * 1024)
+    with ZipFile(archive, mode="w", compression=ZIP_DEFLATED) as zip_file:
+        for file_path in sorted(path for path in package_dir.rglob("*") if path.is_file()):
+            archive_name = file_path.relative_to(package_dir.parent).as_posix()
+            zip_file.write(file_path, archive_name)
+    archive.seek(0)
+
+    response = FileResponse(
+        archive,
+        content_type="application/zip",
+        as_attachment=True,
+        filename="GSCertLocalReview.zip",
+    )
     response["Cache-Control"] = "no-store"
     return response
 
@@ -417,6 +445,13 @@ def _local_review_auth_denied(request):
     )
     response["Cache-Control"] = "no-store"
     return response
+
+
+def _local_review_package_dir():
+    configured = getattr(settings, "LOCAL_REVIEW_APP_PACKAGE_DIR", None)
+    if configured:
+        return Path(configured).expanduser().resolve()
+    return (settings.BASE_DIR / "local_review_app" / "dist" / "GSCertLocalReview").resolve()
 
 
 def _ensure_request_center_allowed(request, center_code):

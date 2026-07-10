@@ -248,6 +248,12 @@ ECM_DOWNLOAD_TIMEOUTS = {
     'MENU_VISIBLE': 5_000,
     'SPLASH': 10_000,
 }
+LOCAL_REVIEW_APP_PACKAGE_DIR = Path(
+    os.environ.get(
+        'LOCAL_REVIEW_APP_PACKAGE_DIR',
+        BASE_DIR / 'local_review_app' / 'dist' / 'GSCertLocalReview',
+    )
+)
 
 
 # Password validation

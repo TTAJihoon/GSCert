@@ -4,7 +4,7 @@
 {% block title %}ECM 제출물 자동 점검{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=16">
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=17">
 <script src="{% static 'scripts/review/ecm_download_review.js' %}?v=16" defer></script>
 {% endblock %}
 
@@ -59,6 +59,15 @@
       <i class="fa-solid fa-table-list"></i>
       작업 조회
     </button>
+    <a
+      class="local-app-download-button"
+      href="{% url 'local_review_app_download' %}"
+      title="다운로드 후 GSCertLocalReview.exe 실행"
+      aria-label="윈도우 프로그램 다운로드. 다운로드 후 GSCertLocalReview.exe 실행"
+    >
+      <i class="fa-solid fa-download"></i>
+      <span>윈도우 프로그램<br>다운로드</span>
+    </a>
   </nav>
 
   <section class="tab-panel active" id="tab-projects">

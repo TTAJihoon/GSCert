@@ -174,6 +174,7 @@
 
 .tabs {
   display: flex;
+  align-items: flex-end;
   gap: 4px;
   margin-bottom: 14px;
   border-bottom: 1px solid var(--review-line);
@@ -195,6 +196,40 @@
 .tab-button.active {
   border-bottom-color: var(--review-primary);
   color: var(--review-primary);
+}
+
+.local-app-download-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 168px;
+  min-height: 44px;
+  margin-left: auto;
+  margin-bottom: 5px;
+  padding: 0 14px;
+  border: 1px solid #0f766e;
+  border-radius: 8px;
+  background: #0f766e;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.local-app-download-button:hover {
+  background: #0b5f59;
+  border-color: #0b5f59;
+  color: #fff;
+  text-decoration: none;
+}
+
+.local-app-download-button i {
+  flex: 0 0 auto;
+  font-size: 15px;
 }
 
 .tab-panel {
