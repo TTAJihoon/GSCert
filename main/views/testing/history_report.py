@@ -15,10 +15,10 @@ import zipfile
 from pathlib import Path
 from urllib.parse import quote
 
-from django.http import HttpResponse, JsonResponse, StreamingHttpResponse
+from django.http import FileResponse, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.views.decorators.http import require_GET
 
-from main.views.testing.history_download import all_dir, doc_dir
+from main.views.testing.history_download import all_dir, doc_dir, zip_path
 
 
 def _safe_name(test_no):
@@ -87,10 +87,23 @@ def _file_response(path: Path) -> HttpResponse:
 
 @require_GET
 def download_report(request, test_no):
-    """전체(#2): report\\<시험번호> 안의 모든 파일을 ZIP 으로 스트리밍 반환한다."""
+    """전체(#2): 미리 만들어 둔 ZIP 이 있으면 즉시 스트리밍(FileResponse), 없으면 즉석 압축.
+
+    다운로드 단계에서 ZIP 을 미리 만들어 두므로(history_download), 여기서는 완성된 파일을
+    Content-Length 와 함께 바로 흘려보내 다운로드가 지연 없이 시작된다.
+    """
     name = _safe_name(test_no)
     if not name:
         return JsonResponse({"error": "잘못된 시험번호입니다."}, status=400)
+
+    zp = zip_path(name)
+    if zp.is_file():
+        response = FileResponse(open(zp, "rb"), content_type="application/zip")
+        response["Content-Disposition"] = _content_disposition(f"{name}.zip")
+        response["Content-Length"] = str(zp.stat().st_size)
+        return response
+
+    # 폴백: 미리 만든 ZIP 이 없으면 폴더에서 즉석 압축 스트리밍.
     folder = all_dir(name)
     if not folder.is_dir():
         return JsonResponse({"error": "다운로드할 문서 폴더가 없습니다."}, status=404)

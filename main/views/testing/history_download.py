@@ -27,8 +27,14 @@ def _report_base() -> str:
 
 
 def all_dir(test_no: str) -> Path:
-    """#2 전체 다운로드 저장 폴더(ZIP 서빙 대상)."""
+    """#2 전체 다운로드 저장 폴더(원본 파일)."""
     return Path(_report_base()) / unicodedata.normalize("NFC", str(test_no or "").strip())
+
+
+def zip_path(test_no: str) -> Path:
+    """#2 전체 다운로드용으로 미리 만들어 둔 ZIP 경로(서빙 대상). all_dir 밖에 둔다."""
+    name = unicodedata.normalize("NFC", str(test_no or "").strip())
+    return Path(_report_base()) / "__zip" / (name + ".zip")
 
 
 def doc_dir(test_no: str) -> Path:
@@ -210,4 +216,18 @@ def download_full_project_documents(
         tmp.replace(dest)
         count += 1
 
-    return {"download_dir": str(base), "doc_count": count, "center": center}
+    # WS(로딩 표시) 단계에서 ZIP 을 미리 만들어 둔다. 이렇게 하면 이후 브라우저의
+    # /download/ GET 은 완성된 ZIP 을 즉시 스트리밍(FileResponse)하므로, 로딩이 사라진 뒤
+    # 다운로드가 시작되기까지의 압축 지연이 사라진다.
+    import zipfile
+
+    zp = zip_path(test_no)
+    zp.parent.mkdir(parents=True, exist_ok=True)
+    tmp_zip = zp.with_name(zp.name + ".part")
+    with zipfile.ZipFile(tmp_zip, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for p in sorted(base.rglob("*")):
+            if p.is_file():
+                zf.write(p, arcname=p.relative_to(base).as_posix())
+    tmp_zip.replace(zp)
+
+    return {"download_dir": str(base), "doc_count": count, "center": center, "zip_path": str(zp)}

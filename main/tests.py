@@ -3720,6 +3720,13 @@ class HistoryDocumentHttpTests(SimpleTestCase):
             folder = Path(base) / "GS-B-23-067"
             self.assertTrue((folder / "성적서.docx").exists())
             self.assertTrue((folder / "4.시험" / "계획.docx").exists())
+            # ZIP 이 다운로드 단계에서 미리 생성돼 있어야 GET 이 즉시 스트리밍한다.
+            import zipfile as _zip
+            zp = Path(result["zip_path"])
+            self.assertTrue(zp.is_file())
+            with _zip.ZipFile(zp) as zf:
+                names = set(zf.namelist())
+            self.assertEqual(names, {"성적서.docx", "4.시험/계획.docx"})
 
 
 class WeeklyHttpDownloadTests(SimpleTestCase):
