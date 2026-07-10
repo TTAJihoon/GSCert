@@ -16,6 +16,7 @@
 #>
 param(
     [string]$ServerIp = "210.96.71.194",
+    [string]$ServerDomain = "210.96.71.194.nip.io",   # Google OAuth 등 도메인 필수 용도(IP 불가). nip.io 무료 와일드카드 DNS.
     [string]$NginxConfDir = "C:\nginx-1.29.8\conf"
 )
 $ErrorActionPreference = "Stop"
@@ -42,10 +43,13 @@ if (-not (Test-Path $NginxConfDir)) {
 $crt = Join-Path $NginxConfDir "gscert.crt"
 $key = Join-Path $NginxConfDir "gscert.key"
 
+# CN 은 도메인, SAN 에는 IP 와 도메인을 모두 넣어 두 주소 접속 모두 무경고 처리.
+# (기존 https://<IP>/ 접속 유지 + https://<도메인>/ 신규 접속 지원)
+$san = "subjectAltName=IP:$ServerIp,DNS:$ServerDomain"
 & $openssl req -x509 -nodes -newkey rsa:2048 `
     -keyout $key -out $crt -days 3650 `
-    -subj "/CN=$ServerIp" `
-    -addext "subjectAltName=IP:$ServerIp"
+    -subj "/CN=$ServerDomain" `
+    -addext $san
 
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] 인증서 생성 실패" -ForegroundColor Red

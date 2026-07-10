@@ -208,13 +208,15 @@ if (-not (Test-Path $NginxExe)) {
 if (-not (Test-Path $NginxTemplate)) {
     Fail "nginx.conf 템플릿이 없습니다: $NginxTemplate"
 }
-$serverIP   = Get-ServerIP
-$staticRoot = ($RootDir -replace '\\', '/') + '/staticfiles'
+$serverIP     = Get-ServerIP
+$serverDomain = "$serverIP.nip.io"    # Google OAuth 등 도메인 필수 용도(IP 불가). nip.io 무료 와일드카드 DNS.
+$staticRoot   = ($RootDir -replace '\\', '/') + '/staticfiles'
 $conf = Get-Content $NginxTemplate -Raw -Encoding UTF8
-$conf = $conf -replace '__SERVER_IP__',   $serverIP
-$conf = $conf -replace '__STATIC_ROOT__', $staticRoot
+$conf = $conf -replace '__SERVER_IP__',     $serverIP
+$conf = $conf -replace '__SERVER_DOMAIN__', $serverDomain
+$conf = $conf -replace '__STATIC_ROOT__',   $staticRoot
 [System.IO.File]::WriteAllText($NginxConf, $conf, [System.Text.Encoding]::ASCII)
-OK "nginx.conf 설정 완료 (IP: $serverIP, static: $staticRoot)"
+OK "nginx.conf 설정 완료 (IP: $serverIP, domain: $serverDomain, static: $staticRoot)"
 
 # 부팅 자동시작 스케줄러 등록
 $taskName = "GSCert-nginx"
