@@ -251,9 +251,11 @@ ECM_DOWNLOAD_TIMEOUTS = {
 LOCAL_REVIEW_APP_PACKAGE_DIR = Path(
     os.environ.get(
         'LOCAL_REVIEW_APP_PACKAGE_DIR',
-        BASE_DIR / 'local_review_app' / 'dist' / 'GSCertLocalReview',
+        r'C:\Claude_GSCert\local_review_app\dist\GSCertLocalReviewDashboard',
     )
 )
+LOCAL_REVIEW_APP_EXE_NAME = os.environ.get('LOCAL_REVIEW_APP_EXE_NAME', 'GSCertLocalReviewDashboard.exe')
+LOCAL_REVIEW_APP_ARCHIVE_NAME = os.environ.get('LOCAL_REVIEW_APP_ARCHIVE_NAME', 'GSCertLocalReviewDashboard.zip')
 
 
 # Password validation

@@ -68,9 +68,11 @@ DOWNLOAD_REVIEW_ARTIFACT_DIR = BASE_DIR / "main" / "data" / "download_review_art
 LOCAL_REVIEW_APP_PACKAGE_DIR = Path(
     os.environ.get(
         "LOCAL_REVIEW_APP_PACKAGE_DIR",
-        BASE_DIR / "local_review_app" / "dist" / "GSCertLocalReview",
+        r"C:\Claude_GSCert\local_review_app\dist\GSCertLocalReviewDashboard",
     )
 )
+LOCAL_REVIEW_APP_EXE_NAME = os.environ.get("LOCAL_REVIEW_APP_EXE_NAME", "GSCertLocalReviewDashboard.exe")
+LOCAL_REVIEW_APP_ARCHIVE_NAME = os.environ.get("LOCAL_REVIEW_APP_ARCHIVE_NAME", "GSCertLocalReviewDashboard.zip")
 REFERENCE_DB_TABLE = "ecm_list"
 DOWNLOAD_REVIEW_DEFAULT_CENTER = "sangam"
 DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_HOST = {

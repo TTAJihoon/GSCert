@@ -1,9 +1,8 @@
 from pathlib import Path
-from tempfile import SpooledTemporaryFile
-from zipfile import ZIP_DEFLATED, ZipFile
+from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 from django.conf import settings
-from django.http import FileResponse, Http404, JsonResponse
+from django.http import Http404, JsonResponse, StreamingHttpResponse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
@@ -181,24 +180,17 @@ def local_review_rules_bundle(request):
 @require_GET
 def local_review_app_download(request):
     package_dir = _local_review_package_dir()
-    exe_path = package_dir / "GSCertLocalReview.exe"
+    exe_path = package_dir / _local_review_exe_name()
     if not package_dir.is_dir() or not exe_path.is_file():
         raise Http404("로컬 점검 프로그램 패키지가 준비되지 않았습니다.")
 
-    archive = SpooledTemporaryFile(max_size=64 * 1024 * 1024)
-    with ZipFile(archive, mode="w", compression=ZIP_DEFLATED) as zip_file:
-        for file_path in sorted(path for path in package_dir.rglob("*") if path.is_file()):
-            archive_name = file_path.relative_to(package_dir.parent).as_posix()
-            zip_file.write(file_path, archive_name)
-    archive.seek(0)
-
-    response = FileResponse(
-        archive,
+    response = StreamingHttpResponse(
+        _iter_local_review_app_zip(package_dir),
         content_type="application/zip",
-        as_attachment=True,
-        filename="GSCertLocalReview.zip",
     )
+    response["Content-Disposition"] = f'attachment; filename="{_local_review_archive_name()}"'
     response["Cache-Control"] = "no-store"
+    response["X-Accel-Buffering"] = "no"
     return response
 
 
@@ -451,7 +443,55 @@ def _local_review_package_dir():
     configured = getattr(settings, "LOCAL_REVIEW_APP_PACKAGE_DIR", None)
     if configured:
         return Path(configured).expanduser().resolve()
-    return (settings.BASE_DIR / "local_review_app" / "dist" / "GSCertLocalReview").resolve()
+    return Path(r"C:\Claude_GSCert\local_review_app\dist\GSCertLocalReviewDashboard").resolve()
+
+
+def _local_review_exe_name():
+    return str(getattr(settings, "LOCAL_REVIEW_APP_EXE_NAME", "GSCertLocalReviewDashboard.exe") or "GSCertLocalReviewDashboard.exe")
+
+
+def _local_review_archive_name():
+    return str(getattr(settings, "LOCAL_REVIEW_APP_ARCHIVE_NAME", "GSCertLocalReviewDashboard.zip") or "GSCertLocalReviewDashboard.zip")
+
+
+class _ZipStreamBuffer:
+    def __init__(self):
+        self._chunks = []
+
+    def write(self, data):
+        if data:
+            self._chunks.append(bytes(data))
+        return len(data)
+
+    def flush(self):
+        return None
+
+    def drain(self):
+        chunks = self._chunks
+        self._chunks = []
+        return chunks
+
+
+def _iter_local_review_app_zip(package_dir):
+    buffer = _ZipStreamBuffer()
+    package_parent = package_dir.parent
+    files = sorted(path for path in package_dir.rglob("*") if path.is_file())
+
+    with ZipFile(buffer, mode="w", compression=ZIP_STORED) as zip_file:
+        for file_path in files:
+            archive_name = file_path.relative_to(package_parent).as_posix()
+            zip_info = ZipInfo.from_file(file_path, archive_name)
+            zip_info.compress_type = ZIP_STORED
+
+            with zip_file.open(zip_info, mode="w") as target:
+                yield from buffer.drain()
+                with file_path.open("rb") as source:
+                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                        target.write(chunk)
+                        yield from buffer.drain()
+            yield from buffer.drain()
+
+    yield from buffer.drain()
 
 
 def _ensure_request_center_allowed(request, center_code):
