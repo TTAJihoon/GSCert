@@ -3621,6 +3621,43 @@ class HistoryDocumentHttpTests(SimpleTestCase):
                 self.assertEqual(result["center"], "yeongnam")
                 self.assertEqual(result["doc_count"], 1)
 
+    def test_download_report_streams_zip_then_deletes_files(self):
+        from main.views.testing import history_download, history_report
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_REPORT_BASE_DIR=base):
+                folder = history_download.all_dir("GS-B-23-067")
+                folder.mkdir(parents=True)
+                (folder / "a.docx").write_bytes(b"PK\x03\x04a")
+                zp = history_download.zip_path("GS-B-23-067")
+                zp.parent.mkdir(parents=True, exist_ok=True)
+                zp.write_bytes(b"PKZIPDATA")
+
+                req = RequestFactory().get("/history/report/GS-B-23-067/download/")
+                resp = history_report.download_report(req, "GS-B-23-067")
+                # 스트리밍 본문을 모두 소비해야 finally 정리가 실행된다.
+                body = b"".join(resp.streaming_content)
+                self.assertEqual(body, b"PKZIPDATA")
+                # 전송 후 원본 폴더와 zip 이 삭제된다.
+                self.assertFalse(folder.exists())
+                self.assertFalse(zp.exists())
+
+    def test_download_report_document_deletes_folder_after_serving(self):
+        from main.views.testing import history_download, history_report
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_REPORT_BASE_DIR=base):
+                folder = history_download.doc_dir("GS-B-23-067")
+                folder.mkdir(parents=True)
+                (folder / "성적서.docx").write_bytes(b"PK\x03\x04doc")
+
+                req = RequestFactory().get("/history/report/GS-B-23-067/document/")
+                resp = history_report.download_report_document(req, "GS-B-23-067")
+                self.assertEqual(resp.status_code, 200)
+                self.assertEqual(resp.content, b"PK\x03\x04doc")
+                # 서빙 직후 성적서 폴더가 삭제된다.
+                self.assertFalse(folder.exists())
+
     def test_find_committee_test_folder_navigates_year_committee_date_test(self):
         from main.views.review.ecm_http_client import DestinyECM
 
