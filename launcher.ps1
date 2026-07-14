@@ -31,6 +31,13 @@ function Show-Menu {
     $srvStat = if ($serverOk) { "[실행중]" } else { "[중지됨]" }
     $wrkStat = if ($workerOk) { "[실행중]" } else { "[중지됨]" }
     $ngxStat = if ($nginxOk)  { "[실행중]" } else { "[중지됨]" }
+
+    $nginxModeFile = Join-Path $ScriptDir "run\nginx_mode.txt"
+    $ngxModeLabel  = ""
+    if ($nginxOk -and (Test-Path $nginxModeFile)) {
+        $m = (Get-Content $nginxModeFile -Raw).Trim()
+        $ngxModeLabel = if ($m -eq 'ConsultationOnly') { " (consultation만 HTTPS)" } else { " (전체 HTTPS)" }
+    }
     $srvColor = if ($serverOk) { "Green" } else { "DarkGray" }
     $wrkColor = if ($workerOk) { "Green" } else { "DarkGray" }
     $ngxColor = if ($nginxOk)  { "Green" } else { "DarkGray" }
@@ -46,7 +53,7 @@ function Show-Menu {
     Write-Host "  상태  " -NoNewline
     Write-Host "서버 $srvStat" -ForegroundColor $srvColor -NoNewline
     Write-Host "   워커 $wrkStat" -ForegroundColor $wrkColor -NoNewline
-    Write-Host "   nginx $ngxStat" -ForegroundColor $ngxColor
+    Write-Host "   nginx $ngxStat$ngxModeLabel" -ForegroundColor $ngxColor
     Write-Host "---------------------------------------" -ForegroundColor DarkGray
     Write-Host "  1.    start        - 서버/워커 시작 (all/server/worker 선택)$venvWarn"
     Write-Host "  2.    stop         - 서버/워커 중지 (all/server/worker 선택)"
@@ -87,6 +94,19 @@ function Select-Target($verb) {
         '1' { return 'all' }
         '2' { return 'server' }
         '3' { return 'worker' }
+        default { return $null }
+    }
+}
+
+# HTTPS 적용 범위 선택 (nginx 시작/모드 변경 공용). 반환: 'All' | 'ConsultationOnly' | $null(취소)
+function Select-HttpsMode {
+    Write-Host "HTTPS 적용 범위를 선택하세요:"
+    Write-Host "  1) 전체 HTTPS           - 모든 페이지를 https로 서비스 (기본)"
+    Write-Host "  2) consultation만 HTTPS - /consultation/ 만 https, 나머지는 http로 접속"
+    $sel = Read-Host "선택 (1/2)"
+    switch ($sel) {
+        '1' { return 'All' }
+        '2' { return 'ConsultationOnly' }
         default { return $null }
     }
 }
@@ -189,11 +209,19 @@ while ($true) {
                 Write-Host "nginx 현재 실행 중입니다. 작업을 선택하세요:"
                 Write-Host "  1) reload (conf 재적용)"
                 Write-Host "  2) stop  (중지)"
+                Write-Host "  3) HTTPS 적용 범위 변경 (conf 재생성 후 reload)"
                 $sub = Read-Host "선택"
                 if ($sub -eq '1') { Start-Process -FilePath $NginxExe -ArgumentList "-s reload" -WorkingDirectory $NginxDir -Wait -WindowStyle Hidden; Write-Host "[OK] nginx reload 완료" -ForegroundColor Green }
                 elseif ($sub -eq '2') { & (Join-Path $ScriptDir "stop_nginx.ps1") }
+                elseif ($sub -eq '3') {
+                    $mode = Select-HttpsMode
+                    if ($mode) { & (Join-Path $ScriptDir "start_nginx.ps1") -Mode $mode }
+                    else { Write-Host "취소했습니다." -ForegroundColor Yellow }
+                }
             } else {
-                & (Join-Path $ScriptDir "start_nginx.ps1")
+                $mode = Select-HttpsMode
+                if ($mode) { & (Join-Path $ScriptDir "start_nginx.ps1") -Mode $mode }
+                else { Write-Host "취소했습니다." -ForegroundColor Yellow }
             }
         }
         'SETUP' {

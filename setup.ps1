@@ -204,19 +204,10 @@ if (-not (Test-Path $NginxExe)) {
     Warn "nginx 이미 설치되어 있습니다: $NginxInstallDir"
 }
 
-# conf 업데이트 (템플릿 → 실제 경로/IP 치환)
-if (-not (Test-Path $NginxTemplate)) {
-    Fail "nginx.conf 템플릿이 없습니다: $NginxTemplate"
-}
-$serverIP     = Get-ServerIP
-$serverDomain = "$serverIP.nip.io"    # Google OAuth 등 도메인 필수 용도(IP 불가). nip.io 무료 와일드카드 DNS.
-$staticRoot   = ($RootDir -replace '\\', '/') + '/staticfiles'
-$conf = Get-Content $NginxTemplate -Raw -Encoding UTF8
-$conf = $conf -replace '__SERVER_IP__',     $serverIP
-$conf = $conf -replace '__SERVER_DOMAIN__', $serverDomain
-$conf = $conf -replace '__STATIC_ROOT__',   $staticRoot
-[System.IO.File]::WriteAllText($NginxConf, $conf, [System.Text.Encoding]::ASCII)
-OK "nginx.conf 설정 완료 (IP: $serverIP, domain: $serverDomain, static: $staticRoot)"
+# conf 업데이트 (템플릿 → 실제 경로/IP 치환). 기본은 전체 HTTPS 모드.
+# HTTPS 적용 범위(전체 / consultation만)는 launcher의 'N' 메뉴에서 언제든 바꿀 수 있다.
+& (Join-Path $SetupDir "Update-NginxConf.ps1") -Mode All
+if ($LASTEXITCODE -ne 0) { Fail "nginx.conf 적용 실패" }
 
 # 부팅 자동시작 스케줄러 등록
 $taskName = "GSCert-nginx"
