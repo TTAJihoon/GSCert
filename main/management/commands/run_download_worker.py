@@ -81,6 +81,7 @@ class Command(BaseCommand):
         step_sleep = max(options["step_sleep"], 0.0)
         source_name = options["source"]
 
+        last_status = None
         while True:
             # 장시간 실행되는 워커는 요청 사이클이 없어 Django가 DB 연결을 자동으로
             # 정리하지 않는다. 그러면 워커가 처음 연 reference(PostgreSQL) 연결을
@@ -96,11 +97,16 @@ class Command(BaseCommand):
                 source_name=source_name,
             )
             if result.processed:
+                # 작업을 실제로 처리한 경우(완료/실패)는 매번 기록한다.
                 self.stdout.write(
                     self.style.SUCCESS(f"{result.status}: {result.job_id} - {result.message}")
                 )
-            else:
+                last_status = result.status
+            elif result.status != last_status:
+                # idle은 5초 폴링마다 반복되어 로그가 무한히 쌓이므로,
+                # 이전 루프와 상태가 달라졌을 때(= idle로 막 전환됐을 때)만 기록한다.
                 self.stdout.write(f"{result.status}: {result.message}")
+                last_status = result.status
 
             if once:
                 return
