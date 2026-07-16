@@ -37,7 +37,48 @@ _FIELD_TO_KR = {
     'end_date': '종료일자',
     'recert_type': '재인증구분',
     'prev_cert_info': '기인증번호제품정보버전',
+    'kolas': 'KOLAS',
 }
+
+# '특이사항' 열의 버튼 판정 규칙
+_RENEWAL_PLACEHOLDER = '재계약된 경우 기재\n(메모 참조)'
+_RENEWAL_EXCLUDE_SUBSTRINGS = ('없음', 'N', 'X')
+_RENEWAL_EXCLUDE_EXACT = ('-',)
+
+
+def _build_notes_buttons(row: dict) -> list[dict]:
+    """'특이사항' 열에 표시할 버튼 목록을 구성한다.
+
+    1. 재인증: 재인증구분(O)에 '재인증'이 포함되면 표시. 툴팁 = '재인증구분값\n기인증번호제품정보버전값'
+    2. 재계약: 재계약(K)이 안내 문구(placeholder)가 아니고, 공백도 아니고,
+       '없음'/'N'/'X'를 포함하지 않으면 표시. 툴팁 = 재계약값
+    3. KOLAS: KOLAS(Q)에 'KOLAS'가 포함되면 표시. 툴팁 없음.
+    """
+    buttons = []
+
+    recert_type = (row.get('재인증구분') or '').strip()
+    if '재인증' in recert_type:
+        prev_cert_info = (row.get('기인증번호제품정보버전') or '').strip()
+        buttons.append({
+            'type': 'recert',
+            'label': '재인증',
+            'tooltip': f"{recert_type}\n{prev_cert_info}",
+        })
+
+    renewal = (row.get('재계약') or '').strip()
+    if (
+        renewal
+        and renewal != _RENEWAL_PLACEHOLDER
+        and renewal not in _RENEWAL_EXCLUDE_EXACT
+        and not any(marker in renewal for marker in _RENEWAL_EXCLUDE_SUBSTRINGS)
+    ):
+        buttons.append({'type': 'renewal', 'label': '재계약', 'tooltip': renewal})
+
+    kolas = (row.get('KOLAS') or '').strip()
+    if 'KOLAS' in kolas:
+        buttons.append({'type': 'kolas', 'label': 'KOLAS', 'tooltip': None})
+
+    return buttons
 
 
 def history(request):
@@ -90,6 +131,7 @@ def history(request):
                 for key, value in table.items()
                 if not key.startswith('Unnamed')
             }
+            clean_table['특이사항_버튼'] = _build_notes_buttons(table)
             clean_tables.append(clean_table)
 
         # 인증일자 내림차순(최신순) 정렬 — 예전의 단순 역순([::-1])은 DB 기본 순서에

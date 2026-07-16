@@ -360,7 +360,7 @@ body {
   position: relative;
   padding: 10px 10px;
   font-weight: 600;
-  text-align: left;
+  text-align: center;
 }
 .results-table td {
   padding: 10px 8px;
@@ -406,7 +406,7 @@ body {
   right: 3px;
   width: 1px;
   height: 60%;
-  background: transparent;
+  background: rgba(255, 255, 255, 0.55);
   content: "";
 }
 
@@ -471,7 +471,7 @@ body {
 .results-table col.col-date      { width: 100px; }
 .results-table col.col-tester    { width: 110px; }
 .results-table col.col-wd        { width: 50px; }
-.results-table col.col-renewal   { width: 90px; }
+.results-table col.col-notes     { width: 150px; }
 .results-table col.col-document  { width: 40px; }
 .results-table col.col-ecm       { width: 40px; }
 
@@ -486,10 +486,82 @@ body {
 .results-table th.col-date       { width: 100px; }
 .results-table th.col-tester     { width: 110px; }
 .results-table th.col-wd         { width: 50px; }
-.results-table th.col-renewal    { width: 90px; }
+.results-table th.col-notes      { width: 150px; }
 .results-table th.col-document   { width: 40px; }
 .results-table th.col-ecm        { width: 40px; }
 
 .hidden {
   display: none;
+}
+
+/* ── '특이사항' 열: 재계약/재인증/KOLAS 버튼 + hover/클릭 고정 팝오버 ── */
+/* 상세: .resizable-results-table td 의 overflow:hidden(0,1,1) 보다 우선하도록
+   .results-table td.col-notes-cell(0,2,1) 로 명시한다 — 안 그러면 팝오버가 셀에 잘린다. */
+.results-table td.col-notes-cell {
+  overflow: visible;
+  text-align: center;
+}
+
+.notes-btn-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  justify-content: center;
+}
+
+.notes-btn {
+  position: relative;
+  border: 1px solid var(--tta-blue);
+  background: #eaf3fc;
+  color: var(--tta-blue);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  cursor: default;
+}
+
+.notes-btn[data-has-tooltip="true"] {
+  cursor: pointer;
+}
+
+.notes-btn-kolas {
+  background: #fdf3e7;
+  border-color: #d98324;
+  color: #a5580f;
+}
+
+.notes-btn-renewal {
+  background: #eafaf0;
+  border-color: #2e9e5b;
+  color: #1f7a44;
+}
+
+.notes-popover {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-top: 4px;
+  min-width: 154px;
+  max-width: 286px;
+  background: #333;
+  color: #fff;
+  text-align: left;
+  white-space: normal;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  border-radius: 6px;
+  padding: 8px 10px;
+  user-select: text;
+  cursor: text;
+}
+
+.notes-btn[data-has-tooltip="true"]:hover .notes-popover,
+.notes-btn.pinned .notes-popover {
+  display: block;
 }

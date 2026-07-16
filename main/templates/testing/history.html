@@ -15,6 +15,7 @@
 <script src="{% static 'scripts/testing/history_Listener.js' %}?v=3" defer></script>
 <script src="{% static 'scripts/testing/history_resizable_columns.js' %}" defer></script>
 <script src="{% static 'scripts/testing/history_document.js' %}" defer></script>
+<script src="{% static 'scripts/testing/history_notes_popover.js' %}" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -126,9 +127,9 @@
           <option value="8">종료 날짜</option>
           <option value="9">시험원</option>
           <option value="10">WD</option>
-          <option value="11">재계약</option>
-          <option value="12">재인증</option>
-          <option value="13">기 인증제품</option>
+          <option value="11" data-preset="재계약">재계약</option>
+          <option value="11" data-preset="재인증">재인증</option>
+          <option value="11" data-preset="KOLAS">KOLAS</option>
         </select>
         <input type="text" class="history-filter-input" id="historyFilterValue"
           placeholder="선택한 컬럼에서 찾을 값을 입력하세요" aria-label="필터 값 입력">
@@ -157,9 +158,7 @@
             <col class="col-date">
             <col class="col-tester">
             <col class="col-wd">
-            <col class="col-renewal">
-            <col class="col-recert">
-            <col class="col-prevcert">
+            <col class="col-notes">
             <col class="col-document">
           </colgroup>
           <thead>
@@ -175,9 +174,7 @@
               <th class="col-date">종료 날짜</th>
               <th class="col-tester">시험원</th>
               <th class="col-wd">WD</th>
-              <th class="col-renewal">재계약</th>
-              <th class="col-recert">재인증</th>
-              <th class="col-prevcert">기 인증제품</th>
+              <th class="col-notes">특이사항</th>
               <th class="col-document">문서</th>
             </tr>
           </thead>
@@ -195,9 +192,19 @@
               <td>{{ table.종료일자 }}</td>
               <td>{{ table.시험원 }}</td>
               <td>{{ table.총WD }}</td>
-              <td>{{ table.재계약 }}</td>
-              <td>{{ table.재인증구분 }}</td>
-              <td>{{ table.기인증번호제품정보버전 }}</td>
+              <td class="col-notes-cell">
+                <div class="notes-btn-group">
+                  {% for btn in table.특이사항_버튼 %}
+                  <button type="button" class="notes-btn notes-btn-{{ btn.type }}"
+                    {% if btn.tooltip %}data-has-tooltip="true"{% endif %}>
+                    {{ btn.label }}
+                    {% if btn.tooltip %}
+                    <span class="notes-popover">{{ btn.tooltip|linebreaksbr }}</span>
+                    {% endif %}
+                  </button>
+                  {% endfor %}
+                </div>
+              </td>
               <td class="action-cell">
                 <div style="display:flex; justify-content:center; align-items:center; gap:8px;">
                   <button type="button" class="table-icon-btn document-download-btn" data-scope="report" title="시험성적서 다운로드" aria-label="시험성적서 다운로드">
@@ -236,9 +243,9 @@
           <option value="8">종료 날짜</option>
           <option value="9">시험원</option>
           <option value="10">WD</option>
-          <option value="11">재계약</option>
-          <option value="12">재인증</option>
-          <option value="13">기 인증제품</option>
+          <option value="11" data-preset="재계약">재계약</option>
+          <option value="11" data-preset="재인증">재인증</option>
+          <option value="11" data-preset="KOLAS">KOLAS</option>
         </select>
         <input type="text" class="history-filter-input" id="historyFilterValue"
           placeholder="선택한 컬럼에서 찾을 값을 입력하세요" aria-label="필터 값 입력">
@@ -266,9 +273,7 @@
             <col class="col-date">
             <col class="col-tester">
             <col class="col-wd">
-            <col class="col-renewal">
-            <col class="col-recert">
-            <col class="col-prevcert">
+            <col class="col-notes">
             <col class="col-document">
           </colgroup>
           <thead>
@@ -284,9 +289,7 @@
               <th class="col-date">종료 날짜</th>
               <th class="col-tester">시험원</th>
               <th class="col-wd">WD</th>
-              <th class="col-renewal">재계약</th>
-              <th class="col-recert">재인증</th>
-              <th class="col-prevcert">기 인증제품</th>
+              <th class="col-notes">특이사항</th>
               <th class="col-document">문서</th>
             </tr>
           </thead>

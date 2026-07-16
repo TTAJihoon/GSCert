@@ -63,6 +63,11 @@ function initHistoryColumnFilter() {
     }
 
     function getColumnLabel(columnIndex) {
+        // '특이사항' 열은 재계약/재인증/KOLAS 옵션이 모두 같은 컬럼 인덱스를 공유하므로,
+        // <option> 텍스트 대신 실제 테이블 헤더(<th>)에서 컬럼명을 가져온다.
+        const headers = table ? table.querySelectorAll('thead th') : [];
+        const header = headers[columnIndex];
+        if (header) return header.textContent.trim();
         const option = filterColumn.querySelector(`option[value="${columnIndex}"]`);
         return option ? option.textContent.trim() : `컬럼 ${Number(columnIndex) + 1}`;
     }
@@ -158,6 +163,16 @@ function initHistoryColumnFilter() {
         filterValue.focus();
         applyFilters();
     }
+
+    // '특이사항' 열의 재계약/재인증/KOLAS 옵션은 모두 같은 컬럼(병합된 특이사항 셀)을
+    // 가리키므로, 선택 시 해당 버튼 라벨을 검색어에 자동으로 채워 바로 필터링할 수 있게 한다.
+    filterColumn.addEventListener('change', function () {
+        const option = filterColumn.selectedOptions[0];
+        const preset = option ? option.dataset.preset : null;
+        if (preset) {
+            filterValue.value = preset;
+        }
+    });
 
     addButton.addEventListener('click', addFilter);
     filterValue.addEventListener('keydown', function(event) {

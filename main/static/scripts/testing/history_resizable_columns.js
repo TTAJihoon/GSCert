@@ -1,16 +1,36 @@
 (function () {
   const STORAGE_KEY = "historyTableColumnWidths";
-  const DEFAULT_WIDTHS = [90, 80, 110, 200, 200, 170, 80, 100, 100, 110, 50, 100, 70, 70];
-  const MIN_WIDTHS = [72, 72, 86, 120, 120, 120, 64, 86, 86, 80, 44, 76, 62, 62];
+  const DEFAULT_WIDTHS = [90, 80, 110, 200, 200, 170, 80, 100, 100, 110, 50, 150, 90];
+  const MIN_WIDTHS = [72, 72, 86, 120, 120, 120, 64, 86, 86, 80, 44, 100, 64];
+  // '제품 개요'(col-overview) 컬럼: 저장된 커스텀 폭이 없는 첫 방문에 한해서만,
+  // 그 순간 실제 남는 공간을 채우도록 초기값을 계산한다. 이후에는 다른 컬럼과 동일하게
+  // 일반 숫자로 취급되어 자유롭게 리사이즈되고(100% 초과/스크롤도 가능) localStorage에 저장된다.
+  const OVERVIEW_COLUMN_INDEX = 5;
 
-  function readWidths() {
+  function readWidths(table) {
+    let parsed = [];
     try {
-      const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-      if (!Array.isArray(parsed)) return DEFAULT_WIDTHS.slice();
-      return DEFAULT_WIDTHS.map((width, index) => Number(parsed[index]) || width);
+      const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      if (Array.isArray(raw)) parsed = raw;
     } catch (error) {
-      return DEFAULT_WIDTHS.slice();
+      parsed = [];
     }
+
+    const widths = DEFAULT_WIDTHS.map((width, index) => Number(parsed[index]) || width);
+
+    if (!Number(parsed[OVERVIEW_COLUMN_INDEX])) {
+      const otherWidthsSum = widths.reduce((sum, width, index) => (
+        index === OVERVIEW_COLUMN_INDEX ? sum : sum + width
+      ), 0);
+      const container = table && (table.closest(".table-container") || table.closest(".scrollable-table-wrapper"));
+      const availableWidth = (container && container.clientWidth) || window.innerWidth;
+      widths[OVERVIEW_COLUMN_INDEX] = Math.max(
+        MIN_WIDTHS[OVERVIEW_COLUMN_INDEX] || 120,
+        availableWidth - otherWidthsSum
+      );
+    }
+
+    return widths;
   }
 
   function writeWidths(widths) {
@@ -87,13 +107,14 @@
       const cols = Array.from(table.querySelectorAll("colgroup col"));
       if (!headers.length || headers.length !== cols.length) return;
 
-      const widths = readWidths();
+      const widths = readWidths(table);
       applyWidths(table, widths);
       table.dataset.resizableColumns = "true";
       table.classList.add("resizable-results-table");
 
       headers.forEach((header, index) => {
         header.classList.add("resizable-results-header");
+
         const handle = document.createElement("span");
         handle.className = "history-column-resize-handle";
         handle.setAttribute("role", "separator");
