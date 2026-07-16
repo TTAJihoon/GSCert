@@ -294,6 +294,8 @@ class SwData(models.Model):
     # ECM 시트 Y열(재인증 구분) / Z열(기 인증번호/제품정보/버전)
     recert_type = models.TextField(blank=True, default='')
     prev_cert_info = models.TextField(blank=True, default='')
+    # '기타정보' 시트 I열(성적서구분)이 KOLAS인 인증번호와 매칭되면 'KOLAS', 아니면 빈 값
+    kolas = models.TextField(blank=True, default='')
 
     class Meta:
         app_label = 'main'

@@ -27,11 +27,20 @@ REFERENCE_SHEET_NAME = "인증획득제품리스트"
 MASTER_BASE_COLUMN_COUNT = 14  # reference.xlsx A~N
 MASTER_RECERT_TYPE_COLUMN = 15  # reference.xlsx O
 MASTER_PREV_CERT_INFO_COLUMN = 16  # reference.xlsx P
-MASTER_TOTAL_COLUMN_COUNT = MASTER_PREV_CERT_INFO_COLUMN
+MASTER_KOLAS_COLUMN = 17  # reference.xlsx Q
+MASTER_TOTAL_COLUMN_COUNT = MASTER_KOLAS_COLUMN
 ECM_RECERT_TYPE_COLUMN = 25  # ECM 인증획득제품리스트 Y
 ECM_PREV_CERT_INFO_COLUMN = 26  # ECM 인증획득제품리스트 Z
 RECERT_TYPE_HEADER = "재인증구분"
 PREV_CERT_INFO_HEADER = "기인증번호제품정보버전"
+KOLAS_HEADER = "KOLAS"
+# '기타정보' 시트: I열(성적서구분)이 KOLAS인 행의 B열(인증번호)을 모아
+# '인증획득제품리스트' B열과 매칭시켜 reference.xlsx Q열에 표시한다.
+OTHER_INFO_SHEET_NAME = "기타정보"
+OTHER_INFO_DATA_START_ROW = 4
+OTHER_INFO_CERT_NUMBER_COLUMN = 2  # 기타정보 B: 인증번호
+OTHER_INFO_REPORT_TYPE_COLUMN = 9  # 기타정보 I: 성적서구분
+KOLAS_REPORT_TYPE_VALUE = "KOLAS"
 MASTER_HEADERS = [
     "일련번호",
     "인증번호",
@@ -49,6 +58,7 @@ MASTER_HEADERS = [
     "시험원",
     RECERT_TYPE_HEADER,
     PREV_CERT_INFO_HEADER,
+    KOLAS_HEADER,
 ]
 
 
@@ -262,6 +272,7 @@ def append_rows_to_master_xlsx(master_xlsx: Path, rows: list[list], ensure_cols:
     else:
         ws.cell(row=1, column=MASTER_RECERT_TYPE_COLUMN, value=RECERT_TYPE_HEADER)
         ws.cell(row=1, column=MASTER_PREV_CERT_INFO_COLUMN, value=PREV_CERT_INFO_HEADER)
+        ws.cell(row=1, column=MASTER_KOLAS_COLUMN, value=KOLAS_HEADER)
 
     # 마지막 "의미 있는" 행 찾기: A열이 비어있지 않은 마지막 행 기준
     last = ws.max_row
@@ -346,6 +357,45 @@ def extract_a_to_n_rows_after_serial(xlsx_path: Path, start_serial: int, sheet_n
 
 
 # =========================
+# '기타정보' 시트 KOLAS 매칭
+# =========================
+def read_kolas_cert_numbers(xlsx_path: Path) -> set[str]:
+    """'기타정보' 시트에서 I열(성적서구분)이 KOLAS인 행의 B열(인증번호)을 모아 반환한다."""
+    wb = load_workbook(xlsx_path, data_only=True, read_only=True)
+    if OTHER_INFO_SHEET_NAME not in wb.sheetnames:
+        logging.warning("'%s' 시트를 찾지 못해 KOLAS 매칭을 건너뜁니다.", OTHER_INFO_SHEET_NAME)
+        return set()
+
+    ws = wb[OTHER_INFO_SHEET_NAME]
+    result: set[str] = set()
+    for row in ws.iter_rows(
+        min_row=OTHER_INFO_DATA_START_ROW,
+        max_col=OTHER_INFO_REPORT_TYPE_COLUMN,
+        values_only=True,
+    ):
+        report_type = row[OTHER_INFO_REPORT_TYPE_COLUMN - 1]
+        if report_type is None or str(report_type).strip() != KOLAS_REPORT_TYPE_VALUE:
+            continue
+        cert_number = row[OTHER_INFO_CERT_NUMBER_COLUMN - 1]
+        if cert_number is not None:
+            result.add(str(cert_number).strip())
+    return result
+
+
+def append_kolas_column(rows: list[list], kolas_cert_numbers: set[str]) -> list[list]:
+    """A~N + Y/Z(16개) 행 각각에 KOLAS 여부(17번째 값)를 덧붙인다.
+
+    B열(인증번호, row[1])이 kolas_cert_numbers 에 있으면 'KOLAS', 없으면 빈 문자열.
+    """
+    out = []
+    for row in rows:
+        cert_number = row[1]
+        is_kolas = cert_number is not None and str(cert_number).strip() in kolas_cert_numbers
+        out.append(list(row) + [KOLAS_HEADER if is_kolas else ""])
+    return out
+
+
+# =========================
 # 행 정규화(요청사항 반영)
 # =========================
 def normalize_rows(rows: list[list]) -> list[list]:
@@ -365,7 +415,7 @@ def normalize_rows(rows: list[list]) -> list[list]:
     out: list[list] = []
 
     for row in rows:
-        row = (row + [None] * MASTER_TOTAL_COLUMN_COUNT)[:MASTER_TOTAL_COLUMN_COUNT]  # A..N + O/P 고정
+        row = (row + [None] * MASTER_TOTAL_COLUMN_COUNT)[:MASTER_TOTAL_COLUMN_COUNT]  # A..N + O/P/Q 고정
 
         # 완전 빈 행 제거
         if all(_is_blank(v) for v in row):
@@ -792,8 +842,12 @@ def main():
     logging.info("추출된 행 수(A~N + Y/Z, 정규화 전): %d", len(rows))
 
     if rows:
+        kolas_cert_numbers = read_kolas_cert_numbers(downloaded)
+        logging.info("'%s' 시트에서 KOLAS 인증번호 %d건 확인", OTHER_INFO_SHEET_NAME, len(kolas_cert_numbers))
+        rows = append_kolas_column(rows, kolas_cert_numbers)
+
         rows2 = normalize_rows(rows)
-        logging.info("정규화 후 행 수(A~N + O/P): %d", len(rows2))
+        logging.info("정규화 후 행 수(A~N + O/P/Q): %d", len(rows2))
 
         if rows2:
             append_rows_to_master_xlsx(CFG.master_xlsx, rows2, ensure_cols=True)

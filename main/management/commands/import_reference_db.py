@@ -31,6 +31,7 @@ SQLITE_COLUMNS = [
     "종료일자",
     "재인증구분",
     "기인증번호제품정보버전",
+    "KOLAS",
 ]
 
 MODEL_FIELDS = [
@@ -52,6 +53,7 @@ MODEL_FIELDS = [
     "end_date",
     "recert_type",
     "prev_cert_info",
+    "kolas",
 ]
 
 BATCH_SIZE = 500
@@ -202,6 +204,7 @@ class Command(BaseCommand):
                     "기인증번호제품정보",
                     "기인증제품",
                 ]),
+                "kolas": get_val(row_data, "KOLAS"),
             })
 
         return rows
