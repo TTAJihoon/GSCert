@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 
 from pathlib import Path
 import os
+import sys
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -303,16 +304,41 @@ LOGGING = {
             'format': '%(message)s',
         },
     },
+    'filters': {
+        # stdout 핸들러가 WARNING/ERROR까지 함께 찍지 않도록 INFO 이하로 상한을 둔다.
+        'max_level_info': {
+            '()': 'main.request_logging.MaxLevelFilter',
+            'max_level': 'INFO',
+        },
+    },
     'handlers': {
-        'console': {
+        # 정상 요청(시간/IP/기능명/파라미터)은 out.log(stdout)로.
+        'app_stdout': {
             'class': 'logging.StreamHandler',
+            'stream': sys.stdout,
+            'level': 'INFO',
+            'filters': ['max_level_info'],
+            'formatter': 'plain',
+        },
+        # 에러(4xx/5xx/예외)만 err.log(stderr)로.
+        'app_stderr': {
+            'class': 'logging.StreamHandler',
+            'stream': sys.stderr,
+            'level': 'WARNING',
             'formatter': 'plain',
         },
     },
     'loggers': {
         'gscert.request': {
-            'handlers': ['console'],
+            'handlers': ['app_stdout', 'app_stderr'],
             'level': 'INFO',
+            'propagate': False,
+        },
+        # Django 내장 runserver 접근 로그("GET /path 200" 한 줄)는 gscert.request의
+        # ACCESS 로그와 중복이라 out.log에는 남기지 않고, 에러 안전망으로만 쓴다.
+        'django.server': {
+            'handlers': ['app_stderr'],
+            'level': 'WARNING',
             'propagate': False,
         },
     },
