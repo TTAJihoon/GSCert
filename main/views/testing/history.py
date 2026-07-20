@@ -1,5 +1,6 @@
 import re
 
+from django.db.models import Q
 from django.shortcuts import render
 
 from main.models import SwData
@@ -169,10 +170,14 @@ def GS_history(gsnum='', project='', company='', product='', sw_type='', tester=
         qs = qs.filter(test_lab__icontains=tester)
     if comment.strip():
         qs = qs.filter(product_desc__icontains=comment)
+    # 날짜 범위 필터는 값이 있는 행에만 적용한다. sw_data 의 start_date/end_date 는
+    # 비어 있는 행이 많은데(예: 최근 등록분), 폼이 기본 날짜를 항상 채워 제출하므로
+    # 단순 __gte/__lte 로 걸면 '날짜가 빈 행'이 전부 제외돼 검색 결과가 사라진다.
+    # → 빈 날짜(미기재) 행은 날짜 조건으로 배제하지 않는다.
     if startDate.strip():
-        qs = qs.filter(start_date__gte=startDate)
+        qs = qs.filter(Q(start_date__gte=startDate) | Q(start_date=""))
     if endDate.strip():
-        qs = qs.filter(end_date__lte=endDate)
+        qs = qs.filter(Q(end_date__lte=endDate) | Q(end_date=""))
 
     return [
         {_FIELD_TO_KR[k]: v for k, v in obj.items() if k in _FIELD_TO_KR}
