@@ -1,54 +1,9 @@
-import re
-import pandas as pd
-from datetime import datetime
 import sqlite3
 
-# 개선된 날짜 변환 함수
-def parse_korean_date_range(date_str):
-    if pd.isna(date_str):
-        return None, None
+import pandas as pd
 
-    # 모든 날짜 패턴(yyyy.mm.dd, yyyy-mm-dd 등)을 찾아 리스트로 저장
-    date_patterns = [
-        r"\d{4}-\d{1,2}-\d{1,2}",
-        r"\d{4}\.\d{1,2}\.\d{1,2}",
-        r"\d{4}/\d{1,2}/\d{1,2}",
-        r"\d{4}년\s*\d{1,2}월\s*\d{1,2}일",
-        
-        r"\d{4}\. \d{1,2}\. \d{1,2}",
-        r"\d{4}년 \s*\d{1,2}월 \s*\d{1,2}일",
-    ]
-    
-    dates = []
-    for pattern in date_patterns:
-        dates.extend(re.findall(pattern, date_str))
-
-    if not dates:
-        return None, None
-
-    # 날짜 형식을 표준화
-    parsed_dates = []
-    for date in dates:
-        parsed_successfully = False
-        for fmt in ["%Y-%m-%d", "%Y.%m.%d", "%Y/%m/%d", "%Y년 %m월 %d일"]:
-            try:
-                parsed_date = datetime.strptime(date, fmt)
-                parsed_dates.append(parsed_date)
-                parsed_successfully = True
-                break
-            except ValueError as e:
-                continue
-        if not parsed_successfully:
-            print(f"[날짜 변환 실패] 날짜: '{date}', 모든 포맷에 일치하지 않음")
-
-    if not parsed_dates:
-        return None, None
-
-    # 가장 빠른 날짜와 가장 늦은 날짜 선택
-    start_date = min(parsed_dates).strftime('%Y-%m-%d')
-    end_date = max(parsed_dates).strftime('%Y-%m-%d')
-
-    return start_date, end_date
+# 날짜 파싱은 xlsx 변환 경로와 동일한 구현을 재사용한다(사본 중복 방지).
+from main.utils.xlsx_to_sqlite import parse_korean_date_range
 
 def convert_csv_to_sqlite(csv_path, db_path):
     df = pd.read_csv(csv_path)

@@ -3855,3 +3855,70 @@ class WorkerSourceSelectionTests(SimpleTestCase):
             call_command("run_download_worker", "--once", "--dry-run", "--source=local")
 
         self.assertEqual(mock_run.call_args.kwargs.get("source_name"), "local")
+
+
+class ParseKoreanDateRangeTests(SimpleTestCase):
+    """'시작날짜/종료날짜'(M열)의 다양한 표기에서 시작/종료일을 뽑아내는지 검증."""
+
+    def _parse(self, value):
+        from main.utils.xlsx_to_sqlite import parse_korean_date_range
+
+        return parse_korean_date_range(value)
+
+    def test_dot_separated_formats(self):
+        self.assertEqual(self._parse("2003.03.17~2003.03.28"), ("2003-03-17", "2003-03-28"))
+        self.assertEqual(self._parse("2007.06.04 ~ 2007.06.25"), ("2007-06-04", "2007-06-25"))
+        # 0-패딩 유무가 섞여도 인식한다.
+        self.assertEqual(self._parse("2013.3.3 ~ 2013.3.26"), ("2013-03-03", "2013-03-26"))
+        # 구분자 앞뒤 공백('2015.12. 21', '2016. 1 .12')도 흡수한다.
+        self.assertEqual(self._parse("2015.12. 21 ~ 2016. 1 .12"), ("2015-12-21", "2016-01-12"))
+        # 끝에 마침표가 붙는 표기.
+        self.assertEqual(self._parse("2019.1.21. ~ 2019.2.27."), ("2019-01-21", "2019-02-27"))
+
+    def test_dash_and_slash_separators(self):
+        self.assertEqual(self._parse("2020-04-29 ~ 2020-05-22"), ("2020-04-29", "2020-05-22"))
+        self.assertEqual(self._parse("2014/10/13 ~ 2014/11/5"), ("2014-10-13", "2014-11-05"))
+        # 한 값 안에서 구분자가 섞이는 경우.
+        self.assertEqual(self._parse("2008-06.30~2008-07.18"), ("2008-06-30", "2008-07-18"))
+
+    def test_korean_year_month_day(self):
+        self.assertEqual(
+            self._parse("2015년 8월 3일 ~ 2015년 9월 7일"), ("2015-08-03", "2015-09-07")
+        )
+        # 월/일 앞 공백이 두 칸인 표기.
+        self.assertEqual(
+            self._parse("2016년  2월 25일 ~ 2016년  3월 15일"), ("2016-02-25", "2016-03-15")
+        )
+
+    def test_two_digit_year(self):
+        self.assertEqual(self._parse("14. 6. 25 ~ 14. 7. 22"), ("2014-06-25", "2014-07-22"))
+        self.assertEqual(self._parse("25.02.06 ~ 25.02.21"), ("2025-02-06", "2025-02-21"))
+        self.assertEqual(self._parse("25/11/05~25/11/21"), ("2025-11-05", "2025-11-21"))
+
+    def test_excel_newline_escape_and_fullwidth_digits(self):
+        # 엑셀 셀 줄바꿈 escape('_x000D_')가 날짜 사이에 끼어드는 경우.
+        self.assertEqual(
+            self._parse("2024년 08월 26일_x000D_\n2024년 09월 12일"),
+            ("2024-08-26", "2024-09-12"),
+        )
+        # 전각 숫자.
+        self.assertEqual(self._parse("2023.８.1. ~ 2023.9.６."), ("2023-08-01", "2023-09-06"))
+
+    def test_multiple_ranges_returns_overall_span(self):
+        # 재시험/재계약 등 여러 구간이 있으면 전체 최소~최대를 반환한다.
+        self.assertEqual(
+            self._parse(
+                "2006.08.21 ~ 2006.10.20\n2007.07.12 ~ 2007.08.23\n(1차 재시험)"
+            ),
+            ("2006-08-21", "2007-08-23"),
+        )
+        self.assertEqual(
+            self._parse(
+                "(최초) 2020.05.06 ~ 2020.05.29\n(1차) 2020.08.20 ~ 2020.08.24"
+            ),
+            ("2020-05-06", "2020-08-24"),
+        )
+
+    def test_unparseable_values_return_none(self):
+        for value in ["-", "2014.00.00 ~ 2014.00.00", "20XX.XX.XX ~ 20XX.XX.XX", "", None, "nan"]:
+            self.assertEqual(self._parse(value), (None, None), msg=value)
