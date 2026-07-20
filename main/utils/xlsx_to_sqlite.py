@@ -18,6 +18,21 @@ _DATE_RE = re.compile(
 )
 
 
+def normalize_cell_text(value):
+    r"""엑셀 셀 텍스트의 줄바꿈 표기를 '\n' 하나로 통일한다.
+
+    xlsx(OOXML)는 셀 안의 캐리지 리턴(CR, U+000D)을 XML로 보존하지 못해
+    '_x000D_' 라는 문자열로 escape 해서 저장하고, openpyxl/pandas 는 이를
+    되돌리지 않고 그대로 돌려준다(예: '㈜웨어비즈_x000D_ WAREBIZ Co., Ltd.').
+    이 '_x000D_' 를 실제 CR 로 되돌린 뒤 CRLF/CR 를 단일 '\n' 으로 정규화한다.
+    원래 CRLF('_x000D_\n')였던 자리가 '\n\n' 으로 겹치지 않게 한다.
+    """
+    if value is None:
+        return value
+    s = str(value).replace("_x000D_", "\r")
+    return s.replace("\r\n", "\n").replace("\r", "\n")
+
+
 def parse_korean_date_range(date_str: str):
     """'시작날짜/종료날짜'(M열) 셀에서 가장 이른 날짜와 가장 늦은 날짜를 뽑는다.
 

@@ -9,6 +9,7 @@ from main.models import SwData
 from main.utils.xlsx_to_sqlite import (
     _ensure_sw_category_column,
     _normalize_columns,
+    normalize_cell_text,
     parse_korean_date_range,
 )
 
@@ -162,7 +163,7 @@ class Command(BaseCommand):
                     return ""
             if v is None or (isinstance(v, float) and str(v).lower() == "nan"):
                 return ""
-            return str(v).strip()
+            return normalize_cell_text(str(v)).strip()
 
         def get_first_val(row_data, cols):
             for col in cols:
@@ -223,7 +224,7 @@ class Command(BaseCommand):
                         val = val.decode("utf-8")
                     except UnicodeDecodeError:
                         val = val.decode("cp949", errors="replace")
-                obj[field] = val if val is not None else ""
+                obj[field] = normalize_cell_text(val) if val is not None else ""
             result.append(obj)
         return result
 

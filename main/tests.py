@@ -3922,3 +3922,30 @@ class ParseKoreanDateRangeTests(SimpleTestCase):
     def test_unparseable_values_return_none(self):
         for value in ["-", "2014.00.00 ~ 2014.00.00", "20XX.XX.XX ~ 20XX.XX.XX", "", None, "nan"]:
             self.assertEqual(self._parse(value), (None, None), msg=value)
+
+
+class NormalizeCellTextTests(SimpleTestCase):
+    """엑셀 셀의 '_x000D_'(CR) 표기를 줄바꿈으로 정규화하는지 검증."""
+
+    def _norm(self, value):
+        from main.utils.xlsx_to_sqlite import normalize_cell_text
+
+        return normalize_cell_text(value)
+
+    def test_x000d_becomes_newline(self):
+        self.assertEqual(
+            self._norm("㈜웨어비즈_x000D_ WAREBIZ Co., Ltd."),
+            "㈜웨어비즈\n WAREBIZ Co., Ltd.",
+        )
+        self.assertEqual(
+            self._norm("Chumdan Control_x000D_System Co., Ltd."),
+            "Chumdan Control\nSystem Co., Ltd.",
+        )
+
+    def test_crlf_pair_collapses_to_single_newline(self):
+        # 원래 CRLF('_x000D_\n')였던 자리가 '\n\n' 으로 겹치지 않아야 한다.
+        self.assertEqual(self._norm("2024.06.21.~_x000D_\n2024.07.12."), "2024.06.21.~\n2024.07.12.")
+
+    def test_existing_newline_preserved_and_none_passthrough(self):
+        self.assertEqual(self._norm("정상 회사명\n영문명"), "정상 회사명\n영문명")
+        self.assertIsNone(self._norm(None))
