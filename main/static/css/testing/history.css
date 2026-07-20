@@ -383,6 +383,15 @@ body {
   overflow: visible;
 }
 
+/* 회사명(4번째)·제품명(5번째) 칸은 원본의 줄바꿈(\n)을 그대로 표시한다.
+   기본 white-space:normal 은 '한글\n영문' 의 줄바꿈을 공백으로 접어 한 줄로
+   보이게 하므로, 이 두 열만 pre-line 으로 실제 줄바꿈이 살아나게 한다.
+   (제품 개요 열은 '\n\n' 이 많아 행이 지나치게 길어지므로 제외) */
+.results-table td:nth-child(4),
+.results-table td:nth-child(5) {
+  white-space: pre-line;
+}
+
 .resizable-results-header {
   user-select: none;
 }
