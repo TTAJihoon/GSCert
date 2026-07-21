@@ -5,10 +5,10 @@
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
-<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}?v=3"/>
+<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}?v=4"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 <script src="{% static 'scripts/testing/similar_Listener.js' %}" defer></script>
-<script src="{% static 'scripts/testing/similar_submit.js' %}" defer></script>
+<script src="{% static 'scripts/testing/similar_submit.js' %}?v=2" defer></script>
 <script src="{% static 'scripts/testing/similar_sorting.js' %}" defer></script>
 <script src="{% static 'scripts/testing/similar_ecm.js' %}" defer></script>
 <script src="{% static 'scripts/sidebar_toggle.js' %}?v=1" defer></script>
@@ -124,6 +124,14 @@
                             <div>
                                 <table>
                                     <tr>
+                                        <td class="copy-btn-cell">
+                                            <div class="copy-btn-wrap">
+                                                <button type="button" class="copy-btn" data-copy-text="시험번호 회사명-제품명 WD&#10;제품 개요" aria-label="제품 정보 복사">
+                                                    <i class="fas fa-copy"></i>
+                                                </button>
+                                                <span class="copy-btn-tooltip">제품 정보가 복사됩니다</span>
+                                            </div>
+                                        </td>
                                         <td>
                                             <div class="similarity-score" id="similarity-score">유사도</div>
                                         </td>
