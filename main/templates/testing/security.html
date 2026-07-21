@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js" defer></script>
 
-<link rel="stylesheet" href="{% static 'css/testing/security.css' %}"/>
+<link rel="stylesheet" href="{% static 'css/testing/security.css' %}?v=1"/>
 <link rel="stylesheet" href="{% static 'css/testing/security_table.css' %}"/>
 <link rel="stylesheet" href="{% static 'css/testing/security_GPT.css' %}?v=20260522b"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
@@ -21,6 +21,7 @@
 <script src="{% static 'scripts/testing/security_GPT_popup.js' %}?v=20260522e" defer></script>
 <script src="{% static 'scripts/testing/security_button.js' %}" defer></script>
 <script src="{% static 'scripts/testing/security_submit.js' %}" defer></script>
+<script src="{% static 'scripts/sidebar_toggle.js' %}?v=1" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -57,6 +58,10 @@
         </form>
       </div>
     </div>
+    <button type="button" class="sidebar-toggle-btn" data-sidebar-toggle=".app-container"
+      title="검색 조건 접기/펴기" aria-label="검색 조건 접기/펴기">
+      <i class="fas fa-chevron-left"></i>
+    </button>
   </div>
 
   <!-- 우측 콘텐츠 영역 -->

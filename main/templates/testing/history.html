@@ -9,13 +9,14 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="{% static 'css/testing/history.css' %}?v=3"/>
+<link rel="stylesheet" href="{% static 'css/testing/history.css' %}?v=4"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 <script src="{% static 'scripts/testing/history_set_date.js' %}" defer></script>
-<script src="{% static 'scripts/testing/history_Listener.js' %}?v=3" defer></script>
-<script src="{% static 'scripts/testing/history_resizable_columns.js' %}" defer></script>
+<script src="{% static 'scripts/testing/history_Listener.js' %}?v=4" defer></script>
+<script src="{% static 'scripts/testing/history_resizable_columns.js' %}?v=2" defer></script>
 <script src="{% static 'scripts/testing/history_document.js' %}" defer></script>
-<script src="{% static 'scripts/testing/history_notes_popover.js' %}" defer></script>
+<script src="{% static 'scripts/testing/history_notes_popover.js' %}?v=2" defer></script>
+<script src="{% static 'scripts/sidebar_toggle.js' %}?v=1" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -92,6 +93,11 @@
     </div>
   </div>
 
+  <button type="button" class="sidebar-toggle-btn" data-sidebar-toggle=".content-area"
+    title="검색 조건 접기/펴기" aria-label="검색 조건 접기/펴기">
+    <i class="fas fa-chevron-left"></i>
+  </button>
+
   <div class="main-content">
     <div class="hidden" id="loadingIndicator" style="text-align:center; margin-top:20px;">
       <i class="fas fa-spinner fa-spin" style="font-size:24px; color:#3498db;"></i>
@@ -121,7 +127,7 @@
           <option value="2">시험번호</option>
           <option value="3">회사명</option>
           <option value="4">제품명</option>
-          <option value="5">제품 개요</option>
+          <option value="5" selected>제품 개요</option>
           <option value="6">SW분류</option>
           <option value="7">시작 날짜</option>
           <option value="8">종료 날짜</option>
@@ -237,7 +243,7 @@
           <option value="2">시험번호</option>
           <option value="3">회사명</option>
           <option value="4">제품명</option>
-          <option value="5">제품 개요</option>
+          <option value="5" selected>제품 개요</option>
           <option value="6">SW분류</option>
           <option value="7">시작 날짜</option>
           <option value="8">종료 날짜</option>

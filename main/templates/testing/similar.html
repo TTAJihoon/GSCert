@@ -5,19 +5,20 @@
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
-<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}"/>
+<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}?v=3"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 <script src="{% static 'scripts/testing/similar_Listener.js' %}" defer></script>
 <script src="{% static 'scripts/testing/similar_submit.js' %}" defer></script>
 <script src="{% static 'scripts/testing/similar_sorting.js' %}" defer></script>
 <script src="{% static 'scripts/testing/similar_ecm.js' %}" defer></script>
+<script src="{% static 'scripts/sidebar_toggle.js' %}?v=1" defer></script>
 {% endblock %}
 
 {% block content %}
 <div class="app-container">
-    <div class="main-content">
+    <div class="similar-body">
         <!-- 좌측 파일 업로드 패널 (떠있는 느낌으로 수정) -->
-        <div class="sidebar-container">
+        <div class="sidebar-slot">
             <div class="search-title">
                 <i class="fas fa-search search-icon"></i> 검색 조건
                 <span class="tooltip">ⓘ
@@ -78,9 +79,12 @@
                 </form>
             </div>
         </div>
-    </div>
-    <!-- 우측 콘텐츠 영역 -->
-    <main class="content-area">
+        <button type="button" class="sidebar-toggle-btn" data-sidebar-toggle=".similar-body"
+          title="검색 조건 접기/펴기" aria-label="검색 조건 접기/펴기">
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <!-- 우측 콘텐츠 영역 -->
+        <main class="content-area">
         <div class="content-card">
             <div class="loading-container hidden" id="loadingContainer">
                 <div class="spinner"></div>

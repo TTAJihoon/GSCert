@@ -61,6 +61,46 @@ body {
   background: var(--tta-gray);
   border-right: 1px solid var(--tta-border);
   padding: 20px;
+  overflow: hidden;
+  transition: flex-basis 0.25s ease, opacity 0.2s ease, padding 0.25s ease;
+}
+
+/* 좌측 검색 영역 접기/펴기 버튼: sidebar 와 main-content 사이의 얇은 탭 */
+.sidebar-toggle-btn {
+  flex: 0 0 20px;
+  align-self: stretch;
+  border: none;
+  border-right: 1px solid var(--tta-border);
+  background: var(--tta-gray);
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-toggle-btn:hover {
+  background: #eef2f7;
+  color: var(--tta-blue);
+}
+
+.sidebar-toggle-btn i {
+  transition: transform 0.25s ease;
+}
+
+/* 접힌 상태: sidebar 를 폭 0으로 줄이고, 토글 버튼 화살표는 반대로 */
+.content-area.sidebar-collapsed .sidebar {
+  flex-basis: 0;
+  min-width: 0;
+  padding: 0;
+  border-right: none;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.content-area.sidebar-collapsed .sidebar-toggle-btn i {
+  transform: rotate(180deg);
 }
 
 /* 메인 콘텐츠: 나머지 폭/높이 채움, 내부에서 스크롤 관리 */
@@ -545,6 +585,12 @@ body {
   background: #eafaf0;
   border-color: #2e9e5b;
   color: #1f7a44;
+}
+
+.notes-btn-notes {
+  background: #f2eefc;
+  border-color: #7a5cc0;
+  color: #5b3fa0;
 }
 
 .notes-popover {

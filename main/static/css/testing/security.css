@@ -13,10 +13,58 @@ body {
   width: 339px;
   position: relative;
   padding: 25px;
+  transition: width 0.25s ease, padding 0.25s ease;
 }
 
 .sidebar-container {
   width: 300px;
+}
+
+/* 좌측 검색 영역 접기/펴기 버튼: main-content 오른쪽 경계에 붙는 탭 */
+.sidebar-toggle-btn {
+  position: absolute;
+  right: -1px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 60px;
+  border: 1px solid #e5e7eb;
+  border-radius: 0 6px 6px 0;
+  background: white;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 6;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-toggle-btn:hover {
+  color: #1e3a8a;
+}
+
+.sidebar-toggle-btn i {
+  transition: transform 0.25s ease;
+}
+
+/* 접힌 상태: main-content 를 얇은 탭만 남기고 접는다 */
+.app-container.sidebar-collapsed .main-content {
+  width: 21px;
+  padding: 0;
+}
+
+.app-container.sidebar-collapsed .sidebar-container,
+.app-container.sidebar-collapsed .search-title {
+  display: none;
+}
+
+.app-container.sidebar-collapsed .sidebar-toggle-btn i {
+  transform: rotate(180deg);
+}
+
+.app-container.sidebar-collapsed .content-card {
+  width: calc(100% - 21px);
 }
 
 .search-title {
@@ -161,6 +209,7 @@ body {
   margin-top: 20px;
   width: calc(100% - 339px);
   min-width: 941px;
+  transition: width 0.25s ease;
 }
 
 .loading-container {

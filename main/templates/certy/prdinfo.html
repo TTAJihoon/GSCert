@@ -17,7 +17,7 @@
 
 <script src="https://cdn.jsdelivr.net/npm/luckyexcel@1.0.1/dist/luckyexcel.umd.js" defer></script>
 
-<link rel="stylesheet" href="{% static 'css/certy/prdinfo.css' %}"/>
+<link rel="stylesheet" href="{% static 'css/certy/prdinfo.css' %}?v=1"/>
 <link rel="stylesheet" href="{% static 'css/certy/prdinfo_tab.css' %}"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 
@@ -27,6 +27,7 @@
 <script src="{% static 'scripts/certy/prdinfo_generate.js' %}" defer></script>
 <script src="{% static 'scripts/certy/prdinfo_fill_cells.js' %}" defer></script>
 <script src="{% static 'scripts/certy/prdinfo_download.js' %}" defer></script>
+<script src="{% static 'scripts/sidebar_toggle.js' %}?v=1" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -62,6 +63,10 @@
         </form>
       </div>
     </div>
+    <button type="button" class="sidebar-toggle-btn" data-sidebar-toggle=".app-container"
+      title="검색 조건 접기/펴기" aria-label="검색 조건 접기/펴기">
+      <i class="fas fa-chevron-left"></i>
+    </button>
   </div>
 
   <div class="content-card">

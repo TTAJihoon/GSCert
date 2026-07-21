@@ -43,17 +43,30 @@ _FIELD_TO_KR = {
 
 # '특이사항' 열의 버튼 판정 규칙
 _RENEWAL_PLACEHOLDER = '재계약된 경우 기재\n(메모 참조)'
-_RENEWAL_EXCLUDE_SUBSTRINGS = ('없음', 'N', 'X')
-_RENEWAL_EXCLUDE_EXACT = ('-',)
+_NOTES_PLACEHOLDER = 'WD 이슈사항 기재\n(메모 참조)'
+_EXCLUDE_SUBSTRINGS = ('없음', 'N', 'X')
+_EXCLUDE_EXACT = ('-',)
+
+
+def _has_meaningful_value(value: str, placeholder: str) -> bool:
+    """안내 문구(placeholder)/'-'/'없음'·'N'·'X' 포함값을 제외하고 실제 값인지 판정한다."""
+    return (
+        bool(value)
+        and value != placeholder
+        and value not in _EXCLUDE_EXACT
+        and not any(marker in value for marker in _EXCLUDE_SUBSTRINGS)
+    )
 
 
 def _build_notes_buttons(row: dict) -> list[dict]:
     """'특이사항' 열에 표시할 버튼 목록을 구성한다.
 
     1. 재인증: 재인증구분(O)에 '재인증'이 포함되면 표시. 툴팁 = '재인증구분값\n기인증번호제품정보버전값'
-    2. 재계약: 재계약(K)이 안내 문구(placeholder)가 아니고, 공백도 아니고,
+    2. 재계약: 재계약(K)이 안내 문구(placeholder)/'-'가 아니고, 공백도 아니고,
        '없음'/'N'/'X'를 포함하지 않으면 표시. 툴팁 = 재계약값
     3. KOLAS: KOLAS(Q)에 'KOLAS'가 포함되면 표시. 툴팁 없음.
+    4. 특이사항: 특이사항(L)이 재계약과 같은 기준(안내 문구/'-'/'없음'·'N'·'X' 제외)으로
+       실제 값이면 표시. 툴팁 = 특이사항값
     """
     buttons = []
 
@@ -67,17 +80,16 @@ def _build_notes_buttons(row: dict) -> list[dict]:
         })
 
     renewal = (row.get('재계약') or '').strip()
-    if (
-        renewal
-        and renewal != _RENEWAL_PLACEHOLDER
-        and renewal not in _RENEWAL_EXCLUDE_EXACT
-        and not any(marker in renewal for marker in _RENEWAL_EXCLUDE_SUBSTRINGS)
-    ):
+    if _has_meaningful_value(renewal, _RENEWAL_PLACEHOLDER):
         buttons.append({'type': 'renewal', 'label': '재계약', 'tooltip': renewal})
 
     kolas = (row.get('KOLAS') or '').strip()
     if 'KOLAS' in kolas:
         buttons.append({'type': 'kolas', 'label': 'KOLAS', 'tooltip': None})
+
+    notes = (row.get('특이사항') or '').strip()
+    if _has_meaningful_value(notes, _NOTES_PLACEHOLDER):
+        buttons.append({'type': 'notes', 'label': '특이사항', 'tooltip': notes})
 
     return buttons
 

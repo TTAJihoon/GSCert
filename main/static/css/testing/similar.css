@@ -22,19 +22,21 @@ body {
   color: #1e40af;
 }
 
-.main-content {
+/* history 페이지와 동일하게 sidebar / 접기버튼 / 본문을 3개의 flex 자식으로 분리한다.
+   (예전에는 sidebar 를 position:absolute 로 띄우고 content-area 의 padding-left 로
+   여백을 흉내냈는데, 그 방식을 걷어내고 순수 flex 배치로 바꾼 것 — 보이는 모양은 동일) */
+.similar-body {
   display: flex;
   flex: 1;
   height: calc(100vh - 60px);
-  position: relative;
 }
 
-.sidebar-container {
-  position: absolute;
-  left: 24px;
-  top: 24px;
-  width: 300px;
-  z-index: 5;
+.sidebar-slot {
+  flex: 0 0 300px;
+  align-self: flex-start;  /* 카드가 내용 높이만큼만 차지해, 예전처럼 떠있는 느낌 유지 */
+  padding: 24px 0 24px 24px;
+  overflow: hidden;
+  transition: flex-basis 0.25s ease, opacity 0.2s ease, padding 0.25s ease;
 }
 
 .sidebar {
@@ -45,15 +47,49 @@ body {
   overflow: hidden;
 }
 
+/* 좌측 검색 영역 접기/펴기 버튼: sidebar-slot 과 content-area 사이, 세로로 긴 탭 */
+.sidebar-toggle-btn {
+  flex: 0 0 20px;
+  align-self: stretch;
+  margin: 4px;
+  border: none;
+  border-radius: 6px;
+  background: white;
+  color: #64748b;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.sidebar-toggle-btn:hover {
+  color: #1e40af;
+}
+
+.sidebar-toggle-btn i {
+  transition: transform 0.25s ease;
+}
+
+/* 접힌 상태: sidebar 카드를 접고, 화살표는 반대로 */
+.similar-body.sidebar-collapsed .sidebar-slot {
+  flex-basis: 0;
+  padding: 24px 0 24px 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.similar-body.sidebar-collapsed .sidebar-toggle-btn i {
+  transform: rotate(180deg);
+}
+
 .content-area {
   flex: 1;
-  padding: 24px 24px 24px 348px;
+  padding: 24px 24px 24px 0;
   background-color: #f8fafc;
-  height: 100%;
   overflow-y: hidden;
-  width: 100%;
-  min-width: 932px;
-  position: absolute;
+  min-width: 584px;
 }
 
 .content-card {
