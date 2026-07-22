@@ -404,6 +404,13 @@ const state = {
   forceEmptyPreview: false,
   selectionMessage: "",
   projectLoadError: "",
+  projectFilters: {
+    project: "",
+    company: "",
+    product: "",
+    pl: "",
+    review: "전체"
+  },
   activeJob: null,
   hasAnyActiveJob: false,
   activeProjects: [],
@@ -828,10 +835,27 @@ function updateClock() {
 }
 
 function populateFilters() {
-  const pls = ["전체", ...new Set(mockProjects.map((item) => item.pl))];
   const reviews = ["전체", ...new Set(mockProjects.map((item) => item.review))];
-  qs("filterPl").innerHTML = pls.map((value) => `<option>${value}</option>`).join("");
-  qs("filterStatus").innerHTML = reviews.map((value) => `<option>${value}</option>`).join("");
+  if (!reviews.includes(state.projectFilters.review)) {
+    state.projectFilters.review = "전체";
+  }
+  qs("filterStatus").innerHTML = reviews.map((value) => `<option>${escapeHtml(value)}</option>`).join("");
+  qs("filterStatus").value = state.projectFilters.review;
+}
+
+function readProjectFilterInputs() {
+  return {
+    project: qs("filterProject").value.trim().toLowerCase(),
+    company: qs("filterCompany").value.trim().toLowerCase(),
+    product: qs("filterProduct").value.trim().toLowerCase(),
+    pl: qs("filterPl").value.trim().toLowerCase(),
+    review: qs("filterStatus").value || "전체"
+  };
+}
+
+function applyProjectFilters() {
+  state.projectFilters = readProjectFilterInputs();
+  renderProjects();
 }
 
 async function loadProjects() {
@@ -859,17 +883,13 @@ async function loadProjects() {
 }
 
 function filteredProjects() {
-  const project = qs("filterProject").value.trim().toLowerCase();
-  const company = qs("filterCompany").value.trim().toLowerCase();
-  const product = qs("filterProduct").value.trim().toLowerCase();
-  const pl = qs("filterPl").value;
-  const review = qs("filterStatus").value;
+  const { project, company, product, pl, review } = state.projectFilters;
 
   return mockProjects.filter((item) => (
-    (!project || item.number.toLowerCase().includes(project)) &&
-    (!company || item.company.toLowerCase().includes(company)) &&
-    (!product || item.product.toLowerCase().includes(product)) &&
-    (pl === "전체" || item.pl === pl) &&
+    (!project || String(item.number || "").toLowerCase().includes(project)) &&
+    (!company || String(item.company || "").toLowerCase().includes(company)) &&
+    (!product || String(item.product || "").toLowerCase().includes(product)) &&
+    (!pl || String(item.pl || "").toLowerCase().includes(pl)) &&
     (review === "전체" || item.review === review)
   ));
 }
@@ -2091,8 +2111,13 @@ function bindControls() {
   });
 
   ["filterProject", "filterCompany", "filterProduct", "filterPl", "filterStatus"].forEach((id) => {
-    qs(id).addEventListener("input", renderProjects);
+    qs(id).addEventListener("keydown", (event) => {
+      if (event.key !== "Enter") return;
+      event.preventDefault();
+      applyProjectFilters();
+    });
   });
+  qs("searchProjects").addEventListener("click", applyProjectFilters);
 
   qs("refreshProjects").addEventListener("click", () => {
     loadProjects();

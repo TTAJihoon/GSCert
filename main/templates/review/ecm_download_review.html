@@ -4,8 +4,8 @@
 {% block title %}ECM 제출물 자동 점검{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=17">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=16" defer></script>
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=18">
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=17" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -119,12 +119,18 @@
           </label>
           <label>
             <span>시험PL</span>
-            <select id="filterPl"></select>
+            <input id="filterPl" type="search" placeholder="시험PL 검색">
           </label>
           <label>
             <span>점검결과</span>
             <select id="filterStatus"></select>
           </label>
+          <div class="filter-actions">
+            <button class="primary-button filter-submit" type="button" id="searchProjects">
+              <i class="fa-solid fa-magnifying-glass"></i>
+              조회
+            </button>
+          </div>
         </div>
 
         <div class="table-wrap">
