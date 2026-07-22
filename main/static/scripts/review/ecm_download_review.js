@@ -2133,7 +2133,7 @@ function bindControls() {
     qs(id).addEventListener("keydown", (event) => {
       if (event.key !== "Enter") return;
       event.preventDefault();
-      applyProjectFilters();
+      qs("searchProjects").click();
     });
   });
   qs("searchProjects").addEventListener("click", applyProjectFilters);
