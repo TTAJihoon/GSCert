@@ -65,7 +65,7 @@ function Show-Menu {
     Write-Host "  G.    Google Sheets- 인증위 시트 → PostgreSQL reference_project 적재$venvWarn"
     Write-Host "  f.    FAISS 임베딩  - reference DB 신규 데이터 증분 임베딩$venvWarn"
     Write-Host "  D.    규칙 DB 반영  - 점검규칙(config)을 PostgreSQL에 반영 (seed)$venvWarn"
-    Write-Host "  B.    앱 빌드       - 로컬 검토 앱(GSCertLocalReviewDashboard.exe) 재빌드"
+    Write-Host "  B.    로컬 검토 앱   - 빌드 / 빌드 없이 실행 선택"
     Write-Host "  git.  Git 관리      - 원격 pull / 로컬 커밋·push"
     $pgHost = if ($env:REFERENCE_PG_HOST) { $env:REFERENCE_PG_HOST } else { "미설정" }
     Write-Host "  P.    PostgreSQL 설정- 현재 HOST: $pgHost"
@@ -435,30 +435,51 @@ while ($true) {
         }
         'B' {
             Write-Host ""
-            Write-Host "=== 로컬 검토 앱 빌드 (GSCertLocalReviewDashboard.exe) ===" -ForegroundColor Cyan
-            $AppDir      = Join-Path $ScriptDir "local_review_app"
-            $BuildScript = Join-Path $AppDir "scripts\package_windows_dashboard.ps1"
-            $AppPython   = Join-Path $AppDir ".venv\Scripts\python.exe"
-            if (-not (Test-Path $BuildScript)) {
-                Write-Host "[ERROR] 빌드 스크립트를 찾을 수 없습니다: $BuildScript" -ForegroundColor Red
-            } elseif (-not (Test-Path $AppPython)) {
-                Write-Host "[ERROR] 앱 전용 가상환경이 없습니다: $AppPython" -ForegroundColor Red
-                Write-Host "        먼저 아래로 생성 후 다시 시도하세요:" -ForegroundColor Yellow
-                Write-Host "          cd `"$AppDir`"; python -m venv .venv" -ForegroundColor Gray
-            } else {
-                Write-Host "  최신 gscert_review_core(엔진)를 포함해 exe 를 다시 빌드합니다. (수 분 소요)" -ForegroundColor Gray
-                Write-Host "  실행 중인 GSCertLocalReviewDashboard.exe 가 있으면 종료합니다." -ForegroundColor Gray
-                # taskkill 은 프로세스가 없으면 stderr 를 내므로 Stop-Process 로 대체(없어도 무해).
-                Get-Process -Name GSCertLocalReviewDashboard -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-                $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-                & powershell -ExecutionPolicy Bypass -File $BuildScript
-                $buildOk = ($LASTEXITCODE -eq 0)
-                $ErrorActionPreference = $prevEAP
-                if ($buildOk) {
-                    Write-Host "[OK] 앱 빌드 완료. local_review_app\dist\GSCertLocalReviewDashboard 의 exe 를 배포하세요." -ForegroundColor Green
+            Write-Host "=== 로컬 검토 앱 (GSCertLocalReviewDashboard) ===" -ForegroundColor Cyan
+            Write-Host "  1) 빌드          - exe 재빌드 (수 분 소요, 배포용)"
+            Write-Host "  2) 빌드 없이 실행 - .venv python으로 run_dashboard.py 바로 실행 (빠른 테스트용)"
+            $bsub = Read-Host "선택 (1/2)"
+            Write-Host ""
+            $AppDir    = Join-Path $ScriptDir "local_review_app"
+            $AppPython = Join-Path $AppDir ".venv\Scripts\python.exe"
+            if ($bsub -eq '1') {
+                $BuildScript = Join-Path $AppDir "scripts\package_windows_dashboard.ps1"
+                if (-not (Test-Path $BuildScript)) {
+                    Write-Host "[ERROR] 빌드 스크립트를 찾을 수 없습니다: $BuildScript" -ForegroundColor Red
+                } elseif (-not (Test-Path $AppPython)) {
+                    Write-Host "[ERROR] 앱 전용 가상환경이 없습니다: $AppPython" -ForegroundColor Red
+                    Write-Host "        먼저 아래로 생성 후 다시 시도하세요:" -ForegroundColor Yellow
+                    Write-Host "          cd `"$AppDir`"; python -m venv .venv" -ForegroundColor Gray
                 } else {
-                    Write-Host "[ERROR] 앱 빌드 실패. 위 출력을 확인하세요." -ForegroundColor Red
+                    Write-Host "  최신 gscert_review_core(엔진)를 포함해 exe 를 다시 빌드합니다. (수 분 소요)" -ForegroundColor Gray
+                    Write-Host "  실행 중인 GSCertLocalReviewDashboard.exe 가 있으면 종료합니다." -ForegroundColor Gray
+                    # taskkill 은 프로세스가 없으면 stderr 를 내므로 Stop-Process 로 대체(없어도 무해).
+                    Get-Process -Name GSCertLocalReviewDashboard -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+                    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+                    & powershell -ExecutionPolicy Bypass -File $BuildScript
+                    $buildOk = ($LASTEXITCODE -eq 0)
+                    $ErrorActionPreference = $prevEAP
+                    if ($buildOk) {
+                        Write-Host "[OK] 앱 빌드 완료. local_review_app\dist\GSCertLocalReviewDashboard 의 exe 를 배포하세요." -ForegroundColor Green
+                    } else {
+                        Write-Host "[ERROR] 앱 빌드 실패. 위 출력을 확인하세요." -ForegroundColor Red
+                    }
                 }
+            } elseif ($bsub -eq '2') {
+                $RunScript = Join-Path $AppDir "run_dashboard.py"
+                if (-not (Test-Path $AppPython)) {
+                    Write-Host "[ERROR] 앱 전용 가상환경이 없습니다: $AppPython" -ForegroundColor Red
+                    Write-Host "        먼저 아래로 생성 후 다시 시도하세요:" -ForegroundColor Yellow
+                    Write-Host "          cd `"$AppDir`"; python -m venv .venv" -ForegroundColor Gray
+                } elseif (-not (Test-Path $RunScript)) {
+                    Write-Host "[ERROR] 실행 스크립트를 찾을 수 없습니다: $RunScript" -ForegroundColor Red
+                } else {
+                    Write-Host "  빌드 없이 .venv python 으로 바로 실행합니다(빌드 반영 안 됨, 코드 테스트용)." -ForegroundColor Gray
+                    Start-Process -FilePath $AppPython -ArgumentList "run_dashboard.py" -WorkingDirectory $AppDir
+                    Write-Host "[OK] 실행했습니다. 앱 창을 확인하세요(메뉴는 바로 계속 사용할 수 있습니다)." -ForegroundColor Green
+                }
+            } else {
+                Write-Host "올바른 번호를 입력해 주세요." -ForegroundColor Red
             }
         }
         '0' {

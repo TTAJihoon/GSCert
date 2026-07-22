@@ -280,7 +280,7 @@ QTableWidget#resultTable {{
 QTableWidget#resultTable::item {{
     padding: 8px 10px;
     border-bottom: 1px solid {C_RESULT_LINE};
-    border-right: none;
+    border-right: 1px solid {C_RESULT_LINE};
 }}
 QTableWidget#resultTable::item:selected {{
     background-color: {C_RESULT_SELECT};
@@ -294,6 +294,10 @@ QTableWidget#resultTable QHeaderView::section {{
     padding: 9px 10px;
     border: none;
     border-bottom: 1px solid {C_LINE};
+    border-right: 1px solid {C_LINE};
+}}
+QTableWidget#resultTable QHeaderView::section:last {{
+    border-right: none;
 }}
 QTableWidget#resultTable QTableCornerButton::section {{
     background-color: {C_RESULT_HEAD};
@@ -332,12 +336,15 @@ QStatusBar QLabel {{
 QSplitter::handle {{
     background-color: {C_LINE};
 }}
+QSplitter::handle:hover {{
+    background-color: {C_PRIMARY};
+}}
 QSplitter::handle:horizontal {{
-    width: 1px;
+    width: 5px;
     margin: 4px 0;
 }}
 QSplitter::handle:vertical {{
-    height: 1px;
+    height: 5px;
     margin: 0 4px;
 }}
 """
@@ -1261,7 +1268,7 @@ class MainWindow(QMainWindow):
         self.folder_path.setText(str(folder))
         self._save_settings()
         inferred = infer_project_number(folder)
-        if inferred and not self.project_number.text().strip():
+        if inferred:
             self.project_number.setText(inferred)
         self._save_settings()
         # 폴더 선택 시 파일 스캔을 먼저 하고, 스캔 완료 후 기준정보 조회를 자동 실행한다.
@@ -1912,4 +1919,10 @@ def main() -> int:
     app.setStyleSheet(APP_QSS)
     window = MainWindow()
     window.show()
+    try:
+        import pyi_splash  # PyInstaller --splash 로 패키징된 exe 에서만 존재.
+
+        pyi_splash.close()
+    except ImportError:
+        pass
     return app.exec()

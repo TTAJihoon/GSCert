@@ -32,6 +32,9 @@ function Invoke-ExeCheck {
     }
 }
 
+$SplashImage = Join-Path $Root "assets\splash.png"
+$ServerCert = Join-Path $Root "certs\gscert.crt"
+
 Invoke-Native $Python -m pip install -r requirements.txt
 Invoke-Native $Python -m PyInstaller `
     --name GSCertLocalReviewDashboard `
@@ -45,6 +48,8 @@ Invoke-Native $Python -m PyInstaller `
     --hidden-import openpyxl `
     --hidden-import xlrd `
     --hidden-import xlrd.compdoc `
+    --splash $SplashImage `
+    --add-data "${ServerCert}:certs" `
     --distpath dist `
     --workpath build `
     --specpath build `

@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QLineEdit,
     QProgressBar,
     QPushButton,
+    QSplitter,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -168,12 +169,12 @@ class DashboardWindow(MainWindow):
         workspace_layout.setSpacing(14)
         workspace_layout.addWidget(self._build_summary_row())
 
-        lower = QWidget()
-        lower_layout = QHBoxLayout(lower)
-        lower_layout.setContentsMargins(0, 0, 0, 0)
-        lower_layout.setSpacing(14)
-        lower_layout.addWidget(self._build_result_panel(), stretch=3)
-        lower_layout.addWidget(self._build_detail_panel(), stretch=2)
+        lower = QSplitter(Qt.Orientation.Horizontal)
+        lower.setChildrenCollapsible(False)
+        lower.addWidget(self._build_result_panel())
+        lower.addWidget(self._build_detail_panel())
+        lower.setStretchFactor(0, 3)
+        lower.setStretchFactor(1, 2)
         workspace_layout.addWidget(lower, stretch=1)
 
         layout.addWidget(setup_panel)
@@ -296,15 +297,19 @@ class DashboardWindow(MainWindow):
         layout.setSpacing(12)
 
         self._stat_labels: dict[str, QLabel] = {}
+        self._stat_cards: dict[str, QFrame] = {}
+        self._stat_filter_values: dict[str, str | None] = {}
+        self._result_filter: str | None = None
         cards = [
-            ("total", C_TEXT, C_SOFT, "전체 0"),
-            ("pass", C_SUCCESS, C_SUCCESS_SOFT, "적합 0"),
-            ("fail", C_DANGER, C_DANGER_SOFT, "부적합 0"),
-            ("unsupported", C_MUTED, C_SOFT, "미지원 0"),
-            ("error", C_WARNING, C_WARNING_SOFT, "오류 0"),
+            ("total", None, C_TEXT, C_SOFT, "전체 0"),
+            ("pass", PASS, C_SUCCESS, C_SUCCESS_SOFT, "적합 0"),
+            ("fail", FAIL, C_DANGER, C_DANGER_SOFT, "부적합 0"),
+            ("unsupported", UNSUPPORTED, C_MUTED, C_SOFT, "미지원 0"),
+            ("error", ERROR, C_WARNING, C_WARNING_SOFT, "오류 0"),
         ]
-        for key, fg, bg, text in cards:
+        for key, status_value, fg, bg, text in cards:
             card = _soft_card()
+            card.setCursor(Qt.CursorShape.PointingHandCursor)
             card_layout = QHBoxLayout(card)
             card_layout.setContentsMargins(16, 12, 16, 12)
             card_layout.setSpacing(10)
@@ -318,11 +323,33 @@ class DashboardWindow(MainWindow):
                 " font-size: 11px; font-weight: 700;"
             )
             self._stat_labels[key] = count
+            self._stat_cards[key] = card
+            self._stat_filter_values[key] = status_value
             card_layout.addWidget(count)
             card_layout.addStretch()
             card_layout.addWidget(badge)
+            card.mousePressEvent = lambda event, status=status_value: self._apply_result_filter(status)
             layout.addWidget(card)
+        self._update_stat_card_styles()
         return row
+
+    def _apply_result_filter(self, status: str | None) -> None:
+        self._result_filter = status
+        self._update_stat_card_styles()
+        self._render_result_table(getattr(self, "_all_result_rows", []))
+
+    def _update_stat_card_styles(self) -> None:
+        active_key = next(
+            (key for key, value in self._stat_filter_values.items() if value == self._result_filter),
+            "total",
+        )
+        for key, card in self._stat_cards.items():
+            border = f"2px solid {C_PRIMARY}" if key == active_key else f"1px solid {C_LINE}"
+            card.setStyleSheet(
+                f"QFrame {{ background-color: #fbfdff; border: {border};"
+                " border-radius: 8px; }}"
+                "QLabel { background: transparent; border: none; }"
+            )
 
     def _build_result_panel(self) -> QFrame:
         frame = _panel()
@@ -336,9 +363,9 @@ class DashboardWindow(MainWindow):
         self.result_table.setHorizontalHeaderLabels(["번호", "결과", "점검항목", "기대값", "실제값", "메시지"])
         hdr = self.result_table.horizontalHeader()
         hdr.setHighlightSections(False)
-        hdr.setDefaultAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        hdr.setDefaultAlignment(Qt.AlignCenter)
         hdr.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
-        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
         hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
@@ -440,23 +467,7 @@ class DashboardWindow(MainWindow):
         self.file_count_label.setText(f"파일 {scan.file_count}개 · {scan.total_size_mb} MB")
 
     def _set_result_rows(self, summary):
-        table = self.result_table
-        table.setSortingEnabled(False)
-        table.clearContents()
-        table.clearSpans()
-
-        rows = self._dashboard_result_rows(summary)
-        table.setRowCount(len(rows))
-        for row_index, row in enumerate(rows):
-            detail = row["detail"]
-            status = detail.status
-            fg, bg, label = STATUS_META.get(status, (C_TEXT, C_SOFT, status))
-            self._put_dashboard_cell(row_index, 0, detail.display_number, detail, align=Qt.AlignCenter, fg=C_MUTED, bold=True)
-            self._put_dashboard_cell(row_index, 1, label, detail, align=Qt.AlignCenter, fg=fg, bg=bg, bold=True)
-            self._put_dashboard_cell(row_index, 2, row["item"], detail, bold=True)
-            self._put_dashboard_cell(row_index, 3, detail.expected, detail)
-            self._put_dashboard_cell(row_index, 4, detail.actual, detail)
-            self._put_dashboard_cell(row_index, 5, detail.message, detail)
+        self._all_result_rows = self._dashboard_result_rows(summary)
 
         counts = {PASS: 0, FAIL: 0, UNSUPPORTED: 0, ERROR: 0}
         for result in summary.results:
@@ -467,9 +478,37 @@ class DashboardWindow(MainWindow):
         self._stat_labels["unsupported"].setText(f"미지원 {counts.get(UNSUPPORTED, 0)}")
         self._stat_labels["error"].setText(f"오류 {counts.get(ERROR, 0)}")
 
+        # 새 점검 결과가 나오면 이전에 걸어둔 필터는 초기화하고 전체를 보여준다.
+        self._result_filter = None
+        self._update_stat_card_styles()
+        self._render_result_table(self._all_result_rows)
+
+    def _render_result_table(self, rows):
+        table = self.result_table
+        table.setSortingEnabled(False)
+        table.clearContents()
+        table.clearSpans()
+
+        status_filter = self._result_filter
+        visible_rows = [
+            row for row in rows if status_filter is None or row["detail"].status == status_filter
+        ]
+
+        table.setRowCount(len(visible_rows))
+        for row_index, row in enumerate(visible_rows):
+            detail = row["detail"]
+            status = detail.status
+            fg, bg, label = STATUS_META.get(status, (C_TEXT, C_SOFT, status))
+            self._put_dashboard_cell(row_index, 0, detail.display_number, detail, align=Qt.AlignCenter, fg=C_MUTED, bold=True)
+            self._put_dashboard_cell(row_index, 1, label, detail, align=Qt.AlignCenter, fg=fg, bg=bg, bold=True)
+            self._put_dashboard_cell(row_index, 2, row["item"], detail, bold=True)
+            self._put_dashboard_cell(row_index, 3, detail.expected, detail)
+            self._put_dashboard_cell(row_index, 4, detail.actual, detail)
+            self._put_dashboard_cell(row_index, 5, detail.message, detail)
+
         table.resizeRowsToContents()
-        if self.result_table.rowCount() > 0:
-            self.result_table.selectRow(0)
+        if table.rowCount() > 0:
+            table.selectRow(0)
         self._update_result_detail_panel()
 
     def _dashboard_result_rows(self, summary):
@@ -541,4 +580,10 @@ def main() -> int:
     app.setStyleSheet(APP_QSS)
     window = DashboardWindow()
     window.show()
+    try:
+        import pyi_splash  # PyInstaller --splash 로 패키징된 exe 에서만 존재.
+
+        pyi_splash.close()
+    except ImportError:
+        pass
     return app.exec()

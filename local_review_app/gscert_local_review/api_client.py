@@ -7,6 +7,8 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 
+from . import cert_trust
+
 
 class ApiClientError(RuntimeError):
     pass
@@ -83,6 +85,9 @@ class GSCertApiClient:
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.token = (token or "").strip()
+        # 서버가 자체서명 https 인증서를 쓰므로, OS 신뢰 저장소 대신 번들 인증서에 핀 고정한다
+        # (신뢰 저장소 등록은 관리자 권한이 필요해 리뷰어 PC에서 못 쓸 때가 많다).
+        self._ssl_context = cert_trust.build_ssl_context()
 
     def health(self) -> dict[str, Any]:
         return self._get_json("/api/local-review/health/")
@@ -115,7 +120,7 @@ class GSCertApiClient:
             headers["X-Local-Review-Token"] = self.token
         request = Request(url, headers=headers)
         try:
-            with urlopen(request, timeout=self.timeout_seconds) as response:
+            with urlopen(request, timeout=self.timeout_seconds, context=self._ssl_context) as response:
                 body = response.read().decode("utf-8")
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")

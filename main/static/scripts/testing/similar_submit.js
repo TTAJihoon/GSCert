@@ -19,12 +19,13 @@ function renderSimilarResults(data, summaryContent, resultsContent) {
       : 'N/A';
     const scoreLabel = typeof row.llm_score === 'number' ? 'AI 유사도' : '유사도';
 
-    const copyCompany = row['회사명'] || '-';
-    const copyProduct = row['제품'] || '-';
+    const firstLine = (val) => String(val || '-').split('\n')[0].trim() || '-';
+    const copyCompany = firstLine(row['회사명']);
+    const copyProduct = firstLine(row['제품']);
     const copyTestNo = row['시험번호'] || '-';
     const copyWd = (row['총WD'] || '-').toString();
     const copyDesc = row['제품설명'] || '-';
-    const copyText = `${copyTestNo} ${copyCompany}-${copyProduct} ${copyWd}\n${copyDesc}`;
+    const copyText = `${copyWd} WD / ${copyTestNo} / ${copyCompany}-${copyProduct} / ${copyDesc}`;
 
     return `
       <div class="similar-product">

@@ -1522,60 +1522,79 @@ def _files_under_keyword_folder(files, keywords):
 
 def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, context, verify_result):
     config = rule.config_json or {}
-    # 기존 제품 zip이 아닌, 이름에 'rawdata'가 포함된 zip의 이미지만 대상으로 한다(대소문자/공백 무시).
     all_files = _matching_files(rule, verify_result)
-    rawdata_files = [file_info for file_info in all_files if _is_rawdata_file(file_info, "rawdata")]
-    files, selected_folder = _select_folder_chain_files(rawdata_files, config.get("folder_keyword_chain"))
-    # '설계' 폴더가 없으면 '스크린샷'/'형상' 등 대체 폴더로 폴백한다.
-    if not selected_folder:
-        files, selected_folder = _files_under_keyword_folder(
-            rawdata_files, config.get("fallback_folder_keywords")
-        )
     min_images = int(config.get("min_images_per_folder") or 5)
     required_folder_count = int(config.get("required_candidate_folder_count") or 2)
-    image_files = [
-        file_info
-        for file_info in files
-        if file_info.extension.lower() in IMAGE_EXTENSIONS
-    ]
-    folders = {}
-    for file_info in image_files:
-        key = tuple(_folder_segments(file_info.path))
-        folders.setdefault(key, []).append(file_info)
 
-    candidate_folders = {
-        folder: folder_files
-        for folder, folder_files in folders.items()
-        if len(folder_files) >= min_images
-    }
-    parent_candidates = {}
-    for folder, folder_files in candidate_folders.items():
-        if not folder:
-            continue
-        parent_candidates.setdefault(folder[:-1], []).append((folder, folder_files))
+    def _find_candidates(files):
+        selected_files, selected_folder = _select_folder_chain_files(files, config.get("folder_keyword_chain"))
+        # '설계' 폴더가 없으면 '스크린샷'/'형상' 등 대체 폴더로 폴백한다.
+        if not selected_folder:
+            selected_files, selected_folder = _files_under_keyword_folder(
+                files, config.get("fallback_folder_keywords")
+            )
+        image_files = [
+            file_info
+            for file_info in selected_files
+            if file_info.extension.lower() in IMAGE_EXTENSIONS
+        ]
+        folders = {}
+        for file_info in image_files:
+            key = tuple(_folder_segments(file_info.path))
+            folders.setdefault(key, []).append(file_info)
 
-    selected_parent = None
-    selected_candidates = []
-    for parent, candidates in sorted(parent_candidates.items(), key=lambda item: "/".join(item[0])):
-        if len(candidates) >= required_folder_count:
-            selected_parent = parent
-            selected_candidates = sorted(candidates, key=lambda item: "/".join(item[0]))[:required_folder_count]
-            break
+        candidate_folders = {
+            folder: folder_files
+            for folder, folder_files in folders.items()
+            if len(folder_files) >= min_images
+        }
+        parent_candidates = {}
+        for folder, folder_files in candidate_folders.items():
+            if not folder:
+                continue
+            parent_candidates.setdefault(folder[:-1], []).append((folder, folder_files))
+
+        for parent, candidates in sorted(parent_candidates.items(), key=lambda item: "/".join(item[0])):
+            if len(candidates) >= required_folder_count:
+                selected = sorted(candidates, key=lambda item: "/".join(item[0]))[:required_folder_count]
+                return selected, parent, selected_folder, candidate_folders
+        return [], None, selected_folder, candidate_folders
+
+    # 원래 규칙대로 먼저 전체 파일에서 직접 '설계'(또는 대체) 폴더를 찾는다.
+    selected_candidates, selected_parent, selected_folder, candidate_folders = _find_candidates(all_files)
+    used_rawdata_scope = False
+    rawdata_files = []
+
+    # 못 찾으면 이름에 'rawdata'가 든 폴더/zip 안에서 다시 찾는다
+    # (ECM이 원시자료를 별도의 rawdata.zip으로만 내려준 경우 대비. 대소문자/공백 무시).
+    # rawdata 스코프에서도 못 찾으면, 더 유용한 직접 탐색 실패 사유를 그대로 유지한다
+    # (rawdata 스코프 실패 사유로 덮어쓰면 오히려 헷갈리는 메시지가 될 수 있음).
+    if not selected_candidates:
+        rawdata_files = [file_info for file_info in all_files if _is_rawdata_file(file_info, "rawdata")]
+        if rawdata_files:
+            rd_candidates, rd_parent, rd_folder, rd_candidate_folders = _find_candidates(rawdata_files)
+            if rd_candidates:
+                selected_candidates, selected_parent, selected_folder, candidate_folders = (
+                    rd_candidates, rd_parent, rd_folder, rd_candidate_folders
+                )
+                used_rawdata_scope = True
 
     raw_detail = {
         "selected_folder": selected_folder,
         "min_images_per_folder": min_images,
         "required_candidate_folder_count": required_folder_count,
+        "used_rawdata_scope": used_rawdata_scope,
         "candidate_folders": [
             {"folder": "/".join(folder), "image_count": len(folder_files)}
             for folder, folder_files in sorted(candidate_folders.items())
         ],
     }
     if not selected_candidates:
-        if not rawdata_files:
-            folder_fail_message = config.get("rawdata_missing_message") or "rawdata 폴더를 찾을 수 없습니다"
-        elif not selected_folder:
-            folder_fail_message = config.get("folder_missing_message") or "설계·스크린샷·형상 폴더를 찾을 수 없습니다"
+        if not selected_folder:
+            if not rawdata_files:
+                folder_fail_message = config.get("rawdata_missing_message") or "rawdata 폴더를 찾을 수 없습니다"
+            else:
+                folder_fail_message = config.get("folder_missing_message") or "설계·스크린샷·형상 폴더를 찾을 수 없습니다"
         else:
             folder_fail_message = config.get("folder_message") or "제품 스크린샷 폴더를 찾을 수 없음"
         return RuleEvaluation(
@@ -1677,34 +1696,46 @@ def _join_korean_or(values):
 def _evaluate_rawdata_folder_structure_check(rule, sequence, project, verify_result):
     config = rule.config_json or {}
     all_files = _inspection_files(verify_result)
-    # 'rawdata'가 든 zip/폴더가 있으면 그 안에서만 점검하고,
-    # 없으면 전체 파일에서 결함/보안/성능 폴더를 직접 찾아 점검한다.
-    rawdata_files = [
-        file_info
-        for file_info in all_files
-        if _is_rawdata_file(file_info, "rawdata")
-    ]
-    target_files = rawdata_files if rawdata_files else all_files
+
+    def _run_checks(files):
+        folders, file_folders = _folder_tree_from_files(files)
+        checks = []
+        passed = True
+        first_message = ""
+        for folder_check in config.get("folder_checks") or []:
+            result = _run_folder_check(folders, file_folders, folder_check, files=files)
+            checks.append(result)
+            if not result["passed"] and passed:
+                passed = False
+                first_message = result["message"]
+        return passed, first_message, checks
+
+    # 원래 규칙대로 먼저 전체 파일에서 결함/보안/성능 폴더를 직접 찾아 점검한다.
+    passed, first_message, checks = _run_checks(all_files)
+    used_rawdata_scope = False
+    rawdata_files = []
+
+    # 못 찾으면 이름에 'rawdata'가 든 zip/폴더 안에서 다시 찾는다
+    # (ECM이 원시자료를 별도의 rawdata.zip으로만 내려준 경우 대비).
+    # rawdata 스코프에서도 통과하지 못하면, 더 유용한 직접 탐색 실패 사유를 그대로 유지한다
+    # (rawdata 스코프 실패 사유로 덮어쓰면 오히려 헷갈리는 메시지가 될 수 있음).
+    if not passed:
+        rawdata_files = [
+            file_info
+            for file_info in all_files
+            if _is_rawdata_file(file_info, "rawdata")
+        ]
+        if rawdata_files:
+            rd_passed, rd_first_message, rd_checks = _run_checks(rawdata_files)
+            if rd_passed:
+                passed, first_message, checks = rd_passed, rd_first_message, rd_checks
+                used_rawdata_scope = True
+
     raw_detail = {
         "rawdata_file_count": len(rawdata_files),
-        "used_rawdata_scope": bool(rawdata_files),
+        "used_rawdata_scope": used_rawdata_scope,
+        "checks": checks,
     }
-
-    # rawdata zip이 있으면 그 안에서, 없으면 전체에서 각 키워드(결함/보안/성능)
-    # 폴더를 직접 찾아 그 안의 하위 폴더 구조를 점검한다.
-    folders, file_folders = _folder_tree_from_files(target_files)
-
-    checks = []
-    passed = True
-    first_message = ""
-    for folder_check in config.get("folder_checks") or []:
-        result = _run_folder_check(folders, file_folders, folder_check, files=target_files)
-        checks.append(result)
-        if not result["passed"] and passed:
-            passed = False
-            first_message = result["message"]
-
-    raw_detail["checks"] = checks
     status = DownloadReviewRuleStatus.PASS if passed else DownloadReviewRuleStatus.FAIL
     return RuleEvaluation(
         rule=rule,
