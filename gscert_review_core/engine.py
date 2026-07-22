@@ -1200,12 +1200,29 @@ def _test_plan_spec_table_check(plan_table, config, context):
         "name": "spec_table",
         "passed": passed,
         "expected": "시험성적서 <세부사양> 표와 일치",
-        "actual": "일치" if passed else f"불일치 {len(mismatches)}건" if normalized_plan and normalized_report else "비교 대상 표 없음",
+        "actual": (
+            "일치" if passed
+            else _format_mismatch_summary(mismatches) if normalized_plan and normalized_report
+            else "비교 대상 표 없음"
+        ),
         "message": config.get("spec_message") or "시험환경 세부사양 표가 결과서와 다름",
         "plan_table": normalized_plan,
         "report_table": normalized_report,
         "mismatches": mismatches,
     }
+
+
+def _format_mismatch_summary(mismatches, limit=5):
+    """표 비교 불일치를 '불일치 N건' 대신 실제로 어떤 셀이 어떻게 다른지 나열한다."""
+    if not mismatches:
+        return "불일치 0건"
+    lines = [
+        f"{item['left_cell']} 계획서 '{item['left'] or '(빈 값)'}' → 성적서 '{item['right'] or '(빈 값)'}'"
+        for item in mismatches[:limit]
+    ]
+    if len(mismatches) > limit:
+        lines.append(f"외 {len(mismatches) - limit}건 더")
+    return " / ".join(lines)
 
 
 def _table_cell(table, row, column):
@@ -3134,9 +3151,20 @@ def _top_rows_texts(sheet, *, limit):
 
 
 def _clean_excel_header_text(value):
+    """Excel 인쇄 머리글/바닥글의 필드 코드(&L/&C/&R, &P, &N, &"font", &12, &Kxxxxxx 등)만 제거한다.
+
+    이전에는 `&[A-Za-z0-9]+` 로 지웠는데, 이 패턴이 탐욕적으로 매치돼서
+    `&RTTA`(오른쪽 섹션 + "TTA" 텍스트)처럼 필드 코드 바로 뒤에 공백 없이
+    실제 텍스트가 붙으면(엑셀에서 흔한 표기) "TTA"까지 통째로 지워버렸다.
+    필드 코드는 실제로 &+한 글자(섹션/페이지번호 등) 이거나 &+숫자(글꼴 크기),
+    &K+16진수 6자리(글꼴 색) 형태뿐이므로, 그 범위로만 좁혀서 뒤따르는 실제
+    텍스트는 지우지 않는다.
+    """
     text = str(value or "")
     text = re.sub(r"&\"[^\"]+\"", "", text)
-    text = re.sub(r"&[A-Za-z0-9]+", "", text)
+    text = re.sub(r"&K[0-9A-Fa-f]{6}", "", text)
+    text = re.sub(r"&\d+", "", text)
+    text = re.sub(r"&[LCRPNDTFAZGBIUSXYlcrpndtfazgbiusxy]", "", text)
     return _normalize_spaces(text)
 
 

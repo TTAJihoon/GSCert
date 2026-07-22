@@ -413,7 +413,9 @@ const state = {
   resultLoadError: "",
   resultProjectLoadError: "",
   lastCheckedIndex: -1,
-  modalDownloadFilename: ""
+  modalDownloadFilename: "",
+  inspectionItems: [],
+  inspectionFilter: null
 };
 
 function defaultProjectFilters() {
@@ -429,7 +431,8 @@ function defaultProjectFilters() {
 const tableColumnDefaults = {
   projectRows: [20, 120, 75, 180, 320, 155, 70, 70, 50],
   progressRows: [64, 145, 180, 220, 105, 260, 90, 105, 280],
-  resultRows: [145, 180, 220, 105, 115, 80, 240, 145, 280]
+  resultRows: [145, 180, 220, 105, 115, 80, 240, 145, 280],
+  "규칙별 점검 결과": [60, 170, 76, 210, 230, 230, 250, 130]
 };
 
 const statusLabel = {
@@ -1732,7 +1735,7 @@ function renderLatestInspectionResult(payload) {
 
   const displayItems = Array.isArray(payload.display_items) ? payload.display_items : rawItems;
 
-  qs("modalBody").innerHTML = renderInspectionResultContent(
+  mountInspectionResult(
     displayItems,
     `최근 작업 ${payload.job?.id || "-"}의 규칙 결과입니다.`
   );
@@ -1820,17 +1823,18 @@ function splitSlash(value) {
 }
 
 // 규칙 결과를 하위 검사 행 목록으로 분해한다.
-// 반환: [{expected, actual, passed}] — passed는 boolean(행별 배지 가능) 또는 null(전체 배지 사용).
+// 반환: [{expected, actual, message, passed}] — passed는 boolean(행별 배지 가능) 또는 null(전체 배지 사용).
 // 분해 결과가 1행 이하이면 빈 배열을 반환해 호출부가 단일 행으로 렌더링하도록 한다.
 function ruleSubChecks(rule) {
   const rd = rule.raw_detail || {};
 
-  // 1) 백엔드가 명시적으로 sub_checks를 제공하면 그대로 사용한다(각 {expected, actual, passed}).
+  // 1) 백엔드가 명시적으로 sub_checks를 제공하면 그대로 사용한다(각 {expected, actual, passed, message}).
   //    결함리포트(차시별), 시험계획서(항목별) 등이 여기에 해당.
   if (Array.isArray(rd.sub_checks) && rd.sub_checks.length) {
     return rd.sub_checks.map((sub) => ({
       expected: sub.expected !== undefined && sub.expected !== null && sub.expected !== "" ? String(sub.expected) : "-",
       actual: sub.actual !== undefined && sub.actual !== null && sub.actual !== "" ? String(sub.actual) : "-",
+      message: sub.message !== undefined && sub.message !== null && sub.message !== "" ? String(sub.message) : "",
       passed: typeof sub.passed === "boolean" ? sub.passed : null,
     }));
   }
@@ -1852,6 +1856,7 @@ function ruleSubChecks(rule) {
     rows.push({
       expected: expParts[i] !== undefined ? expParts[i] : "-",
       actual: actParts[i] !== undefined ? actParts[i] : "-",
+      message: "",
       passed: usePerRow ? flags[i] : null,
     });
   }
@@ -1878,35 +1883,57 @@ function inspectionSummary(items) {
   }, { total: 0, success: 0, danger: 0, warning: 0, other: 0 });
 }
 
+// 상단 요약 카드 필터와 실제 규칙 분류 매칭. '부적합' 카드는 danger+other 를 함께 포함(카드 표시 숫자와 동일 기준).
+function inspectionItemMatchesFilter(item, filter) {
+  if (!filter) return true;
+  const type = inspectionStatusType(item);
+  if (filter === "danger") return type === "danger" || type === "other";
+  return type === filter;
+}
+
+function filterInspectionItems(items) {
+  return items.filter((item) => inspectionItemMatchesFilter(item, state.inspectionFilter));
+}
+
+// 4가지 요약 카드를 클릭 가능한 버튼으로 렌더링한다. 클릭 시 아래 표가 해당 분류로 필터링된다.
 function renderInspectionSummary(items) {
   const summary = inspectionSummary(items);
   const reviewNeeded = summary.danger + summary.other;
+  const activeFilter = state.inspectionFilter;
+  const cards = [
+    { filter: "total", cls: "", label: "전체 규칙", count: summary.total },
+    { filter: "success", cls: "success", label: "정상", count: summary.success },
+    { filter: "danger", cls: "danger", label: "부적합", count: reviewNeeded },
+    { filter: "warning", cls: "warning", label: "확인 필요", count: summary.warning }
+  ];
   return `
-    <div class="inspection-summary" aria-label="규칙별 점검 요약">
-      <div class="inspection-summary-card">
-        <span>전체 규칙</span>
-        <strong>${summary.total}</strong>
-      </div>
-      <div class="inspection-summary-card success">
-        <span>정상</span>
-        <strong>${summary.success}</strong>
-      </div>
-      <div class="inspection-summary-card danger">
-        <span>부적합</span>
-        <strong>${reviewNeeded}</strong>
-      </div>
-      <div class="inspection-summary-card warning">
-        <span>확인 필요</span>
-        <strong>${summary.warning}</strong>
-      </div>
+    <div class="inspection-summary" aria-label="규칙별 점검 요약(클릭하여 필터링)">
+      ${cards.map((card) => `
+        <button
+          type="button"
+          class="inspection-summary-card${card.cls ? ` ${card.cls}` : ""}${(activeFilter || "total") === card.filter ? " active" : ""}"
+          data-inspection-filter="${card.filter}"
+        >
+          <span>${card.label}</span>
+          <strong>${card.count}</strong>
+        </button>
+      `).join("")}
     </div>
   `;
 }
 
 // 규칙 결과 목록을 8열 테이블 행 HTML로 렌더링한다.
-// 하위 검사가 여러 개면 행으로 분리하고, 번호/점검항목/파일명/상세/산출물은 rowspan으로 묶는다.
+// 하위 검사가 여러 개면 행으로 분리하고, 번호/점검항목/파일명/산출물은 rowspan으로 묶는다.
+// 하위 검사의 실제값이 기대값과 어긋나는(불일치) 행은 강조 표시한다.
 function renderInspectionRows(items) {
-  return items.map((rule) => `
+  return items.map((rule) => {
+    const subChecks = ruleSubChecks(rule);
+    return subChecks.length ? renderInspectionSubCheckRows(rule, subChecks) : renderInspectionSingleRow(rule);
+  }).join("");
+}
+
+function renderInspectionSingleRow(rule) {
+  return `
     <tr>
       <td>${escapeHtml(rule.display_number || rule.sequence || "-")}</td>
       <td>${escapeHtml(rule.rule_name || "-")}</td>
@@ -1917,34 +1944,98 @@ function renderInspectionRows(items) {
       <td>${escapeMultiline(rule.message || "-")}</td>
       <td>${renderRuleArtifacts(rule)}</td>
     </tr>
-  `).join("");
+  `;
+}
+
+function renderInspectionSubCheckRows(rule, subChecks) {
+  const rowCount = subChecks.length;
+  // 모든 하위 검사에 pass/fail 값이 있으면 행별로 배지를 나눠 보여주고,
+  // 아니면(일부 항목만 판정 가능) 규칙 전체 배지를 rowspan 으로 공유한다.
+  const perRowStatus = subChecks.every((sub) => typeof sub.passed === "boolean");
+  const artifactsCell = renderRuleArtifacts(rule);
+  return subChecks.map((sub, index) => {
+    const mismatch = sub.passed === false;
+    const statusCell = perRowStatus
+      ? `<td>${badge(sub.passed ? "정상" : "부적합")}</td>`
+      : (index === 0 ? `<td rowspan="${rowCount}">${badge(rule.status_label || rule.status || "-")}</td>` : "");
+    return `
+      <tr${mismatch ? ' class="subcheck-row-mismatch"' : ""}>
+        ${index === 0 ? `<td rowspan="${rowCount}">${escapeHtml(rule.display_number || rule.sequence || "-")}</td>` : ""}
+        ${index === 0 ? `<td rowspan="${rowCount}">${escapeHtml(rule.rule_name || "-")}</td>` : ""}
+        ${statusCell}
+        ${index === 0 ? `<td rowspan="${rowCount}">${escapeHtml(rule.file_name || "-")}</td>` : ""}
+        <td>${escapeMultiline(sub.expected || "-")}</td>
+        <td class="${mismatch ? "cell-mismatch" : ""}">${escapeMultiline(sub.actual || "-")}</td>
+        <td>${escapeMultiline(sub.message || (mismatch ? "실제값이 기대값과 다릅니다." : "-"))}</td>
+        ${index === 0 ? `<td rowspan="${rowCount}">${artifactsCell}</td>` : ""}
+      </tr>
+    `;
+  }).join("");
+}
+
+function renderInspectionTableBlock(items) {
+  const rows = renderInspectionRows(items);
+  return `
+    <table class="data-table" aria-label="규칙별 점검 결과">
+      <thead>
+        <tr>
+          <th>번호</th>
+          <th>점검항목</th>
+          <th>결과</th>
+          <th>파일명</th>
+          <th>기대값</th>
+          <th>실제값</th>
+          <th>메시지</th>
+          <th>산출물</th>
+        </tr>
+      </thead>
+      <tbody>${rows || `<tr><td class="empty-cell" colspan="8">선택한 분류에 해당하는 규칙이 없습니다.</td></tr>`}</tbody>
+    </table>
+  `;
 }
 
 function renderInspectionResultContent(items, leadText = "") {
-  const rows = renderInspectionRows(items);
   return `
     <div class="inspection-result-shell">
       ${leadText ? `<p class="modal-lead">${escapeHtml(leadText)}</p>` : ""}
-      ${renderInspectionSummary(items)}
-      <div class="table-wrap modal-table inspection-result-table">
-        <table class="data-table" aria-label="규칙별 점검 결과">
-          <thead>
-            <tr>
-              <th>번호</th>
-              <th>점검항목</th>
-              <th>결과</th>
-              <th>파일명</th>
-              <th>기대값</th>
-              <th>실제값</th>
-              <th>메시지</th>
-              <th>산출물</th>
-            </tr>
-          </thead>
-          <tbody>${rows}</tbody>
-        </table>
+      <div id="inspectionSummaryBlock">${renderInspectionSummary(items)}</div>
+      <div class="table-wrap modal-table inspection-result-table" id="inspectionTableBlock">
+        ${renderInspectionTableBlock(filterInspectionItems(items))}
       </div>
     </div>
   `;
+}
+
+// 규칙 결과 모달을 채우는 공용 진입점. 필터 상태를 초기화하고, 요약 카드 클릭 바인딩과
+// 컬럼 너비 수동 조절(리사이즈)을 새로 삽입된 테이블에도 적용한다.
+function mountInspectionResult(items, leadText = "") {
+  state.inspectionItems = Array.isArray(items) ? items : [];
+  state.inspectionFilter = null;
+  qs("modalBody").innerHTML = renderInspectionResultContent(state.inspectionItems, leadText);
+  bindInspectionSummaryFilters();
+  initResizableTables();
+  fitVisibleResizableTables();
+}
+
+function bindInspectionSummaryFilters() {
+  const summaryBlock = qs("inspectionSummaryBlock");
+  if (!summaryBlock) return;
+  summaryBlock.querySelectorAll("[data-inspection-filter]").forEach((card) => {
+    card.addEventListener("click", () => {
+      const raw = card.dataset.inspectionFilter;
+      state.inspectionFilter = raw === "total" ? null : raw;
+      refreshInspectionTable();
+    });
+  });
+}
+
+function refreshInspectionTable() {
+  const summaryBlock = qs("inspectionSummaryBlock");
+  const tableBlock = qs("inspectionTableBlock");
+  if (summaryBlock) summaryBlock.innerHTML = renderInspectionSummary(state.inspectionItems);
+  if (tableBlock) tableBlock.innerHTML = renderInspectionTableBlock(filterInspectionItems(state.inspectionItems));
+  bindInspectionSummaryFilters();
+  initResizableTables();
 }
 
 function findErrorItem(source, number) {
@@ -1973,14 +2064,16 @@ async function openJobProjectRulesModal(jobProjectId, project = null) {
     qs("modalTitle").textContent = `${projectNumber} 규칙별 점검 결과`;
     setModalDownload(`${projectNumber}_규칙별_점검_결과.html`);
 
-    qs("modalBody").innerHTML = displayItems.length
-      ? renderInspectionResultContent(displayItems, `작업 프로젝트 ${projectNumber}의 규칙 결과입니다.`)
-      : `
+    if (displayItems.length) {
+      mountInspectionResult(displayItems, `작업 프로젝트 ${projectNumber}의 규칙 결과입니다.`);
+    } else {
+      qs("modalBody").innerHTML = `
         <div class="modal-message warning">
           <strong>생성된 규칙 결과가 없습니다.</strong>
           <p>작업 자체가 실패했거나 아직 규칙 검사가 실행되지 않은 프로젝트입니다.</p>
         </div>
       `;
+    }
   } catch (error) {
     qs("modalBody").innerHTML = `
       <div class="modal-message warning">
@@ -2007,14 +2100,16 @@ async function openResultRulesModal(jobProjectId) {
     const displayItems = Array.isArray(payload.display_items) ? payload.display_items : rawItems;
     setModalDownload(`${project.number}_규칙별_점검_결과.html`);
 
-    qs("modalBody").innerHTML = displayItems.length
-      ? renderInspectionResultContent(displayItems, `작업 프로젝트 ${project.number}의 규칙 결과입니다.`)
-      : `
+    if (displayItems.length) {
+      mountInspectionResult(displayItems, `작업 프로젝트 ${project.number}의 규칙 결과입니다.`);
+    } else {
+      qs("modalBody").innerHTML = `
         <div class="modal-message warning">
           <strong>생성된 규칙 결과가 없습니다.</strong>
           <p>작업 자체가 실패했거나 아직 규칙 검사가 실행되지 않은 프로젝트입니다.</p>
         </div>
       `;
+    }
   } catch (error) {
     qs("modalBody").innerHTML = `
       <div class="modal-message warning">

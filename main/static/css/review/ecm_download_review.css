@@ -1087,7 +1087,12 @@
   display: flex;
   flex-direction: column;
   min-width: 0;
-  min-height: 100%;
+  /* min-height:100%였다면 내용이 넘칠 때 이 박스 자체가 늘어나 버려서, 스크롤이
+     .inspection-result-table 내부가 아니라 바깥(.modal-body)에서 일어나
+     아래 sticky 헤더가 붙지 않았다. height:100%로 이 박스를 모달 높이에 고정하고,
+     .inspection-result-table(flex:1 1 auto)이 남은 공간만 차지하도록 해서
+     표 자체가 내부 스크롤되게 한다. */
+  height: 100%;
 }
 
 .inspection-summary {
@@ -1103,6 +1108,21 @@
   border: 1px solid var(--review-line);
   border-radius: 8px;
   background: var(--review-soft);
+  /* 클릭 가능한 <button>으로 렌더링되므로 기본 버튼 외형을 리셋한다. */
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease;
+}
+
+.inspection-summary-card:hover {
+  border-color: var(--review-primary);
+}
+
+.inspection-summary-card.active {
+  border-color: var(--review-primary);
+  box-shadow: 0 0 0 2px var(--review-primary-soft);
 }
 
 .inspection-summary-card span {
@@ -1164,6 +1184,18 @@
   top: 0;
   z-index: 2;
   background: var(--review-soft);
+  text-align: center;
+}
+
+/* 하위 검사(예: 시험계획서 항목별)가 여러 행으로 펼쳐질 때, 기대값과 어긋나는
+   실제값 행을 눈에 띄게 강조한다. */
+.subcheck-row-mismatch td {
+  background: var(--review-danger-soft);
+}
+
+.inspection-result-table .data-table td.cell-mismatch {
+  color: var(--review-danger);
+  font-weight: 700;
 }
 
 /* 1. 번호 — 글자 크기만큼 좁게 */
