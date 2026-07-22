@@ -404,13 +404,7 @@ const state = {
   forceEmptyPreview: false,
   selectionMessage: "",
   projectLoadError: "",
-  projectFilters: {
-    project: "",
-    company: "",
-    product: "",
-    pl: "",
-    review: "전체"
-  },
+  projectFilters: defaultProjectFilters(),
   activeJob: null,
   hasAnyActiveJob: false,
   activeProjects: [],
@@ -421,6 +415,16 @@ const state = {
   lastCheckedIndex: -1,
   modalDownloadFilename: ""
 };
+
+function defaultProjectFilters() {
+  return {
+    project: "",
+    company: "",
+    product: "",
+    pl: "",
+    review: "전체"
+  };
+}
 
 const tableColumnDefaults = {
   projectRows: [20, 120, 75, 180, 320, 155, 70, 70, 50],
@@ -841,6 +845,16 @@ function populateFilters() {
   }
   qs("filterStatus").innerHTML = reviews.map((value) => `<option>${escapeHtml(value)}</option>`).join("");
   qs("filterStatus").value = state.projectFilters.review;
+}
+
+function resetProjectFilters() {
+  state.projectFilters = defaultProjectFilters();
+  ["filterProject", "filterCompany", "filterProduct", "filterPl"].forEach((id) => {
+    const input = document.getElementById(id);
+    if (input) input.value = "";
+  });
+  const status = document.getElementById("filterStatus");
+  if (status) status.value = "전체";
 }
 
 function readProjectFilterInputs() {
@@ -2120,6 +2134,7 @@ function bindControls() {
   qs("searchProjects").addEventListener("click", applyProjectFilters);
 
   qs("refreshProjects").addEventListener("click", () => {
+    resetProjectFilters();
     loadProjects();
     qs("refreshProjects").innerHTML = `<i class="fa-solid fa-check"></i> 갱신 완료`;
     setTimeout(() => {
@@ -2220,6 +2235,7 @@ async function switchCenter(center) {
   state.center = center;
   state.selectionMessage = "";
   state.selected.clear();
+  resetProjectFilters();
   syncCenterTabs();
   await loadProjects();
 }
@@ -2241,6 +2257,7 @@ async function init() {
   bindControls();
   initResizableTables();
   syncCenterTabs();
+  resetProjectFilters();
   populateFilters();
   renderProjects();
   await loadProjects();
