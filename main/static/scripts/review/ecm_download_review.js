@@ -872,6 +872,11 @@ function applyProjectFilters() {
   renderProjects();
 }
 
+function textIncludesFilter(value, filter) {
+  if (!filter) return true;
+  return String(value || "").toLowerCase().includes(filter);
+}
+
 async function loadProjects() {
   state.projectLoadError = "";
   qs("projectRows").innerHTML = `
@@ -900,10 +905,10 @@ function filteredProjects() {
   const { project, company, product, pl, review } = state.projectFilters;
 
   return mockProjects.filter((item) => (
-    (!project || String(item.number || "").toLowerCase().includes(project)) &&
-    (!company || String(item.company || "").toLowerCase().includes(company)) &&
-    (!product || String(item.product || "").toLowerCase().includes(product)) &&
-    (!pl || String(item.pl || "").toLowerCase().includes(pl)) &&
+    textIncludesFilter(item.number, project) &&
+    textIncludesFilter(item.company, company) &&
+    textIncludesFilter(item.product, product) &&
+    textIncludesFilter(item.pl, pl) &&
     (review === "전체" || item.review === review)
   ));
 }
