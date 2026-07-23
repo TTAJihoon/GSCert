@@ -63,6 +63,7 @@ from main.views.review.ecm_download_review_api import (
     rule_result_artifact,
 )
 from main.utils.ecm_reference_sheet import parse_sheet_projects, read_csv_rows, split_company_product
+from gscert_review_core import engine
 
 
 def _docx_bytes(*, paragraphs=None, tables=None, blocks=None, header=None, footer=None):
@@ -538,6 +539,45 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
 
         self.assertEqual(mismatches, [{"row": 7, "expected": "30분", "actual": "30"}])
 
+    def test_spec_table_comparison_ignores_spaces_and_newlines(self):
+        context = engine.build_context(project_number="TTA-26-00010")
+        context.derived_variables["시험성적서_세부사양표"] = [
+            ["No", "설치 SW"],
+            ["1", "- 시험대상\n제품 (PC 프로그램)"],
+        ]
+
+        check = engine._test_plan_spec_table_check(
+            [
+                ["No", "설치 SW"],
+                ["1", "- 시험 대상 제품 (PC 프로그램)"],
+            ],
+            {},
+            context,
+        )
+
+        self.assertTrue(check["passed"])
+        self.assertEqual(check["actual"], "일치")
+        self.assertEqual(check["comparison_mode"], "ignore_whitespace")
+
+    def test_spec_table_comparison_still_reports_content_mismatch(self):
+        context = engine.build_context(project_number="TTA-26-00010")
+        context.derived_variables["시험성적서_세부사양표"] = [
+            ["No", "설치 SW"],
+            ["1", "- 시험대상 제품 (서버 프로그램)"],
+        ]
+
+        check = engine._test_plan_spec_table_check(
+            [
+                ["No", "설치 SW"],
+                ["1", "- 시험 대상 제품 (PC 프로그램)"],
+            ],
+            {},
+            context,
+        )
+
+        self.assertFalse(check["passed"])
+        self.assertIn("B2 계획서", check["actual"])
+
 
 class LlmReviewInterfaceTests(SimpleTestCase):
     def test_payload_builder_creates_provider_neutral_messages(self):
@@ -675,6 +715,13 @@ class DownloadReviewRuleSeedCommandTests(TestCase):
         rule = DownloadReviewRule.objects.get(name="계약서")
         self.assertEqual(rule.rule_type, "required_artifact_file")
         self.assertTrue(rule.enabled)
+        rawdata_rule = DownloadReviewRule.objects.get(name="1차/2차/성능/보안RawData")
+        security_check = next(
+            check
+            for check in rawdata_rule.config_json["folder_checks"]
+            if check["keyword"] == "보안"
+        )
+        self.assertTrue(security_check["txt_only_pass"])
 
 
 class DownloadReviewProjectsApiTests(TestCase):

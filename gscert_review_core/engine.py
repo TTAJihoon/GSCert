@@ -1189,13 +1189,18 @@ def _test_plan_spec_table_check(plan_table, config, context):
     report_table = _context_variable(context, config.get("report_spec_variable") or "시험성적서_세부사양표")
     normalized_plan = _normalize_docx_table(plan_table)
     normalized_report = _normalize_docx_table(report_table if isinstance(report_table, list) else [])
+    comparison_plan = _normalize_docx_table(plan_table, remove_whitespace=True)
+    comparison_report = _normalize_docx_table(
+        report_table if isinstance(report_table, list) else [],
+        remove_whitespace=True,
+    )
     mismatches = _matrix_mismatches(
         normalized_plan,
         normalized_report,
         left_origin=(1, 1),
         right_origin=(1, 1),
     )[:20]
-    passed = bool(normalized_plan) and normalized_plan == normalized_report
+    passed = bool(comparison_plan) and comparison_plan == comparison_report
     return {
         "name": "spec_table",
         "passed": passed,
@@ -1208,6 +1213,7 @@ def _test_plan_spec_table_check(plan_table, config, context):
         "message": config.get("spec_message") or "시험환경 세부사양 표가 결과서와 다름",
         "plan_table": normalized_plan,
         "report_table": normalized_report,
+        "comparison_mode": "ignore_whitespace",
         "mismatches": mismatches,
     }
 
@@ -1250,9 +1256,10 @@ def _normalize_number_text(value):
     return text
 
 
-def _normalize_docx_table(table):
+def _normalize_docx_table(table, *, remove_whitespace=False):
+    normalizer = _normalize_no_space if remove_whitespace else _normalize_spaces
     rows = [
-        [_normalize_spaces(cell) for cell in row]
+        [normalizer(cell) for cell in row]
         for row in (table or [])
     ]
     return _trim_empty_edges(rows)

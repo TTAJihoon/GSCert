@@ -5,7 +5,7 @@
 ## 현재 기준
 
 - 작업 브랜치: `codex-job-runner-persistence`
-- 2026-07-08 기준 원격 변경은 pull 완료했다.
+- 2026-07-23 기준 원격 변경은 pull 완료했다.
 - 문서 정리 후 루트 `main/docs`에는 현재 사용하는 문서만 남기고, 과거 설계/진행 로그는 `main/docs/archive/2026-07-doc-cleanup/`로 이동했다.
 - 현재 사용하는 번호 문서는 `00_next_step.md`부터 `13_db_schema.md`까지 연속 번호로 정리했다.
 - 다운로드 검토 페이지: `http://127.0.0.1:8000/download-review/`
@@ -31,6 +31,8 @@
 - 점검규칙은 1~18번 실제 규칙이 구현되어 있고 `seed_download_review_rules --only-real --enable --update-existing` 기준으로 반영한다.
 - 웹과 Windows 앱은 `inspection_rule` 규칙 bundle과 `gscert_review_core.engine` 공용 실행 코드를 함께 사용한다.
 - 점검 결과의 기대값/실제값/메시지 표시는 `gscert_review_core/result_display.py`의 공통 표시 API를 사용한다.
+- 7번 시험계획서의 9-12 `<세부사양>` 표 비교는 셀의 공백/줄바꿈을 제거한 뒤 비교한다. 실제 내용이 다르면 기존처럼 셀 위치와 양쪽 값을 실제값에 표시한다.
+- 12번 RawData 보안 폴더는 하위 폴더 없이 txt 안내 파일만 있는 경우 예외적으로 통과한다.
 
 ### Download-review UI
 
@@ -49,6 +51,7 @@
 - 로컬 앱은 서버 API로 프로젝트 기준정보와 규칙 bundle을 가져온다.
 - 로컬 파일/폴더 스캔 결과를 공용 엔진에 넘겨 웹과 같은 규칙 기준으로 점검한다.
 - 서버 DB 저장과 산출물 캡처 저장은 하지 않고 화면 결과 표시까지 담당한다.
+- 공용 엔진 코드가 바뀌면 이미 배포된 Windows exe에는 자동 반영되지 않는다. 서버 워커는 프로세스 재시작 후 새 코드가 적용되고, 로컬 앱은 재빌드/재배포가 필요하다.
 
 ## 바로 다음 작업
 
@@ -58,7 +61,7 @@
    .\.venv\Scripts\python.exe manage.py verify_ecm_http --center sangam --test-no <시험번호> --download
    .\.venv\Scripts\python.exe manage.py verify_ecm_http --center yeongnam --test-no <시험번호> --download
    ```
-2. 샘플 zip 또는 실제 산출물로 1~18번 전체 PASS 여부를 확인한다.
+2. 샘플 zip 또는 실제 산출물로 1~18번 전체 PASS 여부를 확인한다. `TTA-26-00835` zip은 9-12/11-4/13-1이 통과하고 14-1 시험기록서 누락만 실패로 재확인했다.
 3. 테스트가 끝나면 download-review 시간 제한을 운영 기준인 `20:00-07:00`으로 되돌린다.
 
 ## 먼저 읽을 문서

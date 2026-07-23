@@ -623,6 +623,7 @@ def _actual_rule_spec(index, column_name):
                         "min_child_folders": 2,
                         "each_child_has_entry": True,
                         "unwrap_single_folder": True,
+                        "txt_only_pass": True,
                         "pass_if_file_name_contains": "보안성",
                         "failure_message": "보안성 rawdata를 찾을 수 없습니다",
                     },
