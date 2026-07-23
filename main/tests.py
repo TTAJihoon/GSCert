@@ -16,6 +16,7 @@ from main.models import (
     DownloadReviewJob,
     DownloadReviewJobStatus,
     DownloadReviewLog,
+    DownloadReviewLogLevel,
     DownloadReviewProject,
     DownloadReviewProjectReviewStatus,
     DownloadReviewProjectStatus,
@@ -37,6 +38,7 @@ from main.views.review.ecm_download_review_inspection import (
     _check_defect_report_environment,
     _list_mismatches,
     cleanup_download_dir,
+    cleanup_stale_project_history,
     get_rule_output_variables,
     run_download_inspection,
 )
@@ -1795,6 +1797,68 @@ class DownloadReviewJobsApiTests(TestCase):
         )
         self.assertEqual(agreement_payload["artifacts"][0]["label"], "합의서 1페이지")
         self.assertEqual(feature_payload["artifacts"][0]["id"], "feature_list_area")
+
+    def test_cleanup_stale_project_history_keeps_only_latest_per_project(self):
+        """같은 프로젝트번호를 재점검하면 이전 job_project 의 산출물 폴더·DB 행(결과/로그)만
+        지워지고, 최신 것과 다른 프로젝트번호/센터의 것은 그대로 남아야 한다."""
+        artifact_dir = Path(self.temp_dir.name) / "artifacts"
+        artifact_dir.mkdir()
+
+        def _make_job():
+            return DownloadReviewJob.objects.create(
+                status=DownloadReviewJobStatus.SCHEDULED,
+                requested_project_count=1,
+                selected_projects_json=["TTA-26-00010"],
+            )
+
+        # 재점검은 매번 새 Job 을 만든다(같은 Job 안에서는 project_number 가 유일해야 함).
+        old_project = DownloadReviewProject.objects.create(
+            job=_make_job(), project_number="TTA-26-00010", center_code="sangam",
+        )
+        new_project = DownloadReviewProject.objects.create(
+            job=_make_job(), project_number="TTA-26-00010", center_code="sangam",
+        )
+        other_center_project = DownloadReviewProject.objects.create(
+            job=_make_job(), project_number="TTA-26-00010", center_code="yeongnam",
+        )
+        other_project_number = DownloadReviewProject.objects.create(
+            job=_make_job(), project_number="TTA-26-99999", center_code="sangam",
+        )
+
+        for project in (old_project, new_project, other_center_project, other_project_number):
+            folder = artifact_dir / str(project.id)
+            folder.mkdir()
+            (folder / "artifact_09_pdf_first_page.png").write_bytes(b"fake-png")
+            DownloadReviewRuleResult.objects.create(
+                job_project=project, rule_name="테스트케이스",
+                status=DownloadReviewRuleStatus.PASS,
+            )
+            DownloadReviewLog.objects.create(
+                job=project.job, job_project=project,
+                level=DownloadReviewLogLevel.INFO, message="점검 완료",
+            )
+
+        with self.settings(DOWNLOAD_REVIEW_ARTIFACT_DIR=artifact_dir):
+            summary = cleanup_stale_project_history(new_project)
+
+        self.assertEqual(summary["artifact_dirs_removed"], 1)
+        self.assertEqual(summary["project_rows_removed"], 1)
+        self.assertEqual(summary["cascaded_rows_removed"], 2)  # RuleResult 1 + Log 1
+
+        self.assertFalse((artifact_dir / str(old_project.id)).exists())
+        self.assertTrue((artifact_dir / str(new_project.id)).exists())
+        # 다른 센터(같은 프로젝트번호)·다른 프로젝트번호의 산출물은 건드리지 않는다.
+        self.assertTrue((artifact_dir / str(other_center_project.id)).exists())
+        self.assertTrue((artifact_dir / str(other_project_number.id)).exists())
+
+        self.assertFalse(DownloadReviewProject.objects.filter(id=old_project.id).exists())
+        self.assertFalse(DownloadReviewRuleResult.objects.filter(job_project_id=old_project.id).exists())
+        self.assertFalse(DownloadReviewLog.objects.filter(job_project_id=old_project.id).exists())
+        # 다른 행들의 결과/로그는 그대로 남아야 한다.
+        self.assertTrue(DownloadReviewProject.objects.filter(id=new_project.id).exists())
+        self.assertTrue(DownloadReviewRuleResult.objects.filter(job_project_id=new_project.id).exists())
+        self.assertTrue(DownloadReviewProject.objects.filter(id=other_center_project.id).exists())
+        self.assertTrue(DownloadReviewProject.objects.filter(id=other_project_number.id).exists())
 
     def _write_valid_rawdata_zip(self, rawdata_zip_path):
         with zipfile.ZipFile(rawdata_zip_path, "w") as archive:

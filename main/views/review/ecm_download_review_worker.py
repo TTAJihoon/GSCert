@@ -32,6 +32,7 @@ from main.views.review.ecm_download_review_inspection import (
     DownloadReviewInspectionError,
     _validate_cleanup_target,
     cleanup_download_dir,
+    cleanup_stale_project_history,
     run_download_inspection,
 )
 from main.views.review.ecm_download_review_centers import worker_allowed_centers
@@ -471,6 +472,9 @@ def _finish_project_after_inspection(job, project, outcome, file_count, file_sum
         artifact_results=outcome.artifact_results,
         inspected_at=completed_at,
     )
+    # 새 결과가 정상 저장된 뒤이므로, 같은 프로젝트의 이전 점검 이력(산출물 폴더 +
+    # DB 행)은 이제 필요 없다 — 지워서 재점검할수록 디스크/DB가 쌓이는 걸 막는다.
+    cleanup_summary = cleanup_stale_project_history(project)
     DownloadReviewLog.objects.create(
         job=job,
         job_project=project,
@@ -486,6 +490,7 @@ def _finish_project_after_inspection(job, project, outcome, file_count, file_sum
             "reference_review": outcome.reference_review,
             "artifact_results": outcome.artifact_results,
             "files": file_summary,
+            "old_history_cleanup": cleanup_summary,
         },
     )
 

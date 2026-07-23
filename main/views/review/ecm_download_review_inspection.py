@@ -7,6 +7,8 @@
 - 컨텍스트 생성(_build_rule_context) + reference 날짜(_reference_start_end_dates, PostgreSQL)
 - 산출물 저장(WebArtifactSink): PDF 1페이지/원본/Excel 영역 캡처를 미디어 디렉터리에 저장
 - 다운로드 폴더 정리(cleanup_download_dir), 후속 규칙용 변수 수집(get_rule_output_variables)
+- 재점검 시 이전 이력 정리(cleanup_stale_project_history): 같은 프로젝트의 예전 산출물
+  폴더·DB 행(결과/로그)을 지우고 최신 것만 남긴다.
 
 평가기·파서·파일모델·헬퍼는 모두 엔진에 있으며, 외부(tests/worker)가 이 모듈에서
 import 하던 심볼은 아래에서 재노출한다.
@@ -27,6 +29,7 @@ from django.utils import timezone
 logger = logging.getLogger("main.views.review.ecm_download_review_inspection")
 
 from main.models import (
+    DownloadReviewProject,
     DownloadReviewProjectReviewStatus,
     DownloadReviewRule,
     DownloadReviewRuleResult,
@@ -198,6 +201,53 @@ def cleanup_download_dir(project, download_dir=None) -> CleanupOutcome:
         message="다운로드 폴더를 삭제했습니다.",
         file_count=file_count,
     )
+
+
+def cleanup_stale_project_history(project) -> dict:
+    """같은 프로젝트번호·센터의 이전 점검 이력(산출물 폴더 + DB 행)을 지우고 최신 것만 남긴다.
+
+    산출물(PDF 1페이지 캡처 등)은 job_project.id(재점검마다 새로 생기는 UUID) 폴더에
+    저장되고, 규칙 결과(inspection_result)·이벤트 로그(automation_log)도 job_project
+    행마다 새로 쌓인다 — 같은 프로젝트번호를 다시 점검해도 이전 것들이 재사용되거나
+    자동으로 지워지지 않아 계속 누적된다. 사용자는 보통 가장 최근 점검 결과만 필요
+    하므로, 새 결과가 정상 저장된 뒤(즉 이 함수 호출 시점 기준) 같은 프로젝트의 예전
+    job_project 행을 지운다. RuleResult/Log 는 on_delete=CASCADE 라 자동으로 함께
+    지워진다. 다른 프로젝트를 포함한 상위 Job 행 자체는 건드리지 않는다.
+
+    반환값: {"artifact_dirs_removed": N, "project_rows_removed": N, "cascaded_rows_removed": N}
+    """
+    base_dir = _artifact_base_dir()
+    old_projects = list(
+        DownloadReviewProject.objects.filter(
+            project_number=project.project_number,
+            center_code=project.center_code,
+        ).exclude(id=project.id)
+    )
+
+    artifact_dirs_removed = 0
+    for old_project in old_projects:
+        target = (base_dir / str(old_project.id)).resolve()
+        try:
+            target.relative_to(base_dir)
+        except ValueError:
+            continue
+        if target.is_dir():
+            shutil.rmtree(target, ignore_errors=True)
+            artifact_dirs_removed += 1
+
+    project_rows_removed = 0
+    cascaded_rows_removed = 0
+    if old_projects:
+        old_ids = [old_project.id for old_project in old_projects]
+        total_deleted, deleted_by_model = DownloadReviewProject.objects.filter(id__in=old_ids).delete()
+        project_rows_removed = deleted_by_model.get("main.DownloadReviewProject", 0)
+        cascaded_rows_removed = total_deleted - project_rows_removed
+
+    return {
+        "artifact_dirs_removed": artifact_dirs_removed,
+        "project_rows_removed": project_rows_removed,
+        "cascaded_rows_removed": cascaded_rows_removed,
+    }
 
 
 def get_rule_output_variables(job_project):

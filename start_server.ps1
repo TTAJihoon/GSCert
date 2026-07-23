@@ -28,6 +28,10 @@ $RunDir  = Join-Path $RootDir "run"
 New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
 New-Item -ItemType Directory -Path $RunDir  -Force | Out-Null
 
+# 재시작마다 새 로그 파일이 쌓이므로, 시작할 때마다 오래된 것부터 정리해 최근 5개만 남긴다.
+. (Join-Path $RootDir "log_retention.ps1")
+Invoke-LogRetention -LogsDir $LogsDir -Prefix "django_runserver" -KeepCount 5
+
 $PidFile = Join-Path $RunDir "django_runserver.pid"
 $Port    = 8000
 
