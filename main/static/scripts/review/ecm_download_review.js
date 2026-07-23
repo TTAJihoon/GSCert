@@ -414,6 +414,7 @@ const state = {
   resultProjectLoadError: "",
   lastCheckedIndex: -1,
   modalDownloadFilename: "",
+  inspectionRuleItems: [],
   inspectionItems: [],
   inspectionFilter: null
 };
@@ -1737,7 +1738,8 @@ function renderLatestInspectionResult(payload) {
 
   mountInspectionResult(
     displayItems,
-    `최근 작업 ${payload.job?.id || "-"}의 규칙 결과입니다.`
+    `최근 작업 ${payload.job?.id || "-"}의 규칙 결과입니다.`,
+    { ruleItems: rawItems }
   );
 }
 
@@ -1885,7 +1887,7 @@ function inspectionSummary(items) {
 
 // 상단 요약 카드 필터와 실제 규칙 분류 매칭. '부적합' 카드는 danger+other 를 함께 포함(카드 표시 숫자와 동일 기준).
 function inspectionItemMatchesFilter(item, filter) {
-  if (!filter) return true;
+  if (!filter || filter === "total" || filter === "detail-total") return true;
   const type = inspectionStatusType(item);
   if (filter === "danger") return type === "danger" || type === "other";
   return type === filter;
@@ -1895,16 +1897,20 @@ function filterInspectionItems(items) {
   return items.filter((item) => inspectionItemMatchesFilter(item, state.inspectionFilter));
 }
 
-// 4가지 요약 카드를 클릭 가능한 버튼으로 렌더링한다. 클릭 시 아래 표가 해당 분류로 필터링된다.
-function renderInspectionSummary(items) {
-  const summary = inspectionSummary(items);
-  const reviewNeeded = summary.danger + summary.other;
+// 5가지 요약 카드를 클릭 가능한 버튼으로 렌더링한다. 클릭 시 아래 표가 해당 분류로 필터링된다.
+function renderInspectionSummary(items, ruleItems = items) {
+  const detailItems = Array.isArray(items) ? items : [];
+  const ruleSummaryItems = Array.isArray(ruleItems) && ruleItems.length ? ruleItems : detailItems;
+  const detailSummary = inspectionSummary(detailItems);
+  const ruleSummary = inspectionSummary(ruleSummaryItems);
+  const reviewNeeded = detailSummary.danger + detailSummary.other;
   const activeFilter = state.inspectionFilter;
   const cards = [
-    { filter: "total", cls: "", label: "전체 규칙", count: summary.total },
-    { filter: "success", cls: "success", label: "정상", count: summary.success },
-    { filter: "danger", cls: "danger", label: "부적합", count: reviewNeeded },
-    { filter: "warning", cls: "warning", label: "확인 필요", count: summary.warning }
+    { filter: "total", cls: "", label: "전체 규칙", count: ruleSummary.total, title: "저장된 부모 규칙 결과 수" },
+    { filter: "detail-total", cls: "", label: "세부항목", count: detailSummary.total, title: "화면에 펼쳐진 세부 점검 항목 수" },
+    { filter: "success", cls: "success", label: "정상 항목", count: detailSummary.success, title: "정상으로 판정된 세부항목 수" },
+    { filter: "danger", cls: "danger", label: "부적합 항목", count: reviewNeeded, title: "부적합 또는 기타 상태의 세부항목 수" },
+    { filter: "warning", cls: "warning", label: "확인 필요", count: detailSummary.warning, title: "확인이 필요한 세부항목 수" }
   ];
   return `
     <div class="inspection-summary" aria-label="규칙별 점검 요약(클릭하여 필터링)">
@@ -1913,6 +1919,7 @@ function renderInspectionSummary(items) {
           type="button"
           class="inspection-summary-card${card.cls ? ` ${card.cls}` : ""}${(activeFilter || "total") === card.filter ? " active" : ""}"
           data-inspection-filter="${card.filter}"
+          title="${escapeHtml(card.title)}"
         >
           <span>${card.label}</span>
           <strong>${card.count}</strong>
@@ -1994,11 +2001,11 @@ function renderInspectionTableBlock(items) {
   `;
 }
 
-function renderInspectionResultContent(items, leadText = "") {
+function renderInspectionResultContent(items, leadText = "", ruleItems = items) {
   return `
     <div class="inspection-result-shell">
       ${leadText ? `<p class="modal-lead">${escapeHtml(leadText)}</p>` : ""}
-      <div id="inspectionSummaryBlock">${renderInspectionSummary(items)}</div>
+      <div id="inspectionSummaryBlock">${renderInspectionSummary(items, ruleItems)}</div>
       <div class="table-wrap modal-table inspection-result-table" id="inspectionTableBlock">
         ${renderInspectionTableBlock(filterInspectionItems(items))}
       </div>
@@ -2008,10 +2015,17 @@ function renderInspectionResultContent(items, leadText = "") {
 
 // 규칙 결과 모달을 채우는 공용 진입점. 필터 상태를 초기화하고, 요약 카드 클릭 바인딩과
 // 컬럼 너비 수동 조절(리사이즈)을 새로 삽입된 테이블에도 적용한다.
-function mountInspectionResult(items, leadText = "") {
+function mountInspectionResult(items, leadText = "", options = {}) {
   state.inspectionItems = Array.isArray(items) ? items : [];
+  state.inspectionRuleItems = Array.isArray(options.ruleItems) && options.ruleItems.length
+    ? options.ruleItems
+    : state.inspectionItems;
   state.inspectionFilter = null;
-  qs("modalBody").innerHTML = renderInspectionResultContent(state.inspectionItems, leadText);
+  qs("modalBody").innerHTML = renderInspectionResultContent(
+    state.inspectionItems,
+    leadText,
+    state.inspectionRuleItems
+  );
   bindInspectionSummaryFilters();
   initResizableTables();
   fitVisibleResizableTables();
@@ -2032,7 +2046,7 @@ function bindInspectionSummaryFilters() {
 function refreshInspectionTable() {
   const summaryBlock = qs("inspectionSummaryBlock");
   const tableBlock = qs("inspectionTableBlock");
-  if (summaryBlock) summaryBlock.innerHTML = renderInspectionSummary(state.inspectionItems);
+  if (summaryBlock) summaryBlock.innerHTML = renderInspectionSummary(state.inspectionItems, state.inspectionRuleItems);
   if (tableBlock) tableBlock.innerHTML = renderInspectionTableBlock(filterInspectionItems(state.inspectionItems));
   bindInspectionSummaryFilters();
   initResizableTables();
@@ -2065,7 +2079,7 @@ async function openJobProjectRulesModal(jobProjectId, project = null) {
     setModalDownload(`${projectNumber}_규칙별_점검_결과.html`);
 
     if (displayItems.length) {
-      mountInspectionResult(displayItems, `작업 프로젝트 ${projectNumber}의 규칙 결과입니다.`);
+      mountInspectionResult(displayItems, `작업 프로젝트 ${projectNumber}의 규칙 결과입니다.`, { ruleItems: rawItems });
     } else {
       qs("modalBody").innerHTML = `
         <div class="modal-message warning">
@@ -2101,7 +2115,7 @@ async function openResultRulesModal(jobProjectId) {
     setModalDownload(`${project.number}_규칙별_점검_결과.html`);
 
     if (displayItems.length) {
-      mountInspectionResult(displayItems, `작업 프로젝트 ${project.number}의 규칙 결과입니다.`);
+      mountInspectionResult(displayItems, `작업 프로젝트 ${project.number}의 규칙 결과입니다.`, { ruleItems: rawItems });
     } else {
       qs("modalBody").innerHTML = `
         <div class="modal-message warning">

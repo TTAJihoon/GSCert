@@ -39,12 +39,13 @@
 - 상단 화면 탭 오른쪽에 `윈도우 프로그램 다운로드` 버튼을 추가했다.
 - 버튼은 `GET /api/local-review/app/download/`로 연결되며, 서버의 `C:\Claude_GSCert\local_review_app\dist\GSCertLocalReviewDashboard` 폴더를 `GSCertLocalReviewDashboard.zip` 스트리밍 응답으로 내려준다.
 - 규칙별 점검 결과 팝업은 상단 요약 카드와 고정 헤더 테이블을 사용하는 형태로 정리했다.
+- 결과 요약 카드는 원본 부모 규칙 수(`전체 규칙`)와 화면에 펼친 세부 점검 행 수(`세부항목`)를 분리해 표시한다.
 - 팝업의 기본 폭은 1400px이고, 작은 화면에서는 화면 폭 안에 맞춰 줄어든다.
 - 팝업 창은 사용자가 크기를 조절할 수 있고, 내용이 넘치면 본문과 규칙 결과 테이블에 스크롤이 생긴다.
 - 팝업 우측 상단 다운로드 버튼은 현재 팝업 내용을 그대로 HTML 파일로 저장한다. 전체/선택 엑셀 다운로드 기능은 기존대로 유지한다.
 - 센터 선택은 프로젝트 선택 탭 안에서만 한다. 현재 작업 진행 상황과 작업 조회는 서버 큐 기준으로 모든 센터 작업을 누적 표시하는 전역 작업 화면으로 본다.
 - 프로젝트 선택 필터는 한 줄 필터바로 표시하고 `조회` 버튼을 눌렀을 때 적용한다. 필터 입력 중 Enter를 눌러도 `조회` 버튼 클릭과 같은 동작을 한다. 초기/센터 전환/DB 새로고침 기본값은 전체 조회이며, 프로젝트번호/회사명/제품명/시험PL 필터는 입력값이 각 항목에 포함되는 결과를 표시한다.
-- 검증: `node --check main\static\scripts\review\ecm_download_review.js`, `manage.py check --settings=myproject.ui_mock_settings`, 작업 목록 센터 누적/명시 필터 테스트 2건, `git diff --check`, 로컬 `/download-review/` 로드 및 `/api/jobs/?status=all&limit=50` 센터 미주입 확인을 완료했다. `DownloadReviewJobsApiTests` 전체 실행 시 기존 규칙/샘플 산출물 기대값 관련 4건 실패가 남아 있다.
+- 검증: `node --check main\static\scripts\review\ecm_download_review.js`, `manage.py check --settings=myproject.ui_mock_settings`, `git diff --check`, 로컬 `/download-review/` 200 응답, 정적 JS/CSS `?v=22` 로드 및 `전체 규칙`/`세부항목` 라벨 반영을 확인했다.
 
 ### Windows 로컬 앱
 
