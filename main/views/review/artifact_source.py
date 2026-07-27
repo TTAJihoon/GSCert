@@ -79,6 +79,27 @@ _MAGIC_BYTES = {
     "pdf": b"%PDF",
 }
 
+# 구형 OLE 복합문서(.xls/.doc/.ppt) 시그니처. ECM에 신형 확장자로 잘못 등록된
+# 구형 파일(예: 실제로는 .xls 인데 .xlsx 로 표시)을 실패 대신 원래 포맷으로 복구한다.
+_OLE_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+_LEGACY_OFFICE_EXTENSIONS = {
+    "xlsx": "xls",
+    "xlsm": "xls",
+    "docx": "doc",
+    "docm": "doc",
+    "pptx": "ppt",
+}
+
+
+def legacy_office_extension(data: bytes, file_name: str) -> str | None:
+    """확장자는 신형 오피스 포맷인데 실제 내용이 구형 OLE 바이너리면 올바른
+    구형 확장자를 반환한다(해당 없으면 None)."""
+    ext = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+    legacy_ext = _LEGACY_OFFICE_EXTENSIONS.get(ext)
+    if legacy_ext and data.startswith(_OLE_MAGIC):
+        return legacy_ext
+    return None
+
 
 def verify_downloaded_bytes(data: bytes, file_name: str, expected_size: int) -> str:
     """다운로드 바이트 무결성 검증. 문제 없으면 "", 있으면 사유 문자열(결정 8).
@@ -277,6 +298,13 @@ class HttpEcmArtifactSource:
             last_reason = verify_downloaded_bytes(data, file_name, expected_size)
             if not last_reason:
                 await asyncio.to_thread(self._write_bytes, dest, data)
+                return
+            legacy_ext = legacy_office_extension(data, file_name)
+            if legacy_ext:
+                # ECM에 신형 확장자로 등록된 구형 OLE 문서: 실패 대신 실제 포맷
+                # (구형 확장자)으로 저장해 점검 엔진이 정상 처리하도록 한다.
+                fixed_dest = dest.with_suffix("." + legacy_ext)
+                await asyncio.to_thread(self._write_bytes, fixed_dest, data)
                 return
         raise _FetchFailed("무결성 검증", f"{file_name}: {last_reason}")
 

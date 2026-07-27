@@ -3966,21 +3966,20 @@ def _soffice_executable():
 def _convert_doc_to_docx_bytes(doc_bytes):
     """구형 .doc 바이트를 .docx 로 변환해 바이트를 반환한다.
 
-    우선순위: LibreOffice(soffice) → 없으면 MS Word(win32com) 폴백.
-    서버는 LibreOffice, 로컬 앱(Office 설치 PC)은 MS Word 로 각각 처리된다.
+    우선순위: MS Word(win32com) → 없거나 실패 시 LibreOffice(soffice) 폴백.
     """
-    soffice = _soffice_executable()
-    if soffice:
-        return _convert_doc_via_soffice(doc_bytes, soffice)
-
     converted = _convert_doc_via_msword(doc_bytes)
     if converted is not None:
         return converted
 
+    soffice = _soffice_executable()
+    if soffice:
+        return _convert_doc_via_soffice(doc_bytes, soffice)
+
     raise DownloadReviewInspectionError(
-        ".doc 파일은 LibreOffice 또는 MS Word 가 있어야 변환·점검할 수 있습니다. "
-        "LibreOffice 설치(또는 AGENT_SOFFICE_PATH 지정) 하거나 MS Word 가 설치된 "
-        "환경에서 실행하세요. (또는 .docx 로 재제출 요청)"
+        ".doc 파일은 MS Word 또는 LibreOffice 가 있어야 변환·점검할 수 있습니다. "
+        "MS Word 가 설치된 환경에서 실행하거나 LibreOffice 설치(또는 AGENT_SOFFICE_PATH 지정) "
+        "하세요. (또는 .docx 로 재제출 요청)"
     )
 
 
