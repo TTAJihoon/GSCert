@@ -147,12 +147,16 @@ def _pdf_bytes(lines):
     return data
 
 
-def _xlsx_bytes(*, rows=None, sheet_name="Sheet1"):
+def _xlsx_bytes(*, rows=None, sheet_name="Sheet1", header=None, footer=None):
     from openpyxl import Workbook
 
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = sheet_name
+    if header is not None:
+        worksheet.oddHeader.center.text = header
+    if footer is not None:
+        worksheet.oddFooter.center.text = footer
     for row in rows or []:
         worksheet.append(row)
     buffer = BytesIO()
@@ -305,6 +309,7 @@ def _test_case_xlsx(
     start_date="2026.05.01.",
     end_date="2026.05.31.",
     residual_count=2,
+    footer=None,
 ):
     rows = [
         [f"{project_number} 테스트케이스"],
@@ -317,7 +322,7 @@ def _test_case_xlsx(
     for index in range(residual_count):
         rows.append([f"TC-F-{index + 1}", "F"])
     rows.append(["TC-P-1", "P"])
-    return _xlsx_bytes(rows=rows)
+    return _xlsx_bytes(rows=rows, footer=footer)
 
 
 def _test_plan_docx(project_number, *, product="테스트제품", version="v1.0", pl="김준호", wd="10"):
@@ -424,13 +429,15 @@ def _inspection_checklist_xlsx(
     return buffer.getvalue()
 
 
-def _quality_inspection_table_xlsx(project_number, *, score_overrides=None):
+def _quality_inspection_table_xlsx(project_number, *, score_overrides=None, footer=None):
     from openpyxl import Workbook
 
     score_overrides = score_overrides or {}
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = f"{project_number} 품질검사표"
+    if footer is not None:
+        worksheet.oddFooter.center.text = footer
     for index, row in enumerate(range(4, 88), start=1):
         worksheet.cell(row=row, column=4, value=score_overrides.get(index, f"score-{index}"))
     for index, row in enumerate(range(4, 37), start=1):
@@ -1557,7 +1564,7 @@ class DownloadReviewJobsApiTests(TestCase):
                     archive.writestr(info, b"image")
             archive.writestr(
                 "3.설계/TTA-26-00010 테스트케이스.xlsx",
-                _test_case_xlsx("TTA-26-00010", pl="김준호", residual_count=2),
+                _test_case_xlsx("TTA-26-00010", pl="김준호", residual_count=2, footer="TTA"),
             )
             archive.writestr(
                 "3.설계/TTA-26-00010 점검표.xlsx",
@@ -1590,6 +1597,8 @@ class DownloadReviewJobsApiTests(TestCase):
             archive.writestr(
                 "6.시험/나.종료/TTA-26-00010 시험성적서.docx",
                 _docx_bytes(
+                    header="TTA-26-00010",
+                    footer="TPG-1016-5(02)",
                     paragraphs=["<세부사양>"],
                     tables=[
                         [["항목", "값"], ["OS", "Windows"]],
@@ -1611,7 +1620,7 @@ class DownloadReviewJobsApiTests(TestCase):
             )
             archive.writestr(
                 "6.시험/인증관련/TTA-26-00010 품질검사표.xlsx",
-                _quality_inspection_table_xlsx("TTA-26-00010"),
+                _quality_inspection_table_xlsx("TTA-26-00010", footer="한국정보통신기술협회"),
             )
             archive.writestr(
                 "6.시험/인증관련/TTA-26-00010 품질평가보고서.docx",
@@ -2168,6 +2177,7 @@ class DownloadReviewJobsApiTests(TestCase):
             archive.writestr(
                 "6.시험/나.종료/TTA-26-00010 시험성적서.docx",
                 _docx_bytes(
+                    header="TTA-26-00010",
                     tables=[
                         [["결함리포트 송부 1차: 2026.05.10 2차: 2026.05.20"]],
                     ],
@@ -2471,6 +2481,7 @@ class DownloadReviewJobsApiTests(TestCase):
             archive.writestr(
                 "6.시험/나.종료/TTA-26-00010 시험성적서.docx",
                 _docx_bytes(
+                    header="TTA-26-00010",
                     tables=[
                         [["결함리포트 송부 1차: 2026.05.10 2차: 2026.05.20"]],
                     ],
@@ -2651,7 +2662,8 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(quality_table_result.status, DownloadReviewRuleStatus.FAIL)
         self.assertEqual(
             quality_table_result.message,
-            "점검표와 품질검사표의 품질부특성 값이 총 84개의 값 중에 1개의 값이 다름",
+            "점검표와 품질검사표의 품질부특성 값이 총 84개의 값 중에 1개의 값이 다름"
+            "(현재 값: 총 84개 중 1개 값이 다름)",
         )
         self.assertEqual(quality_table_result.raw_detail_json["score_compare"]["total_count"], 84)
         self.assertEqual(quality_table_result.raw_detail_json["score_compare"]["mismatch_count"], 1)
