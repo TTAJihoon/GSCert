@@ -24,6 +24,7 @@ from main.models import (
     DownloadReviewRule,
     DownloadReviewRuleResult,
     DownloadReviewRuleStatus,
+    ReferenceProject,
 )
 from main.views.review.ecm_reference_db import (
     ARTIFACT_REVIEW_COLUMNS,
@@ -583,6 +584,8 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
 
 
 class LlmReviewInterfaceTests(SimpleTestCase):
+    databases = {"reference"}
+
     def test_payload_builder_creates_provider_neutral_messages(self):
         payload = build_llm_review_payload(
             project={"project_number": "TTA-26-00010", "company": "Example"},
@@ -658,7 +661,7 @@ class LlmReviewInterfaceTests(SimpleTestCase):
 
 
 class DownloadReviewRuleSeedCommandTests(TestCase):
-    databases = {"default", "workflow"}
+    databases = {"default", "workflow", "reference"}
 
     def test_seed_creates_disabled_rules_by_default(self):
         out = StringIO()
@@ -728,18 +731,45 @@ class DownloadReviewRuleSeedCommandTests(TestCase):
 
 
 class DownloadReviewProjectsApiTests(TestCase):
-    databases = {"default", "workflow"}
+    databases = {"default", "workflow", "reference"}
 
     def setUp(self):
         self.factory = RequestFactory()
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.reference_db_path = Path(self.temp_dir.name) / "ecmlist.db"
-        self.reference_db_path_2 = Path(self.temp_dir.name) / "ecmlist2.db"
-        self._create_reference_db()
-        self.reference_db_path_2.write_bytes(self.reference_db_path.read_bytes())
-
-    def tearDown(self):
-        self.temp_dir.cleanup()
+        self._seed_reference_projects(
+            "sangam",
+            [
+                dict(
+                    project_number="TTA-26-00009",
+                    cert_date="05/12",
+                    cert_committee_date=date(2026, 5, 12),
+                    company="우리데이터 주식회사",
+                    product="우리데이터클리닝 V1.0",
+                    pl="박지훈",
+                    review_result="O",
+                    inspection_date="2026.05.12 20:30",
+                ),
+                dict(
+                    project_number="TTA-26-00010",
+                    cert_date="05/13",
+                    cert_committee_date=date(2026, 5, 13),
+                    company="에이치소프트",
+                    product="SecureFlow 2.1",
+                    pl="김준호",
+                    review_result="",
+                    inspection_date="",
+                ),
+                dict(
+                    project_number="TTA-26-00008",
+                    cert_date="05/11",
+                    cert_committee_date=date(2026, 5, 11),
+                    company="넥스트랩",
+                    product="NextLab QA Suite",
+                    pl="최유진",
+                    review_result="X",
+                    inspection_date="2026.05.11 21:00",
+                ),
+            ],
+        )
 
     def test_projects_are_sorted_by_cert_date_desc_by_default(self):
         data = self._get_projects()
@@ -784,13 +814,10 @@ class DownloadReviewProjectsApiTests(TestCase):
         class BrokenDownloadReviewProject:
             objects = BrokenProjectManager()
 
-        request = self.factory.get("/api/projects/", {"limit": "2"})
-        with (
-            self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"),
-            patch(
-                "main.views.review.ecm_download_review_jobs.DownloadReviewProject",
-                BrokenDownloadReviewProject,
-            ),
+        request = self.factory.get("/api/projects/", {"limit": "2", "center": "sangam"})
+        with patch(
+            "main.views.review.ecm_download_review_jobs.DownloadReviewProject",
+            BrokenDownloadReviewProject,
         ):
             response = projects(request)
         data = json.loads(response.content.decode("utf-8"))
@@ -825,14 +852,24 @@ class DownloadReviewProjectsApiTests(TestCase):
         self.assertEqual(data["items"][0]["review_raw"], "실패")
 
     def test_projects_can_read_yeongnam_center_db(self):
-        yeongnam_db_path = self.reference_db_path_2
-        if yeongnam_db_path.exists():
-            yeongnam_db_path.unlink()
-        self._create_yeongnam_reference_db(yeongnam_db_path)
+        self._seed_reference_projects(
+            "yeongnam",
+            [
+                dict(
+                    project_number="TTA-26-09999",
+                    cert_date="05/14",
+                    cert_committee_date=date(2026, 5, 14),
+                    company="영남테스트",
+                    product="Yeongnam Suite",
+                    pl="김영남",
+                    review_result="",
+                    inspection_date="",
+                ),
+            ],
+        )
 
         request = self.factory.get("/api/projects/", {"center": "yeongnam"})
-        with self.settings(REFERENCE_DB_PATH_2=yeongnam_db_path, REFERENCE_DB_TABLE="ecm_list"):
-            response = projects(request)
+        response = projects(request)
         data = json.loads(response.content.decode("utf-8"))
 
         self.assertEqual(response.status_code, 200)
@@ -841,12 +878,24 @@ class DownloadReviewProjectsApiTests(TestCase):
         self.assertEqual(data["items"][0]["project_number"], "TTA-26-09999")
 
     def test_projects_default_to_bundang_on_bundang_server_host(self):
+        self._seed_reference_projects(
+            "bundang",
+            [
+                dict(
+                    project_number="TTA-26-00099",
+                    cert_date="05/15",
+                    cert_committee_date=date(2026, 5, 15),
+                    company="분당기업",
+                    product="Bundang Suite",
+                    pl="이분당",
+                    review_result="",
+                    inspection_date="",
+                ),
+            ],
+        )
+
         request = self.factory.get("/api/projects/", {"limit": "1"}, HTTP_HOST="210.96.71.194")
-        with self.settings(
-            REFERENCE_DB_PATH_BUNDANG=self.reference_db_path,
-            REFERENCE_DB_TABLE="ecm_list",
-        ):
-            response = projects(request)
+        response = projects(request)
         data = json.loads(response.content.decode("utf-8"))
 
         self.assertEqual(response.status_code, 200)
@@ -855,7 +904,9 @@ class DownloadReviewProjectsApiTests(TestCase):
 
     def test_projects_reject_other_center_on_bundang_server_host(self):
         request = self.factory.get("/api/projects/", {"center": "sangam"}, HTTP_HOST="210.96.71.194")
-        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
+        # 센터 제한 로직 자체를 검증하기 위해 이 호스트의 허용 센터를 명시적으로 좁힌다
+        # (운영 settings.py의 현재 허용 목록 값에 테스트가 의존하지 않도록).
+        with self.settings(DOWNLOAD_REVIEW_ALLOWED_CENTERS_BY_HOST={"210.96.71.194": {"bundang"}}):
             response = projects(request)
         data = json.loads(response.content.decode("utf-8"))
 
@@ -869,117 +920,71 @@ class DownloadReviewProjectsApiTests(TestCase):
         return json.loads(response.content.decode("utf-8"))
 
     def _request(self, params):
+        # 이 클래스의 기본 픽스처는 sangam 센터에 있으므로, 호출부가 다른 센터/호스트를
+        # 명시하지 않는 한 sangam으로 고정한다(전역 DOWNLOAD_REVIEW_DEFAULT_CENTER 값과 무관하게).
+        params = {**{"center": "sangam"}, **params}
         request = self.factory.get("/api/projects/", params)
-        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
-            return projects(request)
+        return projects(request)
 
-    def _create_reference_db(self):
-        conn = sqlite3.connect(self.reference_db_path)
-        try:
-            conn.execute(
-                """
-                CREATE TABLE ecm_list (
-                    "프로젝트번호" TEXT,
-                    "인증일자" TEXT,
-                    "회사명" TEXT,
-                    "제품명" TEXT,
-                    "시험PL" TEXT,
-                    "점검결과" TEXT,
-                    "점검날짜" TEXT
-                )
-                """
-            )
-            conn.executemany(
-                """
-                INSERT INTO ecm_list (
-                    "프로젝트번호",
-                    "인증일자",
-                    "회사명",
-                    "제품명",
-                    "시험PL",
-                    "점검결과",
-                    "점검날짜"
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    (
-                        "TTA-26-00009",
-                        "05/12",
-                        "우리데이터 주식회사",
-                        "우리데이터클리닝 V1.0",
-                        "박지훈",
-                        "O",
-                        "2026.05.12 20:30",
-                    ),
-                    (
-                        "TTA-26-00010",
-                        "05/13",
-                        "에이치소프트",
-                        "SecureFlow 2.1",
-                        "김준호",
-                        "",
-                        "",
-                    ),
-                    (
-                        "TTA-26-00008",
-                        "05/11",
-                        "넥스트랩",
-                        "NextLab QA Suite",
-                        "최유진",
-                        "X",
-                        "2026.05.11 21:00",
-                    ),
-                ],
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-    def _create_yeongnam_reference_db(self, db_path):
-        conn = sqlite3.connect(db_path)
-        try:
-            conn.execute(
-                """
-                CREATE TABLE ecm_list (
-                    "프로젝트번호" TEXT,
-                    "인증일자" TEXT,
-                    "회사명" TEXT,
-                    "제품명" TEXT,
-                    "시험PL" TEXT,
-                    "점검결과" TEXT,
-                    "점검날짜" TEXT
-                )
-                """
-            )
-            conn.execute(
-                """
-                INSERT INTO ecm_list (
-                    "프로젝트번호",
-                    "인증일자",
-                    "회사명",
-                    "제품명",
-                    "시험PL",
-                    "점검결과",
-                    "점검날짜"
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                ("TTA-26-09999", "05/14", "영남테스트", "Yeongnam Suite", "김영남", "", ""),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+    def _seed_reference_projects(self, center_code, rows):
+        ReferenceProject.objects.using("reference").bulk_create(
+            [ReferenceProject(center_code=center_code, **row) for row in rows]
+        )
 
 
 class DownloadReviewJobsApiTests(TestCase):
-    databases = {"default", "workflow"}
+    databases = {"default", "workflow", "reference"}
 
     def setUp(self):
         self.factory = RequestFactory()
         self.temp_dir = tempfile.TemporaryDirectory()
-        self.reference_db_path = Path(self.temp_dir.name) / "ecmlist.db"
-        self.reference_db_path_2 = Path(self.temp_dir.name) / "ecmlist2.db"
-        self._create_reference_db()
-        self.reference_db_path_2.write_bytes(self.reference_db_path.read_bytes())
+        # 이 클래스의 요청들은 center 를 지정하지 않으므로
+        # DOWNLOAD_REVIEW_DEFAULT_CENTER(현재 'bundang')로 해석된다.
+        self._seed_reference_projects(
+            "bundang",
+            [
+                dict(
+                    project_number="TTA-26-00009",
+                    cert_date="05/12",
+                    cert_committee_date=date(2026, 5, 12),
+                    company="우리데이터 주식회사",
+                    product="우리데이터클리닝 V1.0",
+                    pl="박지훈",
+                    review_result="O",
+                    inspection_date="2026.05.12 20:30",
+                ),
+                dict(
+                    project_number="TTA-26-00010",
+                    cert_date="05/13",
+                    cert_committee_date=date(2026, 5, 13),
+                    company="에이치소프트",
+                    product="SecureFlow 2.1",
+                    pl="김준호",
+                    review_result="",
+                    inspection_date="",
+                ),
+                dict(
+                    project_number="TTA-26-00011",
+                    cert_date="05/14",
+                    cert_committee_date=date(2026, 5, 14),
+                    company="브릿지웨어",
+                    product="BridgeHub",
+                    pl="박지훈",
+                    review_result="",
+                    inspection_date="",
+                ),
+                dict(
+                    project_number="TTA-26-00012",
+                    cert_date="05/15",
+                    cert_committee_date=date(2026, 5, 15),
+                    company="넥스트랩",
+                    product="NextLab QA Suite",
+                    pl="최유진",
+                    review_result="",
+                    inspection_date="",
+                ),
+            ],
+        )
 
     def tearDown(self):
         self.temp_dir.cleanup()
@@ -996,10 +1001,44 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(DownloadReviewProject.objects.count(), 1)
 
     def test_job_request_uses_selected_center_without_cross_center_conflict(self):
-        yeongnam_response = self._post_job(["TTA-26-00010"], center="yeongnam")
+        # reference_project.project_number 는 센터 전역에서 유일하므로(더 이상 센터별
+        # 파일로 분리되지 않음), 같은 프로젝트번호를 두 센터에 동시에 둘 수 없다.
+        # 센터마다 별도 프로젝트번호를 써서 "센터 선택이 서로 간섭하지 않는지"를 검증한다.
+        self._seed_reference_projects(
+            "yeongnam",
+            [
+                dict(
+                    project_number="TTA-26-00020",
+                    cert_date="05/16",
+                    cert_committee_date=date(2026, 5, 16),
+                    company="영남기업",
+                    product="Yeongnam Suite",
+                    pl="김영남",
+                    review_result="",
+                    inspection_date="",
+                ),
+            ],
+        )
+        self._seed_reference_projects(
+            "sangam",
+            [
+                dict(
+                    project_number="TTA-26-00021",
+                    cert_date="05/17",
+                    cert_committee_date=date(2026, 5, 17),
+                    company="상암기업",
+                    product="Sangam Suite",
+                    pl="박상암",
+                    review_result="",
+                    inspection_date="",
+                ),
+            ],
+        )
+
+        yeongnam_response = self._post_job(["TTA-26-00020"], center="yeongnam")
         yeongnam_data = json.loads(yeongnam_response.content.decode("utf-8"))
 
-        sangam_response = self._post_job(["TTA-26-00010"], center="sangam")
+        sangam_response = self._post_job(["TTA-26-00021"], center="sangam")
         sangam_data = json.loads(sangam_response.content.decode("utf-8"))
 
         self.assertEqual(yeongnam_response.status_code, 201)
@@ -1099,14 +1138,14 @@ class DownloadReviewJobsApiTests(TestCase):
         )
         DownloadReviewProject.objects.create(
             job=job,
+            center_code="bundang",
             project_number="TTA-26-00010",
             ecm_row_json={"project_number": "TTA-26-00010", "company": "에이치소프트"},
         )
 
-        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
-            response = projects(
-                self.factory.get("/api/projects/", {"project_number": "TTA-26-00010"}),
-            )
+        response = projects(
+            self.factory.get("/api/projects/", {"project_number": "TTA-26-00010"}),
+        )
         data = json.loads(response.content.decode("utf-8"))
 
         self.assertEqual(response.status_code, 200)
@@ -1344,6 +1383,7 @@ class DownloadReviewJobsApiTests(TestCase):
         )
         project = DownloadReviewProject.objects.create(
             job=job,
+            center_code="bundang",
             project_number="TTA-26-00009",
             status=DownloadReviewProjectStatus.COMPLETED,
             review_status=DownloadReviewProjectReviewStatus.COMPLETED,
@@ -1404,6 +1444,7 @@ class DownloadReviewJobsApiTests(TestCase):
         )
         project = DownloadReviewProject.objects.create(
             job=job,
+            center_code="bundang",
             project_number="TTA-26-00010",
             download_dir=str(project_dir),
             ecm_row_json={
@@ -1418,11 +1459,7 @@ class DownloadReviewJobsApiTests(TestCase):
             "file_names": [file_info.name for file_info in verify_result.files],
         }
 
-        with self.settings(
-            AGENT_DOWNLOAD_BASE_DIR=download_root,
-            REFERENCE_DB_PATH=self.reference_db_path,
-            REFERENCE_DB_TABLE="ecm_list",
-        ):
+        with self.settings(AGENT_DOWNLOAD_BASE_DIR=download_root):
             outcome = run_download_inspection(project, verify_result, file_summary)
             write_project_review_result(
                 project.project_number,
@@ -2632,38 +2669,42 @@ class DownloadReviewJobsApiTests(TestCase):
             selected_projects_json=["TTA-26-00010", "TTA-26-00011", "TTA-26-00012"],
             progress_message="대기열 등록 완료",
         )
+        # 워커의 참조 DB 반영(_write_reference_result_safely)은 project.center_code 를 그대로
+        # 넘기므로, setUp에서 심어둔 bundang 픽스처와 맞추기 위해 명시적으로 지정한다
+        # (DownloadReviewProject.center_code 모델 기본값은 'sangam'이라 지정하지 않으면 어긋난다).
         DownloadReviewProject.objects.bulk_create(
             [
                 DownloadReviewProject(
                     job=job,
+                    center_code="bundang",
                     project_number="TTA-26-00010",
                     ecm_row_json={"project_number": "TTA-26-00010", "company": "에이치소프트"},
                 ),
                 DownloadReviewProject(
                     job=job,
+                    center_code="bundang",
                     project_number="TTA-26-00011",
                     ecm_row_json={"project_number": "TTA-26-00011", "company": "브릿지웨어"},
                 ),
                 DownloadReviewProject(
                     job=job,
+                    center_code="bundang",
                     project_number="TTA-26-00012",
                     ecm_row_json={"project_number": "TTA-26-00012", "company": "넥스트랩"},
                 ),
             ]
         )
 
-        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
-            result = run_worker_once(dry_run=True)
+        result = run_worker_once(dry_run=True)
         job.refresh_from_db()
         job_projects = list(job.projects.order_by("project_number"))
         reference_rows = self._reference_rows(
             ["TTA-26-00010", "TTA-26-00011", "TTA-26-00012"],
             ["점검결과", "점검날짜", "회사명", "계약서", "시험성적서(PDF)"],
         )
-        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
-            projects_response = projects(
-                self.factory.get("/api/projects/", {"project_number": "TTA-26-00010"}),
-            )
+        projects_response = projects(
+            self.factory.get("/api/projects/", {"project_number": "TTA-26-00010"}),
+        )
         projects_data = json.loads(projects_response.content.decode("utf-8"))
 
         self.assertTrue(result.processed)
@@ -2695,67 +2736,26 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(reference_rows["TTA-26-00012"]["계약서"], "")
 
     def test_write_back_rejects_non_review_columns(self):
-        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
-            with self.assertRaises(ReferenceQueryError):
-                write_project_review_result(
-                    "TTA-26-00010",
-                    "완료",
-                    artifact_results={"회사명": "변조된 회사명"},
-                )
+        with self.assertRaises(ReferenceQueryError):
+            write_project_review_result(
+                "TTA-26-00010",
+                "완료",
+                artifact_results={"회사명": "변조된 회사명"},
+            )
 
         row = self._reference_rows(["TTA-26-00010"], ["점검결과", "회사명"])["TTA-26-00010"]
         self.assertEqual(row["점검결과"], "")
         self.assertEqual(row["회사명"], "에이치소프트")
 
-    def test_write_back_rejects_missing_db_without_creating_file(self):
-        missing_db_path = Path(self.temp_dir.name) / "missing.db"
-
-        with self.settings(REFERENCE_DB_PATH=missing_db_path, REFERENCE_DB_TABLE="ecm_list"):
-            with self.assertRaises(ReferenceDbMissing):
-                write_project_review_result("TTA-26-00010", "완료")
-
-        self.assertFalse(missing_db_path.exists())
-
-    def test_write_back_rejects_duplicate_project_numbers_and_rolls_back(self):
-        conn = sqlite3.connect(self.reference_db_path)
-        try:
-            conn.execute(
-                """
-                INSERT INTO ecm_list (
-                    "프로젝트번호",
-                    "인증일자",
-                    "회사명",
-                    "제품명",
-                    "시험PL",
-                    "점검결과",
-                    "점검날짜"
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    "TTA-26-00010",
-                    "05/13",
-                    "에이치소프트 복제",
-                    "SecureFlow 2.1",
-                    "김준호",
-                    "",
-                    "",
-                ),
-            )
-            conn.commit()
-        finally:
-            conn.close()
-
-        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
-            with self.assertRaises(ReferenceDbError):
-                write_project_review_result("TTA-26-00010", "완료")
-
-        rows = self._reference_rows_by_number("TTA-26-00010", ["점검결과"])
-        self.assertEqual([row["점검결과"] for row in rows], ["", ""])
+    def test_write_back_rejects_unknown_project_number(self):
+        # PostgreSQL 전환 후에는 "DB 파일이 없음" 시나리오가 성립하지 않는다(테이블은 항상
+        # 존재). 대신 reference_project 에 없는 프로젝트번호에 대한 오류 처리를 검증한다.
+        with self.assertRaises(ReferenceDbError):
+            write_project_review_result("TTA-26-99999", "완료")
 
     def test_write_back_accepts_failed_review_result(self):
-        with self.settings(REFERENCE_DB_PATH=self.reference_db_path, REFERENCE_DB_TABLE="ecm_list"):
-            result = write_project_review_result("TTA-26-00010", "실패")
-            response = projects(self.factory.get("/api/projects/", {"project_number": "TTA-26-00010"}))
+        result = write_project_review_result("TTA-26-00010", "실패")
+        response = projects(self.factory.get("/api/projects/", {"project_number": "TTA-26-00010"}))
 
         row = self._reference_rows(["TTA-26-00010"], ["점검결과"])["TTA-26-00010"]
         data = json.loads(response.content.decode("utf-8"))
@@ -2764,27 +2764,34 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(row["점검결과"], "실패")
         self.assertEqual(data["items"][0]["review"], "실패")
 
-    def test_write_back_succeeds_without_optional_inspection_date_column(self):
-        no_date_db_path = Path(self.temp_dir.name) / "no_date.db"
-        self._create_reference_db_without_inspection_date(no_date_db_path)
+    def test_write_back_sets_review_result_and_artifact_column(self):
+        # 기존 SQLite 시절 "점검날짜 컬럼이 없는 스키마" 시나리오를 대체한다. reference_project
+        # 는 항상 고정된 컬럼(inspection_date 등)을 가지므로 그 시나리오는 더 이상 성립하지
+        # 않고, 대신 점검결과+산출물 컬럼+점검일자가 함께 기록되는 정상 경로를 검증한다.
+        self._seed_reference_projects(
+            "bundang",
+            [
+                dict(
+                    project_number="TTA-26-00099",
+                    cert_date="05/12",
+                    cert_committee_date=date(2026, 5, 12),
+                    company="옵션테스트",
+                    product="NoDate",
+                    pl="박지훈",
+                    review_result="",
+                    inspection_date="",
+                ),
+            ],
+        )
 
-        with self.settings(REFERENCE_DB_PATH=no_date_db_path, REFERENCE_DB_TABLE="ecm_list"):
-            result = write_project_review_result(
-                "TTA-26-09999",
-                "완료",
-                artifact_results={"계약서": "정상"},
-                inspected_at="2026.05.12 20:00",
-            )
+        result = write_project_review_result(
+            "TTA-26-00099",
+            "완료",
+            artifact_results={"계약서": "정상"},
+            inspected_at="2026.05.12 20:00",
+        )
 
-        conn = sqlite3.connect(no_date_db_path)
-        conn.row_factory = sqlite3.Row
-        try:
-            row = conn.execute(
-                'SELECT "점검결과", "계약서" FROM ecm_list WHERE "프로젝트번호" = ?',
-                ["TTA-26-09999"],
-            ).fetchone()
-        finally:
-            conn.close()
+        row = self._reference_rows(["TTA-26-00099"], ["점검결과", "계약서"])["TTA-26-00099"]
 
         self.assertEqual(result["updated_columns"], ["점검결과", "계약서"])
         self.assertEqual(row["점검결과"], "O")
@@ -2800,88 +2807,12 @@ class DownloadReviewJobsApiTests(TestCase):
             content_type="application/json",
             REMOTE_ADDR="127.0.0.1",
         )
-        with self.settings(
-            REFERENCE_DB_PATH=self.reference_db_path,
-            REFERENCE_DB_PATH_2=self.reference_db_path_2,
-            REFERENCE_DB_TABLE="ecm_list",
-        ):
-            return jobs(request)
+        return jobs(request)
 
-    def _create_reference_db(self):
-        conn = sqlite3.connect(self.reference_db_path)
-        try:
-            artifact_columns_sql = ",\n".join(
-                f'"{column}" TEXT DEFAULT \'\''
-                for column in ARTIFACT_REVIEW_COLUMNS
-            )
-            conn.execute(
-                f"""
-                CREATE TABLE ecm_list (
-                    "프로젝트번호" TEXT,
-                    "인증일자" TEXT,
-                    "회사명" TEXT,
-                    "제품명" TEXT,
-                    "시험PL" TEXT,
-                    "점검결과" TEXT,
-                    "점검날짜" TEXT,
-                    {artifact_columns_sql}
-                )
-                """
-            )
-            conn.executemany(
-                """
-                INSERT INTO ecm_list (
-                    "프로젝트번호",
-                    "인증일자",
-                    "회사명",
-                    "제품명",
-                    "시험PL",
-                    "점검결과",
-                    "점검날짜"
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                [
-                    (
-                        "TTA-26-00009",
-                        "05/12",
-                        "우리데이터 주식회사",
-                        "우리데이터클리닝 V1.0",
-                        "박지훈",
-                        "O",
-                        "2026.05.12 20:30",
-                    ),
-                    (
-                        "TTA-26-00010",
-                        "05/13",
-                        "에이치소프트",
-                        "SecureFlow 2.1",
-                        "김준호",
-                        "",
-                        "",
-                    ),
-                    (
-                        "TTA-26-00011",
-                        "05/14",
-                        "브릿지웨어",
-                        "BridgeHub",
-                        "박지훈",
-                        "",
-                        "",
-                    ),
-                    (
-                        "TTA-26-00012",
-                        "05/15",
-                        "넥스트랩",
-                        "NextLab QA Suite",
-                        "최유진",
-                        "",
-                        "",
-                    ),
-                ],
-            )
-            conn.commit()
-        finally:
-            conn.close()
+    def _seed_reference_projects(self, center_code, rows):
+        ReferenceProject.objects.using("reference").bulk_create(
+            [ReferenceProject(center_code=center_code, **row) for row in rows]
+        )
 
     def _create_master_reference_db(self, db_path):
         conn = sqlite3.connect(db_path)
@@ -2906,82 +2837,30 @@ class DownloadReviewJobsApiTests(TestCase):
         finally:
             conn.close()
 
-    def _reference_rows(self, project_numbers, columns):
-        conn = sqlite3.connect(self.reference_db_path)
-        conn.row_factory = sqlite3.Row
-        try:
-            select_columns = ["프로젝트번호", *columns]
-            placeholders = ", ".join("?" for _ in project_numbers)
-            sql = (
-                "SELECT "
-                + ", ".join(f'"{column}"' for column in select_columns)
-                + f' FROM ecm_list WHERE "프로젝트번호" IN ({placeholders})'
+    def _reference_project_field(self, project, column):
+        mapping = {"점검결과": "review_result", "점검날짜": "inspection_date", "회사명": "company"}
+        if column in mapping:
+            return getattr(project, mapping[column])
+        return (project.artifact_results_json or {}).get(column, "")
+
+    def _reference_rows(self, project_numbers, columns, center_code="bundang"):
+        projects_by_number = {
+            project.project_number: project
+            for project in ReferenceProject.objects.using("reference").filter(
+                center_code=center_code, project_number__in=project_numbers
             )
-            rows = conn.execute(sql, project_numbers).fetchall()
-            return {
-                row["프로젝트번호"]: {column: row[column] for column in columns}
-                for row in rows
+        }
+        return {
+            number: {
+                column: self._reference_project_field(project, column)
+                for column in columns
             }
-        finally:
-            conn.close()
-
-    def _reference_rows_by_number(self, project_number, columns):
-        conn = sqlite3.connect(self.reference_db_path)
-        conn.row_factory = sqlite3.Row
-        try:
-            select_columns = ["프로젝트번호", *columns]
-            sql = (
-                "SELECT "
-                + ", ".join(f'"{column}"' for column in select_columns)
-                + ' FROM ecm_list WHERE "프로젝트번호" = ? ORDER BY rowid'
-            )
-            return [
-                {column: row[column] for column in columns}
-                for row in conn.execute(sql, [project_number]).fetchall()
-            ]
-        finally:
-            conn.close()
-
-    def _create_reference_db_without_inspection_date(self, db_path):
-        conn = sqlite3.connect(db_path)
-        try:
-            artifact_columns_sql = ",\n".join(
-                f'"{column}" TEXT DEFAULT \'\''
-                for column in ARTIFACT_REVIEW_COLUMNS
-            )
-            conn.execute(
-                f"""
-                CREATE TABLE ecm_list (
-                    "프로젝트번호" TEXT,
-                    "인증일자" TEXT,
-                    "회사명" TEXT,
-                    "제품명" TEXT,
-                    "시험PL" TEXT,
-                    "점검결과" TEXT,
-                    {artifact_columns_sql}
-                )
-                """
-            )
-            conn.execute(
-                """
-                INSERT INTO ecm_list (
-                    "프로젝트번호",
-                    "인증일자",
-                    "회사명",
-                    "제품명",
-                    "시험PL",
-                    "점검결과"
-                ) VALUES (?, ?, ?, ?, ?, ?)
-                """,
-                ("TTA-26-09999", "05/12", "옵션테스트", "NoDate", "박지훈", ""),
-            )
-            conn.commit()
-        finally:
-            conn.close()
+            for number, project in projects_by_number.items()
+        }
 
 
 class LocalReviewRulebaseApiTests(TestCase):
-    databases = {"default", "workflow"}
+    databases = {"default", "workflow", "reference"}
 
     def test_rulebase_manifest_and_bundle_return_enabled_rules(self):
         DownloadReviewRule.objects.create(
@@ -3518,6 +3397,42 @@ class HttpEcmArtifactSourceTests(SimpleTestCase):
         self.assertIn("빈 응답", verify_downloaded_bytes(b"", "a.pdf", 100))
         self.assertIn("크기", verify_downloaded_bytes(b"%PDF", "a.pdf", 999))
         self.assertIn("매직바이트", verify_downloaded_bytes(b"nope", "a.pdf", 4))
+
+    def test_legacy_office_extension_helper(self):
+        from main.views.review.artifact_source import legacy_office_extension
+
+        ole = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 8
+        self.assertEqual(legacy_office_extension(ole, "결함리포트.xlsx"), "xls")
+        self.assertEqual(legacy_office_extension(ole, "합의서.docx"), "doc")
+        self.assertEqual(legacy_office_extension(ole, "슬라이드.pptx"), "ppt")
+        # 정상 zip 기반 파일은 대상이 아니다.
+        self.assertIsNone(legacy_office_extension(b"PK\x03\x04", "a.xlsx"), None)
+        # OLE 매직바이트가 아니면 대상이 아니다.
+        self.assertIsNone(legacy_office_extension(b"garbage", "a.xlsx"))
+        # 신형↔구형 매핑에 없는 확장자는 대상이 아니다.
+        self.assertIsNone(legacy_office_extension(ole, "a.pdf"))
+
+    def test_legacy_ole_file_mislabeled_as_xlsx_is_recovered(self):
+        from main.views.review.artifact_source import HttpEcmArtifactSource
+
+        ole_bytes = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1" + b"\x00" * 8
+        tree = {"P": {"folders": [], "files": [
+            {"fileName": "결함리포트 v2.0.xlsx", "storageFileID": "f1", "fileSize": len(ole_bytes)},
+        ]}}
+        client = _FakeEcmClient(project_oid="P", tree=tree, blobs={"f1": ole_bytes})
+        source = HttpEcmArtifactSource(client_factory=lambda center: client)
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
+                result, _ = self._fetch(source, self._project())
+
+            self.assertTrue(result.success, result.error_message)
+            dst = Path(base) / "GS-A-23-0336"
+            # 신형 확장자(.xlsx) 대신 실제 포맷(.xls)으로 저장되어야 한다.
+            self.assertTrue((dst / "결함리포트 v2.0.xls").exists())
+            self.assertFalse((dst / "결함리포트 v2.0.xlsx").exists())
+            # 매직바이트만으로 즉시 복구되므로 재다운로드는 필요 없다.
+            self.assertEqual(len(client.download_calls), 1)
 
 
 class EcmHttpClientPureFunctionTests(SimpleTestCase):
