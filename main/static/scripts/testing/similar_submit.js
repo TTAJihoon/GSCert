@@ -1,25 +1,47 @@
 const SIMILAR_RESULT_STORAGE_KEY = 'similar_last_result_v1';
 
-function escapeAttr(str) {
-  return String(str).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
-// data(=/summarize_document/ 응답 JSON)를 받아 요약/결과 영역의 HTML을 만든다.
-// 최초 제출 시와, 새로고침 후 sessionStorage에서 복원할 때 모두 이 함수를 쓴다.
+function escapeAttr(value) {
+  return escapeHtml(value);
+}
+
+function htmlWithBreaks(value, fallback = '-') {
+  const text = String(value ?? '').trim() || fallback;
+  return escapeHtml(text).replace(/\n/g, '<br>');
+}
+
+// /summarize_document/ 검색 응답을 화면 및 sessionStorage 복원에 공통 사용한다.
 function renderSimilarResults(data, summaryContent, resultsContent) {
+  const summaries = Array.isArray(data.summary)
+    ? data.summary
+    : [data.summary].filter(Boolean);
+  const summaryBody = summaries.length > 1
+    ? `<ol class="selected-summary-list">${summaries.map(
+      text => `<li>${escapeHtml(text)}</li>`
+    ).join('')}</ol>`
+    : escapeHtml(summaries[0] || '-');
   const rerankWarning = data.rerank_error
-    ? `<div class="rerank-warning">${data.rerank_error}</div>`
+    ? `<div class="rerank-warning">${escapeHtml(data.rerank_error)}</div>`
     : '';
-  const summaryhtml = `${data.summary || '요약 없음'}${rerankWarning}`;
+  const summaryHtml = `${summaryBody}${rerankWarning}`;
+
   const rows = Array.isArray(data.response) ? data.response : [];
-  const resulthtml = rows.map(row => {
+  const resultHtml = rows.map(row => {
     const simVal = row.similarity;
     const simPercent = (typeof simVal === 'number' && !isNaN(simVal))
       ? (simVal * 100).toFixed(2)
       : 'N/A';
-    const scoreLabel = typeof row.llm_score === 'number' ? 'AI 유사도' : '유사도';
+    const scoreLabel = typeof row.llm_score === 'number' ? 'AI 평균 유사도' : '평균 유사도';
 
-    const firstLine = (val) => String(val || '-').split('\n')[0].trim() || '-';
+    const firstLine = val => String(val || '-').split('\n')[0].trim() || '-';
     const copyCompany = firstLine(row['회사명']);
     const copyProduct = firstLine(row['제품']);
     const copyTestNo = row['시험번호'] || '-';
@@ -34,9 +56,9 @@ function renderSimilarResults(data, summaryContent, resultsContent) {
             <table class="company-product-table">
               <tbody>
                 <tr>
-                  <td class="company-cell">${(row['회사명'] || '-').replace(/\n/g, '<br>')}</td>
+                  <td class="company-cell">${htmlWithBreaks(row['회사명'])}</td>
                   <td class="separator-cell">-</td>
-                  <td class="product-cell">${(row['제품'] || '-').replace(/\n/g, '<br>')}</td>
+                  <td class="product-cell">${htmlWithBreaks(row['제품'])}</td>
                 </tr>
               </tbody>
             </table>
@@ -53,7 +75,7 @@ function renderSimilarResults(data, summaryContent, resultsContent) {
                   </div>
                 </td>
                 <td>
-                  <div class="similarity-score" id="similarity-score">${scoreLabel} ${simPercent}%</div>
+                  <div class="similarity-score">${scoreLabel} ${simPercent}%</div>
                 </td>
                 <td>
                   <button class="download-btn"><i class="fas fa-download"></i></button>
@@ -62,67 +84,72 @@ function renderSimilarResults(data, summaryContent, resultsContent) {
             </table>
           </div>
         </div>
-        <div class="product-description">
-          ${(row['제품설명'] || '-').replace(/\n/g, '<br>')}
-        </div>
+        <div class="product-description">${htmlWithBreaks(row['제품설명'])}</div>
         <div class="product-tags">
-          <p>인증일자</p><span class="product-tag">${(row['인증일자'] || '-').replace(/\n/g, '<br>')}</span>
-          <p>시험번호</p><span class="product-tag">${(row['시험번호'] || '-').replace(/\n/g, '<br>')}</span>
-          <p>WD</p><span class="product-tag">${(row['총WD'] || '-').toString()}</span>
-          <p>시험기간</p><span class="product-tag">${(row['시작일자'] || '-')}~${(row['종료일자'] || '-')}</span>
-          <p>시험원</p><span class="product-tag">${(row['시험원'] || '-').replace(/\n/g, '<br>')}</span>
+          <p>인증일자</p><span class="product-tag">${htmlWithBreaks(row['인증일자'])}</span>
+          <p>시험번호</p><span class="product-tag">${htmlWithBreaks(row['시험번호'])}</span>
+          <p>WD</p><span class="product-tag">${escapeHtml((row['총WD'] || '-').toString())}</span>
+          <p>시험기간</p><span class="product-tag">${escapeHtml(row['시작일자'] || '-')}~${escapeHtml(row['종료일자'] || '-')}</span>
+          <p>시험원</p><span class="product-tag">${htmlWithBreaks(row['시험원'])}</span>
         </div>
       </div>
     `;
   }).join('');
-  summaryContent.innerHTML = summaryhtml;
-  resultsContent.innerHTML = resulthtml;
+
+  summaryContent.innerHTML = summaryHtml;
+  resultsContent.innerHTML = resultHtml || '<div class="result-placeholder">조회 결과가 없습니다.</div>';
 }
 
 document.addEventListener('DOMContentLoaded', function () {
-  const form = document.getElementById('queryForm'); // 제출 폼
-  const fileInput = document.getElementById('fileInput');       // 파일 input
-  const manualInput = document.getElementById('manualInput');   // 수동입력 textarea
-  const contentManual = document.getElementById('content-manual'); // 수동입력 탭 컨테이너
+  const form = document.getElementById('queryForm');
+  const fileInput = document.getElementById('fileInput');
+  const manualInput = document.getElementById('manualInput');
+  const contentManual = document.getElementById('content-manual');
   const loading = document.getElementById('loadingContainer');
+  const loadingText = loading.querySelector('.loading-text');
+  const loadingDescription = loading.querySelector('.loading-description');
   const summaryContent = document.getElementById('summaryContent');
   const resultsContent = document.getElementById('resultsContent');
   const resultsHeader = document.getElementById('resultsHeader');
   const inputSummary = document.getElementById('inputSummary');
+  const modal = document.getElementById('summarySelectionModal');
+  const optionList = document.getElementById('summaryOptionList');
+  const selectionError = document.getElementById('summarySelectionError');
+  const modalClose = document.getElementById('summaryModalClose');
+  const modalCancel = document.getElementById('summaryModalCancel');
+  const modalSearch = document.getElementById('summaryModalSearch');
+  let preparedMode = '';
 
-  // 새로고침해도 직전 조회 결과가 유지되도록, sessionStorage에 저장해둔 마지막 결과를 복원한다.
   const savedResult = sessionStorage.getItem(SIMILAR_RESULT_STORAGE_KEY);
   if (savedResult) {
     try {
       renderSimilarResults(JSON.parse(savedResult), summaryContent, resultsContent);
-    } catch (e) {
-      console.error('저장된 유사 제품 조회 결과 복원 실패:', e);
+    } catch (error) {
+      console.error('저장된 유사 제품 조회 결과 복원 실패:', error);
       sessionStorage.removeItem(SIMILAR_RESULT_STORAGE_KEY);
     }
   }
 
   function getCookie(name) {
-    let cookieValue = null;
-    if (document.cookie && document.cookie !== '') {
-      const cookies = document.cookie.split(';');
-      for (let i = 0; i < cookies.length; i++) {
-        const cookie = cookies[i].trim();
-        // Does this cookie string begin with the name we want?
-        if (cookie.substring(0, name.length + 1) === (name + '=')) {
-          cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-          break;
-        }
+    const cookies = document.cookie ? document.cookie.split(';') : [];
+    for (const item of cookies) {
+      const cookie = item.trim();
+      if (cookie.startsWith(`${name}=`)) {
+        return decodeURIComponent(cookie.substring(name.length + 1));
       }
     }
-    return cookieValue;
+    return null;
   }
-  
-  function showLoading() {
+
+  function showLoading(title, description) {
+    loadingText.textContent = title;
+    loadingDescription.textContent = description;
     loading.classList.remove('hidden');
     resultsHeader.classList.add('hidden');
     inputSummary.classList.add('hidden');
     resultsContent.classList.add('hidden');
   }
+
   function hideLoading() {
     loading.classList.add('hidden');
     resultsHeader.classList.remove('hidden');
@@ -130,79 +157,183 @@ document.addEventListener('DOMContentLoaded', function () {
     resultsContent.classList.remove('hidden');
   }
 
-  form.addEventListener('submit', async function(e) {
-    console.log('폼 제출 이벤트 발생!');
-    e.preventDefault();  // <<<<< form submit 완벽 차단!
+  async function postFormData(formData) {
+    const response = await fetch('/summarize_document/', {
+      method: 'POST',
+      body: formData,
+      headers: { 'X-CSRFToken': getCookie('csrftoken') }
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      const message = typeof data.response === 'string'
+        ? data.response
+        : '유사 제품 조회 중 오류가 발생했습니다.';
+      throw new Error(message);
+    }
+    return data;
+  }
+
+  function closeModal() {
+    modal.classList.add('hidden');
+    selectionError.classList.add('hidden');
+  }
+
+  function openSelectionModal(data) {
+    const defaults = new Set(data.default_selected_ids || []);
+    preparedMode = data.mode || '';
+    optionList.innerHTML = (data.options || []).map((option, index) => {
+      const checked = defaults.has(option.id) ? ' checked' : '';
+      const label = option.is_original
+        ? (preparedMode === 'file' ? '원본 추출 요약' : '원본 문장')
+        : `추천 문장 ${index + 1}`;
+      return `
+        <label class="summary-option">
+          <input type="checkbox" value="${escapeAttr(option.text)}"${checked}>
+          <span class="summary-option-content">
+            <span class="summary-option-label">${escapeHtml(label)}</span>
+            <span class="summary-option-text">${escapeHtml(option.text)}</span>
+          </span>
+        </label>
+      `;
+    }).join('');
+    selectionError.classList.add('hidden');
+    modal.classList.remove('hidden');
+  }
+
+  form.addEventListener('submit', async function (event) {
+    event.preventDefault();
     const isAutoTab = contentManual.classList.contains('hidden');
-    if (isAutoTab) {
-      if (!fileInput.files.length) {
-        alert('파일을 먼저 업로드해주세요.');
-        return;
-      }
-    } else {
-      if (!manualInput.value.trim()) {
-        alert('제품 설명을 입력해주세요.');
-        return;
-      }
+    if (isAutoTab && !fileInput.files.length) {
+      alert('파일을 먼저 업로드해주세요.');
+      return;
+    }
+    if (!isAutoTab && !manualInput.value.trim()) {
+      alert('제품 설명을 입력해주세요.');
+      return;
     }
 
-    showLoading();
+    showLoading(
+      '추천 문장 생성 중...',
+      isAutoTab
+        ? '업로드한 파일을 분석해 제품 개요 후보를 만들고 있습니다.'
+        : '입력 문장과 유사한 제품 개요 후보를 만들고 있습니다.'
+    );
 
     try {
       const formData = new FormData();
+      formData.append('action', 'prepare');
       if (isAutoTab) {
         formData.append('fileType', 'functionList');
         formData.append('file', fileInput.files[0]);
         formData.append('manualInput', '');
       } else {
         formData.append('fileType', 'manual');
-        formData.append('file', '');
         formData.append('manualInput', manualInput.value.trim());
       }
-      const csrftoken = getCookie('csrftoken');
-      const response = await fetch('/summarize_document/', {
-        method: 'POST',
-        body: formData,
-        headers: { 'X-CSRFToken': csrftoken }
-      });
+      const data = await postFormData(formData);
+      hideLoading();
+      openSelectionModal(data);
+    } catch (error) {
+      hideLoading();
+      alert(error.message);
+    }
+  });
 
-      const data = await response.json();
-      if (!response.ok) {
-        const message = typeof data.response === 'string' ? data.response : '유사 제품 조회 중 오류가 발생했습니다.';
-        throw new Error(message);
-      }
+  modalSearch.addEventListener('click', async function () {
+    const selected = Array.from(
+      optionList.querySelectorAll('input[type="checkbox"]:checked')
+    ).map(input => input.value);
+    if (!selected.length) {
+      selectionError.classList.remove('hidden');
+      return;
+    }
 
-console.log('similarities:', data.similarities);
-console.log('response:', data.response);
+    closeModal();
+    showLoading(
+      '유사 제품 검색 중...',
+      selected.length > 1
+        ? `${selected.length}개 문장의 유사도를 계산하고 평균 순위를 만들고 있습니다.`
+        : '선택한 문장으로 유사 제품을 검색하고 있습니다.'
+    );
 
+    try {
+      const formData = new FormData();
+      formData.append('action', 'search');
+      formData.append('inputMode', preparedMode);
+      formData.append('selectedSummaries', JSON.stringify(selected));
+      const data = await postFormData(formData);
       renderSimilarResults(data, summaryContent, resultsContent);
-
-      try {
-        sessionStorage.setItem(SIMILAR_RESULT_STORAGE_KEY, JSON.stringify(data));
-      } catch (e) {
-        console.error('유사 제품 조회 결과 저장 실패:', e);
-      }
-    } catch (err) {
-      resultsContent.innerHTML = `<span style="color:red;">에러: ${err.message}</span>`;
+      sessionStorage.setItem(SIMILAR_RESULT_STORAGE_KEY, JSON.stringify(data));
+    } catch (error) {
+      resultsContent.innerHTML = `<span style="color:red;">에러: ${escapeHtml(error.message)}</span>`;
     } finally {
       hideLoading();
     }
   });
+
+  modalClose.addEventListener('click', closeModal);
+  modalCancel.addEventListener('click', closeModal);
+  modal.querySelector('.summary-modal-backdrop').addEventListener('click', closeModal);
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
+      closeModal();
+    }
+  });
 });
 
-document.addEventListener('click', (evt) => {
-  const btn = evt.target.closest?.('.copy-btn');
-  if (!btn) return;
+document.addEventListener('DOMContentLoaded', function () {
+  const tooltip = document.getElementById('copyTooltipLayer');
+  let activeButton = null;
+  let copiedTimer = null;
 
-  const text = btn.dataset.copyText || '';
-  navigator.clipboard.writeText(text).then(() => {
-    const tooltip = btn.parentElement.querySelector('.copy-btn-tooltip');
-    if (!tooltip) return;
-    const original = tooltip.textContent;
-    tooltip.textContent = '복사되었습니다!';
-    setTimeout(() => { tooltip.textContent = original; }, 1200);
-  }).catch((err) => {
-    console.error('클립보드 복사 실패:', err);
-    alert('클립보드 복사에 실패했습니다.');
+  function positionTooltip(button) {
+    const rect = button.getBoundingClientRect();
+    tooltip.style.left = `${rect.left + rect.width / 2}px`;
+    tooltip.style.top = `${rect.top}px`;
+  }
+
+  function showTooltip(button) {
+    activeButton = button;
+    tooltip.textContent = '제품 정보가 복사됩니다';
+    positionTooltip(button);
+    tooltip.classList.remove('hidden');
+  }
+
+  function hideTooltip(button) {
+    if (activeButton !== button) return;
+    activeButton = null;
+    tooltip.classList.add('hidden');
+  }
+
+  document.addEventListener('mouseover', event => {
+    const button = event.target.closest?.('.copy-btn');
+    if (button) showTooltip(button);
+  });
+  document.addEventListener('mouseout', event => {
+    const button = event.target.closest?.('.copy-btn');
+    if (button && !button.contains(event.relatedTarget)) hideTooltip(button);
+  });
+  document.addEventListener('scroll', () => {
+    if (activeButton) positionTooltip(activeButton);
+  }, true);
+  window.addEventListener('resize', () => {
+    if (activeButton) positionTooltip(activeButton);
+  });
+
+  document.addEventListener('click', event => {
+    const button = event.target.closest?.('.copy-btn');
+    if (!button) return;
+
+    navigator.clipboard.writeText(button.dataset.copyText || '').then(() => {
+      activeButton = button;
+      positionTooltip(button);
+      tooltip.textContent = '복사되었습니다!';
+      tooltip.classList.remove('hidden');
+      clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(() => hideTooltip(button), 1200);
+    }).catch(error => {
+      console.error('클립보드 복사 실패:', error);
+      alert('클립보드 복사에 실패했습니다.');
+    });
   });
 });

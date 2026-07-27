@@ -5,10 +5,10 @@
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
-<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}?v=4"/>
+<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}?v=5"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 <script src="{% static 'scripts/testing/similar_Listener.js' %}" defer></script>
-<script src="{% static 'scripts/testing/similar_submit.js' %}?v=6" defer></script>
+<script src="{% static 'scripts/testing/similar_submit.js' %}?v=7" defer></script>
 <script src="{% static 'scripts/testing/similar_sorting.js' %}" defer></script>
 <script src="{% static 'scripts/testing/similar_ecm.js' %}" defer></script>
 <script src="{% static 'scripts/sidebar_toggle.js' %}?v=1" defer></script>
@@ -159,4 +159,29 @@
         </main>
     </div>
 </div>
+
+<div class="summary-modal hidden" id="summarySelectionModal" role="dialog" aria-modal="true" aria-labelledby="summaryModalTitle">
+    <div class="summary-modal-backdrop"></div>
+    <div class="summary-modal-panel">
+        <div class="summary-modal-header">
+            <div>
+                <h2 id="summaryModalTitle">유사도 판단 문장 선택</h2>
+                <p>검색에 사용할 문장을 하나 이상 선택하세요. 여러 문장을 선택하면 유사도 평균으로 종합 순위를 계산합니다.</p>
+            </div>
+            <button type="button" class="summary-modal-close" id="summaryModalClose" aria-label="팝업 닫기">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="summary-option-list" id="summaryOptionList"></div>
+        <div class="summary-selection-error hidden" id="summarySelectionError">문장을 하나 이상 선택해주세요.</div>
+        <div class="summary-modal-actions">
+            <button type="button" class="summary-modal-cancel" id="summaryModalCancel">취소</button>
+            <button type="button" class="summary-modal-search" id="summaryModalSearch">
+                선택 문장으로 검색
+            </button>
+        </div>
+    </div>
+</div>
+
+<div class="copy-tooltip-layer hidden" id="copyTooltipLayer" role="status">제품 정보가 복사됩니다</div>
 {% endblock %}

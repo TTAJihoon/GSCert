@@ -128,3 +128,66 @@ def compare_from_index(text, k=30):
     similarities = [t['similarity'] for t in tables_in_rank]
 
     return tables_in_rank, similarities
+
+
+def compare_multiple_from_index(texts, k=30):
+    """여러 검색 문장의 제품별 FAISS 유사도를 평균 내어 상위 후보를 반환한다."""
+    normalized_texts = [
+        str(text or "").strip()
+        for text in texts
+        if str(text or "").strip()
+    ]
+    if not normalized_texts:
+        return [], []
+
+    index = _get_index()
+    model = _get_model()
+    query_vecs = model.encode(
+        normalized_texts,
+        normalize_embeddings=True,
+    ).astype("float32")
+
+    # 모든 제품에 대해 각 문장의 점수를 얻은 뒤 평균한다. 일부 문장의 top-k에
+    # 들지 않은 제품을 0점으로 취급하면 평균 순위가 왜곡되므로 전체 인덱스를 조회한다.
+    search_count = int(index.ntotal)
+    if search_count <= 0:
+        return [], []
+
+    distances, labels = index.search(query_vecs, search_count)
+    scores_by_id = {}
+    for query_index in range(len(normalized_texts)):
+        for label, score in zip(labels[query_index], distances[query_index]):
+            if label < 0:
+                continue
+            scores_by_id.setdefault(int(label), []).append(float(score))
+
+    ranked = sorted(
+        (
+            (
+                label,
+                sum(scores) / len(normalized_texts),
+                scores,
+            )
+            for label, scores in scores_by_id.items()
+            if len(scores) == len(normalized_texts)
+        ),
+        key=lambda item: item[1],
+        reverse=True,
+    )[:k]
+
+    ranked_labels = [label for label, _, _ in ranked]
+    tables_unsorted = select_data_from_db(ranked_labels)
+    id_to_table = {int(item["일련번호"]): item for item in tables_unsorted}
+
+    rows = []
+    for label, average_score, per_query_scores in ranked:
+        source_row = id_to_table.get(label)
+        if not source_row:
+            continue
+        row = dict(source_row)
+        row["similarity"] = average_score
+        row["faiss_similarity"] = average_score
+        row["faiss_scores"] = per_query_scores
+        rows.append(row)
+
+    return rows, [row["similarity"] for row in rows]

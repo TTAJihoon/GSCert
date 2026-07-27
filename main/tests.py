@@ -4060,3 +4060,219 @@ class NormalizeCellTextTests(SimpleTestCase):
     def test_existing_newline_preserved_and_none_passthrough(self):
         self.assertEqual(self._norm("정상 회사명\n영문명"), "정상 회사명\n영문명")
         self.assertIsNone(self._norm(None))
+
+
+class SimilarSummarySelectionTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    @patch("main.views.testing.similar_summary.generate_recommended_summaries")
+    def test_manual_prepare_returns_five_recommendations_and_checked_original(
+        self,
+        generate_recommendations,
+    ):
+        from main.views.testing.similar_summary import summarize_document
+
+        generate_recommendations.return_value = [
+            f"추천 제품 개요 {index}"
+            for index in range(1, 6)
+        ]
+        request = self.factory.post(
+            "/summarize_document/",
+            {
+                "action": "prepare",
+                "fileType": "manual",
+                "manualInput": "원본 제품 개요 문장",
+            },
+        )
+
+        response = summarize_document(request)
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["mode"], "manual")
+        self.assertEqual(len(payload["options"]), 6)
+        self.assertEqual(payload["options"][-1]["text"], "원본 제품 개요 문장")
+        self.assertTrue(payload["options"][-1]["is_original"])
+        self.assertEqual(payload["default_selected_ids"], ["original"])
+        generate_recommendations.assert_called_once_with(
+            "원본 제품 개요 문장",
+            count=5,
+            max_chars=60,
+        )
+
+    @patch("main.views.testing.similar_summary.generate_recommended_summaries")
+    @patch("main.views.testing.similar_summary.run_gemini_gemma")
+    @patch("main.views.testing.similar_summary.parse_file")
+    def test_file_prepare_returns_four_recommendations_plus_original_summary(
+        self,
+        parse_file,
+        run_summary,
+        generate_recommendations,
+    ):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from main.views.testing.similar_summary import summarize_document
+
+        parse_file.return_value = "업로드 문서에서 추출한 충분한 제품 설명 내용입니다."
+        run_summary.return_value = "원본 추출 요약 문장"
+        generate_recommendations.return_value = [
+            f"추천 제품 개요 {index}"
+            for index in range(1, 5)
+        ]
+        request = self.factory.post(
+            "/summarize_document/",
+            {
+                "action": "prepare",
+                "fileType": "functionList",
+                "file": SimpleUploadedFile("manual.pdf", b"fake pdf"),
+            },
+        )
+
+        response = summarize_document(request)
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["mode"], "file")
+        self.assertEqual(len(payload["options"]), 5)
+        self.assertEqual(payload["options"][-1]["text"], "원본 추출 요약 문장")
+        self.assertEqual(payload["default_selected_ids"], ["recommendation-1"])
+        generate_recommendations.assert_called_once_with(
+            "업로드 문서에서 추출한 충분한 제품 설명 내용입니다.",
+            count=4,
+            max_chars=60,
+        )
+
+    @patch("main.views.testing.similar_summary.rerank_multiple_similar_candidates")
+    @patch("main.views.testing.similar_summary.compare_multiple_from_index")
+    def test_search_uses_all_selected_sentences_and_returns_average_ranking(
+        self,
+        compare_multiple,
+        rerank_multiple,
+    ):
+        from main.views.testing.similar_summary import summarize_document
+
+        faiss_rows = [
+            {"일련번호": 1, "제품설명": "후보", "similarity": 0.75},
+        ]
+        reranked_rows = [
+            {
+                "일련번호": 1,
+                "제품설명": "후보",
+                "llm_score": 80.0,
+                "similarity": 0.8,
+            },
+        ]
+        compare_multiple.return_value = (faiss_rows, [0.75])
+        rerank_multiple.return_value = reranked_rows
+        selected = ["첫 번째 문장", "두 번째 문장"]
+        request = self.factory.post(
+            "/summarize_document/",
+            {
+                "action": "search",
+                "inputMode": "manual",
+                "selectedSummaries": json.dumps(selected, ensure_ascii=False),
+            },
+        )
+
+        response = summarize_document(request)
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(payload["summary"], selected)
+        self.assertEqual(payload["similarities"], [0.8])
+        compare_multiple.assert_called_once_with(selected, k=30)
+        rerank_multiple.assert_called_once_with(selected, faiss_rows)
+
+    def test_search_rejects_empty_selection(self):
+        from main.views.testing.similar_summary import summarize_document
+
+        request = self.factory.post(
+            "/summarize_document/",
+            {
+                "action": "search",
+                "selectedSummaries": "[]",
+            },
+        )
+
+        response = summarize_document(request)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("1개 이상", json.loads(response.content)["response"])
+
+    @patch("main.views.testing.similar_compare.select_data_from_db")
+    @patch("main.views.testing.similar_compare._get_model")
+    @patch("main.views.testing.similar_compare._get_index")
+    def test_multiple_faiss_scores_are_averaged_per_product(
+        self,
+        get_index,
+        get_model,
+        select_data,
+    ):
+        import numpy as np
+        from main.views.testing.similar_compare import compare_multiple_from_index
+
+        class FakeIndex:
+            ntotal = 2
+
+            def search(self, query_vectors, count):
+                self.query_vectors = query_vectors
+                self.count = count
+                return (
+                    np.array([[0.9, 0.4], [0.8, 0.6]], dtype="float32"),
+                    np.array([[1, 2], [2, 1]], dtype="int64"),
+                )
+
+        class FakeModel:
+            def encode(self, texts, normalize_embeddings):
+                self.texts = texts
+                self.normalize_embeddings = normalize_embeddings
+                return np.array([[1.0, 0.0], [0.0, 1.0]], dtype="float32")
+
+        get_index.return_value = FakeIndex()
+        get_model.return_value = FakeModel()
+        select_data.return_value = [
+            {"일련번호": 1, "제품설명": "첫 제품"},
+            {"일련번호": 2, "제품설명": "둘째 제품"},
+        ]
+
+        rows, similarities = compare_multiple_from_index(["문장 1", "문장 2"], k=2)
+
+        self.assertEqual([row["일련번호"] for row in rows], [1, 2])
+        self.assertAlmostEqual(similarities[0], 0.75)
+        self.assertAlmostEqual(similarities[1], 0.6)
+        self.assertAlmostEqual(rows[0]["faiss_scores"][0], 0.9)
+        self.assertAlmostEqual(rows[0]["faiss_scores"][1], 0.6)
+
+    @patch("main.views.testing.similar_GPT.generate_gemma_text")
+    def test_multiple_llm_scores_are_averaged_per_product(self, generate_text):
+        from main.views.testing.similar_GPT import rerank_multiple_similar_candidates
+
+        generate_text.return_value = json.dumps(
+            {
+                "results": [
+                    {"id": "1", "scores": [90, 70]},
+                    {"id": "2", "scores": [60, 70]},
+                ]
+            }
+        )
+        candidates = [
+            {
+                "일련번호": 1,
+                "제품설명": "첫 제품",
+                "faiss_similarity": 0.7,
+                "faiss_scores": [0.8, 0.6],
+            },
+            {
+                "일련번호": 2,
+                "제품설명": "둘째 제품",
+                "faiss_similarity": 0.65,
+                "faiss_scores": [0.6, 0.7],
+            },
+        ]
+
+        rows = rerank_multiple_similar_candidates(["문장 1", "문장 2"], candidates)
+
+        self.assertEqual([row["일련번호"] for row in rows], [1, 2])
+        self.assertEqual(rows[0]["llm_score"], 80)
+        self.assertEqual(rows[0]["similarity"], 0.8)
+        self.assertNotIn("faiss_scores", rows[0])
