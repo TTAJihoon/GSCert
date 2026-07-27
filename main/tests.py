@@ -2,6 +2,7 @@ import json
 import sqlite3
 import tempfile
 import zipfile
+from datetime import date
 from io import BytesIO, StringIO
 from pathlib import Path
 from unittest.mock import patch
@@ -4180,7 +4181,16 @@ class SimilarSummarySelectionTests(SimpleTestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(payload["summary"], selected)
         self.assertEqual(payload["similarities"], [0.8])
-        compare_multiple.assert_called_once_with(selected, k=30)
+        self.assertEqual(
+            payload["search_period"],
+            {"start": "2017-01-01", "end": ""},
+        )
+        compare_multiple.assert_called_once_with(
+            selected,
+            k=30,
+            cert_date_from=date(2017, 1, 1),
+            cert_date_to=None,
+        )
         rerank_multiple.assert_called_once_with(selected, faiss_rows)
 
     def test_search_rejects_empty_selection(self):
@@ -4242,6 +4252,47 @@ class SimilarSummarySelectionTests(SimpleTestCase):
         self.assertAlmostEqual(similarities[1], 0.6)
         self.assertAlmostEqual(rows[0]["faiss_scores"][0], 0.9)
         self.assertAlmostEqual(rows[0]["faiss_scores"][1], 0.6)
+
+    @patch("main.views.testing.similar_compare.select_data_from_db")
+    @patch("main.views.testing.similar_compare._get_model")
+    @patch("main.views.testing.similar_compare._get_index")
+    def test_multiple_search_filters_candidates_by_certification_date(
+        self,
+        get_index,
+        get_model,
+        select_data,
+    ):
+        import numpy as np
+        from main.views.testing.similar_compare import compare_multiple_from_index
+
+        class FakeIndex:
+            ntotal = 2
+
+            def search(self, query_vectors, count):
+                return (
+                    np.array([[0.9, 0.8]], dtype="float32"),
+                    np.array([[1, 2]], dtype="int64"),
+                )
+
+        class FakeModel:
+            def encode(self, texts, normalize_embeddings):
+                return np.array([[1.0, 0.0]], dtype="float32")
+
+        get_index.return_value = FakeIndex()
+        get_model.return_value = FakeModel()
+        select_data.return_value = [
+            {"일련번호": 1, "제품설명": "이전 제품", "인증일자": "2016.12.31"},
+            {"일련번호": 2, "제품설명": "대상 제품", "인증일자": "2017-01-02"},
+        ]
+
+        rows, similarities = compare_multiple_from_index(
+            ["문장"],
+            k=2,
+            cert_date_from=date(2017, 1, 1),
+        )
+
+        self.assertEqual([row["일련번호"] for row in rows], [2])
+        self.assertAlmostEqual(similarities[0], 0.8)
 
     @patch("main.views.testing.similar_GPT.generate_gemma_text")
     def test_multiple_llm_scores_are_averaged_per_product(self, generate_text):

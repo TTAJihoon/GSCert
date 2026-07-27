@@ -31,7 +31,11 @@ function renderSimilarResults(data, summaryContent, resultsContent) {
   const rerankWarning = data.rerank_error
     ? `<div class="rerank-warning">${escapeHtml(data.rerank_error)}</div>`
     : '';
-  const summaryHtml = `${summaryBody}${rerankWarning}`;
+  const period = data.search_period || {};
+  const periodHtml = period.start
+    ? `<div class="search-period-summary">인증일자 ${escapeHtml(period.start)} ~ ${escapeHtml(period.end || '현재')}</div>`
+    : '';
+  const summaryHtml = `${periodHtml}${summaryBody}${rerankWarning}`;
 
   const rows = Array.isArray(data.response) ? data.response : [];
   const resultHtml = rows.map(row => {
@@ -88,7 +92,7 @@ function renderSimilarResults(data, summaryContent, resultsContent) {
         <div class="product-tags">
           <p>인증일자</p><span class="product-tag">${htmlWithBreaks(row['인증일자'])}</span>
           <p>시험번호</p><span class="product-tag">${htmlWithBreaks(row['시험번호'])}</span>
-          <p>WD</p><span class="product-tag">${escapeHtml((row['총WD'] || '-').toString())}</span>
+          <p>WD</p><span class="product-tag wd-tag">${escapeHtml((row['총WD'] || '-').toString())}</span>
           <p>시험기간</p><span class="product-tag">${escapeHtml(row['시작일자'] || '-')}~${escapeHtml(row['종료일자'] || '-')}</span>
           <p>시험원</p><span class="product-tag">${htmlWithBreaks(row['시험원'])}</span>
         </div>
@@ -112,12 +116,12 @@ document.addEventListener('DOMContentLoaded', function () {
   const resultsContent = document.getElementById('resultsContent');
   const resultsHeader = document.getElementById('resultsHeader');
   const inputSummary = document.getElementById('inputSummary');
-  const modal = document.getElementById('summarySelectionModal');
+  const resultsContainer = document.getElementById('resultsContainer');
+  const selectionStep = document.getElementById('summarySelectionStep');
   const optionList = document.getElementById('summaryOptionList');
   const selectionError = document.getElementById('summarySelectionError');
-  const modalClose = document.getElementById('summaryModalClose');
-  const modalCancel = document.getElementById('summaryModalCancel');
-  const modalSearch = document.getElementById('summaryModalSearch');
+  const selectionCancel = document.getElementById('summaryStepCancel');
+  const selectionSearch = document.getElementById('summaryStepSearch');
   let preparedMode = '';
 
   const savedResult = sessionStorage.getItem(SIMILAR_RESULT_STORAGE_KEY);
@@ -145,16 +149,13 @@ document.addEventListener('DOMContentLoaded', function () {
     loadingText.textContent = title;
     loadingDescription.textContent = description;
     loading.classList.remove('hidden');
-    resultsHeader.classList.add('hidden');
-    inputSummary.classList.add('hidden');
-    resultsContent.classList.add('hidden');
+    selectionStep.classList.add('hidden');
+    resultsContainer.classList.add('hidden');
   }
 
   function hideLoading() {
     loading.classList.add('hidden');
-    resultsHeader.classList.remove('hidden');
-    inputSummary.classList.remove('hidden');
-    resultsContent.classList.remove('hidden');
+    resultsContainer.classList.remove('hidden');
   }
 
   async function postFormData(formData) {
@@ -173,12 +174,13 @@ document.addEventListener('DOMContentLoaded', function () {
     return data;
   }
 
-  function closeModal() {
-    modal.classList.add('hidden');
+  function closeSelectionStep() {
+    selectionStep.classList.add('hidden');
+    resultsContainer.classList.remove('hidden');
     selectionError.classList.add('hidden');
   }
 
-  function openSelectionModal(data) {
+  function openSelectionStep(data) {
     const defaults = new Set(data.default_selected_ids || []);
     preparedMode = data.mode || '';
     optionList.innerHTML = (data.options || []).map((option, index) => {
@@ -197,7 +199,16 @@ document.addEventListener('DOMContentLoaded', function () {
       `;
     }).join('');
     selectionError.classList.add('hidden');
-    modal.classList.remove('hidden');
+    resultsContainer.classList.add('hidden');
+    selectionStep.classList.remove('hidden');
+  }
+
+  function getSearchPeriod(mode) {
+    const prefix = mode === 'file' ? 'auto' : 'manual';
+    return {
+      start: document.getElementById(`${prefix}SearchStartDate`).value,
+      end: document.getElementById(`${prefix}SearchEndDate`).value
+    };
   }
 
   form.addEventListener('submit', async function (event) {
@@ -231,24 +242,31 @@ document.addEventListener('DOMContentLoaded', function () {
         formData.append('manualInput', manualInput.value.trim());
       }
       const data = await postFormData(formData);
-      hideLoading();
-      openSelectionModal(data);
+      loading.classList.add('hidden');
+      openSelectionStep(data);
     } catch (error) {
       hideLoading();
       alert(error.message);
     }
   });
 
-  modalSearch.addEventListener('click', async function () {
+  selectionSearch.addEventListener('click', async function () {
     const selected = Array.from(
       optionList.querySelectorAll('input[type="checkbox"]:checked')
     ).map(input => input.value);
     if (!selected.length) {
+      selectionError.textContent = '문장을 하나 이상 선택해주세요.';
       selectionError.classList.remove('hidden');
       return;
     }
 
-    closeModal();
+    const searchPeriod = getSearchPeriod(preparedMode);
+    if (!searchPeriod.start || (searchPeriod.end && searchPeriod.start > searchPeriod.end)) {
+      selectionError.textContent = '인증일자 검색 기간을 올바르게 입력해주세요.';
+      selectionError.classList.remove('hidden');
+      return;
+    }
+
     showLoading(
       '유사 제품 검색 중...',
       selected.length > 1
@@ -261,6 +279,8 @@ document.addEventListener('DOMContentLoaded', function () {
       formData.append('action', 'search');
       formData.append('inputMode', preparedMode);
       formData.append('selectedSummaries', JSON.stringify(selected));
+      formData.append('searchStartDate', searchPeriod.start);
+      formData.append('searchEndDate', searchPeriod.end);
       const data = await postFormData(formData);
       renderSimilarResults(data, summaryContent, resultsContent);
       sessionStorage.setItem(SIMILAR_RESULT_STORAGE_KEY, JSON.stringify(data));
@@ -271,14 +291,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   });
 
-  modalClose.addEventListener('click', closeModal);
-  modalCancel.addEventListener('click', closeModal);
-  modal.querySelector('.summary-modal-backdrop').addEventListener('click', closeModal);
-  document.addEventListener('keydown', event => {
-    if (event.key === 'Escape' && !modal.classList.contains('hidden')) {
-      closeModal();
-    }
-  });
+  selectionCancel.addEventListener('click', closeSelectionStep);
 });
 
 document.addEventListener('DOMContentLoaded', function () {

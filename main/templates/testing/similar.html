@@ -5,11 +5,11 @@
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
-<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}?v=5"/>
+<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}?v=6"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 <script src="{% static 'scripts/testing/similar_Listener.js' %}" defer></script>
-<script src="{% static 'scripts/testing/similar_submit.js' %}?v=7" defer></script>
-<script src="{% static 'scripts/testing/similar_sorting.js' %}" defer></script>
+<script src="{% static 'scripts/testing/similar_submit.js' %}?v=8" defer></script>
+<script src="{% static 'scripts/testing/similar_sorting.js' %}?v=2" defer></script>
 <script src="{% static 'scripts/testing/similar_ecm.js' %}" defer></script>
 <script src="{% static 'scripts/sidebar_toggle.js' %}?v=1" defer></script>
 {% endblock %}
@@ -63,6 +63,19 @@
                             </div>
                             
                             <div class="content-spacer"></div>
+                            <div class="search-period">
+                                <div class="search-period-title">
+                                    <i class="far fa-calendar-alt"></i> 인증일자 검색 기간
+                                </div>
+                                <label>
+                                    <span>시작일</span>
+                                    <input type="date" id="autoSearchStartDate" value="2017-01-01">
+                                </label>
+                                <label>
+                                    <span>종료일 <small>(미지정 시 현재)</small></span>
+                                    <input type="date" id="autoSearchEndDate">
+                                </label>
+                            </div>
                             <button class="action-button">유사 제품 조회</button>
                         </div>
                         
@@ -72,7 +85,20 @@
                             
                             <!-- textarea에 name 속성 추가 -->
                             <textarea class="text-area" id="manualInput" name="manualInput" placeholder="유사도 검색에 사용할 요약 문장을 입력하세요..."></textarea>
-                            
+
+                            <div class="search-period">
+                                <div class="search-period-title">
+                                    <i class="far fa-calendar-alt"></i> 인증일자 검색 기간
+                                </div>
+                                <label>
+                                    <span>시작일</span>
+                                    <input type="date" id="manualSearchStartDate" value="2017-01-01">
+                                </label>
+                                <label>
+                                    <span>종료일 <small>(미지정 시 현재)</small></span>
+                                    <input type="date" id="manualSearchEndDate">
+                                </label>
+                            </div>
                             <button class="action-button">유사 제품 조회</button>
                         </div>
                     </div>
@@ -91,13 +117,38 @@
                 <div class="loading-text">분석 중...</div>
                 <div class="loading-description">업로드한 파일을 분석하고 유사 제품을 검색하고 있습니다.</div>
             </div>
-            <div class="results-container">
+            <section class="summary-step hidden" id="summarySelectionStep" aria-labelledby="summaryStepTitle">
+                <div class="summary-step-header">
+                    <div>
+                        <span class="summary-step-badge">검색 2단계</span>
+                        <h2 id="summaryStepTitle">유사도 판단 문장 선택</h2>
+                        <p>검색에 사용할 문장을 하나 이상 선택하세요. 여러 문장을 선택하면 유사도 평균으로 종합 순위를 계산합니다.</p>
+                    </div>
+                </div>
+                <div class="summary-option-list" id="summaryOptionList"></div>
+                <div class="summary-selection-error hidden" id="summarySelectionError">문장을 하나 이상 선택해주세요.</div>
+                <div class="summary-step-actions">
+                    <button type="button" class="summary-step-cancel" id="summaryStepCancel">검색 조건으로 돌아가기</button>
+                    <button type="button" class="summary-step-search" id="summaryStepSearch">
+                        선택 문장으로 검색
+                    </button>
+                </div>
+            </section>
+            <div class="results-container" id="resultsContainer">
                 <div class="results-header" id="resultsHeader">
                     <div class="results-title">유사 제품 분석 결과</div>
 
                     <div class="results-controls">
-                        <div class="sort" id="sortByDateBtn" style="cursor:pointer;">날짜순</div>
-                        <div class="sort" id="sortBySimilarityBtn" style="cursor:pointer;">유사도순</div>
+                        <button type="button" class="sort-button" id="sortByDateBtn">
+                            <i class="far fa-calendar-alt"></i>
+                            <span>날짜순</span>
+                            <i class="fas fa-sort sort-direction" aria-hidden="true"></i>
+                        </button>
+                        <button type="button" class="sort-button" id="sortBySimilarityBtn">
+                            <i class="fas fa-chart-line"></i>
+                            <span>유사도순</span>
+                            <i class="fas fa-sort sort-direction" aria-hidden="true"></i>
+                        </button>
                     </div>
                 </div>
                 <!-- 입력 요약 영역 -->
@@ -148,7 +199,7 @@
                         <div class="product-tags">
                             <p>인증일자</p>
                             <p>시험번호</p>
-                            <p>WD</p>
+                            <p>WD</p><span class="product-tag wd-tag">WD 값</span>
                             <p>시험기간</p>
                             <p>시험원</p>
                         </div>
@@ -157,29 +208,6 @@
             </div>
         </div>
         </main>
-    </div>
-</div>
-
-<div class="summary-modal hidden" id="summarySelectionModal" role="dialog" aria-modal="true" aria-labelledby="summaryModalTitle">
-    <div class="summary-modal-backdrop"></div>
-    <div class="summary-modal-panel">
-        <div class="summary-modal-header">
-            <div>
-                <h2 id="summaryModalTitle">유사도 판단 문장 선택</h2>
-                <p>검색에 사용할 문장을 하나 이상 선택하세요. 여러 문장을 선택하면 유사도 평균으로 종합 순위를 계산합니다.</p>
-            </div>
-            <button type="button" class="summary-modal-close" id="summaryModalClose" aria-label="팝업 닫기">
-                <i class="fas fa-times"></i>
-            </button>
-        </div>
-        <div class="summary-option-list" id="summaryOptionList"></div>
-        <div class="summary-selection-error hidden" id="summarySelectionError">문장을 하나 이상 선택해주세요.</div>
-        <div class="summary-modal-actions">
-            <button type="button" class="summary-modal-cancel" id="summaryModalCancel">취소</button>
-            <button type="button" class="summary-modal-search" id="summaryModalSearch">
-                선택 문장으로 검색
-            </button>
-        </div>
     </div>
 </div>
 

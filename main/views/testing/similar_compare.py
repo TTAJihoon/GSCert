@@ -1,3 +1,6 @@
+import re
+from datetime import date
+
 import numpy as np
 from pathlib import Path
 from threading import Lock
@@ -95,6 +98,17 @@ def select_data_from_db(indices):
     ]
 
 
+def _parse_cert_date(value):
+    text = str(value or "").strip()
+    match = re.search(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})", text)
+    if not match:
+        return None
+    try:
+        return date(*(int(part) for part in match.groups()))
+    except ValueError:
+        return None
+
+
 def compare_from_index(text, k=30):
     # 1) 인덱스 + 모델 로드
     index = _get_index()
@@ -130,7 +144,12 @@ def compare_from_index(text, k=30):
     return tables_in_rank, similarities
 
 
-def compare_multiple_from_index(texts, k=30):
+def compare_multiple_from_index(
+    texts,
+    k=30,
+    cert_date_from=None,
+    cert_date_to=None,
+):
     """여러 검색 문장의 제품별 FAISS 유사도를 평균 내어 상위 후보를 반환한다."""
     normalized_texts = [
         str(text or "").strip()
@@ -173,7 +192,7 @@ def compare_multiple_from_index(texts, k=30):
         ),
         key=lambda item: item[1],
         reverse=True,
-    )[:k]
+    )
 
     ranked_labels = [label for label, _, _ in ranked]
     tables_unsorted = select_data_from_db(ranked_labels)
@@ -184,10 +203,17 @@ def compare_multiple_from_index(texts, k=30):
         source_row = id_to_table.get(label)
         if not source_row:
             continue
+        cert_date = _parse_cert_date(source_row.get("인증일자"))
+        if cert_date_from and (not cert_date or cert_date < cert_date_from):
+            continue
+        if cert_date_to and (not cert_date or cert_date > cert_date_to):
+            continue
         row = dict(source_row)
         row["similarity"] = average_score
         row["faiss_similarity"] = average_score
         row["faiss_scores"] = per_query_scores
         rows.append(row)
+        if len(rows) >= k:
+            break
 
     return rows, [row["similarity"] for row in rows]

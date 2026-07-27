@@ -11,6 +11,7 @@ from openpyxl import load_workbook
 import os
 import re
 import json
+from datetime import date
 from main.request_logging import set_request_log_context
 from main.utils.gemini_gemma import GemmaConfigError, GemmaGenerationError
 from .similar_GPT import (
@@ -276,6 +277,19 @@ def _parse_selected_summaries(request):
     return selected
 
 
+def _parse_search_period(request):
+    raw_start = request.POST.get("searchStartDate", "").strip() or "2017-01-01"
+    raw_end = request.POST.get("searchEndDate", "").strip()
+    try:
+        start_date = date.fromisoformat(raw_start)
+        end_date = date.fromisoformat(raw_end) if raw_end else None
+    except ValueError:
+        return None
+    if end_date and start_date > end_date:
+        return None
+    return start_date, end_date
+
+
 def _search_selected_summaries(request):
     selected_summaries = _parse_selected_summaries(request)
     if not selected_summaries:
@@ -283,6 +297,14 @@ def _search_selected_summaries(request):
             {"response": "유사도를 판단할 문장을 1개 이상 선택해주세요."},
             status=400,
         )
+
+    search_period = _parse_search_period(request)
+    if not search_period:
+        return JsonResponse(
+            {"response": "인증일자 검색 기간을 올바르게 입력해주세요."},
+            status=400,
+        )
+    cert_date_from, cert_date_to = search_period
 
     set_request_log_context(
         request,
@@ -295,6 +317,8 @@ def _search_selected_summaries(request):
         faiss_result, _ = compare_multiple_from_index(
             selected_summaries,
             k=30,
+            cert_date_from=cert_date_from,
+            cert_date_to=cert_date_to,
         )
     except SimilarSearchDependencyError as exc:
         return JsonResponse({"response": str(exc)}, status=503)
@@ -323,6 +347,10 @@ def _search_selected_summaries(request):
             "response": compare_result,
             "similarities": similarity_list,
             "rerank_error": rerank_error,
+            "search_period": {
+                "start": cert_date_from.isoformat(),
+                "end": cert_date_to.isoformat() if cert_date_to else "",
+            },
         }
     )
 

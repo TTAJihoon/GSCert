@@ -1,65 +1,64 @@
 document.addEventListener('DOMContentLoaded', () => {
   const resultsContent = document.getElementById('resultsContent');
   const btnDate = document.getElementById('sortByDateBtn');
-  const btnSim = document.getElementById('sortBySimilarityBtn');
+  const btnSimilarity = document.getElementById('sortBySimilarityBtn');
+  let dateDescending = true;
+  let similarityDescending = true;
 
-  // 정렬 상태 토글 저장용
-  let dateAsc = true;
-  let simAsc = true;
-
-  // 날짜 문자열을 Date 객체로 변환하는 함수 (시작일자 기준)
-  function parseStartDate(productElem) {
-    const pTags = productElem.querySelectorAll('.product-tags > p');
-    let startDateStr = null;
-
-    for (const p of pTags) {
-      if (p.textContent.trim() === '인증일자') {
-        if (p.nextElementSibling && p.nextElementSibling.textContent) {
-          startDateStr = p.nextElementSibling.textContent.trim();
-        }
-        break;
-      }
+  function parseCertificationDate(productElement) {
+    const labels = productElement.querySelectorAll('.product-tags > p');
+    for (const label of labels) {
+      if (label.textContent.trim() !== '인증일자') continue;
+      const value = label.nextElementSibling?.textContent?.trim();
+      if (!value) return new Date(0);
+      return new Date(value.replace(/\./g, '-'));
     }
-
-    if (!startDateStr) {
-      return new Date(0);  // 기본값 (1970-01-01)
-    }
-
-    return new Date(startDateStr);
+    return new Date(0);
   }
 
-
-  // 유사도 숫자 가져오는 함수 (%. 숫자만)
-  function parseSimilarity(productElem) {
-    const simText = productElem.querySelector('.similarity-score').textContent.trim(); // 예: "유사도 78.23%"
-    const match = simText.match(/([\d.]+)%/);
+  function parseSimilarity(productElement) {
+    const text = productElement.querySelector('.similarity-score')?.textContent || '';
+    const match = text.match(/([\d.]+)%/);
     return match ? parseFloat(match[1]) : 0;
   }
 
-  // 정렬 후 다시 DOM에 붙이기
   function sortProducts(compareFn) {
     const products = Array.from(resultsContent.querySelectorAll('.similar-product'));
     products.sort(compareFn);
-    products.forEach(p => resultsContent.appendChild(p));
+    products.forEach(product => resultsContent.appendChild(product));
   }
 
-  // 날짜 정렬 버튼 클릭 이벤트
+  function setActiveButton(activeButton, descending) {
+    for (const button of [btnDate, btnSimilarity]) {
+      const icon = button.querySelector('.sort-direction');
+      const isActive = button === activeButton;
+      button.classList.toggle('active', isActive);
+      button.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+      icon.className = `fas ${isActive ? (descending ? 'fa-sort-down' : 'fa-sort-up') : 'fa-sort'} sort-direction`;
+    }
+  }
+
   btnDate.addEventListener('click', () => {
+    const descending = dateDescending;
     sortProducts((a, b) => {
-      const dateA = parseStartDate(a);
-      const dateB = parseStartDate(b);
-      return dateAsc ? dateA - dateB : dateB - dateA;
+      const dateA = parseCertificationDate(a);
+      const dateB = parseCertificationDate(b);
+      return descending ? dateB - dateA : dateA - dateB;
     });
-    dateAsc = !dateAsc;  // 토글
+    setActiveButton(btnDate, descending);
+    dateDescending = !dateDescending;
   });
 
-  // 유사도 정렬 버튼 클릭 이벤트
-  btnSim.addEventListener('click', () => {
+  btnSimilarity.addEventListener('click', () => {
+    const descending = similarityDescending;
     sortProducts((a, b) => {
-      const simA = parseSimilarity(a);
-      const simB = parseSimilarity(b);
-      return simAsc ? simA - simB : simB - simA;
+      const similarityA = parseSimilarity(a);
+      const similarityB = parseSimilarity(b);
+      return descending
+        ? similarityB - similarityA
+        : similarityA - similarityB;
     });
-    simAsc = !simAsc;  // 토글
+    setActiveButton(btnSimilarity, descending);
+    similarityDescending = !similarityDescending;
   });
 });
