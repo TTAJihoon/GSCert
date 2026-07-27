@@ -4006,7 +4006,11 @@ def _convert_doc_via_soffice(doc_bytes, soffice):
         out_path = os.path.join(tmpdir, "input.docx")
         if not os.path.exists(out_path):
             stderr = (proc.stderr or b"").decode("utf-8", "replace")[:200]
-            raise DownloadReviewInspectionError(f".doc → .docx 변환 실패: {stderr}")
+            raise DownloadReviewInspectionError(
+                f".doc → .docx 변환 실패: {stderr} "
+                "(LibreOffice 변환 시 프로필이 격리되지 않아 발생할 수 있는 문제입니다. "
+                "동일 파일에서 반복되면 서버의 LibreOffice 사용자 프로필 초기화가 필요합니다.)"
+            )
         with open(out_path, "rb") as handle:
             return handle.read()
     finally:
