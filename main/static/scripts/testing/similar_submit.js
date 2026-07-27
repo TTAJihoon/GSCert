@@ -119,6 +119,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const resultsContainer = document.getElementById('resultsContainer');
   const selectionStep = document.getElementById('summarySelectionStep');
   const optionList = document.getElementById('summaryOptionList');
+  const analysisReport = document.getElementById('analysisReport');
+  const analysisMetrics = document.getElementById('analysisMetrics');
   const selectionError = document.getElementById('summarySelectionError');
   const selectionCancel = document.getElementById('summaryStepCancel');
   const selectionSearch = document.getElementById('summaryStepSearch');
@@ -174,6 +176,28 @@ document.addEventListener('DOMContentLoaded', function () {
     return data;
   }
 
+  function delay(milliseconds) {
+    return new Promise(resolve => window.setTimeout(resolve, milliseconds));
+  }
+
+  async function waitForAnalysis(jobId) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < 30 * 60 * 1000) {
+      const statusForm = new FormData();
+      statusForm.append('action', 'status');
+      statusForm.append('jobId', jobId);
+      const status = await postFormData(statusForm);
+      loadingText.textContent = `문서 분석 중... ${status.progress || 0}%`;
+      loadingDescription.textContent = status.progress_message || '제품 자료를 분석하고 있습니다.';
+      if (status.status === 'completed') return status;
+      if (status.status === 'failed') {
+        throw new Error(status.response || '문서 분석에 실패했습니다.');
+      }
+      await delay(1200);
+    }
+    throw new Error('문서 분석 시간이 30분을 초과했습니다. 파일 크기와 형식을 확인해주세요.');
+  }
+
   function closeSelectionStep() {
     selectionStep.classList.add('hidden');
     resultsContainer.classList.remove('hidden');
@@ -183,6 +207,54 @@ document.addEventListener('DOMContentLoaded', function () {
   function openSelectionStep(data) {
     const defaults = new Set(data.default_selected_ids || []);
     preparedMode = data.mode || '';
+    const fileReports = Array.isArray(data.file_reports) ? data.file_reports : [];
+    const coverage = data.coverage || null;
+    if (preparedMode === 'file' && coverage) {
+      const metricItems = [
+        ['파싱 문자', coverage.extracted_chars],
+        ['전송 토큰', coverage.llm_input_tokens],
+        ['응답 토큰', coverage.llm_output_tokens]
+      ];
+      analysisMetrics.innerHTML = metricItems.map(([label, value]) => `
+        <div class="analysis-metric">
+          <span>${label}</span>
+          <strong>${Number(value || 0).toLocaleString()}</strong>
+        </div>
+      `).join('');
+      analysisMetrics.classList.remove('hidden');
+    } else {
+      analysisMetrics.innerHTML = '';
+      analysisMetrics.classList.add('hidden');
+    }
+    if (preparedMode === 'file' && (fileReports.length || coverage)) {
+      const parsedCount = fileReports.filter(item => item.status === 'parsed').length;
+      const failedCount = fileReports.length - parsedCount;
+      const warnings = fileReports.flatMap(item => item.warnings || []);
+      if (coverage?.truncated) {
+        warnings.push('전체 텍스트는 추출했지만 토큰 안전 한도에 맞춰 관련도와 파일별 범위를 고려한 일부 블록을 LLM에 전달했습니다.');
+      }
+      analysisReport.innerHTML = `
+        <div class="analysis-report-summary">
+          <strong>${fileReports.length}개 파일 중 ${parsedCount}개 분석 완료</strong>
+          ${failedCount ? `<span class="analysis-report-failed">${failedCount}개 실패</span>` : ''}
+          ${coverage ? `<span>텍스트 블록 ${Number(coverage.selected_units || 0).toLocaleString()}개 반영</span>` : ''}
+        </div>
+        ${fileReports.map(item => `
+          <div class="analysis-file-status ${item.status === 'failed' ? 'failed' : ''}">
+            <i class="fas ${item.status === 'failed' ? 'fa-exclamation-circle' : 'fa-check-circle'}"></i>
+            <span>${escapeHtml(item.name)}</span>
+            <small>${item.status === 'failed'
+              ? escapeHtml(item.error || '분석 실패')
+              : `${Number(item.units || 0).toLocaleString()}개 블록`}</small>
+          </div>
+        `).join('')}
+        ${warnings.length ? `<div class="analysis-warnings">${warnings.map(escapeHtml).join('<br>')}</div>` : ''}
+      `;
+      analysisReport.classList.remove('hidden');
+    } else {
+      analysisReport.innerHTML = '';
+      analysisReport.classList.add('hidden');
+    }
     optionList.innerHTML = (data.options || []).map((option, index) => {
       const checked = defaults.has(option.id) ? ' checked' : '';
       const label = option.is_original
@@ -214,7 +286,10 @@ document.addEventListener('DOMContentLoaded', function () {
   form.addEventListener('submit', async function (event) {
     event.preventDefault();
     const isAutoTab = contentManual.classList.contains('hidden');
-    if (isAutoTab && !fileInput.files.length) {
+    const queuedFiles = typeof window.getSimilarUploadFiles === 'function'
+      ? window.getSimilarUploadFiles()
+      : Array.from(fileInput.files);
+    if (isAutoTab && !queuedFiles.length) {
       alert('파일을 먼저 업로드해주세요.');
       return;
     }
@@ -232,16 +307,20 @@ document.addEventListener('DOMContentLoaded', function () {
 
     try {
       const formData = new FormData();
-      formData.append('action', 'prepare');
       if (isAutoTab) {
+        formData.append('action', 'prepare_async');
         formData.append('fileType', 'functionList');
-        formData.append('file', fileInput.files[0]);
+        queuedFiles.forEach(file => formData.append('file', file));
         formData.append('manualInput', '');
       } else {
+        formData.append('action', 'prepare');
         formData.append('fileType', 'manual');
         formData.append('manualInput', manualInput.value.trim());
       }
-      const data = await postFormData(formData);
+      let data = await postFormData(formData);
+      if (isAutoTab && data.job_id) {
+        data = await waitForAnalysis(data.job_id);
+      }
       loading.classList.add('hidden');
       openSelectionStep(data);
     } catch (error) {

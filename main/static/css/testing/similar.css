@@ -174,6 +174,12 @@ select {
   border-radius: 4px;
   background-color: #f8fafc;
   border: 1px solid #e5e7eb;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.file-item + .file-item {
+  border-top: 1px solid #e5e7eb;
 }
 
 .file-item {
@@ -191,6 +197,19 @@ select {
   overflow: hidden;
   text-overflow: ellipsis;
   max-width: 220px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.file-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-name small {
+  color: #94a3b8;
+  flex: 0 0 auto;
 }
 
 .remove-file {
@@ -199,6 +218,8 @@ select {
   padding: 4px;
   border-radius: 50%;
   transition: all 0.2s ease;
+  border: 0;
+  background: transparent;
 }
 
 .remove-file:hover {
@@ -294,6 +315,102 @@ select {
   color: #64748b;
   text-align: center;
   margin-top: 8px;
+}
+
+.upload-format-message {
+  font-size: 11px;
+  color: #94a3b8 !important;
+}
+
+.analysis-report {
+  margin: 14px 0;
+  padding: 12px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.analysis-metrics {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-self: flex-start;
+}
+
+.analysis-metric {
+  min-width: 82px;
+  padding: 7px 9px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+  text-align: right;
+}
+
+.analysis-metric span {
+  display: block;
+  margin-bottom: 2px;
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.analysis-metric strong {
+  color: #1e3a8a;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 900px) {
+  .summary-step-header {
+    flex-direction: column;
+  }
+
+  .analysis-metrics {
+    margin-top: 10px;
+  }
+}
+
+.analysis-report-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-bottom: 8px;
+  color: #334155;
+  font-size: 13px;
+}
+
+.analysis-report-failed,
+.analysis-file-status.failed {
+  color: #b91c1c;
+}
+
+.analysis-file-status {
+  display: grid;
+  grid-template-columns: 16px minmax(120px, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  padding: 3px 0;
+  color: #166534;
+  font-size: 12px;
+}
+
+.analysis-file-status span {
+  color: #334155;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.analysis-file-status small {
+  color: inherit;
+}
+
+.analysis-warnings {
+  margin-top: 8px;
+  color: #92400e;
+  font-size: 12px;
 }
 
 .results-container {

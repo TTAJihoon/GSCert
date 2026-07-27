@@ -4110,13 +4110,13 @@ class SimilarSummarySelectionTests(SimpleTestCase):
         self.assertEqual(payload["similarities"], [0.8])
         self.assertEqual(
             payload["search_period"],
-            {"start": "2017-01-01", "end": ""},
+            {"start": "2017-01-01", "end": date.today().isoformat()},
         )
         compare_multiple.assert_called_once_with(
             selected,
             k=30,
             cert_date_from=date(2017, 1, 1),
-            cert_date_to=None,
+            cert_date_to=date.today(),
         )
         rerank_multiple.assert_called_once_with(selected, faiss_rows)
 
@@ -4254,3 +4254,149 @@ class SimilarSummarySelectionTests(SimpleTestCase):
         self.assertEqual(rows[0]["llm_score"], 80)
         self.assertEqual(rows[0]["similarity"], 0.8)
         self.assertNotIn("faiss_scores", rows[0])
+
+
+class SimilarDocumentParserTests(SimpleTestCase):
+    def test_supported_extensions_match_product_requirement(self):
+        from main.views.testing.similar_documents import SUPPORTED_EXTENSIONS
+
+        self.assertEqual(
+            SUPPORTED_EXTENSIONS,
+            {
+                ".pdf",
+                ".doc",
+                ".docx",
+                ".xls",
+                ".xlsx",
+                ".hwp",
+                ".hwpx",
+                ".ppt",
+                ".pptx",
+                ".md",
+            },
+        )
+
+    def test_markdown_parser_preserves_section_locator(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from main.views.testing.similar_documents import parse_document
+
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "product.md"
+            path.write_text(
+                "# 제품 목적\n문서를 관리합니다.\n## 핵심 기능\n검색을 제공합니다.",
+                encoding="utf-8",
+            )
+            parsed = parse_document(path)
+
+        self.assertEqual(len(parsed.units), 2)
+        self.assertIn("SECTION:1|제품 목적", parsed.units[0].source_id)
+        self.assertIn("문서를 관리합니다.", parsed.units[0].text)
+        self.assertIn("검색을 제공합니다.", parsed.units[1].text)
+
+    def test_extension_content_mismatch_is_rejected(self):
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+        from main.views.testing.similar_documents import (
+            DocumentParseError,
+            parse_document,
+        )
+
+        with TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "fake.pdf"
+            path.write_text("not a pdf", encoding="utf-8")
+            with self.assertRaises(DocumentParseError):
+                parse_document(path)
+
+    @patch("main.views.testing.similar_analysis._final_options")
+    @patch("main.views.testing.similar_analysis.count_gemma_tokens")
+    def test_analysis_deduplicates_units_and_reports_coverage(
+        self,
+        count_tokens,
+        final_options,
+    ):
+        from main.views.testing.similar_analysis import analyze_documents
+        from main.views.testing.similar_documents import (
+            DocumentUnit,
+            ParsedDocument,
+        )
+
+        count_tokens.return_value = 20
+        final_options.return_value = ("원본", ["추천1", "추천2", "추천3", "추천4"])
+        duplicate_text = "문서를 관리하고 검색하는 제품입니다."
+        documents = [
+            ParsedDocument(
+                "a.md",
+                ".md",
+                [
+                    DocumentUnit("A:1", "a.md", "section", "1", duplicate_text),
+                    DocumentUnit("A:2", "a.md", "section", "2", "사용자 권한을 관리합니다."),
+                ],
+            ),
+            ParsedDocument(
+                "b.md",
+                ".md",
+                [DocumentUnit("B:1", "b.md", "section", "1", duplicate_text)],
+            ),
+        ]
+
+        original, recommendations, coverage = analyze_documents(documents)
+
+        self.assertEqual(original, "원본")
+        self.assertEqual(len(recommendations), 4)
+        self.assertEqual(coverage.extracted_units, 3)
+        self.assertEqual(coverage.selected_units, 2)
+        self.assertEqual(coverage.duplicate_units, 1)
+        self.assertEqual(coverage.strategy, "direct")
+
+    @patch("main.views.testing.similar_analysis.generate_gemma_text")
+    @patch("main.views.testing.similar_analysis.count_gemma_tokens")
+    def test_analysis_reports_actual_llm_input_and_output_tokens(
+        self,
+        count_tokens,
+        generate_text,
+    ):
+        from main.views.testing.similar_analysis import analyze_documents
+        from main.views.testing.similar_documents import (
+            DocumentUnit,
+            ParsedDocument,
+        )
+
+        count_tokens.return_value = 30
+
+        def fake_generate(prompt, usage_callback=None, **kwargs):
+            usage_callback(
+                {
+                    "input_tokens": 123,
+                    "output_tokens": 45,
+                    "total_tokens": 168,
+                }
+            )
+            return json.dumps(
+                {
+                    "original_summary": "문서를 관리하고 검색하는 문서 관리 솔루션",
+                    "recommendations": [
+                        "문서 등록과 검색을 제공하는 문서 관리 시스템",
+                        "권한별 문서 공유를 제공하는 문서 관리 프로그램",
+                        "문서 버전 관리를 제공하는 기업용 관리 솔루션",
+                        "감사 이력과 검색을 제공하는 문서 관리 소프트웨어",
+                    ],
+                },
+                ensure_ascii=False,
+            )
+
+        generate_text.side_effect = fake_generate
+        source_text = "기업 문서의 등록, 검색, 공유와 권한 관리를 제공합니다."
+        document = ParsedDocument(
+            "product.md",
+            ".md",
+            [DocumentUnit("F:1", "product.md", "section", "1", source_text)],
+        )
+
+        _, _, coverage = analyze_documents([document])
+
+        self.assertEqual(coverage.extracted_chars, len(source_text))
+        self.assertEqual(coverage.llm_input_tokens, 123)
+        self.assertEqual(coverage.llm_output_tokens, 45)
+        self.assertEqual(coverage.llm_total_tokens, 168)
+        self.assertEqual(coverage.llm_call_count, 1)

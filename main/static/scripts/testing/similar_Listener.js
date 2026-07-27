@@ -1,5 +1,21 @@
 document.addEventListener('DOMContentLoaded', function () {
-  const allowedExt = ["docx", "xlsx", "pdf", "pptx", "txt"];
+  const allowedExt = ["pdf", "doc", "docx", "xls", "xlsx", "hwp", "hwpx", "ppt", "pptx", "md"];
+  const koreaTodayParts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date());
+  const koreaTodayByType = Object.fromEntries(
+    koreaTodayParts.map(part => [part.type, part.value])
+  );
+  const koreaToday = `${koreaTodayByType.year}-${koreaTodayByType.month}-${koreaTodayByType.day}`;
+  for (const inputId of ['autoSearchEndDate', 'manualSearchEndDate']) {
+    const dateInput = document.getElementById(inputId);
+    if (dateInput && !dateInput.value) {
+      dateInput.value = koreaToday;
+    }
+  }
   // 탭 전환 기능
   const tabAuto = document.getElementById('tab-auto');
   const tabManual = document.getElementById('tab-manual');
@@ -28,22 +44,15 @@ document.addEventListener('DOMContentLoaded', function () {
   const dropArea = document.getElementById('dropArea');
   const fileInput = document.getElementById('fileInput');
   const fileList = document.getElementById('fileList');
-  const fileName = document.getElementById('fileName');
-  const removeFile = document.getElementById('removeFile');
+  let selectedFiles = [];
+  window.getSimilarUploadFiles = () => selectedFiles.slice();
   
   dropArea.addEventListener('click', () => {
     fileInput.click();
   });
   
   fileInput.addEventListener('change', (e) => {
-    if (e.target.files.length > 0) {
-      if (allowedExt.includes(e.target.files[0].name.split('.').at(-1).toLowerCase())) {
-        uploadFile(e.target.files[0]);
-      } else {
-        alert('docx, xlsx, pdf, pptx, txt 확장자만 업로드 가능합니다.');
-        return;
-      }
-    }
+    addFiles(Array.from(e.target.files || []));
   });
   
   dropArea.addEventListener('dragover', (e) => {
@@ -59,28 +68,59 @@ document.addEventListener('DOMContentLoaded', function () {
     e.preventDefault();
     dropArea.classList.remove('active');
     
-    if (e.dataTransfer.files.length > 0) {
-      if (allowedExt.includes(e.dataTransfer.files[0].name.split('.').at(-1).toLowerCase())) {
-        uploadFile(e.dataTransfer.files[0]);
-        const dt = new DataTransfer();
-        dt.items.add(e.dataTransfer.files[0]);
-        fileInput.files = dt.files;
-      } else {
-        alert('docx, xlsx, pdf, pptx, txt 확장자만 업로드 가능합니다.');
-        return;
-      }
+    addFiles(Array.from(e.dataTransfer.files || []));
+  });
+
+  fileList.addEventListener('click', (event) => {
+    const removeButton = event.target.closest('[data-remove-file-index]');
+    if (!removeButton) return;
+    selectedFiles.splice(Number(removeButton.dataset.removeFileIndex), 1);
+    renderFiles();
+  });
+
+  function addFiles(files) {
+    const invalid = files.filter(file => {
+      const extension = file.name.split('.').at(-1)?.toLowerCase();
+      return !allowedExt.includes(extension);
+    });
+    if (invalid.length) {
+      alert(`지원하지 않는 파일이 있습니다: ${invalid.map(file => file.name).join(', ')}\n지원 형식: pdf, doc(x), xls(x), hwp(x), ppt(x), md`);
     }
-  });
-  
-  removeFile.addEventListener('click', () => {
-    fileList.classList.add('hidden');
-    dropArea.classList.remove('hidden');
+    const known = new Set(
+      selectedFiles.map(file => `${file.name}|${file.size}|${file.lastModified}`)
+    );
+    files.filter(file => !invalid.includes(file)).forEach(file => {
+      const key = `${file.name}|${file.size}|${file.lastModified}`;
+      if (!known.has(key)) {
+        selectedFiles.push(file);
+        known.add(key);
+      }
+    });
+    // 업로드 요청은 selectedFiles를 직접 사용한다. FileList는 브라우저별로
+    // 생성/수정 지원이 달라 DataTransfer에 의존하지 않는다.
     fileInput.value = '';
-  });
-  
-  function uploadFile(file) {
-    fileName.textContent = file.name;
-    fileList.classList.remove('hidden');
-    dropArea.classList.add('hidden');
+    renderFiles();
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+    return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+  }
+
+  function renderFiles() {
+    fileList.innerHTML = selectedFiles.map((file, index) => `
+      <div class="file-item">
+        <div class="file-name" title="${escapeAttr(file.name)}">
+          <i class="far fa-file-alt"></i>
+          <span>${escapeHtml(file.name)}</span>
+          <small>${formatSize(file.size)}</small>
+        </div>
+        <button type="button" class="remove-file" data-remove-file-index="${index}" aria-label="${escapeAttr(file.name)} 제거">
+          <i class="fas fa-times"></i>
+        </button>
+      </div>
+    `).join('');
+    fileList.classList.toggle('hidden', selectedFiles.length === 0);
+    dropArea.classList.remove('hidden');
   }
 });

@@ -5,10 +5,10 @@
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
-<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}?v=6"/>
+<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}?v=8"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
-<script src="{% static 'scripts/testing/similar_Listener.js' %}" defer></script>
-<script src="{% static 'scripts/testing/similar_submit.js' %}?v=8" defer></script>
+<script src="{% static 'scripts/testing/similar_Listener.js' %}?v=4" defer></script>
+<script src="{% static 'scripts/testing/similar_submit.js' %}?v=11" defer></script>
 <script src="{% static 'scripts/testing/similar_sorting.js' %}?v=2" defer></script>
 <script src="{% static 'scripts/testing/similar_ecm.js' %}" defer></script>
 <script src="{% static 'scripts/sidebar_toggle.js' %}?v=1" defer></script>
@@ -44,23 +44,18 @@
                             </div>
                             
                             <!-- 파일 업로드에 name 속성 추가 -->
-                            <input class="file-input" id="fileInput" type="file" name="file"/>
+                            <input class="file-input" id="fileInput" type="file" name="file" multiple
+                              accept=".pdf,.doc,.docx,.xls,.xlsx,.hwp,.hwpx,.ppt,.pptx,.md"/>
                             
                             <div class="drop-area" id="dropArea">
                                 <i class="fas fa-cloud-upload-alt text-3xl text-blue-400"></i>
                                 <p>파일을 이곳에 드래그하거나</p>
                                 <p><span class="text-blue-500 font-medium">클릭</span>하여 업로드하세요</p>
-                                <p class="upload-limit-message">* 최대 1개 파일만 업로드할 수 있습니다</p>
+                                <p class="upload-limit-message">동일한 제품의 자료를 여러 개 선택할 수 있습니다</p>
+                                <p class="upload-format-message">pdf, doc(x), xls(x), hwp(x), ppt(x), md</p>
                             </div>
                             
-                            <div class="file-list hidden" id="fileList">
-                                <div class="file-item">
-                                    <div class="file-name" id="fileName"></div>
-                                    <div class="remove-file" id="removeFile">
-                                        <i class="fas fa-times"></i>
-                                    </div>
-                                </div>
-                            </div>
+                            <div class="file-list hidden" id="fileList"></div>
                             
                             <div class="content-spacer"></div>
                             <div class="search-period">
@@ -72,7 +67,7 @@
                                     <input type="date" id="autoSearchStartDate" value="2017-01-01">
                                 </label>
                                 <label>
-                                    <span>종료일 <small>(미지정 시 현재)</small></span>
+                                    <span>종료일 <small>(기본: 오늘)</small></span>
                                     <input type="date" id="autoSearchEndDate">
                                 </label>
                             </div>
@@ -95,7 +90,7 @@
                                     <input type="date" id="manualSearchStartDate" value="2017-01-01">
                                 </label>
                                 <label>
-                                    <span>종료일 <small>(미지정 시 현재)</small></span>
+                                    <span>종료일 <small>(기본: 오늘)</small></span>
                                     <input type="date" id="manualSearchEndDate">
                                 </label>
                             </div>
@@ -124,7 +119,9 @@
                         <h2 id="summaryStepTitle">유사도 판단 문장 선택</h2>
                         <p>검색에 사용할 문장을 하나 이상 선택하세요. 여러 문장을 선택하면 유사도 평균으로 종합 순위를 계산합니다.</p>
                     </div>
+                    <div class="analysis-metrics hidden" id="analysisMetrics" aria-label="문서 분석 사용량"></div>
                 </div>
+                <div class="analysis-report hidden" id="analysisReport"></div>
                 <div class="summary-option-list" id="summaryOptionList"></div>
                 <div class="summary-selection-error hidden" id="summarySelectionError">문장을 하나 이상 선택해주세요.</div>
                 <div class="summary-step-actions">

@@ -87,6 +87,7 @@ def generate_gemma_text(
     fallback_models=None,
     retries: int = DEFAULT_RETRY_COUNT,
     retry_delay: float = DEFAULT_RETRY_DELAY_SECONDS,
+    usage_callback=None,
 ) -> str:
     _load_env()
     api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
@@ -113,6 +114,27 @@ def generate_gemma_text(
                 result_text = (getattr(response, "text", "") or "").strip()
                 if not result_text:
                     raise GemmaGenerationError("Gemma 응답이 비어 있습니다.")
+                if usage_callback:
+                    usage = getattr(response, "usage_metadata", None)
+                    try:
+                        usage_callback(
+                            {
+                                "input_tokens": int(
+                                    getattr(usage, "prompt_token_count", 0) or 0
+                                ),
+                                "output_tokens": int(
+                                    getattr(usage, "candidates_token_count", 0) or 0
+                                ),
+                                "total_tokens": int(
+                                    getattr(usage, "total_token_count", 0) or 0
+                                ),
+                                "model": candidate_model,
+                            }
+                        )
+                    except Exception:
+                        # Usage telemetry must never turn a successful generation
+                        # into a user-visible failure.
+                        pass
                 return result_text
             except Exception as exc:
                 last_error = exc
@@ -130,6 +152,32 @@ def generate_gemma_text(
             _format_generation_error(last_error, candidate_model)
         ) from last_error
     raise GemmaGenerationError("Gemma 응답 생성에 실패했습니다.")
+
+
+def count_gemma_tokens(
+    contents: str,
+    *,
+    model: str | None = None,
+) -> int:
+    """Return the provider token count, falling back to a conservative estimate."""
+    text = str(contents or "")
+    if not text:
+        return 0
+    _load_env()
+    api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY")
+    selected_model = model or os.environ.get("GEMINI_MODEL") or DEFAULT_GEMMA_MODEL
+    if not api_key:
+        return max(1, (len(text) + 3) // 4)
+    try:
+        from google import genai
+
+        response = genai.Client(api_key=api_key).models.count_tokens(
+            model=selected_model,
+            contents=text,
+        )
+        return int(getattr(response, "total_tokens", 0) or 0)
+    except Exception:
+        return max(1, (len(text) + 3) // 4)
 
 
 def generate_gemma_text_stream(

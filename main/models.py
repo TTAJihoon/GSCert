@@ -14,6 +14,34 @@ class Job(models.Model):
         ordering = ["-created_at"]
 
 
+class SimilarAnalysisJob(models.Model):
+    class Status(models.TextChoices):
+        QUEUED = "queued", "Queued"
+        RUNNING = "running", "Running"
+        COMPLETED = "completed", "Completed"
+        FAILED = "failed", "Failed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    status = models.CharField(
+        max_length=20,
+        choices=Status.choices,
+        default=Status.QUEUED,
+        db_index=True,
+    )
+    progress = models.PositiveSmallIntegerField(default=0)
+    progress_message = models.CharField(max_length=500, blank=True)
+    input_files_json = models.JSONField(default=list, blank=True)
+    result_json = models.JSONField(default=dict, blank=True)
+    error_message = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(blank=True, null=True)
+    completed_at = models.DateTimeField(blank=True, null=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+
 class DownloadReviewJobStatus(models.TextChoices):
     SCHEDULED = "scheduled", "Scheduled"
     QUEUED = "queued", "Queued"

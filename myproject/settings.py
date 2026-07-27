@@ -111,12 +111,24 @@ WORKFLOW_DATABASE_ALIAS = 'workflow'
 # 작업 실행 상태(잡/프로젝트/결과/로그/락)는 각 서버의 로컬 SQLite(workflow.db)에 둔다.
 # 점검규칙(downloadreviewrule)은 두 서버가 공유하도록 주 서버의 PostgreSQL(reference)로 이전.
 WORKFLOW_MODEL_NAMES = {
+    'similaranalysisjob',
     'downloadreviewjob',
     'downloadreviewproject',
     'downloadreviewruleresult',
     'downloadreviewlog',
     'downloadreviewlock',
 }
+
+# 유사제품 자동 입력은 UI에서 파일 개수를 제한하지 않는다. 이 값은 브라우저 사용
+# 제한이 아니라 비정상 multipart 요청으로부터 서버를 보호하는 숨은 안전 한도다.
+DATA_UPLOAD_MAX_NUMBER_FILES = int(os.environ.get("SIMILAR_UPLOAD_ABUSE_FILE_LIMIT", "500"))
+SIMILAR_ANALYSIS_DIR = BASE_DIR / "main" / "data" / "similar_analysis_jobs"
+SIMILAR_UPLOAD_TOTAL_LIMIT_BYTES = int(
+    os.environ.get("SIMILAR_UPLOAD_TOTAL_LIMIT_BYTES", str(200 * 1024 * 1024))
+)
+SIMILAR_UPLOAD_FILE_LIMIT_BYTES = int(
+    os.environ.get("SIMILAR_UPLOAD_FILE_LIMIT_BYTES", str(100 * 1024 * 1024))
+)
 
 REFERENCE_DATABASE_ALIAS = 'reference'
 # downloadreviewrule: 점검규칙을 주 서버 PostgreSQL에 단일 저장 → 194/241 공유, Django admin에서 수정.

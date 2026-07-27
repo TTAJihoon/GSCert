@@ -1,19 +1,29 @@
-# Django에서 필요한 import
-from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from tempfile import NamedTemporaryFile
-
-# 텍스트 추출 관련 라이브러리
-import fitz  # PyMuPDF
-from pptx import Presentation
-from openpyxl import load_workbook
-
+import json
+import logging
 import os
 import re
-import json
-from datetime import date
+import shutil
+import uuid
+from datetime import date, timedelta
+
+from django.conf import settings
+from django.http import JsonResponse
+from django.utils import timezone
+from django.views.decorators.csrf import csrf_exempt
+
+from main.models import SimilarAnalysisJob
 from main.request_logging import set_request_log_context
 from main.utils.gemini_gemma import GemmaConfigError, GemmaGenerationError
+from .similar_analysis import analyze_documents
+from .similar_documents import (
+    DocumentParseError,
+    SUPPORTED_EXTENSIONS,
+    parse_document,
+    save_uploaded_file,
+)
 from .similar_GPT import (
     generate_recommended_summaries,
     rerank_multiple_similar_candidates,
@@ -24,124 +34,258 @@ from .similar_compare import (
     compare_multiple_from_index,
 )
 
-
-# PDF 파일에서 텍스트 추출
-def parse_pdf(file_path):
-    text = ""
-    with fitz.open(file_path) as doc:
-        for page in doc:
-            text += page.get_text("text")
-    return text
+logger = logging.getLogger(__name__)
 
 
-# DOCX 파일에서 텍스트 추출
-def parse_docx(file_path):
-    from zipfile import ZipFile
-    from lxml import etree, objectify
-
-    WORD_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-    with ZipFile(file_path) as z:
-        xml = z.read("word/document.xml")
-    root = objectify.fromstring(xml)
-
-    text_blocks = []
-
-    for child in root.body.iterchildren():
-        tag = child.tag.replace(WORD_NS, "")
-        if tag == "p":  # 문단
-            p_text = " ".join(t.text for t in child.iter(tag=WORD_NS+"t") if t.text)
-            if p_text.strip():
-                text_blocks.append(p_text.strip())
-        elif tag == "tbl":  # 표
-            for row in child.iter(tag=WORD_NS+"tr"):
-                cells = []
-                for tc in row.iter(tag=WORD_NS+"tc"):
-                    tcPr = tc.tcPr if hasattr(tc, 'tcPr') else None
-                    vmerge = None
-                    if tcPr is not None and hasattr(tcPr, 'vMerge'):
-                        vmerge = getattr(tcPr.vMerge, "val", None)
-                        if vmerge is None or vmerge == "continue":
-                            continue
-                    cell_text = " ".join(t.text for t in tc.iter(tag=WORD_NS+"t") if t.text)
-                    if cell_text.strip():
-                        cells.append(cell_text.strip())
-                if cells:
-                    text_blocks.append(" | ".join(cells))
-
-    txt = "\n".join(text_blocks)
-    txt = re.sub(r'(\n\s*){2,}', '\n', txt)
-    return txt.strip()
-
-
-# PPTX 파일에서 텍스트 추출
-def parse_pptx(file_path):
-    prs = Presentation(file_path)
-    text = []
-    for slide in prs.slides:
-        for shape in slide.shapes:
-            if shape.has_text_frame:
-                text.extend([p.text for p in shape.text_frame.paragraphs])
-    return "\n".join(text)
-
-
-def parse_xlsx(file_path):
-    workbook = load_workbook(file_path, read_only=True, data_only=True)
-    text_rows = []
-    try:
-        for worksheet in workbook.worksheets:
-            for row in worksheet.iter_rows(values_only=True):
-                values = [
-                    str(value).strip()
-                    for value in row
-                    if value is not None and str(value).strip()
-                ]
-                if values:
-                    text_rows.append(" | ".join(values))
-    finally:
-        workbook.close()
-    return "\n".join(text_rows)
-
-
-def parse_txt(file_path):
-    for encoding in ("utf-8-sig", "cp949", "utf-8"):
-        try:
-            with open(file_path, "r", encoding=encoding) as text_file:
-                return text_file.read()
-        except UnicodeDecodeError:
-            continue
-    return None
-
-
-# 파일 파싱 (Django UploadedFile 객체 활용)
 def parse_file(uploaded_file):
-    with NamedTemporaryFile(delete=False, suffix='.' + uploaded_file.name.split('.')[-1]) as tmp:
+    """Backward-compatible single-file helper used by existing callers/tests."""
+    suffix = Path(uploaded_file.name).suffix
+    with NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
         for chunk in uploaded_file.chunks():
             tmp.write(chunk)
         tmp_path = tmp.name
-
     try:
-        ext = uploaded_file.name.split('.')[-1].lower()
-        if ext == 'pdf':
-            return parse_pdf(tmp_path)
-        elif ext == 'docx':
-            return parse_docx(tmp_path)
-        elif ext == 'pptx':
-            return parse_pptx(tmp_path)
-        elif ext == 'xlsx':
-            return parse_xlsx(tmp_path)
-        elif ext == 'txt':
-            return parse_txt(tmp_path)
-        else:
-            return None
+        return parse_document(tmp_path, uploaded_file.name).text
+    except DocumentParseError:
+        return None
     finally:
         os.unlink(tmp_path)
 
 
 # 텍스트 전처리 (공백 및 줄바꿈 제거)
 def preprocess_text(text):
-    text = re.sub(r'\n+', '\n', text)
-    text = re.sub(r'\s+', ' ', text)
-    return text.strip()
+    return " ".join(str(text or "").split())
+
+
+_analysis_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="similar-analysis")
+
+
+def _safe_upload_name(index, original_name):
+    extension = Path(original_name).suffix.lower()
+    return f"{index:04d}-{uuid.uuid4().hex}{extension}"
+
+
+def _analysis_job_payload(job):
+    payload = {
+        "job_id": str(job.id),
+        "status": job.status,
+        "progress": job.progress,
+        "progress_message": job.progress_message,
+    }
+    if job.status == SimilarAnalysisJob.Status.COMPLETED:
+        payload.update(job.result_json)
+    elif job.status == SimilarAnalysisJob.Status.FAILED:
+        payload["response"] = job.error_message or "문서 분석에 실패했습니다."
+    return payload
+
+
+def _run_analysis_job(job_id):
+    job = SimilarAnalysisJob.objects.get(id=job_id)
+    job.status = SimilarAnalysisJob.Status.RUNNING
+    job.started_at = timezone.now()
+    job.progress = 2
+    job.progress_message = "업로드 파일을 확인하고 있습니다."
+    job.save(update_fields=["status", "started_at", "progress", "progress_message", "updated_at"])
+
+    documents = []
+    file_reports = []
+    try:
+        files = job.input_files_json
+        for index, item in enumerate(files, 1):
+            progress = 5 + int((index - 1) / max(len(files), 1) * 65)
+            job.progress = progress
+            job.progress_message = f"{item['name']} 텍스트를 추출하고 있습니다."
+            job.save(update_fields=["progress", "progress_message", "updated_at"])
+            try:
+                parsed = parse_document(item["path"], item["name"])
+                documents.append(parsed)
+                file_reports.append(
+                    {
+                        "name": item["name"],
+                        "status": "parsed",
+                        "units": len(parsed.units),
+                        "warnings": parsed.warnings,
+                        "stats": parsed.stats,
+                    }
+                )
+            except Exception as exc:
+                if not isinstance(exc, DocumentParseError):
+                    logger.exception("Similar document parse failed: %s", item["name"])
+                safe_error = (
+                    str(exc)
+                    if isinstance(exc, DocumentParseError)
+                    else "파일 내용을 읽지 못했습니다."
+                )
+                file_reports.append(
+                    {"name": item["name"], "status": "failed", "error": safe_error}
+                )
+
+        if not documents:
+            details = "; ".join(
+                f"{item['name']}: {item.get('error', '분석 실패')}" for item in file_reports
+            )
+            raise DocumentParseError(f"분석 가능한 파일이 없습니다. {details}")
+
+        job.progress = 75
+        job.progress_message = "추출 내용을 정리하고 제품 개요를 생성하고 있습니다."
+        job.save(update_fields=["progress", "progress_message", "updated_at"])
+        original, recommendations, coverage = analyze_documents(
+            documents,
+            failed_files=len(files) - len(documents),
+            max_chars=60,
+        )
+        options = [
+            {
+                "id": f"recommendation-{index + 1}",
+                "text": summary,
+                "is_original": False,
+            }
+            for index, summary in enumerate(recommendations)
+        ]
+        options.append({"id": "original", "text": original, "is_original": True})
+        job.result_json = {
+            "mode": "file",
+            "options": options,
+            "default_selected_ids": ["recommendation-1"],
+            "file_reports": file_reports,
+            "coverage": coverage.to_dict(),
+        }
+        job.status = SimilarAnalysisJob.Status.COMPLETED
+        job.progress = 100
+        job.progress_message = "제품 개요 후보 생성이 완료되었습니다."
+        job.completed_at = timezone.now()
+        job.save(
+            update_fields=[
+                "result_json",
+                "status",
+                "progress",
+                "progress_message",
+                "completed_at",
+                "updated_at",
+            ]
+        )
+    except Exception as exc:
+        logger.exception("Similar analysis job failed: %s", job_id)
+        job.status = SimilarAnalysisJob.Status.FAILED
+        if isinstance(
+            exc,
+            (DocumentParseError, GemmaConfigError, GemmaGenerationError),
+        ):
+            job.error_message = str(exc)
+        else:
+            job.error_message = "문서 분석 중 예기치 않은 오류가 발생했습니다."
+        job.progress_message = "문서 분석에 실패했습니다."
+        job.completed_at = timezone.now()
+        job.save(
+            update_fields=[
+                "status",
+                "error_message",
+                "progress_message",
+                "completed_at",
+                "updated_at",
+            ]
+        )
+    finally:
+        shutil.rmtree(Path(settings.SIMILAR_ANALYSIS_DIR) / str(job.id), ignore_errors=True)
+
+
+def _start_file_analysis(request):
+    uploaded_files = request.FILES.getlist("file")
+    if not uploaded_files:
+        return JsonResponse({"response": "분석할 파일을 하나 이상 선택해주세요."}, status=400)
+    total_size = sum(file.size for file in uploaded_files)
+    if total_size > settings.SIMILAR_UPLOAD_TOTAL_LIMIT_BYTES:
+        return JsonResponse(
+            {"response": "한 번에 업로드할 수 있는 전체 용량은 200MB입니다."},
+            status=413,
+        )
+    invalid = [
+        file.name
+        for file in uploaded_files
+        if Path(file.name).suffix.lower() not in SUPPORTED_EXTENSIONS
+    ]
+    oversized = [
+        file.name
+        for file in uploaded_files
+        if file.size > settings.SIMILAR_UPLOAD_FILE_LIMIT_BYTES
+    ]
+    if invalid:
+        return JsonResponse(
+            {
+                "response": (
+                    "지원 형식은 pdf, doc(x), xls(x), hwp(x), ppt(x), md입니다: "
+                    + ", ".join(invalid[:10])
+                )
+            },
+            status=400,
+        )
+    if oversized:
+        return JsonResponse(
+            {"response": "파일당 최대 용량은 100MB입니다: " + ", ".join(oversized[:10])},
+            status=413,
+        )
+
+    SimilarAnalysisJob.objects.filter(
+        completed_at__lt=timezone.now() - timedelta(days=7)
+    ).delete()
+    job = SimilarAnalysisJob.objects.create(
+        progress_message="업로드 파일을 저장하고 있습니다."
+    )
+    job_dir = Path(settings.SIMILAR_ANALYSIS_DIR) / str(job.id)
+    stored = []
+    try:
+        for index, uploaded_file in enumerate(uploaded_files, 1):
+            destination = job_dir / _safe_upload_name(index, uploaded_file.name)
+            save_uploaded_file(uploaded_file, destination)
+            stored.append(
+                {"name": Path(uploaded_file.name).name, "path": str(destination)}
+            )
+        job.input_files_json = stored
+        job.save(update_fields=["input_files_json", "updated_at"])
+    except Exception:
+        shutil.rmtree(job_dir, ignore_errors=True)
+        job.delete()
+        raise
+
+    set_request_log_context(
+        request,
+        feature="similar",
+        input_mode="file",
+        file_type=request.POST.get("fileType", ""),
+        file_name=", ".join(item["name"] for item in stored),
+    )
+    _analysis_executor.submit(_run_analysis_job, job.id)
+    return JsonResponse(_analysis_job_payload(job), status=202)
+
+
+def _get_analysis_status(request):
+    job_id = request.POST.get("jobId", "").strip()
+    try:
+        job = SimilarAnalysisJob.objects.get(id=job_id)
+    except (ValueError, SimilarAnalysisJob.DoesNotExist):
+        return JsonResponse({"response": "분석 작업을 찾을 수 없습니다."}, status=404)
+    if (
+        job.status in {SimilarAnalysisJob.Status.QUEUED, SimilarAnalysisJob.Status.RUNNING}
+        and job.updated_at < timezone.now() - timedelta(minutes=30)
+    ):
+        job.status = SimilarAnalysisJob.Status.FAILED
+        job.error_message = "서버 재시작 또는 제한 시간 초과로 분석 작업이 중단되었습니다."
+        job.progress_message = "문서 분석 작업이 중단되었습니다."
+        job.completed_at = timezone.now()
+        job.save(
+            update_fields=[
+                "status",
+                "error_message",
+                "progress_message",
+                "completed_at",
+                "updated_at",
+            ]
+        )
+        shutil.rmtree(
+            Path(settings.SIMILAR_ANALYSIS_DIR) / str(job.id),
+            ignore_errors=True,
+        )
+    return JsonResponse(_analysis_job_payload(job))
 
 
 def _prepare_summary_options(request):
@@ -279,13 +423,13 @@ def _parse_selected_summaries(request):
 
 def _parse_search_period(request):
     raw_start = request.POST.get("searchStartDate", "").strip() or "2017-01-01"
-    raw_end = request.POST.get("searchEndDate", "").strip()
+    raw_end = request.POST.get("searchEndDate", "").strip() or date.today().isoformat()
     try:
         start_date = date.fromisoformat(raw_start)
-        end_date = date.fromisoformat(raw_end) if raw_end else None
+        end_date = date.fromisoformat(raw_end)
     except ValueError:
         return None
-    if end_date and start_date > end_date:
+    if start_date > end_date:
         return None
     return start_date, end_date
 
@@ -349,7 +493,7 @@ def _search_selected_summaries(request):
             "rerank_error": rerank_error,
             "search_period": {
                 "start": cert_date_from.isoformat(),
-                "end": cert_date_to.isoformat() if cert_date_to else "",
+                "end": cert_date_to.isoformat(),
             },
         }
     )
@@ -365,6 +509,10 @@ def summarize_document(request):
         )
 
     action = request.POST.get("action", "prepare")
+    if action == "prepare_async":
+        return _start_file_analysis(request)
+    if action == "status":
+        return _get_analysis_status(request)
     if action == "prepare":
         return _prepare_summary_options(request)
     if action == "search":
