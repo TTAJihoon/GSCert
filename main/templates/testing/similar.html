@@ -5,10 +5,10 @@
 {% block head %}
 <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet"/>
 <link href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css" rel="stylesheet"/>
-<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}?v=9"/>
+<link rel="stylesheet" href="{% static 'css/testing/similar.css' %}?v=10"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 <script src="{% static 'scripts/testing/similar_Listener.js' %}?v=4" defer></script>
-<script src="{% static 'scripts/testing/similar_submit.js' %}?v=12" defer></script>
+<script src="{% static 'scripts/testing/similar_submit.js' %}?v=13" defer></script>
 <script src="{% static 'scripts/testing/similar_sorting.js' %}?v=2" defer></script>
 <script src="{% static 'scripts/testing/similar_ecm.js' %}" defer></script>
 <script src="{% static 'scripts/sidebar_toggle.js' %}?v=1" defer></script>
@@ -121,23 +121,29 @@
                     </div>
                     <div class="analysis-metrics hidden" id="analysisMetrics" aria-label="문서 분석 사용량"></div>
                 </div>
-                <div class="analysis-report hidden" id="analysisReport"></div>
-                <div class="summary-option-list" id="summaryOptionList"></div>
-                <div class="summary-custom-entry">
-                    <label for="customSummaryInput">검색 문장 직접 추가</label>
-                    <div class="summary-custom-row">
-                        <input type="text" id="customSummaryInput" maxlength="60"
-                          placeholder="추가로 검색할 제품 개요 문장을 입력하세요">
-                        <button type="button" id="customSummaryAdd">추가</button>
+                <div class="summary-step-scroll">
+                    <div class="analysis-report hidden" id="analysisReport"></div>
+                    <div class="summary-option-list" id="summaryOptionList"></div>
+                    <div class="summary-custom-entry">
+                        <label for="customSummaryInput">검색 문장 직접 추가</label>
+                        <div class="summary-custom-row">
+                            <input type="text" id="customSummaryInput" maxlength="100"
+                              aria-describedby="customSummaryHelp customSummaryCount"
+                              placeholder="추가로 검색할 제품 개요 문장을 입력하세요">
+                            <button type="button" id="customSummaryAdd">추가</button>
+                        </div>
+                        <div class="summary-custom-meta">
+                            <small id="customSummaryHelp">추가한 문장은 자동으로 체크됩니다.</small>
+                            <span id="customSummaryCount" aria-live="polite">0 / 100자</span>
+                        </div>
                     </div>
-                    <small>추가한 문장은 자동으로 체크되며 최대 60자까지 입력할 수 있습니다.</small>
+                    <section class="key-features-panel hidden" id="keyFeaturesPanel"
+                      aria-labelledby="keyFeaturesTitle">
+                        <h3 id="keyFeaturesTitle">문서에서 정리한 주요 기능</h3>
+                        <ul id="keyFeaturesList"></ul>
+                    </section>
+                    <div class="summary-selection-error hidden" id="summarySelectionError">문장을 하나 이상 선택해주세요.</div>
                 </div>
-                <section class="key-features-panel hidden" id="keyFeaturesPanel"
-                  aria-labelledby="keyFeaturesTitle">
-                    <h3 id="keyFeaturesTitle">문서에서 정리한 주요 기능</h3>
-                    <ul id="keyFeaturesList"></ul>
-                </section>
-                <div class="summary-selection-error hidden" id="summarySelectionError">문장을 하나 이상 선택해주세요.</div>
                 <div class="summary-step-actions">
                     <button type="button" class="summary-step-cancel" id="summaryStepCancel">검색 조건으로 돌아가기</button>
                     <button type="button" class="summary-step-search" id="summaryStepSearch">

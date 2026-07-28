@@ -134,6 +134,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const analysisMetrics = document.getElementById('analysisMetrics');
   const customSummaryInput = document.getElementById('customSummaryInput');
   const customSummaryAdd = document.getElementById('customSummaryAdd');
+  const customSummaryCount = document.getElementById('customSummaryCount');
   const keyFeaturesPanel = document.getElementById('keyFeaturesPanel');
   const keyFeaturesList = document.getElementById('keyFeaturesList');
   const selectionError = document.getElementById('summarySelectionError');
@@ -227,6 +228,7 @@ document.addEventListener('DOMContentLoaded', function () {
       ? data.key_features.filter(Boolean)
       : [];
     customSummaryInput.value = '';
+    updateCustomSummaryCount();
     const fileReports = Array.isArray(data.file_reports) ? data.file_reports : [];
     const coverage = data.coverage || null;
     if (preparedMode === 'file' && coverage) {
@@ -312,8 +314,8 @@ document.addEventListener('DOMContentLoaded', function () {
       customSummaryInput.focus();
       return;
     }
-    if (text.length > 60) {
-      selectionError.textContent = '추가 검색 문장은 60자 이내로 입력해주세요.';
+    if (text.length > 100) {
+      selectionError.textContent = '추가 검색 문장은 100자 이내로 입력해주세요.';
       selectionError.classList.remove('hidden');
       return;
     }
@@ -341,17 +343,27 @@ document.addEventListener('DOMContentLoaded', function () {
       </label>
     `);
     customSummaryInput.value = '';
+    updateCustomSummaryCount();
     selectionError.classList.add('hidden');
     customSummaryInput.focus();
   }
 
   customSummaryAdd.addEventListener('click', addCustomSummary);
+  function updateCustomSummaryCount() {
+    const length = Array.from(customSummaryInput.value).length;
+    customSummaryCount.textContent = `${length} / 100자`;
+    customSummaryCount.classList.toggle('near-limit', length >= 80 && length < 100);
+    customSummaryCount.classList.toggle('at-limit', length >= 100);
+  }
+
+  customSummaryInput.addEventListener('input', updateCustomSummaryCount);
   customSummaryInput.addEventListener('keydown', event => {
     if (event.key === 'Enter') {
       event.preventDefault();
       addCustomSummary();
     }
   });
+  updateCustomSummaryCount();
 
   function getSearchPeriod(mode) {
     const prefix = mode === 'file' ? 'auto' : 'manual';
