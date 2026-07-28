@@ -28,6 +28,17 @@ function renderSimilarResults(data, summaryContent, resultsContent) {
       text => `<li>${escapeHtml(text)}</li>`
     ).join('')}</ol>`
     : escapeHtml(summaries[0] || '-');
+  const keyFeatures = Array.isArray(data.key_features)
+    ? data.key_features.filter(Boolean)
+    : [];
+  const keyFeaturesHtml = keyFeatures.length
+    ? `
+      <div class="result-key-features">
+        <strong>문서 주요 기능</strong>
+        <ul>${keyFeatures.map(feature => `<li>${escapeHtml(feature)}</li>`).join('')}</ul>
+      </div>
+    `
+    : '';
   const rerankWarning = data.rerank_error
     ? `<div class="rerank-warning">${escapeHtml(data.rerank_error)}</div>`
     : '';
@@ -35,7 +46,7 @@ function renderSimilarResults(data, summaryContent, resultsContent) {
   const periodHtml = period.start
     ? `<div class="search-period-summary">인증일자 ${escapeHtml(period.start)} ~ ${escapeHtml(period.end || '현재')}</div>`
     : '';
-  const summaryHtml = `${periodHtml}${summaryBody}${rerankWarning}`;
+  const summaryHtml = `${periodHtml}${summaryBody}${keyFeaturesHtml}${rerankWarning}`;
 
   const rows = Array.isArray(data.response) ? data.response : [];
   const resultHtml = rows.map(row => {
@@ -121,10 +132,15 @@ document.addEventListener('DOMContentLoaded', function () {
   const optionList = document.getElementById('summaryOptionList');
   const analysisReport = document.getElementById('analysisReport');
   const analysisMetrics = document.getElementById('analysisMetrics');
+  const customSummaryInput = document.getElementById('customSummaryInput');
+  const customSummaryAdd = document.getElementById('customSummaryAdd');
+  const keyFeaturesPanel = document.getElementById('keyFeaturesPanel');
+  const keyFeaturesList = document.getElementById('keyFeaturesList');
   const selectionError = document.getElementById('summarySelectionError');
   const selectionCancel = document.getElementById('summaryStepCancel');
   const selectionSearch = document.getElementById('summaryStepSearch');
   let preparedMode = '';
+  let preparedKeyFeatures = [];
 
   const savedResult = sessionStorage.getItem(SIMILAR_RESULT_STORAGE_KEY);
   if (savedResult) {
@@ -207,6 +223,10 @@ document.addEventListener('DOMContentLoaded', function () {
   function openSelectionStep(data) {
     const defaults = new Set(data.default_selected_ids || []);
     preparedMode = data.mode || '';
+    preparedKeyFeatures = Array.isArray(data.key_features)
+      ? data.key_features.filter(Boolean)
+      : [];
+    customSummaryInput.value = '';
     const fileReports = Array.isArray(data.file_reports) ? data.file_reports : [];
     const coverage = data.coverage || null;
     if (preparedMode === 'file' && coverage) {
@@ -270,10 +290,68 @@ document.addEventListener('DOMContentLoaded', function () {
         </label>
       `;
     }).join('');
+    if (preparedMode === 'file' && preparedKeyFeatures.length) {
+      keyFeaturesList.innerHTML = preparedKeyFeatures
+        .map(feature => `<li>${escapeHtml(feature)}</li>`)
+        .join('');
+      keyFeaturesPanel.classList.remove('hidden');
+    } else {
+      keyFeaturesList.innerHTML = '';
+      keyFeaturesPanel.classList.add('hidden');
+    }
     selectionError.classList.add('hidden');
     resultsContainer.classList.add('hidden');
     selectionStep.classList.remove('hidden');
   }
+
+  function addCustomSummary() {
+    const text = customSummaryInput.value.trim();
+    if (!text) {
+      selectionError.textContent = '추가할 검색 문장을 입력해주세요.';
+      selectionError.classList.remove('hidden');
+      customSummaryInput.focus();
+      return;
+    }
+    if (text.length > 60) {
+      selectionError.textContent = '추가 검색 문장은 60자 이내로 입력해주세요.';
+      selectionError.classList.remove('hidden');
+      return;
+    }
+    if (optionList.querySelectorAll('input[type="checkbox"]').length >= 20) {
+      selectionError.textContent = '검색 문장은 기본 항목을 포함해 최대 20개까지 등록할 수 있습니다.';
+      selectionError.classList.remove('hidden');
+      return;
+    }
+    const existing = Array.from(
+      optionList.querySelectorAll('input[type="checkbox"]')
+    ).some(input => input.value.trim() === text);
+    if (existing) {
+      selectionError.textContent = '이미 등록된 검색 문장입니다.';
+      selectionError.classList.remove('hidden');
+      return;
+    }
+    const customIndex = optionList.querySelectorAll('.summary-option-custom').length + 1;
+    optionList.insertAdjacentHTML('beforeend', `
+      <label class="summary-option summary-option-custom">
+        <input type="checkbox" value="${escapeAttr(text)}" checked>
+        <span class="summary-option-content">
+          <span class="summary-option-label">직접 추가 ${customIndex}</span>
+          <span class="summary-option-text">${escapeHtml(text)}</span>
+        </span>
+      </label>
+    `);
+    customSummaryInput.value = '';
+    selectionError.classList.add('hidden');
+    customSummaryInput.focus();
+  }
+
+  customSummaryAdd.addEventListener('click', addCustomSummary);
+  customSummaryInput.addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addCustomSummary();
+    }
+  });
 
   function getSearchPeriod(mode) {
     const prefix = mode === 'file' ? 'auto' : 'manual';
@@ -361,6 +439,7 @@ document.addEventListener('DOMContentLoaded', function () {
       formData.append('searchStartDate', searchPeriod.start);
       formData.append('searchEndDate', searchPeriod.end);
       const data = await postFormData(formData);
+      data.key_features = preparedKeyFeatures;
       renderSimilarResults(data, summaryContent, resultsContent);
       sessionStorage.setItem(SIMILAR_RESULT_STORAGE_KEY, JSON.stringify(data));
     } catch (error) {

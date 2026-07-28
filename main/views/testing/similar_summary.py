@@ -129,7 +129,7 @@ def _run_analysis_job(job_id):
         job.progress = 75
         job.progress_message = "추출 내용을 정리하고 제품 개요를 생성하고 있습니다."
         job.save(update_fields=["progress", "progress_message", "updated_at"])
-        original, recommendations, coverage = analyze_documents(
+        original, recommendations, key_features, coverage = analyze_documents(
             documents,
             failed_files=len(files) - len(documents),
             max_chars=60,
@@ -147,6 +147,7 @@ def _run_analysis_job(job_id):
             "mode": "file",
             "options": options,
             "default_selected_ids": ["recommendation-1"],
+            "key_features": key_features,
             "file_reports": file_reports,
             "coverage": coverage.to_dict(),
         }
@@ -416,7 +417,7 @@ def _parse_selected_summaries(request):
             return None
         selected.append(summary)
         seen.add(summary)
-    if not 1 <= len(selected) <= 6:
+    if not 1 <= len(selected) <= 20:
         return None
     return selected
 

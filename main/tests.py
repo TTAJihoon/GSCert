@@ -4029,6 +4029,36 @@ class SimilarSummarySelectionTests(SimpleTestCase):
             max_chars=60,
         )
 
+    @patch("main.views.testing.similar_GPT.generate_gemma_text")
+    def test_manual_recommendation_prompt_requests_semantic_synonyms(
+        self,
+        generate_text,
+    ):
+        from main.views.testing.similar_GPT import generate_recommended_summaries
+
+        generate_text.return_value = json.dumps(
+            {
+                "recommendations": [
+                    "기업 문서를 분류하고 찾아주는 자료 관리 솔루션",
+                    "업무 자료를 체계화하고 조회하는 콘텐츠 관리 시스템",
+                ]
+            },
+            ensure_ascii=False,
+        )
+
+        recommendations = generate_recommended_summaries(
+            "기업 문서를 관리하고 검색하는 문서 관리 시스템",
+            count=2,
+            max_chars=60,
+        )
+
+        prompt = generate_text.call_args.args[0]
+        self.assertEqual(len(recommendations), 2)
+        self.assertIn("동의어 또는 문맥상 같은 뜻의 대체어", prompt)
+        self.assertIn("단순한 어순 변경", prompt)
+        self.assertIn("내용 단어를 2개 이상", prompt)
+        self.assertIn("의미를 넓히거나 좁히", prompt)
+
     @patch("main.views.testing.similar_summary.generate_recommended_summaries")
     @patch("main.views.testing.similar_summary.run_gemini_gemma")
     @patch("main.views.testing.similar_summary.parse_file")
@@ -4135,6 +4165,33 @@ class SimilarSummarySelectionTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertIn("1개 이상", json.loads(response.content)["response"])
+
+    @patch("main.views.testing.similar_summary.rerank_multiple_similar_candidates")
+    @patch("main.views.testing.similar_summary.compare_multiple_from_index")
+    def test_search_accepts_default_and_custom_summary_sentences(
+        self,
+        compare_multiple,
+        rerank_multiple,
+    ):
+        from main.views.testing.similar_summary import summarize_document
+
+        selected = [f"검색 문장 {index}" for index in range(1, 9)]
+        compare_multiple.return_value = ([], [])
+        rerank_multiple.return_value = []
+        request = self.factory.post(
+            "/summarize_document/",
+            {
+                "action": "search",
+                "inputMode": "file",
+                "selectedSummaries": json.dumps(selected, ensure_ascii=False),
+            },
+        )
+
+        response = summarize_document(request)
+
+        self.assertEqual(response.status_code, 200)
+        compare_multiple.assert_called_once()
+        self.assertEqual(compare_multiple.call_args.args[0], selected)
 
     @patch("main.views.testing.similar_compare.select_data_from_db")
     @patch("main.views.testing.similar_compare._get_model")
@@ -4322,7 +4379,11 @@ class SimilarDocumentParserTests(SimpleTestCase):
         )
 
         count_tokens.return_value = 20
-        final_options.return_value = ("원본", ["추천1", "추천2", "추천3", "추천4"])
+        final_options.return_value = (
+            "원본",
+            ["추천1", "추천2", "추천3", "추천4"],
+            ["문서 검색", "사용자 권한 관리"],
+        )
         duplicate_text = "문서를 관리하고 검색하는 제품입니다."
         documents = [
             ParsedDocument(
@@ -4340,10 +4401,11 @@ class SimilarDocumentParserTests(SimpleTestCase):
             ),
         ]
 
-        original, recommendations, coverage = analyze_documents(documents)
+        original, recommendations, key_features, coverage = analyze_documents(documents)
 
         self.assertEqual(original, "원본")
         self.assertEqual(len(recommendations), 4)
+        self.assertEqual(key_features, ["문서 검색", "사용자 권한 관리"])
         self.assertEqual(coverage.extracted_units, 3)
         self.assertEqual(coverage.selected_units, 2)
         self.assertEqual(coverage.duplicate_units, 1)
@@ -4381,6 +4443,11 @@ class SimilarDocumentParserTests(SimpleTestCase):
                         "문서 버전 관리를 제공하는 기업용 관리 솔루션",
                         "감사 이력과 검색을 제공하는 문서 관리 소프트웨어",
                     ],
+                    "key_features": [
+                        "기업 문서 등록 및 검색",
+                        "사용자별 공유 권한 관리",
+                        "문서 변경 및 감사 이력 조회",
+                    ],
                 },
                 ensure_ascii=False,
             )
@@ -4393,10 +4460,59 @@ class SimilarDocumentParserTests(SimpleTestCase):
             [DocumentUnit("F:1", "product.md", "section", "1", source_text)],
         )
 
-        _, _, coverage = analyze_documents([document])
+        _, _, key_features, coverage = analyze_documents([document])
 
         self.assertEqual(coverage.extracted_chars, len(source_text))
         self.assertEqual(coverage.llm_input_tokens, 123)
         self.assertEqual(coverage.llm_output_tokens, 45)
         self.assertEqual(coverage.llm_total_tokens, 168)
         self.assertEqual(coverage.llm_call_count, 1)
+        self.assertEqual(len(key_features), 3)
+        prompt = generate_text.call_args.args[0]
+        self.assertIn("의미 보존형 추천 문장", prompt)
+        self.assertIn("동의어 또는", prompt)
+        self.assertIn("단순 어순 변경", prompt)
+        self.assertIn("내용 단어를", prompt)
+
+    @patch("main.views.testing.similar_analysis.generate_gemma_text")
+    def test_file_summary_retries_instead_of_cutting_long_sentences(
+        self,
+        generate_text,
+    ):
+        from main.views.testing.similar_analysis import _final_options
+
+        too_long = "가" * 61
+        valid_payload = {
+            "original_summary": "문서를 등록하고 검색하는 문서 관리 솔루션",
+            "recommendations": [
+                "업무 자료를 수집하고 조회하는 콘텐츠 관리 시스템",
+                "기업 기록을 보관하고 탐색하는 자료 운영 프로그램",
+                "사내 문서를 축적하고 찾아주는 정보 관리 소프트웨어",
+                "조직 자료를 저장하고 검색하도록 지원하는 관리 솔루션",
+            ],
+            "key_features": [
+                "문서 등록 및 전문 검색",
+                "사용자별 접근 권한 관리",
+            ],
+        }
+        generate_text.side_effect = [
+            json.dumps(
+                {
+                    "original_summary": too_long,
+                    "recommendations": valid_payload["recommendations"],
+                    "key_features": valid_payload["key_features"],
+                },
+                ensure_ascii=False,
+            ),
+            json.dumps(valid_payload, ensure_ascii=False),
+        ]
+
+        original, recommendations, key_features = _final_options("문서 관리 제품 자료")
+
+        self.assertEqual(generate_text.call_count, 2)
+        self.assertLessEqual(len(original), 60)
+        self.assertTrue(all(len(item) <= 60 for item in recommendations))
+        self.assertEqual(len(key_features), 2)
+        retry_prompt = generate_text.call_args.args[0]
+        self.assertIn("직전 응답", retry_prompt)
+        self.assertIn("문장 중간", generate_text.call_args_list[0].args[0])

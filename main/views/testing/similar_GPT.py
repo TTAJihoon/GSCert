@@ -67,14 +67,28 @@ def generate_recommended_summaries(source_text, count=5, max_chars=60):
     prompt = f"""
 너는 소프트웨어 제품 개요 작성 전문가다.
 
-아래 입력 내용과 의미가 유사하면서 표현과 강조 기능이 서로 다른 제품 개요 문장을 정확히 {count}개 작성하라.
+아래 입력 내용의 목적, 기능 범위, 대상은 그대로 유지하면서 표면 단어가 다른
+의미 보존형 제품 개요 문장을 정확히 {count}개 작성하라.
+
+이 문장들은 같은 의미를 표현하는 서로 다른 검색어를 확보해, 단어 한두 개 차이로
+유사 제품 검색에서 누락되는 경우를 줄이는 데 사용한다.
 
 작성 조건:
 1. 각 문장은 공백을 포함해 {max_chars}자 이내로 작성한다.
 2. 입력에 실제로 포함된 목적, 기능, 기술만 사용하고 새로운 사실을 만들지 않는다.
 3. 제품명과 제조사명은 제외한다.
 4. 각 문장은 단독으로 유사 제품 검색에 사용할 수 있는 완결된 한 문장이어야 한다.
-5. 서로 동일하거나 거의 같은 문장을 반복하지 않는다.
+5. 핵심 의미는 입력과 최대한 동일하게 유지하되, 바꿔도 의미가 달라지지 않는
+   일반 명사·동작어·기능 표현은 동의어 또는 문맥상 같은 뜻의 대체어로 적극 교체한다.
+6. 단순한 어순 변경, 조사·어미 변경, "시스템/솔루션/프로그램"만 교체하는 방식은 금지한다.
+7. 가능한 경우 각 추천 문장은 입력 대비 의미 있는 내용 단어를 2개 이상 다르게 사용한다.
+8. 여러 추천 문장이 동일한 동의어 조합을 반복하지 않도록 대체 표현을 분산한다.
+9. 기술 표준명, 고유 기술명, 약어, 부정·제한 표현처럼 바꾸면 의미가 달라지는
+   용어는 그대로 보존한다.
+10. 입력보다 의미를 넓히거나 좁히는 상위어·하위어로 임의 치환하지 않는다.
+11. 서로 동일하거나 거의 같은 문장을 반복하지 않는다.
+12. 반환 전에 각 문장의 글자 수를 직접 확인하고, {max_chars}자를 넘으면
+    핵심 의미를 유지한 채 완결된 문장으로 다시 압축한다. 문장 중간을 자르지 않는다.
 
 입력 내용:
 \"\"\"{normalized_source}\"\"\"
@@ -88,28 +102,42 @@ def generate_recommended_summaries(source_text, count=5, max_chars=60):
 """
 
     logger.debug("Gemini/Gemma recommendation request start")
-    result_text = generate_gemma_text(prompt)
-    parsed = extract_json_object(result_text)
-    raw_items = parsed.get("recommendations") if isinstance(parsed, dict) else None
-    if not isinstance(raw_items, list):
-        raise GemmaGenerationError("추천 문장 응답 JSON을 해석할 수 없습니다.")
+    for attempt in range(2):
+        request_prompt = prompt
+        if attempt:
+            request_prompt += f"""
 
-    recommendations = []
-    seen = set()
-    for item in raw_items:
-        text = _normalize_text(item)[:max_chars].strip()
-        if not text or text in seen or text == normalized_source:
+중요: 직전 응답에 {max_chars}자 초과, 불완전 문장, 중복 문장 중 하나가 있었다.
+이번에는 각 문장을 Python len 기준 공백 포함 {max_chars}자 이내로 완결해
+recommendations {count}개를 정확히 다시 반환하라.
+"""
+        result_text = generate_gemma_text(request_prompt)
+        parsed = extract_json_object(result_text)
+        raw_items = parsed.get("recommendations") if isinstance(parsed, dict) else None
+        if not isinstance(raw_items, list):
             continue
-        recommendations.append(text)
-        seen.add(text)
-        if len(recommendations) >= count:
-            break
 
-    if len(recommendations) != count:
-        raise GemmaGenerationError(
-            f"{max_chars}자 이내 추천 문장 {count}개를 생성하지 못했습니다."
-        )
-    return recommendations
+        recommendations = []
+        seen = set()
+        for item in raw_items:
+            text = _normalize_text(item)
+            if (
+                not text
+                or len(text) > max_chars
+                or text in seen
+                or text == normalized_source
+            ):
+                continue
+            recommendations.append(text)
+            seen.add(text)
+            if len(recommendations) >= count:
+                break
+        if len(recommendations) == count:
+            return recommendations
+
+    raise GemmaGenerationError(
+        f"완결된 {max_chars}자 이내 추천 문장 {count}개를 생성하지 못했습니다."
+    )
 
 
 def rerank_similar_candidates(query_text, candidates, top_n=30):

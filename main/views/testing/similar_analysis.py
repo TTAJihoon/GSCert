@@ -177,7 +177,9 @@ def _final_options(
 
 반환 항목:
 - original_summary: 자료 전체를 가장 충실하게 대표하는 제품 개요 1개
-- recommendations: 같은 핵심 목적과 기능을 유지하되 표현과 강조점만 달리한 추천 문장 4개
+- recommendations: original_summary와 의미는 최대한 동일하지만 검색에 쓰이는
+  표면 단어가 다른 의미 보존형 추천 문장 4개
+- key_features: 자료에서 확인되는 제품의 주요 기능을 간단히 정리한 문자열 배열
 
 규칙:
 1. 모든 문장은 공백 포함 {max_chars}자 이내의 완결된 한국어 한 문장이다.
@@ -185,40 +187,84 @@ def _final_options(
 3. 자료에 없는 기능이나 기술을 만들지 않는다.
 4. 제품명과 회사명은 제외한다.
 5. "~을 제공하는 ~솔루션/시스템/프로그램" 형태를 우선한다.
-6. 서로 중복되는 문장은 만들지 않는다.
-7. 설명이나 마크다운 없이 아래 JSON 객체만 반환한다.
+6. 먼저 original_summary를 작성한 뒤, recommendations는 그 문장의 목적,
+   기능 범위, 대상, 제약을 그대로 유지한 동의 문장으로 작성한다.
+7. 바꿔도 의미가 달라지지 않는 일반 명사·동작어·기능 표현은 동의어 또는
+   문맥상 같은 뜻의 대체어로 적극 교체한다.
+8. 단순 어순 변경, 조사·어미 변경, "시스템/솔루션/프로그램"만 교체하는 방식은 금지한다.
+9. 가능한 경우 각 추천 문장은 original_summary 대비 의미 있는 내용 단어를
+   2개 이상 다르게 사용하고, 네 문장 사이에서도 대체 단어 조합을 분산한다.
+10. 기술 표준명, 고유 기술명, 약어, 부정·제한 표현은 의미 보존을 위해 그대로 둔다.
+11. 원문보다 의미를 넓히거나 좁히는 상위어·하위어로 임의 치환하지 않는다.
+12. 서로 중복되는 문장은 만들지 않는다.
+13. 반환 전에 각 문장의 글자 수를 직접 확인하고, {max_chars}자를 넘으면
+    핵심 의미를 유지한 채 완결된 문장으로 다시 압축한다. 문장 중간을 자르지 않는다.
+14. key_features에는 자료에서 직접 확인되는 주요 기능만 1~8개 작성한다.
+15. key_features의 각 항목은 불릿 기호 없이 공백 포함 80자 이내로 작성하고,
+    서로 겹치는 기능은 하나로 합친다.
+16. 기능의 대상, 처리 동작, 프로토콜·DB·외부 연동처럼 자료에 명시된 구체적인
+    기술 범위는 짧게 보존하되 자료에 없는 기능은 추측하지 않는다.
+17. 설명이나 마크다운 없이 아래 JSON 객체만 반환한다.
 
-{{"original_summary":"문장","recommendations":["문장1","문장2","문장3","문장4"]}}
+{{"original_summary":"문장","recommendations":["문장1","문장2","문장3","문장4"],"key_features":["주요 기능 1","주요 기능 2"]}}
 
 자료:
 {context}
 """
-    parsed = extract_json_object(
-        generate_gemma_text(
-            prompt,
-            usage_callback=usage.add if usage else None,
-        )
-    )
-    if not isinstance(parsed, dict):
-        raise GemmaGenerationError("제품 개요 응답 JSON을 해석할 수 없습니다.")
-
     def clean(value):
-        return " ".join(str(value or "").split())[:max_chars].strip()
+        return " ".join(str(value or "").split()).strip()
 
-    original = clean(parsed.get("original_summary"))
-    raw_recommendations = parsed.get("recommendations")
-    if not original or not isinstance(raw_recommendations, list):
-        raise GemmaGenerationError("제품 개요 응답 항목이 올바르지 않습니다.")
-    recommendations = []
-    seen = {original}
-    for value in raw_recommendations:
-        item = clean(value)
-        if item and item not in seen:
-            recommendations.append(item)
-            seen.add(item)
-    if len(recommendations) != 4:
-        raise GemmaGenerationError("서로 다른 추천 제품 개요 4개를 생성하지 못했습니다.")
-    return original, recommendations
+    for attempt in range(2):
+        request_prompt = prompt
+        if attempt:
+            request_prompt += f"""
+
+중요: 직전 응답에 {max_chars}자 초과, 불완전 문장, 중복 문장 중 하나가 있었다.
+이번에는 original_summary와 recommendations의 각 문장을 Python len 기준
+공백 포함 {max_chars}자 이내의 완결된 문장으로 작성하고, key_features도
+각 80자 이내로 정확히 다시 반환하라.
+"""
+        parsed = extract_json_object(
+            generate_gemma_text(
+                request_prompt,
+                usage_callback=usage.add if usage else None,
+            )
+        )
+        if not isinstance(parsed, dict):
+            continue
+
+        original = clean(parsed.get("original_summary"))
+        raw_recommendations = parsed.get("recommendations")
+        raw_key_features = parsed.get("key_features")
+        if (
+            not original
+            or len(original) > max_chars
+            or not isinstance(raw_recommendations, list)
+            or not isinstance(raw_key_features, list)
+        ):
+            continue
+        recommendations = []
+        seen = {original}
+        for value in raw_recommendations:
+            item = clean(value)
+            if item and len(item) <= max_chars and item not in seen:
+                recommendations.append(item)
+                seen.add(item)
+        key_features = []
+        feature_seen = set()
+        for value in raw_key_features:
+            item = clean(value).lstrip("-•· ").strip()
+            if item and len(item) <= 80 and item not in feature_seen:
+                key_features.append(item)
+                feature_seen.add(item)
+            if len(key_features) >= 8:
+                break
+        if len(recommendations) == 4 and key_features:
+            return original, recommendations, key_features
+
+    raise GemmaGenerationError(
+        f"완결된 {max_chars}자 이내 제품 개요 5개와 주요 기능을 생성하지 못했습니다."
+    )
 
 
 def analyze_documents(
@@ -267,7 +313,7 @@ def analyze_documents(
             final_context = "\n\n".join(reduced_chunks)
             strategy = "map-tree-reduce"
 
-    original, recommendations = _final_options(
+    original, recommendations, key_features = _final_options(
         final_context,
         max_chars=max_chars,
         usage=usage,
@@ -290,7 +336,7 @@ def analyze_documents(
         truncated=truncated,
     )
     logger.info("Similar document analysis coverage: %s", coverage.to_dict())
-    return original, recommendations, coverage
+    return original, recommendations, key_features, coverage
 
 
 def _pack_text(text: str, target_tokens: int):
