@@ -13,6 +13,7 @@ from __future__ import annotations
 import shutil
 import unicodedata
 from pathlib import Path
+import zipfile
 
 from django.conf import settings
 
@@ -130,6 +131,157 @@ def _resolve_project_center(test_no: str):
     return None, None
 
 
+def _find_full_project_source(test_no: str, cert_date: str = ""):
+    from main.views.review.ecm_http_client import build_client
+
+    resolved_center, project = _resolve_project_center(test_no)
+    proj_cert_date = (project.get("cert_date") if project else "") or cert_date
+
+    # 시도 순서: 해석된 센터를 맨 앞에, 이어서 분당→상암→영남 폴백(중복 제거).
+    order = []
+    if resolved_center:
+        order.append(resolved_center)
+    for c in ("bundang", "sangam", "yeongnam"):
+        if c not in order:
+            order.append(c)
+
+    errors = []
+    for candidate in order:
+        try:
+            client = build_client(candidate)
+            client.login()
+            folder = client.find_full_project_folder(test_no, proj_cert_date, candidate)
+        except Exception as exc:  # 자격증명 없음/네트워크/로그인 실패 → 다음 센터 시도
+            errors.append(f"{candidate}: {exc}")
+            continue
+        if folder and folder.get("oid"):
+            return client, candidate, folder
+
+    detail = ("; ".join(errors)) if errors else "해당 없음"
+    raise RuntimeError(
+        f"어느 센터 ECM 에서도 프로젝트 폴더를 찾지 못했습니다: {test_no} (시도: {detail})"
+    )
+
+
+class _StreamingZipSink:
+    """zipfile 이 쓰는 bytes 를 StreamingHttpResponse 로 흘려보내기 위한 sink."""
+
+    def __init__(self):
+        self._chunks = []
+
+    def write(self, data):
+        if data:
+            self._chunks.append(bytes(data))
+        return len(data)
+
+    def flush(self):
+        return None
+
+    def tell(self):
+        raise OSError("stream is not seekable")
+
+    def seek(self, *_args):
+        raise OSError("stream is not seekable")
+
+    def seekable(self):
+        return False
+
+    def drain(self):
+        chunks = self._chunks
+        self._chunks = []
+        for chunk in chunks:
+            if chunk:
+                yield chunk
+
+
+def _safe_zip_part(value):
+    part = unicodedata.normalize("NFC", str(value or "")).strip()
+    for ch in '\\/:*?"<>|':
+        part = part.replace(ch, " ")
+    part = part.strip(" .")
+    return part or "_"
+
+
+def _zip_arcname(rel, file_name):
+    parts = [_safe_zip_part(part) for part in rel or []]
+    parts.append(_safe_zip_part(file_name))
+    return "/".join(parts)
+
+
+def _unique_arcname(arcname, seen):
+    count = seen.get(arcname, 0)
+    seen[arcname] = count + 1
+    if count == 0:
+        return arcname
+    path = Path(arcname)
+    stem = path.stem
+    suffix = path.suffix
+    parent = path.parent.as_posix()
+    renamed = f"{stem} ({count + 1}){suffix}"
+    return renamed if parent == "." else f"{parent}/{renamed}"
+
+
+def _single_error_zip(message):
+    sink = _StreamingZipSink()
+    with zipfile.ZipFile(sink, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("다운로드 오류.txt", str(message or "문서 다운로드 실패"))
+        yield from sink.drain()
+    yield from sink.drain()
+
+
+def iter_full_project_documents_zip(test_no: str, cert_date: str = ""):
+    """프로젝트 전체 문서를 서버 디스크 ZIP 선생성 없이 바로 ZIP 스트리밍한다.
+
+    새 화면에서 전체 폴더 다운로드 기능을 재사용할 때는 POST로 준비 완료 JSON을
+    기다리지 말고 이 스트림을 반환하는 GET attachment 엔드포인트를 사용한다.
+    """
+    from main.views.review.artifact_source import verify_downloaded_bytes
+
+    try:
+        client, _center, folder = _find_full_project_source(test_no, cert_date)
+        items = list(client.walk_files(folder["oid"]))
+        if not items:
+            raise RuntimeError(f"{test_no} 프로젝트 폴더에 파일이 없습니다.")
+    except Exception as exc:
+        yield from _single_error_zip(exc)
+        return
+
+    sink = _StreamingZipSink()
+    seen = {}
+    with zipfile.ZipFile(sink, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for rel, meta in items:
+            file_name = unicodedata.normalize("NFC", str(meta.get("fileName") or "download"))
+            arcname = _unique_arcname(_zip_arcname(rel, file_name), seen)
+            info = zipfile.ZipInfo(arcname)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            download_error = None
+            with zf.open(info, "w") as entry:
+                # 파일 내용을 받기 전 ZIP 엔트리 헤더를 먼저 보내 브라우저 다운로드를 시작시킨다.
+                yield from sink.drain()
+                expected_size = int(meta.get("fileSize") or 0)
+                try:
+                    data = client.download_bytes(meta)
+                    reason = verify_downloaded_bytes(data, file_name, expected_size)
+                    if reason:
+                        data = client.download_bytes(meta)
+                        reason = verify_downloaded_bytes(data, file_name, expected_size)
+                        if reason:
+                            raise RuntimeError(f"무결성 검증 실패: {file_name} ({reason})")
+                    entry.write(data)
+                except Exception as exc:
+                    download_error = exc
+                yield from sink.drain()
+            yield from sink.drain()
+            if download_error is not None:
+                zf.writestr(
+                    "다운로드 오류.txt",
+                    f"{arcname} 다운로드 중 오류가 발생했습니다.\n{download_error}",
+                )
+                yield from sink.drain()
+                break
+    yield from sink.drain()
+
+
 def download_full_project_documents(
     test_no: str,
     cert_date: str = "",
@@ -147,40 +299,8 @@ def download_full_project_documents(
     쓰고, 그 폴더 아래 모든 파일을 상대경로 그대로 report\\<시험번호> 에 받아 ZIP 으로 전달한다.
     """
     from main.views.review.artifact_source import verify_downloaded_bytes
-    from main.views.review.ecm_http_client import build_client
 
-    resolved_center, project = _resolve_project_center(test_no)
-    proj_cert_date = (project.get("cert_date") if project else "") or cert_date
-
-    # 시도 순서: 해석된 센터를 맨 앞에, 이어서 분당→상암→영남 폴백(중복 제거).
-    order = []
-    if resolved_center:
-        order.append(resolved_center)
-    for c in ("bundang", "sangam", "yeongnam"):
-        if c not in order:
-            order.append(c)
-
-    client = None
-    center = None
-    folder = None
-    errors = []
-    for candidate in order:
-        try:
-            cl = build_client(candidate)
-            cl.login()
-            f = cl.find_full_project_folder(test_no, proj_cert_date, candidate)
-        except Exception as exc:  # 자격증명 없음/네트워크/로그인 실패 → 다음 센터 시도
-            errors.append(f"{candidate}: {exc}")
-            continue
-        if f and f.get("oid"):
-            client, center, folder = cl, candidate, f
-            break
-
-    if not folder:
-        detail = ("; ".join(errors)) if errors else "해당 없음"
-        raise RuntimeError(
-            f"어느 센터 ECM 에서도 프로젝트 폴더를 찾지 못했습니다: {test_no} (시도: {detail})"
-        )
+    client, center, folder = _find_full_project_source(test_no, cert_date)
 
     items = list(client.walk_files(folder["oid"]))
     if not items:
@@ -219,8 +339,6 @@ def download_full_project_documents(
     # WS(로딩 표시) 단계에서 ZIP 을 미리 만들어 둔다. 이렇게 하면 이후 브라우저의
     # /download/ GET 은 완성된 ZIP 을 즉시 스트리밍(FileResponse)하므로, 로딩이 사라진 뒤
     # 다운로드가 시작되기까지의 압축 지연이 사라진다.
-    import zipfile
-
     zp = zip_path(test_no)
     zp.parent.mkdir(parents=True, exist_ok=True)
     tmp_zip = zp.with_name(zp.name + ".part")

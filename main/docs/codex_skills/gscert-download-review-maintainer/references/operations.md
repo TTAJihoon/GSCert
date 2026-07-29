@@ -94,3 +94,11 @@ For DB migrations:
 
 For browser verification, reload `/download-review/` and check the changed interaction directly.
 
+## Full Folder Download Reuse
+
+- UI buttons for ECM full-folder ZIP downloads should open a GET attachment URL directly:
+  `GET /api/projects/{project_number}/full-documents-download/?cert_date=...`
+- Do not use a `fetch/POST -> JSON download_url -> anchor click` sequence for user-facing download buttons. That pattern waits for server-side preparation before the browser download starts.
+- In `main/static/scripts/review/ecm_download_review.js`, reuse `startFullProjectFolderDownload(project)` for download-review UI surfaces.
+- The GET endpoint streams the ZIP as ECM files are downloaded. It writes the first ZIP entry header before fetching that file content, so the browser receives the attachment response without waiting for the entire ZIP to be compressed.
+

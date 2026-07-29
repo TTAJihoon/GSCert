@@ -375,8 +375,35 @@ def bulk_download_projects_zip(request):
         return response
 
 
-@require_POST
+@require_http_methods(["GET", "POST"])
 def project_full_documents_download(request, project_number):
+    if request.method == "GET":
+        cert_date = str(request.GET.get("cert_date") or "").strip()
+        try:
+            from main.views.testing.history_download import iter_full_project_documents_zip
+
+            response = StreamingHttpResponse(
+                iter_full_project_documents_zip(project_number, cert_date),
+                content_type="application/zip",
+            )
+            safe_name = str(project_number).replace('"', "").replace("\\", "_").replace("/", "_")
+            response["Content-Disposition"] = f'attachment; filename="{safe_name}.zip"'
+            response["Cache-Control"] = "no-store"
+            response["X-Accel-Buffering"] = "no"
+            return response
+        except Exception as exc:
+            logger.exception("download-review full project document stream failed: %s", project_number)
+            response = JsonResponse(
+                _error_payload(
+                    exc,
+                    f"{project_number} ECM 전체 폴더 다운로드를 실패하였습니다. 다시 요청해주세요.",
+                ),
+                status=500,
+                json_dumps_params={"ensure_ascii": False},
+            )
+            response["Cache-Control"] = "no-store"
+            return response
+
     try:
         body = parse_json_body(request)
     except DownloadReviewJobRequestError as exc:

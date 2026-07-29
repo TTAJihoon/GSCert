@@ -769,6 +769,26 @@ class DownloadReviewApiPureTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
 
+    def test_project_full_documents_download_get_streams_zip(self):
+        request = self.factory.get(
+            "/api/projects/TTA-26-00010/full-documents-download/",
+            {"cert_date": "2026-05-13"},
+        )
+
+        with patch(
+            "main.views.testing.history_download.iter_full_project_documents_zip",
+            return_value=iter([b"PK", b"zip-data"]),
+        ) as mocked_stream:
+            response = project_full_documents_download(request, "TTA-26-00010")
+            content = b"".join(response.streaming_content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "application/zip")
+        self.assertEqual(response["Content-Disposition"], 'attachment; filename="TTA-26-00010.zip"')
+        self.assertEqual(response["X-Accel-Buffering"], "no")
+        self.assertEqual(content, b"PKzip-data")
+        mocked_stream.assert_called_once_with("TTA-26-00010", "2026-05-13")
+
     def test_project_full_documents_download_reuses_history_full_download(self):
         request = self.factory.post(
             "/api/projects/TTA-26-00010/full-documents-download/",

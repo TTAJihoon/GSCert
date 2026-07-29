@@ -1472,6 +1472,21 @@ function triggerAttachmentDownload(url) {
   anchor.remove();
 }
 
+function fullProjectFolderDownloadUrl(project) {
+  const params = new URLSearchParams();
+  if (project?.certDate) params.set("cert_date", project.certDate);
+  if (state.center) params.set("center", state.center);
+  const query = params.toString();
+  const base = `/api/projects/${encodeURIComponent(project.number)}/full-documents-download/`;
+  return query ? `${base}?${query}` : base;
+}
+
+function startFullProjectFolderDownload(project) {
+  // 전체 폴더 다운로드를 재사용할 때는 이 헬퍼를 사용한다.
+  // fetch/POST로 준비 완료 JSON을 기다리면 브라우저 다운로드 시작이 늦어진다.
+  triggerAttachmentDownload(fullProjectFolderDownloadUrl(project));
+}
+
 function collectDownloadStyles() {
   const styles = [];
   Array.from(document.styleSheets).forEach((sheet) => {
@@ -1547,29 +1562,14 @@ async function downloadCurrentProjectFullFolder(event) {
   if (!project?.number || !button || button.disabled) return;
 
   button.disabled = true;
-  button.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 준비 중`;
-  try {
-    const payload = await requestJson(
-      `/api/projects/${encodeURIComponent(project.number)}/full-documents-download/`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          center: state.center,
-          cert_date: project.certDate || ""
-        })
-      }
-    );
-    if (payload.download_url) {
-      triggerAttachmentDownload(payload.download_url);
-    }
-  } catch (error) {
-    alert(`전체 폴더 다운로드 실패: ${error.message}`);
-  } finally {
+  button.innerHTML = `<i class="fa-solid fa-folder-arrow-down"></i> 다운로드 시작`;
+  startFullProjectFolderDownload(project);
+  window.setTimeout(() => {
     if (state.modalFullFolderProject?.number === project.number) {
       button.disabled = false;
       button.innerHTML = `<i class="fa-solid fa-folder-arrow-down"></i> 전체 폴더 다운로드`;
     }
-  }
+  }, 1500);
 }
 
 async function openCurrentProjectChangeNote(event) {
