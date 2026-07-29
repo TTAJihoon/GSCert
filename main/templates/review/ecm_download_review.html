@@ -4,8 +4,8 @@
 {% block title %}ECM 제출물 자동 점검{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=22">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=22" defer></script>
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=23">
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=23" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -304,6 +304,10 @@
         <h2 id="modalTitle">상세 정보</h2>
       </div>
       <div class="modal-header-actions">
+        <button class="mini-button modal-folder-download-button" type="button" id="modalFullFolderDownload" hidden>
+          <i class="fa-solid fa-folder-arrow-down"></i>
+          전체 폴더 다운로드
+        </button>
         <a class="mini-button modal-download-button" id="modalDownload" href="#" hidden>
           <i class="fa-solid fa-file-code"></i>
           HTML 다운로드

@@ -414,6 +414,7 @@ const state = {
   resultProjectLoadError: "",
   lastCheckedIndex: -1,
   modalDownloadFilename: "",
+  modalFullFolderProject: null,
   inspectionRuleItems: [],
   inspectionItems: [],
   inspectionFilter: null
@@ -762,6 +763,7 @@ function normalizeApiJobProject(item) {
     id: item.id,
     jobId: item.job_id,
     number: item.project_number,
+    certDate: item.cert_date || "",
     company: item.company || "",
     product: item.product || "",
     centerCode: item.center_code || "",
@@ -1364,12 +1366,14 @@ function openModal({ eyebrow, title, body, downloadName = "" }) {
   qs("modalTitle").textContent = title;
   qs("modalBody").innerHTML = body;
   setModalDownload(downloadName);
+  setModalFullFolderDownload(null);
   qs("detailModal").hidden = false;
 }
 
 function closeModal() {
   qs("detailModal").hidden = true;
   setModalDownload("");
+  setModalFullFolderDownload(null);
 }
 
 function safeDownloadFilename(value) {
@@ -1396,6 +1400,37 @@ function setModalDownload(filename) {
   }
 
   link.hidden = true;
+}
+
+function setModalFullFolderDownload(project) {
+  const button = qs("modalFullFolderDownload");
+  if (!button) return;
+
+  if (!project?.number) {
+    state.modalFullFolderProject = null;
+    button.hidden = true;
+    button.disabled = false;
+    button.innerHTML = `<i class="fa-solid fa-folder-arrow-down"></i> 전체 폴더 다운로드`;
+    button.removeAttribute("title");
+    return;
+  }
+
+  state.modalFullFolderProject = {
+    number: project.number,
+    certDate: project.certDate || ""
+  };
+  button.hidden = false;
+  button.disabled = false;
+  button.title = "시험 이력 조회의 전체 문서 다운로드와 동일하게 ECM 전체 폴더를 다운로드합니다.";
+  button.innerHTML = `<i class="fa-solid fa-folder-arrow-down"></i> 전체 폴더 다운로드`;
+}
+
+function triggerAttachmentDownload(url) {
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }
 
 function collectDownloadStyles() {
@@ -1464,6 +1499,38 @@ function downloadCurrentModalHtml(event) {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(url);
+}
+
+async function downloadCurrentProjectFullFolder(event) {
+  event?.preventDefault();
+  const project = state.modalFullFolderProject;
+  const button = qs("modalFullFolderDownload");
+  if (!project?.number || !button || button.disabled) return;
+
+  button.disabled = true;
+  button.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 준비 중`;
+  try {
+    const payload = await requestJson(
+      `/api/projects/${encodeURIComponent(project.number)}/full-documents-download/`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          center: state.center,
+          cert_date: project.certDate || ""
+        })
+      }
+    );
+    if (payload.download_url) {
+      triggerAttachmentDownload(payload.download_url);
+    }
+  } catch (error) {
+    alert(`전체 폴더 다운로드 실패: ${error.message}`);
+  } finally {
+    if (state.modalFullFolderProject?.number === project.number) {
+      button.disabled = false;
+      button.innerHTML = `<i class="fa-solid fa-folder-arrow-down"></i> 전체 폴더 다운로드`;
+    }
+  }
 }
 
 function downloadJobResults() {
@@ -1636,6 +1703,7 @@ async function openInspectionModal(projectNumber) {
     title: `${project.number} 규칙별 점검 결과`,
     body: `<p class="modal-lead">최근 점검 결과를 불러오는 중입니다.</p>`
   });
+  setModalFullFolderDownload(project);
 
   try {
     const params = new URLSearchParams({ center: state.center });
@@ -1709,6 +1777,7 @@ function renderLatestInspectionResult(payload) {
   const project = normalizeApiJobProject(payload.project);
   if (project.id) {
     setModalDownload(`${project.number || project.id}_규칙별_점검_결과.html`);
+    setModalFullFolderDownload(project);
   }
 
   const rawItems = Array.isArray(payload.items) ? payload.items : [];
@@ -1929,8 +1998,8 @@ function renderInspectionSummary(items, ruleItems = items) {
   `;
 }
 
-// 규칙 결과 목록을 8열 테이블 행 HTML로 렌더링한다.
-// 하위 검사가 여러 개면 행으로 분리하고, 번호/점검항목/파일명/산출물은 rowspan으로 묶는다.
+// 규칙 결과 목록을 7열 테이블 행 HTML로 렌더링한다.
+// 하위 검사가 여러 개면 행으로 분리하고, 번호/점검항목/파일명은 rowspan으로 묶는다.
 // 하위 검사의 실제값이 기대값과 어긋나는(불일치) 행은 강조 표시한다.
 function renderInspectionRows(items) {
   return items.map((rule) => {
@@ -1949,7 +2018,6 @@ function renderInspectionSingleRow(rule) {
       <td>${escapeMultiline(rule.expected || "-")}</td>
       <td>${escapeMultiline(rule.actual || "-")}</td>
       <td>${escapeMultiline(rule.message || "-")}</td>
-      <td>${renderRuleArtifacts(rule)}</td>
     </tr>
   `;
 }
@@ -1959,7 +2027,6 @@ function renderInspectionSubCheckRows(rule, subChecks) {
   // 모든 하위 검사에 pass/fail 값이 있으면 행별로 배지를 나눠 보여주고,
   // 아니면(일부 항목만 판정 가능) 규칙 전체 배지를 rowspan 으로 공유한다.
   const perRowStatus = subChecks.every((sub) => typeof sub.passed === "boolean");
-  const artifactsCell = renderRuleArtifacts(rule);
   return subChecks.map((sub, index) => {
     const mismatch = sub.passed === false;
     const statusCell = perRowStatus
@@ -1974,7 +2041,6 @@ function renderInspectionSubCheckRows(rule, subChecks) {
         <td>${escapeMultiline(sub.expected || "-")}</td>
         <td class="${mismatch ? "cell-mismatch" : ""}">${escapeMultiline(sub.actual || "-")}</td>
         <td>${escapeMultiline(sub.message || (mismatch ? "실제값이 기대값과 다릅니다." : "-"))}</td>
-        ${index === 0 ? `<td rowspan="${rowCount}">${artifactsCell}</td>` : ""}
       </tr>
     `;
   }).join("");
@@ -1993,10 +2059,9 @@ function renderInspectionTableBlock(items) {
           <th>기대값</th>
           <th>실제값</th>
           <th>메시지</th>
-          <th>산출물</th>
         </tr>
       </thead>
-      <tbody>${rows || `<tr><td class="empty-cell" colspan="8">선택한 분류에 해당하는 규칙이 없습니다.</td></tr>`}</tbody>
+      <tbody>${rows || `<tr><td class="empty-cell" colspan="7">선택한 분류에 해당하는 규칙이 없습니다.</td></tr>`}</tbody>
     </table>
   `;
 }
@@ -2077,6 +2142,10 @@ async function openJobProjectRulesModal(jobProjectId, project = null) {
     const displayItems = Array.isArray(payload.display_items) ? payload.display_items : rawItems;
     qs("modalTitle").textContent = `${projectNumber} 규칙별 점검 결과`;
     setModalDownload(`${projectNumber}_규칙별_점검_결과.html`);
+    setModalFullFolderDownload({
+      number: projectNumber,
+      certDate: payloadProject.certDate || project?.certDate || ""
+    });
 
     if (displayItems.length) {
       mountInspectionResult(displayItems, `작업 프로젝트 ${projectNumber}의 규칙 결과입니다.`, { ruleItems: rawItems });
@@ -2113,6 +2182,7 @@ async function openResultRulesModal(jobProjectId) {
     const rawItems = Array.isArray(payload.items) ? payload.items : [];
     const displayItems = Array.isArray(payload.display_items) ? payload.display_items : rawItems;
     setModalDownload(`${project.number}_규칙별_점검_결과.html`);
+    setModalFullFolderDownload(project);
 
     if (displayItems.length) {
       mountInspectionResult(displayItems, `작업 프로젝트 ${project.number}의 규칙 결과입니다.`, { ruleItems: rawItems });
@@ -2330,6 +2400,7 @@ function bindControls() {
 
   qs("closeModal").addEventListener("click", closeModal);
   qs("modalDownload").addEventListener("click", downloadCurrentModalHtml);
+  qs("modalFullFolderDownload").addEventListener("click", downloadCurrentProjectFullFolder);
   qs("detailModal").addEventListener("click", (event) => {
     if (event.target === qs("detailModal")) closeModal();
   });

@@ -63,6 +63,7 @@ from main.views.review.ecm_download_review_api import (
     latest_project_results,
     local_review_rules_bundle,
     local_review_rules_manifest,
+    project_full_documents_download,
     projects,
     rule_result_artifact,
 )
@@ -594,6 +595,39 @@ class DownloadVerifyTests(SimpleTestCase):
 
 
 class DownloadReviewInspectionCompareTests(SimpleTestCase):
+    def test_product_version_split_accepts_numeric_and_word_suffixes(self):
+        cases = {
+            "자료분석 플랫폼 v1": ("자료분석 플랫폼", "v1"),
+            "자료분석 플랫폼 v1.0": ("자료분석 플랫폼", "v1.0"),
+            "자료분석 플랫폼 1": ("자료분석 플랫폼", "1"),
+            "자료분석 플랫폼 3.0": ("자료분석 플랫폼", "3.0"),
+            "EBS ISM3.0": ("EBS ISM", "3.0"),
+            "자료분석 플랫폼 Enterprise": ("자료분석 플랫폼", "Enterprise"),
+        }
+
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(engine._split_product_and_version(raw), expected)
+
+    def test_version_matches_accepts_word_versions_case_insensitively(self):
+        self.assertTrue(engine._version_matches("Enterprise", "enterprise"))
+        self.assertTrue(engine._version_matches("v1", "1"))
+        self.assertFalse(engine._version_matches("Enterprise", "Standard"))
+
+    def test_defect_report_sheet_names_ignore_whitespace(self):
+        workbook = engine.ExcelWorkbook([
+            engine.ExcelSheet("1차결함리포트", []),
+        ])
+        versioned_files = {
+            1: engine.FileInfo(name="TTA-26-00010 결함리포트 v1.0.xlsx", path=""),
+        }
+
+        result = engine._check_defect_report_sheets({1: workbook}, versioned_files, defect_round_count=1)
+
+        self.assertTrue(result["passed"], result)
+        self.assertEqual(result["details"][0]["missing_sheets"], [])
+        self.assertEqual(result["details"][0]["extra_sheets"], [])
+
     def test_list_mismatches_compares_numeric_text_by_value(self):
         mismatches = _list_mismatches(
             ["1", "1.0", "0.125", "1,000", "NA", "30분"],
@@ -641,6 +675,32 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
 
         self.assertFalse(check["passed"])
         self.assertIn("B2 계획서", check["actual"])
+
+
+class DownloadReviewApiPureTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_project_full_documents_download_reuses_history_full_download(self):
+        request = self.factory.post(
+            "/api/projects/TTA-26-00010/full-documents-download/",
+            data=json.dumps({"cert_date": "2026-05-13"}),
+            content_type="application/json",
+        )
+
+        with patch(
+            "main.views.testing.history_download.download_full_project_documents",
+            return_value={"doc_count": 2, "center": "sangam"},
+        ) as mocked_download:
+            response = project_full_documents_download(request, "TTA-26-00010")
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(data["success"])
+        self.assertEqual(data["download_url"], "/history/report/TTA-26-00010/download/")
+        self.assertEqual(data["doc_count"], 2)
+        self.assertEqual(data["center"], "sangam")
+        mocked_download.assert_called_once_with("TTA-26-00010", "2026-05-13")
 
 
 class LlmReviewInterfaceTests(SimpleTestCase):

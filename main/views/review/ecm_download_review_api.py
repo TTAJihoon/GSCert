@@ -1,4 +1,6 @@
+import logging
 from pathlib import Path
+from urllib.parse import quote
 from zipfile import ZIP_STORED, ZipFile, ZipInfo
 
 from django.conf import settings
@@ -44,6 +46,8 @@ from main.views.review.ecm_rulebase import (
     get_rulebase_bundle_payload,
     get_rulebase_manifest_payload,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @require_GET
@@ -363,6 +367,50 @@ def bulk_download_projects_zip(request):
         )
         response["Cache-Control"] = "no-store"
         return response
+
+
+@require_POST
+def project_full_documents_download(request, project_number):
+    try:
+        body = parse_json_body(request)
+    except DownloadReviewJobRequestError as exc:
+        response = JsonResponse(
+            _error_payload(exc, str(exc), details=exc.details),
+            status=exc.status_code,
+            json_dumps_params={"ensure_ascii": False},
+        )
+        response["Cache-Control"] = "no-store"
+        return response
+
+    cert_date = str(body.get("cert_date") or "").strip()
+    try:
+        from main.views.testing.history_download import download_full_project_documents
+
+        result = download_full_project_documents(project_number, cert_date)
+    except Exception as exc:
+        logger.exception("download-review full project document download failed: %s", project_number)
+        response = JsonResponse(
+            _error_payload(
+                exc,
+                f"{project_number} ECM 전체 폴더 다운로드를 실패하였습니다. 다시 요청해주세요.",
+            ),
+            status=500,
+            json_dumps_params={"ensure_ascii": False},
+        )
+        response["Cache-Control"] = "no-store"
+        return response
+
+    response = JsonResponse(
+        {
+            "success": True,
+            "download_url": f"/history/report/{quote(str(project_number))}/download/",
+            "doc_count": result.get("doc_count", 0),
+            "center": result.get("center", ""),
+        },
+        json_dumps_params={"ensure_ascii": False},
+    )
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 @require_GET

@@ -44,6 +44,7 @@ from main.views.review.ecm_download_review_api import (
     local_review_project_metadata,
     local_review_rules_bundle,
     local_review_rules_manifest,
+    project_full_documents_download as download_review_project_full_documents_download,
     projects as download_review_projects,
     rule_result_artifact as download_review_rule_result_artifact,
 )
@@ -86,6 +87,7 @@ urlpatterns = [
     path('api/job-projects/<uuid:job_project_id>/results.xlsx', download_review_job_project_results_excel, name='download_review_job_project_results_excel'),
     path('api/rule-results/<uuid:result_id>/artifacts/<str:artifact_id>/', download_review_rule_result_artifact, name='download_review_rule_result_artifact'),
     path('api/projects/bulk-download/', download_review_bulk_download, name='download_review_bulk_download'),
+    path('api/projects/<str:project_number>/full-documents-download/', download_review_project_full_documents_download, name='download_review_project_full_documents_download'),
     path('api/projects/<str:project_number>/latest-results/', download_review_latest_project_results, name='download_review_latest_project_results'),
     path('api/local-review/health/', local_review_health, name='local_review_health'),
     path('api/local-review/app/download/', local_review_app_download, name='local_review_app_download'),

@@ -1021,13 +1021,17 @@
   align-items: center;
   gap: 8px;
   flex: 0 0 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
+.modal-folder-download-button,
 .modal-download-button {
   gap: 6px;
   min-height: 34px;
 }
 
+.modal-folder-download-button[hidden],
 .modal-download-button[hidden] {
   display: none;
 }
@@ -1152,7 +1156,7 @@
   color: var(--review-warning);
 }
 
-/* === 규칙별 점검 결과 테이블 (8열: 번호/점검항목/결과/파일명/기대값/실제값/메시지/산출물) === */
+/* === 규칙별 점검 결과 테이블 (7열: 번호/점검항목/결과/파일명/기대값/실제값/메시지) === */
 .inspection-result-table {
   display: block;
   flex: 1 1 auto;
@@ -1166,7 +1170,7 @@
 
 .inspection-result-table .data-table {
   table-layout: fixed;
-  width: 1280px;
+  width: 1150px;
 }
 
 /* 기본: 모든 셀 자동 줄바꿈 + 위쪽 정렬 (여러 줄 표시 대비) */
@@ -1241,12 +1245,6 @@
 .inspection-result-table .data-table th:nth-child(7),
 .inspection-result-table .data-table td:nth-child(7) {
   width: 250px;
-}
-
-/* 8. 산출물 */
-.inspection-result-table .data-table th:nth-child(8),
-.inspection-result-table .data-table td:nth-child(8) {
-  width: 130px;
 }
 
 @media (max-width: 1100px) {

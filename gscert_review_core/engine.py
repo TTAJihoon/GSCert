@@ -1071,6 +1071,7 @@ def _version_matches(expected, actual):
 
     - 접두사('v', 'ver' 등 숫자 앞 문자)는 있어도 없어도 무시한다.
     - 숫자 부분(예: 4.0)이 같으면 같은 버전으로 본다.
+    - 숫자 없는 문자 버전(예: Enterprise)은 공백과 대소문자를 무시해 비교한다.
     예) 기대 'v4.0' vs 실제 '4.0'/'v4.0'/'ver4.0' → 모두 정상.
     """
     def core(value):
@@ -1080,7 +1081,16 @@ def _version_matches(expected, actual):
 
     expected_core = core(expected)
     actual_core = core(actual)
-    return bool(expected_core) and expected_core == actual_core
+    if expected_core:
+        return expected_core == actual_core
+
+    def text_core(value):
+        text = _normalize_no_space(value).lower()
+        return re.sub(r"^(?:v|ver|version)\.?", "", text) or text
+
+    expected_text = text_core(expected)
+    actual_text = text_core(actual)
+    return bool(expected_text) and expected_text == actual_text
 
 
 def _test_plan_product_checks(table, config, context):
@@ -1109,7 +1119,7 @@ def _test_plan_product_checks(table, config, context):
         {
             "name": "product_version",
             "passed": _version_matches(context.version, version_actual),
-            "expected": f"{version_label} 오른쪽 셀 = {context.version} (v 접두사는 생략 가능, 다른 접두사는 불가)",
+            "expected": f"{version_label} 오른쪽 셀 = {context.version} (숫자 버전은 v/ver 접두사 생략 가능, 문자 버전은 대소문자 무시)",
             "actual": version_actual or "값 없음",
             "message": product_message,
         },
@@ -2180,8 +2190,18 @@ def _check_defect_report_sheets(workbook_by_version, versioned_files, defect_rou
         workbook = workbook_by_version[version]
         actual_names = [sheet.name for sheet in workbook.sheets]
         expected_names = _expected_defect_report_sheet_names(version, final_version)
-        missing = [name for name in expected_names if name not in actual_names]
-        extra = [name for name in actual_names if name not in expected_names]
+        expected_normalized = {_normalize_no_space(name) for name in expected_names}
+        actual_normalized = {_normalize_no_space(name) for name in actual_names}
+        missing = [
+            name
+            for name in expected_names
+            if _normalize_no_space(name) not in actual_normalized
+        ]
+        extra = [
+            name
+            for name in actual_names
+            if _normalize_no_space(name) not in expected_normalized
+        ]
         detail = {
             "version": version,
             "file_name": versioned_files[version].name,
@@ -4236,11 +4256,22 @@ def _split_product_and_version(product_name):
         product = value[: version_match.start(1)].strip()
         return product, version
 
-    if " " not in value:
-        return value, ""
+    product_prefix = ""
+    final_token = value
+    if " " in value:
+        product_prefix, final_token = value.rsplit(" ", 1)
 
-    product, version = value.rsplit(" ", 1)
-    return product.strip(), version.strip()
+    numeric_suffix = re.search(r"(\d+(?:[._-]\d+)*)$", final_token)
+    if numeric_suffix:
+        version = numeric_suffix.group(1)
+        token_prefix = final_token[: numeric_suffix.start()].strip()
+        product = _normalize_spaces(f"{product_prefix} {token_prefix}".strip())
+        return product, version
+
+    if product_prefix:
+        return product_prefix.strip(), final_token.strip()
+
+    return value, ""
 
 
 def _project_year(project_number):
