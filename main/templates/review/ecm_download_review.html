@@ -4,8 +4,8 @@
 {% block title %}ECM 제출물 자동 점검{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=23">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=23" defer></script>
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=24">
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=24" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -304,6 +304,10 @@
         <h2 id="modalTitle">상세 정보</h2>
       </div>
       <div class="modal-header-actions">
+        <button class="mini-button modal-change-note-button" type="button" id="modalChangeNote" disabled title="ECM에서 수정 내용.txt 파일이 발견되면 활성화됩니다.">
+          <i class="fa-solid fa-file-lines"></i>
+          수정 내용
+        </button>
         <button class="mini-button modal-folder-download-button" type="button" id="modalFullFolderDownload" hidden>
           <i class="fa-solid fa-folder-arrow-down"></i>
           전체 폴더 다운로드
@@ -318,6 +322,23 @@
       </div>
     </div>
     <div class="modal-body" id="modalBody"></div>
+  </section>
+</div>
+
+<div class="modal-backdrop note-modal-backdrop" id="changeNoteModal" hidden>
+  <section class="modal-panel note-modal-panel" role="dialog" aria-modal="true" aria-labelledby="changeNoteTitle">
+    <div class="modal-header">
+      <div>
+        <p class="eyebrow">수정 내용</p>
+        <h2 id="changeNoteTitle">수정 내용.txt</h2>
+      </div>
+      <button class="icon-button" type="button" id="closeChangeNoteModal" aria-label="닫기">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="modal-body note-modal-body">
+      <pre id="changeNoteContent" class="change-note-content"></pre>
+    </div>
   </section>
 </div>
 {% endblock %}

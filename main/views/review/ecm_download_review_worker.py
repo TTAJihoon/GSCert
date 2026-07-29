@@ -36,6 +36,7 @@ from main.views.review.ecm_download_review_inspection import (
     run_download_inspection,
 )
 from main.views.review.ecm_download_review_centers import worker_allowed_centers
+from main.views.review.ecm_change_note import record_change_note_if_present
 from main.views.review.artifact_source import JobCanceledError, build_artifact_source
 
 
@@ -286,6 +287,7 @@ async def _run_live_job(job, *, headless=True, source_name=None):
                         verify_result.file_count,
                         file_summary,
                     )
+                    await _run_sync(record_change_note_if_present, job, project, verify_result)
                     await _run_sync(
                         _mark_project,
                         project, DownloadReviewProjectStatus.RUNNING,

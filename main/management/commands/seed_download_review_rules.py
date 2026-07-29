@@ -506,7 +506,7 @@ def _actual_rule_spec(index, column_name):
                 "requires": ["결함차수"],
                 "produces": ["잔여결함수", "H", "R"],
                 "extensions": [".xlsx", ".xls"],
-                "version_pattern": r"(?i)v(\d+)\.0",
+                "version_pattern": r"(?i)v(\d+)(?:[._-]\d+)*",
                 "count_mismatch_message": "시험성적서의 결함 차수와 결함리포트 개수가 다름",
                 "forbidden_header_terms": [
                     {

@@ -22,6 +22,7 @@ from main.views.review.ecm_download_review_jobs import (
     get_job_results_excel_response,
     get_jobs_payload,
     get_latest_project_results_payload,
+    get_project_change_note_payload,
     get_project_results_excel_response,
     get_project_results_payload,
     get_rule_result_artifact_response,
@@ -320,6 +321,11 @@ def jobs_force_stop(request):
 @require_GET
 def job_project_results(request, job_project_id):
     return _json_or_not_found(lambda: get_project_results_payload(job_project_id))
+
+
+@require_GET
+def job_project_change_note(request, job_project_id):
+    return _json_or_not_found(lambda: get_project_change_note_payload(job_project_id))
 
 
 @require_GET

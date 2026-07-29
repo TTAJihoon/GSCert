@@ -2,9 +2,10 @@ import json
 import sqlite3
 import tempfile
 import zipfile
-from datetime import date
+from datetime import date, datetime
 from io import BytesIO, StringIO
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 from xml.sax.saxutils import escape
 
@@ -55,6 +56,7 @@ from main.views.review.ecm_download_review_api import (
     active_job,
     job_cancel,
     job_detail,
+    job_project_change_note,
     job_project_results_excel,
     job_project_results,
     job_results_excel,
@@ -628,6 +630,92 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
         self.assertEqual(result["details"][0]["missing_sheets"], [])
         self.assertEqual(result["details"][0]["extra_sheets"], [])
 
+    def test_artifact_revision_selection_uses_latest_minor_across_folders(self):
+        rule = SimpleNamespace(
+            config_json={"folder_keyword_chain": ["시험", "계획"]},
+            target_file_pattern="",
+            target_file_type="any",
+        )
+        verify_result = SimpleNamespace(files=[
+            engine.FileInfo(
+                name="TTA-26-00010 기능리스트 v1.0.xlsx",
+                path="4.시험/가.계획/TTA-26-00010 기능리스트 v1.0.xlsx",
+                extension=".xlsx",
+            ),
+            engine.FileInfo(
+                name="TTA-26-00010 기능리스트 v1.1.xlsx",
+                path="추가제출/TTA-26-00010 기능리스트 v1.1.xlsx",
+                extension=".xlsx",
+            ),
+        ])
+
+        selected, selected_folder = engine._files_in_configured_folder(rule, verify_result)
+
+        self.assertEqual(selected_folder, "4.시험/가.계획")
+        self.assertEqual([file_info.name for file_info in selected], ["TTA-26-00010 기능리스트 v1.1.xlsx"])
+
+    def test_artifact_revision_selection_prefers_versioned_file_over_unversioned(self):
+        rule = SimpleNamespace(
+            config_json={"folder_keyword_chain": ["시험", "계획"]},
+            target_file_pattern="",
+            target_file_type="any",
+        )
+        verify_result = SimpleNamespace(files=[
+            engine.FileInfo(
+                name="TTA-26-00010 기능리스트.xlsx",
+                path="4.시험/가.계획/TTA-26-00010 기능리스트.xlsx",
+                extension=".xlsx",
+            ),
+            engine.FileInfo(
+                name="TTA-26-00010 기능리스트 v1.1.xlsx",
+                path="추가제출/TTA-26-00010 기능리스트 v1.1.xlsx",
+                extension=".xlsx",
+            ),
+        ])
+
+        selected, _selected_folder = engine._files_in_configured_folder(rule, verify_result)
+
+        self.assertEqual([file_info.name for file_info in selected], ["TTA-26-00010 기능리스트 v1.1.xlsx"])
+
+    def test_artifact_revision_selection_prefers_latest_modified_for_same_version(self):
+        older = engine.FileInfo(
+            name="TTA-26-00010 기능리스트 v1.1.xlsx",
+            path="old/TTA-26-00010 기능리스트 v1.1.xlsx",
+            extension=".xlsx",
+            modified_at=datetime(2026, 5, 1, 9, 0, 0),
+        )
+        newer = engine.FileInfo(
+            name="TTA-26-00010 기능리스트 v1.1.xlsx",
+            path="new/TTA-26-00010 기능리스트 v1.1.xlsx",
+            extension=".xlsx",
+            modified_at=datetime(2026, 5, 2, 9, 0, 0),
+        )
+
+        selected = engine._latest_revision_files([older, newer])
+
+        self.assertEqual([file_info.path for file_info in selected], ["new/TTA-26-00010 기능리스트 v1.1.xlsx"])
+
+    def test_artifact_revision_parser_does_not_treat_trailing_date_as_revision(self):
+        file_info = engine.FileInfo(
+            name="TTA-26-00010 시험계획서 2026.05.10.xlsx",
+            path="TTA-26-00010 시험계획서 2026.05.10.xlsx",
+            extension=".xlsx",
+        )
+
+        self.assertIsNone(engine._artifact_revision_info(file_info))
+
+    def test_defect_report_versions_keep_latest_minor_per_major(self):
+        files = [
+            engine.FileInfo(name="TTA-26-00010 결함리포트 v1.0.xlsx", path="v1.0", extension=".xlsx"),
+            engine.FileInfo(name="TTA-26-00010 결함리포트 v1.1.xlsx", path="v1.1", extension=".xlsx"),
+            engine.FileInfo(name="TTA-26-00010 결함리포트 v2.0.xlsx", path="v2.0", extension=".xlsx"),
+        ]
+
+        versioned = engine._defect_report_versioned_files(engine._latest_revision_files(files), {})
+
+        self.assertEqual(set(versioned), {1, 2})
+        self.assertEqual(versioned[1].name, "TTA-26-00010 결함리포트 v1.1.xlsx")
+
     def test_list_mismatches_compares_numeric_text_by_value(self):
         mismatches = _list_mismatches(
             ["1", "1.0", "0.125", "1,000", "NA", "30분"],
@@ -1049,6 +1137,104 @@ class DownloadReviewProjectsApiTests(TestCase):
     def _seed_reference_projects(self, center_code, rows):
         ReferenceProject.objects.using("reference").bulk_create(
             [ReferenceProject(center_code=center_code, **row) for row in rows]
+        )
+
+
+class DownloadReviewChangeNoteApiTests(TestCase):
+    databases = {"default", "workflow"}
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        self.temp_dir = tempfile.TemporaryDirectory()
+
+    def tearDown(self):
+        self.temp_dir.cleanup()
+
+    def test_job_project_change_note_endpoint_returns_txt_content(self):
+        job, project = self._make_project()
+        project_dir = Path(self.temp_dir.name) / "downloads" / "TTA-26-00010"
+        project_dir.mkdir(parents=True)
+        (project_dir / "수정 내용.txt").write_text("기능리스트 v1.1 추가", encoding="cp949")
+        project.download_dir = str(project_dir)
+        project.save(update_fields=["download_dir", "updated_at"])
+        self._add_rule_result(project)
+
+        results_response = job_project_results(
+            self.factory.get(f"/api/job-projects/{project.id}/results/"),
+            project.id,
+        )
+        results_data = json.loads(results_response.content.decode("utf-8"))
+        note_response = job_project_change_note(
+            self.factory.get(f"/api/job-projects/{project.id}/change-note/"),
+            project.id,
+        )
+        note_data = json.loads(note_response.content.decode("utf-8"))
+
+        self.assertEqual(results_response.status_code, 200)
+        self.assertTrue(results_data["project"]["change_note"]["available"])
+        self.assertEqual(results_data["project"]["change_note"]["file_name"], "수정 내용.txt")
+        self.assertEqual(note_response.status_code, 200)
+        self.assertEqual(note_data["job"]["id"], str(job.id))
+        self.assertIn("기능리스트 v1.1 추가", note_data["change_note"]["content"])
+
+    def test_job_project_change_note_endpoint_uses_log_fallback_after_cleanup(self):
+        job, project = self._make_project()
+        DownloadReviewLog.objects.create(
+            job=job,
+            job_project=project,
+            level=DownloadReviewLogLevel.INFO,
+            event_code="change_note_detected",
+            message="수정 내용 파일 확인",
+            detail_json={
+                "available": True,
+                "file_name": "수정 내용.txt",
+                "file_path": "TTA-26-00010/수정 내용.txt",
+                "content": "정리 후에도 보이는 수정 내용",
+                "source": "file",
+            },
+        )
+
+        results_response = job_project_results(
+            self.factory.get(f"/api/job-projects/{project.id}/results/"),
+            project.id,
+        )
+        results_data = json.loads(results_response.content.decode("utf-8"))
+        note_response = job_project_change_note(
+            self.factory.get(f"/api/job-projects/{project.id}/change-note/"),
+            project.id,
+        )
+        note_data = json.loads(note_response.content.decode("utf-8"))
+
+        self.assertEqual(results_response.status_code, 200)
+        self.assertTrue(results_data["project"]["change_note"]["available"])
+        self.assertEqual(note_response.status_code, 200)
+        self.assertEqual(note_data["job"]["id"], str(job.id))
+        self.assertEqual(note_data["change_note"]["content"], "정리 후에도 보이는 수정 내용")
+
+    def _make_project(self):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            center_code="bundang",
+            project_number="TTA-26-00010",
+            ecm_row_json={"project_number": "TTA-26-00010", "company": "에이치소프트"},
+        )
+        return job, project
+
+    def _add_rule_result(self, project):
+        DownloadReviewRuleResult.objects.create(
+            job_project=project,
+            rule_code="required-report",
+            rule_name="시험성적서 PDF 존재",
+            sequence=1,
+            status=DownloadReviewRuleStatus.PASS,
+            expected="파일 존재",
+            actual="파일 존재",
+            message="정상 확인",
         )
 
 

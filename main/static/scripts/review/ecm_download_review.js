@@ -415,6 +415,7 @@ const state = {
   lastCheckedIndex: -1,
   modalDownloadFilename: "",
   modalFullFolderProject: null,
+  modalChangeNoteProject: null,
   inspectionRuleItems: [],
   inspectionItems: [],
   inspectionFilter: null
@@ -776,7 +777,8 @@ function normalizeApiJobProject(item) {
     zip: item.zip_file_name || "-",
     error: item.error_message || "",
     errorDetail: item.error_detail || "",
-    failStep: item.status === "failed" ? item.current_step : ""
+    failStep: item.status === "failed" ? item.current_step : "",
+    changeNote: item.change_note || { available: false }
   };
 }
 
@@ -1367,6 +1369,7 @@ function openModal({ eyebrow, title, body, downloadName = "" }) {
   qs("modalBody").innerHTML = body;
   setModalDownload(downloadName);
   setModalFullFolderDownload(null);
+  setModalChangeNote(null, null);
   qs("detailModal").hidden = false;
 }
 
@@ -1374,6 +1377,7 @@ function closeModal() {
   qs("detailModal").hidden = true;
   setModalDownload("");
   setModalFullFolderDownload(null);
+  setModalChangeNote(null, null);
 }
 
 function safeDownloadFilename(value) {
@@ -1423,6 +1427,41 @@ function setModalFullFolderDownload(project) {
   button.disabled = false;
   button.title = "시험 이력 조회의 전체 문서 다운로드와 동일하게 ECM 전체 폴더를 다운로드합니다.";
   button.innerHTML = `<i class="fa-solid fa-folder-arrow-down"></i> 전체 폴더 다운로드`;
+}
+
+function setModalChangeNote(project, note) {
+  const button = qs("modalChangeNote");
+  if (!button) return;
+
+  const available = Boolean(note?.available);
+  if (!project?.id || !available) {
+    state.modalChangeNoteProject = null;
+    button.disabled = true;
+    button.title = "ECM에서 수정 내용.txt 파일이 발견되면 활성화됩니다.";
+    button.innerHTML = `<i class="fa-solid fa-file-lines"></i> 수정 내용`;
+    return;
+  }
+
+  state.modalChangeNoteProject = {
+    id: project.id,
+    number: project.number || "",
+    fileName: note.file_name || "수정 내용.txt"
+  };
+  button.disabled = false;
+  button.title = `${state.modalChangeNoteProject.fileName} 내용을 확인합니다.`;
+  button.innerHTML = `<i class="fa-solid fa-file-lines"></i> 수정 내용`;
+}
+
+function openChangeNotePopup(note, project) {
+  const title = `${project?.number || ""} ${note.file_name || "수정 내용.txt"}`.trim();
+  qs("changeNoteTitle").textContent = title || "수정 내용.txt";
+  qs("changeNoteContent").textContent = note.content || "(내용 없음)";
+  qs("changeNoteModal").hidden = false;
+}
+
+function closeChangeNotePopup() {
+  qs("changeNoteModal").hidden = true;
+  qs("changeNoteContent").textContent = "";
 }
 
 function triggerAttachmentDownload(url) {
@@ -1529,6 +1568,29 @@ async function downloadCurrentProjectFullFolder(event) {
     if (state.modalFullFolderProject?.number === project.number) {
       button.disabled = false;
       button.innerHTML = `<i class="fa-solid fa-folder-arrow-down"></i> 전체 폴더 다운로드`;
+    }
+  }
+}
+
+async function openCurrentProjectChangeNote(event) {
+  event?.preventDefault();
+  const project = state.modalChangeNoteProject;
+  const button = qs("modalChangeNote");
+  if (!project?.id || !button || button.disabled) return;
+
+  button.disabled = true;
+  button.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> 불러오는 중`;
+  try {
+    const payload = await requestJson(
+      `/api/job-projects/${encodeURIComponent(project.id)}/change-note/`
+    );
+    openChangeNotePopup(payload.change_note || {}, project);
+  } catch (error) {
+    alert(`수정 내용 조회 실패: ${error.message}`);
+  } finally {
+    if (state.modalChangeNoteProject?.id === project.id) {
+      button.disabled = false;
+      button.innerHTML = `<i class="fa-solid fa-file-lines"></i> 수정 내용`;
     }
   }
 }
@@ -1778,6 +1840,7 @@ function renderLatestInspectionResult(payload) {
   if (project.id) {
     setModalDownload(`${project.number || project.id}_규칙별_점검_결과.html`);
     setModalFullFolderDownload(project);
+    setModalChangeNote(project, project.changeNote);
   }
 
   const rawItems = Array.isArray(payload.items) ? payload.items : [];
@@ -2143,9 +2206,14 @@ async function openJobProjectRulesModal(jobProjectId, project = null) {
     qs("modalTitle").textContent = `${projectNumber} 규칙별 점검 결과`;
     setModalDownload(`${projectNumber}_규칙별_점검_결과.html`);
     setModalFullFolderDownload({
+      id: payloadProject.id || jobProjectId,
       number: projectNumber,
       certDate: payloadProject.certDate || project?.certDate || ""
     });
+    setModalChangeNote(
+      { id: payloadProject.id || jobProjectId, number: projectNumber },
+      payloadProject.changeNote
+    );
 
     if (displayItems.length) {
       mountInspectionResult(displayItems, `작업 프로젝트 ${projectNumber}의 규칙 결과입니다.`, { ruleItems: rawItems });
@@ -2179,13 +2247,23 @@ async function openResultRulesModal(jobProjectId) {
 
   try {
     const payload = await requestJson(`/api/job-projects/${jobProjectId}/results/`);
+    const payloadProject = payload.project ? normalizeApiJobProject(payload.project) : {};
+    const projectNumber = payloadProject.number || project.number;
     const rawItems = Array.isArray(payload.items) ? payload.items : [];
     const displayItems = Array.isArray(payload.display_items) ? payload.display_items : rawItems;
-    setModalDownload(`${project.number}_규칙별_점검_결과.html`);
-    setModalFullFolderDownload(project);
+    setModalDownload(`${projectNumber}_규칙별_점검_결과.html`);
+    setModalFullFolderDownload({
+      ...project,
+      number: projectNumber,
+      certDate: payloadProject.certDate || project.certDate || ""
+    });
+    setModalChangeNote(
+      { id: payloadProject.id || jobProjectId, number: projectNumber },
+      payloadProject.changeNote
+    );
 
     if (displayItems.length) {
-      mountInspectionResult(displayItems, `작업 프로젝트 ${project.number}의 규칙 결과입니다.`, { ruleItems: rawItems });
+      mountInspectionResult(displayItems, `작업 프로젝트 ${projectNumber}의 규칙 결과입니다.`, { ruleItems: rawItems });
     } else {
       qs("modalBody").innerHTML = `
         <div class="modal-message warning">
@@ -2400,12 +2478,22 @@ function bindControls() {
 
   qs("closeModal").addEventListener("click", closeModal);
   qs("modalDownload").addEventListener("click", downloadCurrentModalHtml);
+  qs("modalChangeNote").addEventListener("click", openCurrentProjectChangeNote);
   qs("modalFullFolderDownload").addEventListener("click", downloadCurrentProjectFullFolder);
+  qs("closeChangeNoteModal").addEventListener("click", closeChangeNotePopup);
+  qs("changeNoteModal").addEventListener("click", (event) => {
+    if (event.target === qs("changeNoteModal")) closeChangeNotePopup();
+  });
   qs("detailModal").addEventListener("click", (event) => {
     if (event.target === qs("detailModal")) closeModal();
   });
   document.addEventListener("keydown", (event) => {
-    if (event.key === "Escape") closeModal();
+    if (event.key !== "Escape") return;
+    if (!qs("changeNoteModal").hidden) {
+      closeChangeNotePopup();
+      return;
+    }
+    closeModal();
   });
 }
 

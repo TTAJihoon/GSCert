@@ -29,6 +29,7 @@ from main.models import (
     DownloadReviewRuleResult,
     DownloadReviewRuleStatus,
 )
+from main.views.review.ecm_change_note import change_note_payload, change_note_summary
 from main.views.review.ecm_reference_db import get_projects_by_numbers, is_completed_review_value
 from main.views.review.ecm_download_review_centers import center_label, normalize_center_code
 
@@ -344,10 +345,12 @@ def get_latest_project_results_payload(project_number, center_code=None):
 
     results = list(project.rule_results.order_by("sequence", "id"))
     items = [serialize_rule_result(result) for result in results]
+    project_payload = serialize_project(project)
+    project_payload["change_note"] = change_note_summary(project)
     return {
         "success": True,
         "job": serialize_job(project.job),
-        "project": serialize_project(project),
+        "project": project_payload,
         "items": items,
         "display_items": _display_items_for_results(results, items),
     }
@@ -728,12 +731,36 @@ def get_project_results_payload(job_project_id):
 
     results = list(project.rule_results.order_by("sequence", "id"))
     items = [serialize_rule_result(result) for result in results]
+    project_payload = serialize_project(project)
+    project_payload["change_note"] = change_note_summary(project)
+    return {
+        "success": True,
+        "job": serialize_job(project.job),
+        "project": project_payload,
+        "items": items,
+        "display_items": _display_items_for_results(results, items),
+    }
+
+
+def get_project_change_note_payload(job_project_id):
+    try:
+        project = (
+            DownloadReviewProject.objects
+            .select_related("job")
+            .get(id=job_project_id)
+        )
+    except DownloadReviewProject.DoesNotExist as exc:
+        raise DownloadReviewNotFoundError("작업 프로젝트를 찾을 수 없습니다.") from exc
+
+    note = change_note_payload(project)
+    if not note.get("available"):
+        raise DownloadReviewNotFoundError("수정 내용 파일을 찾을 수 없습니다.")
+
     return {
         "success": True,
         "job": serialize_job(project.job),
         "project": serialize_project(project),
-        "items": items,
-        "display_items": _display_items_for_results(results, items),
+        "change_note": note,
     }
 
 

@@ -13,6 +13,7 @@ import json
 import os
 import re
 import struct
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime, time
 from decimal import Decimal, InvalidOperation
@@ -1972,8 +1973,14 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
             matched,
             project,
             raw_detail,
-            expected="버전 " + ", ".join(f"v{version}.0" for version in sorted(expected_versions)),
-            actual="버전 " + ", ".join(f"v{version}.0" for version in sorted(versioned_files)) if versioned_files else "버전 없음",
+            expected="버전 " + ", ".join(f"v{version}.x" for version in sorted(expected_versions)),
+            actual=(
+                "버전 " + ", ".join(
+                    _defect_report_version_label(versioned_files, version)
+                    for version in sorted(versioned_files)
+                )
+                if versioned_files else "버전 없음"
+            ),
             message=config.get("filename_message") or "결함리포트 파일명이 잘못됨",
         )
 
@@ -2041,8 +2048,9 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
     # 1) 머리글 금지어 (차수별로 집계, 실제로 걸린 금지어의 메시지 사용)
     header_fail_msg = _defect_print_fail_message(header_forbidden_check, header_msg)
     for version, version_passed in _defect_print_pass_by_version(header_forbidden_check):
+        version_label = _defect_report_version_label(versioned_files, version)
         sub_checks.append({
-            "expected": f"[v{version}.0 머리글] 금지어 미포함: {header_forbidden_words}",
+            "expected": f"[{version_label} 머리글] 금지어 미포함: {header_forbidden_words}",
             "actual": "정상" if version_passed else f"금지어 포함: {header_forbidden_words}",
             "passed": version_passed,
             "message": header_fail_msg,
@@ -2050,8 +2058,9 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
     # 2) 바닥글 금지어 (차수별)
     footer_fail_msg = _defect_print_fail_message(footer_forbidden_check, footer_msg)
     for version, version_passed in _defect_print_pass_by_version(footer_forbidden_check):
+        version_label = _defect_report_version_label(versioned_files, version)
         sub_checks.append({
-            "expected": f"[v{version}.0 바닥글] 금지어 미포함: {footer_forbidden_words}",
+            "expected": f"[{version_label} 바닥글] 금지어 미포함: {footer_forbidden_words}",
             "actual": "정상" if version_passed else f"금지어 포함: {footer_forbidden_words}",
             "passed": version_passed,
             "message": footer_fail_msg,
@@ -2064,8 +2073,9 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
             problems.append("누락: " + ", ".join(detail["missing_sheets"]))
         if detail.get("extra_sheets"):
             problems.append("불필요: " + ", ".join(detail["extra_sheets"]))
+        version_label = _defect_report_version_label(versioned_files, detail.get("version"))
         sub_checks.append({
-            "expected": f"[v{detail.get('version')}.0 시트] " + ", ".join(detail.get("expected_sheets", [])),
+            "expected": f"[{version_label} 시트] " + ", ".join(detail.get("expected_sheets", [])),
             "actual": "정상" if sheet_ok else " / ".join(problems),
             "passed": sheet_ok,
             "message": sheet_msg,
@@ -2078,7 +2088,8 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
     baseline_value = env_values[0]["value"] if env_values else ""
     if env_by_version:
         env_actual = "\n".join(
-            f"v{version}.0: {value}" for version, value in sorted(env_by_version.items())
+            f"{_defect_report_version_label(versioned_files, version)}: {value}"
+            for version, value in sorted(env_by_version.items())
         )
     else:
         env_actual = _stringify_check_value(environment_check.get("actual", "")) or "시험환경 없음"
@@ -2167,20 +2178,19 @@ def _defect_report_failure(rule, sequence, matched, project, raw_detail, *, expe
 
 
 def _defect_report_versioned_files(files, config):
-    pattern = re.compile(str(config.get("version_pattern") or r"(?i)v(\d+)\.0"))
+    pattern = re.compile(str(config.get("version_pattern") or r"(?i)v(\d+)(?:[._-]\d+)*"))
     versioned = {}
-    duplicates = set()
     for file_info in files:
-        match = pattern.search(file_info.name)
-        if not match:
-            continue
-        version = int(match.group(1))
-        if version in versioned:
-            duplicates.add(version)
+        revision = _artifact_revision_info(file_info)
+        if revision:
+            version = revision.major
+        else:
+            match = pattern.search(file_info.name)
+            if not match:
+                continue
+            version = int(match.group(1))
         versioned[version] = file_info
-    if duplicates:
-        versioned[-1] = files[0]
-    return versioned
+    return dict(sorted(versioned.items()))
 
 
 def _check_defect_report_sheets(workbook_by_version, versioned_files, defect_round_count):
@@ -4118,6 +4128,145 @@ def _read_path_bytes(raw_path):
     return data
 
 
+@dataclass(frozen=True)
+class _ArtifactRevision:
+    major: int
+    minor: tuple[int, ...]
+    base_stem: str
+    label: str
+
+
+_PREFIXED_ARTIFACT_REVISION_RE = re.compile(
+    r"(?i)(?:^|[\s_\-\(\)\[\]\{\}])(?P<label>(?:v|ver|version)\s*\.?\s*(?P<number>\d+(?:[._-]\d+)*))\s*$"
+)
+_DOTTED_ARTIFACT_REVISION_RE = re.compile(
+    r"(?:^|[\s_\-\(\)\[\]\{\}])(?P<label>(?P<number>\d+\.\d+(?:[._-]\d+)*))\s*$"
+)
+
+
+def _artifact_revision_info(file_info):
+    """파일명 끝의 산출물 개정 버전을 파싱한다.
+
+    ECM에서는 같은 산출물이 v1.0, v1.1처럼 뒤늦게 추가될 수 있다. 제품명 안의
+    ISM3.0 같은 숫자는 버전으로 오인하지 않도록 파일명 끝 토큰만 본다.
+    """
+    stem = PurePosixPath(str(file_info.name or "")).stem
+    for pattern in (_PREFIXED_ARTIFACT_REVISION_RE, _DOTTED_ARTIFACT_REVISION_RE):
+        match = pattern.search(stem)
+        if not match:
+            continue
+        number = match.group("number")
+        parts = [part for part in re.split(r"[._-]", number) if part != ""]
+        if not parts:
+            continue
+        try:
+            major = int(parts[0])
+            minor = tuple(int(part) for part in parts[1:]) or (0,)
+        except ValueError:
+            continue
+        if major > 99:
+            continue
+        base_stem = stem[: match.start()].strip(" _-()[]{}")
+        if not base_stem:
+            continue
+        return _ArtifactRevision(
+            major=major,
+            minor=minor,
+            base_stem=base_stem,
+            label=" ".join(match.group("label").split()),
+        )
+    return None
+
+
+def _artifact_revision_identity(file_info):
+    revision = _artifact_revision_info(file_info)
+    stem = revision.base_stem if revision else PurePosixPath(str(file_info.name or "")).stem
+    normalized_stem = unicodedata.normalize("NFKC", stem).casefold()
+    normalized_stem = re.sub(r"[\s_\-\(\)\[\]\{\}.]+", "", normalized_stem)
+    return (normalized_stem, _artifact_revision_extension_family(file_info))
+
+
+def _artifact_revision_extension_family(file_info):
+    extension = str(getattr(file_info, "extension", "") or "").lower()
+    if extension in (".xlsx", ".xlsm", ".xls"):
+        return "excel"
+    if extension in (".docx", ".docm", ".doc"):
+        return "word"
+    return extension or "any"
+
+
+def _artifact_revision_modified_value(file_info):
+    modified_at = getattr(file_info, "modified_at", None)
+    if isinstance(modified_at, datetime):
+        return modified_at.timestamp()
+    return 0
+
+
+def _file_identity_key(file_info):
+    return str(getattr(file_info, "path", "") or getattr(file_info, "name", ""))
+
+
+def _expand_revision_related_files(selected_files, all_files):
+    selected = list(selected_files or [])
+    if not selected:
+        return selected
+
+    selected_identities = {_artifact_revision_identity(file_info) for file_info in selected}
+    if not selected_identities:
+        return selected
+
+    seen = {_file_identity_key(file_info) for file_info in selected}
+    expanded = list(selected)
+    for file_info in all_files or []:
+        key = _file_identity_key(file_info)
+        if key in seen:
+            continue
+        if _artifact_revision_info(file_info) and _artifact_revision_identity(file_info) in selected_identities:
+            expanded.append(file_info)
+            seen.add(key)
+    return expanded
+
+
+def _latest_revision_files(files):
+    indexed_files = list(enumerate(files or []))
+    groups = {}
+    for index, file_info in indexed_files:
+        groups.setdefault(_artifact_revision_identity(file_info), []).append((index, file_info))
+
+    selected_keys = set()
+    for group in groups.values():
+        versioned = [
+            (index, file_info, _artifact_revision_info(file_info))
+            for index, file_info in group
+            if _artifact_revision_info(file_info)
+        ]
+        if not versioned:
+            selected_keys.update(_file_identity_key(file_info) for index, file_info in group)
+            continue
+
+        latest_by_major = {}
+        for index, file_info, revision in versioned:
+            major = revision.major
+            candidate_key = (
+                revision.minor,
+                _artifact_revision_modified_value(file_info),
+                str(file_info.path or file_info.name),
+            )
+            current = latest_by_major.get(major)
+            if current is None or candidate_key > current[0]:
+                latest_by_major[major] = (candidate_key, index, file_info)
+        selected_keys.update(
+            _file_identity_key(file_info)
+            for _candidate_key, _index, file_info in latest_by_major.values()
+        )
+
+    return [
+        file_info
+        for _index, file_info in indexed_files
+        if _file_identity_key(file_info) in selected_keys
+    ]
+
+
 def _files_in_configured_folder(rule, verify_result, *, ignore_target_file_type=False):
     config = rule.config_json or {}
     files = _matching_files(rule, verify_result, ignore_target_file_type=ignore_target_file_type)
@@ -4125,7 +4274,16 @@ def _files_in_configured_folder(rule, verify_result, *, ignore_target_file_type=
     # 일반 규칙이 rawdata의 스크린샷 이미지 폴더를 제출물 폴더로 잘못 선택하지 않도록 제외한다.
     # (최초/최종형상RawData 규칙은 _files_in_configured_folder를 쓰지 않고 직접 rawdata를 필터링한다.)
     files = [file_info for file_info in files if not _is_rawdata_file(file_info, "rawdata")]
-    return _select_folder_chain_files(files, config.get("folder_keyword_chain"))
+    selected_files, selected_folder = _select_folder_chain_files(files, config.get("folder_keyword_chain"))
+    selected_files = _expand_revision_related_files(selected_files, files)
+    selected_files = _latest_revision_files(selected_files)
+    return selected_files, selected_folder
+
+
+def _defect_report_version_label(versioned_files, version):
+    file_info = versioned_files.get(version) if isinstance(versioned_files, dict) else None
+    revision = _artifact_revision_info(file_info) if file_info else None
+    return revision.label if revision else f"v{version}.0"
 
 
 def _select_folder_chain_files(files, folder_keyword_chain_raw):

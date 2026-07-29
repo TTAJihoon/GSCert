@@ -1025,15 +1025,47 @@
   justify-content: flex-end;
 }
 
+.modal-change-note-button,
 .modal-folder-download-button,
 .modal-download-button {
   gap: 6px;
   min-height: 34px;
 }
 
+.modal-change-note-button[hidden],
 .modal-folder-download-button[hidden],
 .modal-download-button[hidden] {
   display: none;
+}
+
+.note-modal-backdrop {
+  z-index: 1010;
+}
+
+.note-modal-panel {
+  width: min(760px, calc(100vw - 48px));
+  height: min(560px, calc(100vh - 48px));
+  min-width: min(420px, calc(100vw - 48px));
+  min-height: min(320px, calc(100vh - 48px));
+}
+
+.note-modal-body {
+  background: #f8fafc;
+}
+
+.change-note-content {
+  margin: 0;
+  min-height: 100%;
+  padding: 14px;
+  border: 1px solid var(--review-line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--review-text);
+  font-family: "Malgun Gothic", "Noto Sans KR", "Segoe UI", Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.65;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .modal-body {
