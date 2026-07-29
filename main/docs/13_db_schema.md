@@ -43,7 +43,7 @@ Django `DATABASES` alias 3개로 나뉜다. 어떤 모델이 어느 DB로 가는
 ## 3. reference DB (PostgreSQL, 공유 기준 데이터)
 
 ### 3.1 `reference_center_pl` — 센터별 PL 이름 매핑
-PL(프로젝트 리더) 이름을 센터에 매핑한다. `sync_reference_projects_from_sheet`가 시트에서 채운다.
+PL(프로젝트 리더) 이름을 센터에 매핑한다. `sync_reference_projects_from_sheet`가 기본 PL 목록을 채우고, `launcher.ps1`의 `G` 메뉴에서 배정한 미분류 PL 추가 매핑도 같은 테이블에 보존한다.
 
 | 컬럼 | 타입 | 비고 |
 |---|---|---|

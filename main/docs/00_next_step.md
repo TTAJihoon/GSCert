@@ -28,6 +28,7 @@
 
 - `reference` PostgreSQL: 공유 기준정보, `reference_project`, `reference_center_pl`, `sw_data`, `inspection_rule`.
 - `workflow` SQLite: 서버 로컬 작업, 프로젝트 처리 상태, `inspection_result`, 로그, lock.
+- `launcher.ps1`의 `G` Google Sheets 동기화는 미분류 PL을 번호로 보여주고, 사용자가 센터를 입력하면 `reference_center_pl`에 추가 매핑을 저장한 뒤 같은 실행의 프로젝트 센터를 다시 계산한다.
 - 점검규칙은 1~18번 실제 규칙이 구현되어 있고 `seed_download_review_rules --only-real --enable --update-existing` 기준으로 반영한다.
 - 웹과 Windows 앱은 `inspection_rule` 규칙 bundle과 `gscert_review_core.engine` 공용 실행 코드를 함께 사용한다.
 - 점검 결과의 기대값/실제값/메시지 표시는 `gscert_review_core/result_display.py`의 공통 표시 API를 사용한다.

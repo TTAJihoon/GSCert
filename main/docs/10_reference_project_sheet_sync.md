@@ -42,6 +42,10 @@ $env:GSCERT_DB_PASSWORD = "<PostgreSQL password>"
   --settings=myproject.postgres_data_settings
 ```
 
+`launcher.ps1`의 `G` 메뉴는 `--assign-unknown-pl` 옵션을 붙여 실행한다. Google Sheet의 첫 번째 시험원이 센터 매핑에 없으면 미분류 PL을 번호로 보여주고, 사용자가 번호를 선택한 뒤 `분당`/`상암`/`영남` 또는 `1`/`2`/`3`을 입력하면 해당 PL을 `reference_center_pl`에 저장한다. 저장된 추가 PL 매핑은 다음 동기화에서도 유지되며, 같은 실행 안에서 해당 프로젝트의 `center_code`도 다시 계산된다.
+
+비대화형 실행(예: 웹 서버 콘솔 API)은 `--assign-unknown-pl`을 붙이지 않는다. 이 경우 미분류 PL 이름만 경고로 출력하고 프로젝트는 `center_code=unknown`으로 저장한다.
+
 파싱만 확인하려면 DB 접속 없이 dry-run을 사용한다.
 
 ```powershell

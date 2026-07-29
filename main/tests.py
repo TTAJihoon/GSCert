@@ -515,6 +515,59 @@ class EcmReferenceSheetParserTests(SimpleTestCase):
         self.assertEqual(rows[1].center_code, "bundang")
 
 
+class SyncReferenceProjectsFromSheetCommandTests(SimpleTestCase):
+    def test_assign_unknown_pl_reclassifies_projects_in_current_run(self):
+        csv_path = self._write_source_csv([
+            ",회사C(비고)-제품C,20,2026.06.07,2026.06.08,2026.06.09,2026.07.02,신규PL, TTA-26-00003",
+        ])
+        out = StringIO()
+
+        with patch("builtins.input", side_effect=["1", "상암"]):
+            call_command(
+                "sync_reference_projects_from_sheet",
+                "--source-csv",
+                str(csv_path),
+                "--dry-run",
+                "--assign-unknown-pl",
+                stdout=out,
+            )
+
+        output = out.getvalue()
+        self.assertIn("상암 1건", output)
+        self.assertNotIn("미분류 1건", output)
+
+    def test_assign_unknown_pl_can_skip_unassigned_names(self):
+        csv_path = self._write_source_csv([
+            ",회사D(비고)-제품D,21,2026.06.10,2026.06.11,2026.06.12,2026.07.03,보류PL, TTA-26-00004",
+        ])
+        out = StringIO()
+
+        with patch("builtins.input", side_effect=[""]):
+            call_command(
+                "sync_reference_projects_from_sheet",
+                "--source-csv",
+                str(csv_path),
+                "--dry-run",
+                "--assign-unknown-pl",
+                stdout=out,
+            )
+
+        self.assertIn("센터 미분류 PL: 보류PL", out.getvalue())
+
+    def _write_source_csv(self, project_rows):
+        csv_text = "\n".join([
+            ",2026년 6월 22일(월),,,,,,,",
+            ",,,,,,,,",
+            ",,,,,,,,",
+            *project_rows,
+            ",,,,,,,,",
+        ])
+        temp = tempfile.NamedTemporaryFile("w", encoding="utf-8-sig", newline="", suffix=".csv", delete=False)
+        with temp:
+            temp.write(csv_text)
+        return Path(temp.name)
+
+
 class DownloadVerifyTests(SimpleTestCase):
     def test_zero_byte_file_is_warning_not_failure(self):
         # 0바이트 파일은 다운로드 확인에서 실패시키지 않고 경고로만 남긴다.
