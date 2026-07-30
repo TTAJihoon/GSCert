@@ -64,9 +64,11 @@ def get_pl_assignment_payload():
         })
 
     # 미배정: ReferenceCenterPl에 없어 center_code='unknown'으로 적재된 담당자.
+    # review_result가 비어있지 않은(이미 점검된) 프로젝트는 세지 않는다 - PL을
+    # 센터에 배정할 때 함께 따라가지 않고 그대로 남기 때문(아래 apply 쪽 주석 참고).
     unassigned_rows = (
         ReferenceProject.objects.using(alias)
-        .filter(center_code=UNASSIGNED_CENTER_CODE)
+        .filter(center_code=UNASSIGNED_CENTER_CODE, review_result="")
         .exclude(primary_tester="")
         .values("primary_tester")
         .annotate(project_count=Count("id"))
@@ -89,8 +91,12 @@ def apply_pl_assignment_changes(changes):
     changes: [{"name": str, "from_center": str, "to_center": str}, ...]
 
     규칙(사용자 확정):
-    - 미배정 -> 센터: 매핑을 새로 만들고, 이미 등록된 미배정(unknown) 프로젝트도
-      즉시 새 센터로 옮긴다.
+    - 미배정 -> 센터: 매핑을 새로 만들고, 이미 등록된 미배정(unknown) 프로젝트 중
+      아직 점검하지 않은(review_result가 비어있는) 것만 즉시 새 센터로 옮긴다.
+      이미 점검된 프로젝트는 미배정 상태 그대로 둔다 - A센터에서 점검까지 마친
+      프로젝트인데 그 PL이 이후 미배정으로 옮겨지면(그리고 다음 시트 동기화가
+      center_code를 'unknown'으로 덮어쓰면) review_result는 그대로 남아있으므로,
+      이걸로 "이미 점검됨"을 구분해 자동으로 새 센터에 휩쓸려 들어가지 않게 한다.
     - 센터 -> 다른 센터: 매핑만 갱신한다. 기존 프로젝트는 그대로 두고 다음 시트
       동기화부터 새 센터로 적재된다.
     - 센터 -> 미배정: 매핑을 삭제한다(기존 프로젝트는 그대로 둠).
@@ -157,7 +163,7 @@ def apply_pl_assignment_changes(changes):
             if from_center == UNASSIGNED_CENTER_CODE:
                 moved_project_count += (
                     ReferenceProject.objects.using(alias)
-                    .filter(center_code=UNASSIGNED_CENTER_CODE, primary_tester=name)
+                    .filter(center_code=UNASSIGNED_CENTER_CODE, primary_tester=name, review_result="")
                     .update(center_code=to_center, center_label=to_label)
                 )
 

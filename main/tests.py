@@ -1241,6 +1241,35 @@ class PlAssignmentApiTests(TestCase):
             {("TTA-26-90002", "bundang"), ("TTA-26-90003", "bundang")},
         )
 
+    def test_unassigned_to_center_leaves_already_inspected_projects_behind(self):
+        # 실제로 발생 가능한 시나리오: A센터(상암)에서 점검까지 끝난 프로젝트가 있는
+        # PL을 미배정으로 옮기면, 다음 시트 동기화가 center_code를 'unknown'으로
+        # 덮어써도 review_result는 그대로 남는다(sync는 review_result를 안 건드림).
+        # 이 상태에서 그 PL을 다른 센터로 재배정해도, 이미 점검된 프로젝트까지
+        # 새 센터로 휩쓸려 가면 안 된다 - 미배정 그대로 남아야 한다.
+        ReferenceProject.objects.using("reference").create(
+            project_number="TTA-26-90004",
+            center_code="unknown",
+            center_label="미분류",
+            primary_tester="신규PL",
+            review_result="X",
+        )
+
+        data = self._get_assignments()
+        self.assertEqual(
+            data["assignments"]["unknown"],
+            [{"name": "신규PL", "project_count": 2}],
+        )
+
+        response = self._apply([{"name": "신규PL", "from_center": "unknown", "to_center": "bundang"}])
+        payload = json.loads(response.content)
+
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["moved_project_count"], 2)
+
+        already_inspected = ReferenceProject.objects.using("reference").get(project_number="TTA-26-90004")
+        self.assertEqual(already_inspected.center_code, "unknown")
+
     def test_center_to_center_move_updates_mapping_but_keeps_existing_projects(self):
         response = self._apply([{"name": "김진영", "from_center": "sangam", "to_center": "yeongnam"}])
         payload = json.loads(response.content)
