@@ -44,22 +44,35 @@ DATABASES = {
         "ENGINE": "django.db.backends.sqlite3",
         "NAME": BASE_DIR / "main" / "data" / "workflow.db",
     },
+    "reference": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": BASE_DIR / "main" / "data" / "reference_mock.db",
+    },
 }
 
 DATABASE_ROUTERS = [
     "main.db_routers.WorkflowDatabaseRouter",
+    "main.db_routers.ReferenceDatabaseRouter",
 ]
 
 WORKFLOW_DATABASE_ALIAS = "workflow"
 WORKFLOW_MODEL_NAMES = {
     "downloadreviewjob",
     "downloadreviewproject",
-    "downloadreviewmanualoverride",
     "downloadreviewrule",
     "downloadreviewruleresult",
     "downloadreviewlog",
     "downloadreviewlock",
 }
+
+REFERENCE_DATABASE_ALIAS = "reference"
+REFERENCE_MODEL_NAMES = {
+    "swdata",
+    "referencecenterpl",
+    "referenceproject",
+    "downloadreviewmanualoverride",
+}
+DOWNLOAD_REVIEW_PROJECT_SOURCE = "postgres"
 
 ECM_AGENT_LOCK_PATH = BASE_DIR / "main" / "data" / "ecm_agent.lock"
 ECM_AGENT_LOCK_TIMEOUT_SECONDS = 600

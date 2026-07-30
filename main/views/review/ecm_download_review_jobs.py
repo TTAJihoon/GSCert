@@ -882,6 +882,8 @@ def _is_manual_override_storage_unavailable(exc):
             "no such table" in message
             or "no such column" in message
             or "has no column" in message
+            or "does not exist" in message
+            or "undefinedtable" in message
         )
     )
 

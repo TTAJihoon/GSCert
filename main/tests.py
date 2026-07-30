@@ -1560,7 +1560,7 @@ class CsrfFailureViewTests(SimpleTestCase):
 
 
 class DownloadReviewManualOverrideRobustnessTests(TestCase):
-    databases = {"default", "workflow"}
+    databases = {"default", "workflow", "reference"}
 
     def setUp(self):
         self.factory = RequestFactory()
@@ -1640,7 +1640,7 @@ class DownloadReviewManualOverrideRobustnessTests(TestCase):
         with self.assertLogs("main.views.review.ecm_download_review_jobs", level="ERROR"):
             with patch(
                 "main.views.review.ecm_download_review_jobs.DownloadReviewManualOverride.objects.update_or_create",
-                side_effect=OperationalError("no such table: inspection_manual_override"),
+                side_effect=OperationalError('relation "inspection_manual_override" does not exist'),
             ):
                 response = rule_result_manual_pass(
                     self.factory.post(

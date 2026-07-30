@@ -114,7 +114,6 @@ WORKFLOW_MODEL_NAMES = {
     'similaranalysisjob',
     'downloadreviewjob',
     'downloadreviewproject',
-    'downloadreviewmanualoverride',
     'downloadreviewruleresult',
     'downloadreviewlog',
     'downloadreviewlock',
@@ -132,8 +131,14 @@ SIMILAR_UPLOAD_FILE_LIMIT_BYTES = int(
 )
 
 REFERENCE_DATABASE_ALIAS = 'reference'
-# downloadreviewrule: 점검규칙을 주 서버 PostgreSQL에 단일 저장 → 194/241 공유, Django admin에서 수정.
-REFERENCE_MODEL_NAMES = {'swdata', 'referencecenterpl', 'referenceproject', 'downloadreviewrule'}
+# downloadreviewrule/manualoverride: 공유 기준·판단 데이터를 주 서버 PostgreSQL에 단일 저장 → 194/241 공유.
+REFERENCE_MODEL_NAMES = {
+    'swdata',
+    'referencecenterpl',
+    'referenceproject',
+    'downloadreviewrule',
+    'downloadreviewmanualoverride',
+}
 DOWNLOAD_REVIEW_PROJECT_SOURCE = 'postgres'
 
 # 로컬 점검 앱(local-review) API 인증 토큰.

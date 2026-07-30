@@ -100,7 +100,11 @@ def apply_manual_override_to_result(result, override, *, save=False):
 
 
 def mark_overrides_applied(overrides):
-    ids = [override.id for override in overrides if getattr(override, "id", None)]
+    ids = [
+        override.id
+        for override in overrides
+        if isinstance(override, DownloadReviewManualOverride) and getattr(override, "id", None)
+    ]
     if ids:
         DownloadReviewManualOverride.objects.filter(id__in=ids).update(last_applied_at=timezone.now())
 
