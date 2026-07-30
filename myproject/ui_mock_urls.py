@@ -21,6 +21,7 @@ from main.views.review.ecm_download_review_api import (
     project_full_documents_download as download_review_project_full_documents_download,
     projects as download_review_projects,
     rule_result_artifact as download_review_rule_result_artifact,
+    rule_result_manual_pass as download_review_rule_result_manual_pass,
 )
 
 
@@ -53,6 +54,7 @@ urlpatterns = [
     path("api/job-projects/<uuid:job_project_id>/results/", download_review_job_project_results, name="download_review_job_project_results"),
     path("api/job-projects/<uuid:job_project_id>/change-note/", download_review_job_project_change_note, name="download_review_job_project_change_note"),
     path("api/job-projects/<uuid:job_project_id>/results.xlsx", download_review_job_project_results_excel, name="download_review_job_project_results_excel"),
+    path("api/rule-results/<uuid:result_id>/manual-pass/", download_review_rule_result_manual_pass, name="download_review_rule_result_manual_pass"),
     path("api/rule-results/<uuid:result_id>/artifacts/<str:artifact_id>/", download_review_rule_result_artifact, name="download_review_rule_result_artifact"),
     path("api/projects/<str:project_number>/full-documents-download/", download_review_project_full_documents_download, name="download_review_project_full_documents_download"),
     path("api/projects/<str:project_number>/latest-results/", download_review_latest_project_results, name="download_review_latest_project_results"),

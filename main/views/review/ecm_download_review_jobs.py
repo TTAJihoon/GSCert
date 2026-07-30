@@ -23,14 +23,26 @@ from main.models import (
     DownloadReviewLock,
     DownloadReviewLog,
     DownloadReviewLogLevel,
+    DownloadReviewManualOverride,
     DownloadReviewProject,
     DownloadReviewProjectStatus,
     DownloadReviewProjectReviewStatus,
+    DownloadReviewRule,
     DownloadReviewRuleResult,
     DownloadReviewRuleStatus,
 )
 from main.views.review.ecm_change_note import change_note_payload, change_note_summary
-from main.views.review.ecm_reference_db import get_projects_by_numbers, is_completed_review_value
+from main.views.review.ecm_manual_override import (
+    apply_manual_override_to_result,
+    manual_override_public,
+    mark_overrides_applied,
+)
+from main.views.review.ecm_reference_db import (
+    ARTIFACT_REVIEW_COLUMNS,
+    get_projects_by_numbers,
+    is_completed_review_value,
+    write_project_review_result,
+)
 from main.views.review.ecm_download_review_centers import center_label, normalize_center_code
 
 
@@ -742,6 +754,57 @@ def get_project_results_payload(job_project_id):
     }
 
 
+def mark_rule_result_manual_pass(result_id, memo, *, requested_by=""):
+    memo = str(memo or "").strip()
+    if not memo:
+        raise DownloadReviewJobRequestError("수동 적합 처리 사유를 입력해야 합니다.")
+
+    workflow_alias = getattr(settings, "WORKFLOW_DATABASE_ALIAS", "workflow")
+    with transaction.atomic(using=workflow_alias):
+        try:
+            result = (
+                DownloadReviewRuleResult.objects
+                .select_for_update()
+                .select_related("job_project", "job_project__job")
+                .get(id=result_id)
+            )
+        except DownloadReviewRuleResult.DoesNotExist as exc:
+            raise DownloadReviewNotFoundError("점검 결과를 찾을 수 없습니다.") from exc
+
+        if not result.rule_code:
+            raise DownloadReviewJobRequestError("규칙 코드가 없는 결과는 수동 적합 처리할 수 없습니다.")
+
+        project = result.job_project
+        override, _created = DownloadReviewManualOverride.objects.update_or_create(
+            center_code=str(project.center_code or "").strip(),
+            project_number=str(project.project_number or "").strip(),
+            rule_code=str(result.rule_code or "").strip(),
+            defaults={
+                "rule_name": result.rule_name,
+                "memo": memo,
+                "created_by": requested_by or "",
+            },
+        )
+        apply_manual_override_to_result(result, override, save=True)
+        mark_overrides_applied([override])
+        _recalculate_project_review_after_manual_override(project)
+        DownloadReviewLog.objects.create(
+            job=project.job,
+            job_project=project,
+            level=DownloadReviewLogLevel.INFO,
+            event_code="manual_pass_override",
+            message=f"{project.project_number} {result.rule_name} 수동 적합 처리",
+            detail_json={
+                "rule_code": result.rule_code,
+                "rule_name": result.rule_name,
+                "memo": memo,
+                "requested_by": requested_by or "",
+            },
+        )
+
+    return get_project_results_payload(project.id)
+
+
 def get_project_change_note_payload(job_project_id):
     try:
         project = (
@@ -996,6 +1059,79 @@ def rule_status_label(status):
     return labels.get(status, status)
 
 
+def _recalculate_project_review_after_manual_override(project):
+    results = list(project.rule_results.order_by("sequence", "id"))
+    failed_count = sum(
+        1
+        for result in results
+        if result.status in (DownloadReviewRuleStatus.FAIL, DownloadReviewRuleStatus.ERROR)
+    )
+    total_count = len(results)
+    passed_count = total_count - failed_count
+    project.review_status = (
+        DownloadReviewProjectReviewStatus.NEEDS_FIX
+        if failed_count
+        else DownloadReviewProjectReviewStatus.COMPLETED
+    )
+    project.current_step = f"점검 완료: 정상 {passed_count}건, 부적합 {failed_count}건"
+    project.save(update_fields=["review_status", "current_step", "updated_at"])
+
+    reference_review = "X" if failed_count else "O"
+    try:
+        artifact_results = _artifact_results_from_rule_results(results)
+        write_project_review_result(
+            project.project_number,
+            reference_review,
+            artifact_results=artifact_results,
+            inspected_at=timezone.now(),
+            center_code=project.center_code,
+        )
+    except Exception as exc:
+        logger.warning("Manual override reference writeback failed: %s (%s)", project.project_number, exc)
+        DownloadReviewLog.objects.create(
+            job=project.job,
+            job_project=project,
+            level=DownloadReviewLogLevel.WARNING,
+            event_code="manual_pass_reference_write_failed",
+            message=f"{project.project_number} 수동 적합 기준 DB 반영 실패",
+            detail_json={"reference_review": reference_review},
+            admin_only=True,
+        )
+
+
+def _artifact_results_from_rule_results(results):
+    rules_by_code = {
+        rule.code: rule
+        for rule in DownloadReviewRule.objects.filter(
+            code__in=sorted({result.rule_code for result in results if result.rule_code})
+        )
+    }
+    artifact_results = {}
+    for result in results:
+        column = _artifact_column_for_result(result, rules_by_code.get(result.rule_code))
+        if not column:
+            continue
+        value = "O" if result.status == DownloadReviewRuleStatus.PASS else "X"
+        if artifact_results.get(column) == "X":
+            continue
+        artifact_results[column] = value
+    return artifact_results
+
+
+def _artifact_column_for_result(result, rule):
+    raw_detail = result.raw_detail_json or {}
+    configured = ""
+    if isinstance(raw_detail, dict):
+        configured = str(raw_detail.get("artifact_column") or "").strip()
+    if not configured and rule is not None:
+        configured = str((rule.config_json or {}).get("artifact_column") or "").strip()
+    candidates = (configured, result.rule_code, result.rule_name)
+    for candidate in candidates:
+        if candidate in ARTIFACT_REVIEW_COLUMNS:
+            return candidate
+    return ""
+
+
 def polling_hint(job):
     status = job.status
     if status in (DownloadReviewJobStatus.RUNNING, DownloadReviewJobStatus.QUEUED):
@@ -1096,6 +1232,7 @@ def serialize_project(project):
 def serialize_rule_result(result):
     project_number = result.job_project.project_number
     raw_detail = result.raw_detail_json or {}
+    manual_override = manual_override_public(raw_detail)
     return {
         "id": str(result.id),
         "job_project_id": str(result.job_project_id),
@@ -1110,6 +1247,7 @@ def serialize_rule_result(result):
         "actual": result.actual,
         "message": result.message,
         "artifacts": _serialize_artifacts(raw_detail),
+        "manual_override": manual_override,
         "raw_detail": _public_raw_detail(raw_detail),
         "created_at": _iso(result.created_at),
     }
@@ -1125,6 +1263,7 @@ def _display_items_for_results(results, serialized_items=None):
             "id": parent.get("id", ""),
             "job_project_id": parent.get("job_project_id", ""),
             "artifacts": parent.get("artifacts", []),
+            "manual_override": parent.get("manual_override"),
             "created_at": parent.get("created_at", ""),
         })
         display_items.append(item)

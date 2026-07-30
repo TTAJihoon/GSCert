@@ -416,6 +416,7 @@ const state = {
   modalDownloadFilename: "",
   modalFullFolderProject: null,
   modalChangeNoteProject: null,
+  manualOverrideTarget: null,
   inspectionRuleItems: [],
   inspectionItems: [],
   inspectionFilter: null
@@ -811,9 +812,15 @@ function formatDateTime(value) {
   });
 }
 
-function badge(status) {
+function badge(status, options = {}) {
+  const manualOverride = options.manualOverride || null;
   const config = statusLabel[status] || [status, "badge-muted"];
-  return `<span class="badge ${config[1]}">${escapeHtml(config[0])}</span>`;
+  const label = manualOverride?.applied ? "정상" : config[0];
+  const cls = manualOverride?.applied ? "badge-manual-pass" : config[1];
+  const title = manualOverride?.applied && manualOverride.memo
+    ? `수동 적합 사유: ${manualOverride.memo}`
+    : "";
+  return `<span class="badge ${cls}"${title ? ` title="${escapeHtml(title)}"` : ""}>${escapeHtml(label)}</span>`;
 }
 
 function isProjectLocked(item) {
@@ -1464,6 +1471,116 @@ function closeChangeNotePopup() {
   qs("changeNoteContent").textContent = "";
 }
 
+function openManualPassPopup(item) {
+  state.manualOverrideTarget = {
+    id: item.id,
+    ruleName: item.rule_name || "-",
+    displayNumber: item.display_number || item.sequence || ""
+  };
+  qs("manualOverrideTitle").textContent = "수동 적합 처리";
+  qs("manualOverrideRuleName").textContent = [
+    state.manualOverrideTarget.displayNumber,
+    state.manualOverrideTarget.ruleName
+  ].filter(Boolean).join(" ");
+  qs("manualOverrideMemo").value = "";
+  qs("manualOverrideMemo").readOnly = false;
+  qs("manualOverrideError").hidden = true;
+  qs("confirmManualOverride").hidden = false;
+  qs("confirmManualOverride").disabled = false;
+  qs("confirmManualOverride").textContent = "적합으로 변경";
+  qs("cancelManualOverride").textContent = "취소";
+  qs("manualOverrideModal").hidden = false;
+  setTimeout(() => qs("manualOverrideMemo").focus(), 0);
+}
+
+function openManualPassNotePopup(item) {
+  const manualOverride = manualOverrideOf(item);
+  if (!manualOverride) return;
+  state.manualOverrideTarget = null;
+  qs("manualOverrideTitle").textContent = "수동 적합 메모";
+  qs("manualOverrideRuleName").textContent = [
+    item.display_number || item.sequence || "",
+    item.rule_name || manualOverride.rule_name || "-"
+  ].filter(Boolean).join(" ");
+  qs("manualOverrideMemo").value = manualOverride.memo || "";
+  qs("manualOverrideMemo").readOnly = true;
+  qs("manualOverrideError").hidden = true;
+  qs("confirmManualOverride").hidden = true;
+  qs("confirmManualOverride").textContent = "적합으로 변경";
+  qs("cancelManualOverride").textContent = "닫기";
+  qs("manualOverrideModal").hidden = false;
+}
+
+function closeManualPassPopup() {
+  qs("manualOverrideModal").hidden = true;
+  qs("manualOverrideMemo").value = "";
+  qs("manualOverrideMemo").readOnly = false;
+  qs("manualOverrideError").hidden = true;
+  qs("confirmManualOverride").hidden = false;
+  qs("confirmManualOverride").textContent = "적합으로 변경";
+  state.manualOverrideTarget = null;
+}
+
+async function confirmManualPassOverride() {
+  const target = state.manualOverrideTarget;
+  if (!target?.id) return;
+  const memo = qs("manualOverrideMemo").value.trim();
+  if (!memo) {
+    qs("manualOverrideError").textContent = "수동 적합 처리 사유를 입력해야 합니다.";
+    qs("manualOverrideError").hidden = false;
+    qs("manualOverrideMemo").focus();
+    return;
+  }
+
+  const button = qs("confirmManualOverride");
+  button.disabled = true;
+  button.textContent = "저장 중";
+  try {
+    const payload = await requestJson(`/api/rule-results/${encodeURIComponent(target.id)}/manual-pass/`, {
+      method: "POST",
+      body: JSON.stringify({ memo })
+    });
+    closeManualPassPopup();
+    updateInspectionModalFromPayload(payload);
+    await Promise.allSettled([
+      loadProjects(),
+      state.resultJobId ? loadResultProjects({ silent: true }) : Promise.resolve()
+    ]);
+  } catch (error) {
+    qs("manualOverrideError").textContent = error.message || "수동 적합 처리에 실패했습니다.";
+    qs("manualOverrideError").hidden = false;
+  } finally {
+    button.disabled = false;
+    button.textContent = "적합으로 변경";
+  }
+}
+
+function updateInspectionModalFromPayload(payload) {
+  const payloadProject = payload.project ? normalizeApiJobProject(payload.project) : {};
+  const projectNumber = payloadProject.number || qs("modalTitle").textContent.replace(" 규칙별 점검 결과", "");
+  const rawItems = Array.isArray(payload.items) ? payload.items : [];
+  const displayItems = Array.isArray(payload.display_items) ? payload.display_items : rawItems;
+  const previousFilter = state.inspectionFilter;
+  qs("modalTitle").textContent = `${projectNumber} 규칙별 점검 결과`;
+  setModalDownload(`${projectNumber}_규칙별_점검_결과.html`);
+  setModalFullFolderDownload({
+    id: payloadProject.id,
+    number: projectNumber,
+    certDate: payloadProject.certDate || ""
+  });
+  setModalChangeNote(
+    { id: payloadProject.id, number: projectNumber },
+    payloadProject.changeNote
+  );
+  mountInspectionResult(
+    displayItems,
+    `작업 프로젝트 ${projectNumber}의 규칙 결과입니다.`,
+    { ruleItems: rawItems }
+  );
+  state.inspectionFilter = previousFilter;
+  refreshInspectionTable();
+}
+
 function triggerAttachmentDownload(url) {
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -1997,6 +2114,16 @@ function ruleSubChecks(rule) {
   return rows;
 }
 
+function manualOverrideOf(item) {
+  const value = item?.manual_override;
+  return value && value.applied ? value : null;
+}
+
+function isPassStatusValue(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return ["정상", "완료", "pass", "passed", "success", "ok", "o"].includes(normalized);
+}
+
 function inspectionStatusType(rule) {
   const value = String(rule?.status_label || rule?.status || "").trim().toLowerCase();
   if (["정상", "완료", "pass", "passed", "success", "ok", "o"].includes(value)) return "success";
@@ -2027,6 +2154,33 @@ function inspectionItemMatchesFilter(item, filter) {
 
 function filterInspectionItems(items) {
   return items.filter((item) => inspectionItemMatchesFilter(item, state.inspectionFilter));
+}
+
+function inspectionStatusCell(rule, statusValue) {
+  const manualOverride = manualOverrideOf(rule);
+  const label = statusValue || rule.status_label || rule.status || "-";
+  const badgeHtml = badge(label, { manualOverride });
+  if (manualOverride) {
+    return `
+      <button
+        type="button"
+        class="status-badge-button manual-pass-note-button"
+        data-manual-note-result="${escapeHtml(rule.id || "")}"
+        title="${escapeHtml(manualOverride.memo || "수동 적합 사유")}"
+      >${badgeHtml}</button>
+    `;
+  }
+  if (rule.id && !isPassStatusValue(label)) {
+    return `
+      <button
+        type="button"
+        class="status-badge-button manual-pass-action-button"
+        data-manual-pass-result="${escapeHtml(rule.id)}"
+        title="사유를 입력하고 수동으로 정상 처리"
+      >${badgeHtml}</button>
+    `;
+  }
+  return badgeHtml;
 }
 
 // 5가지 요약 카드를 클릭 가능한 버튼으로 렌더링한다. 클릭 시 아래 표가 해당 분류로 필터링된다.
@@ -2076,7 +2230,7 @@ function renderInspectionSingleRow(rule) {
     <tr>
       <td>${escapeHtml(rule.display_number || rule.sequence || "-")}</td>
       <td>${escapeHtml(rule.rule_name || "-")}</td>
-      <td>${badge(rule.status_label || rule.status || "-")}</td>
+      <td>${inspectionStatusCell(rule, rule.status_label || rule.status || "-")}</td>
       <td>${escapeHtml(rule.file_name || "-")}</td>
       <td>${escapeMultiline(rule.expected || "-")}</td>
       <td>${escapeMultiline(rule.actual || "-")}</td>
@@ -2093,8 +2247,8 @@ function renderInspectionSubCheckRows(rule, subChecks) {
   return subChecks.map((sub, index) => {
     const mismatch = sub.passed === false;
     const statusCell = perRowStatus
-      ? `<td>${badge(sub.passed ? "정상" : "부적합")}</td>`
-      : (index === 0 ? `<td rowspan="${rowCount}">${badge(rule.status_label || rule.status || "-")}</td>` : "");
+      ? `<td>${inspectionStatusCell(rule, sub.passed ? "정상" : "부적합")}</td>`
+      : (index === 0 ? `<td rowspan="${rowCount}">${inspectionStatusCell(rule, rule.status_label || rule.status || "-")}</td>` : "");
     return `
       <tr${mismatch ? ' class="subcheck-row-mismatch"' : ""}>
         ${index === 0 ? `<td rowspan="${rowCount}">${escapeHtml(rule.display_number || rule.sequence || "-")}</td>` : ""}
@@ -2155,6 +2309,7 @@ function mountInspectionResult(items, leadText = "", options = {}) {
     state.inspectionRuleItems
   );
   bindInspectionSummaryFilters();
+  bindInspectionStatusActions();
   initResizableTables();
   fitVisibleResizableTables();
 }
@@ -2177,7 +2332,34 @@ function refreshInspectionTable() {
   if (summaryBlock) summaryBlock.innerHTML = renderInspectionSummary(state.inspectionItems, state.inspectionRuleItems);
   if (tableBlock) tableBlock.innerHTML = renderInspectionTableBlock(filterInspectionItems(state.inspectionItems));
   bindInspectionSummaryFilters();
+  bindInspectionStatusActions();
   initResizableTables();
+}
+
+function bindInspectionStatusActions() {
+  document.querySelectorAll("[data-manual-pass-result]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = findInspectionItemByResultId(button.dataset.manualPassResult);
+      if (item) openManualPassPopup(item);
+    });
+  });
+  document.querySelectorAll("[data-manual-note-result]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const item = findInspectionItemByResultId(button.dataset.manualNoteResult);
+      if (item) openManualPassNotePopup(item);
+    });
+  });
+}
+
+function findInspectionItemByResultId(resultId) {
+  const id = String(resultId || "");
+  return (
+    state.inspectionItems.find((item) => String(item.id || "") === id && manualOverrideOf(item))
+    || state.inspectionRuleItems.find((item) => String(item.id || "") === id && manualOverrideOf(item))
+    || state.inspectionItems.find((item) => String(item.id || "") === id)
+    || state.inspectionRuleItems.find((item) => String(item.id || "") === id)
+    || null
+  );
 }
 
 function findErrorItem(source, number) {
@@ -2481,14 +2663,24 @@ function bindControls() {
   qs("modalChangeNote").addEventListener("click", openCurrentProjectChangeNote);
   qs("modalFullFolderDownload").addEventListener("click", downloadCurrentProjectFullFolder);
   qs("closeChangeNoteModal").addEventListener("click", closeChangeNotePopup);
+  qs("closeManualOverrideModal").addEventListener("click", closeManualPassPopup);
+  qs("cancelManualOverride").addEventListener("click", closeManualPassPopup);
+  qs("confirmManualOverride").addEventListener("click", confirmManualPassOverride);
   qs("changeNoteModal").addEventListener("click", (event) => {
     if (event.target === qs("changeNoteModal")) closeChangeNotePopup();
+  });
+  qs("manualOverrideModal").addEventListener("click", (event) => {
+    if (event.target === qs("manualOverrideModal")) closeManualPassPopup();
   });
   qs("detailModal").addEventListener("click", (event) => {
     if (event.target === qs("detailModal")) closeModal();
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
+    if (!qs("manualOverrideModal").hidden) {
+      closeManualPassPopup();
+      return;
+    }
     if (!qs("changeNoteModal").hidden) {
       closeChangeNotePopup();
       return;

@@ -30,11 +30,15 @@
 - 규칙 결과 모달의 `전체 폴더 다운로드` 왼쪽에 `수정 내용` 버튼을 추가했다.
   - 기본 비활성화 상태이며, ECM 다운로드 파일 또는 보관/로그에서 `수정 내용.txt`가 발견되면 활성화된다.
   - 버튼은 `GET /api/job-projects/<job_project_id>/change-note/`로 txt 본문을 조회해 팝업에 표시한다.
+- 규칙 결과 모달에서 `정상`이 아닌 결과 배지를 클릭하면 수동 적합 처리할 수 있다.
+  - `POST /api/rule-results/<result_id>/manual-pass/`는 빈 메모를 거부하고, 사유 메모를 `inspection_manual_override`에 센터/프로젝트번호/규칙코드 기준으로 저장한다.
+  - 수동 적합 결과는 상태값은 `pass`로 집계하되 `manual_override` 메타데이터를 함께 내려, UI에서 보라색 정상 배지로 표시한다. 정상 항목 필터에는 포함된다.
+  - 다음 점검에서도 같은 센터/프로젝트번호/규칙코드 override가 있으면 자동 점검 결과와 관계없이 동일 메모로 수동 적합을 다시 적용한다.
 
 ## 바로 다음 작업
 
-1. 실제 샘플 ZIP 또는 운영 ECM 프로젝트로 파일명 개정 버전 dedup, 9-6 버전 추출, 10번 결함리포트 시트명 공백 무시, `수정 내용` 팝업, 모달 전체 폴더 다운로드 스트리밍을 브라우저에서 확인한다.
-2. UI 변경 후 서버를 재시작하고 `/download-review/`에서 정적 파일 `?v=25`가 로드되는지 확인한다.
+1. 실제 샘플 ZIP 또는 운영 ECM 프로젝트로 파일명 개정 버전 dedup, 9-6 버전 추출, 10번 결함리포트 시트명 공백 무시, `수정 내용` 팝업, 모달 전체 폴더 다운로드 스트리밍, 수동 적합 처리/재점검 재적용을 브라우저에서 확인한다.
+2. UI 변경 후 서버를 재시작하고 `/download-review/`에서 정적 파일 `?v=26`이 로드되는지 확인한다.
 3. live 테스트가 끝나면 download-review 작업 시작 시간 제한을 운영 기준 `20:00-07:00`으로 되돌린다.
 
 ## 기본 검증 명령
@@ -42,6 +46,7 @@
 ```powershell
 node --check main\static\scripts\review\ecm_download_review.js
 .\.venv\Scripts\python.exe manage.py check --settings=myproject.ui_mock_settings
+.\.venv\Scripts\python.exe manage.py migrate --database=workflow --settings=myproject.ui_mock_settings
 .\.venv\Scripts\python.exe manage.py test main.tests --settings=myproject.ui_mock_settings
 .\.venv\Scripts\python.exe manage.py seed_download_review_rules --only-real --enable --update-existing --dry-run --settings=myproject.ui_mock_settings
 git diff --check

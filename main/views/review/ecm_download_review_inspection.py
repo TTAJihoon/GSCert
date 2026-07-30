@@ -37,6 +37,12 @@ from main.models import (
     SwData,
 )
 from main.views.review.ecm_reference_db import ARTIFACT_REVIEW_COLUMNS
+from main.views.review.ecm_manual_override import (
+    apply_manual_override_to_evaluation,
+    apply_manual_override_to_result,
+    manual_overrides_for_project,
+    mark_overrides_applied,
+)
 
 from gscert_review_core import engine
 
@@ -101,6 +107,16 @@ def run_download_inspection(project, verify_result, file_summary) -> InspectionO
         project=project,
         sink=WebArtifactSink(),
     )
+    manual_overrides = manual_overrides_for_project(
+        project,
+        [evaluation.rule.code for evaluation in evaluations] + ["temp_file_check"],
+    )
+    evaluations = [
+        apply_manual_override_to_evaluation(evaluation, manual_overrides[evaluation.rule.code])
+        if evaluation.rule.code in manual_overrides
+        else evaluation
+        for evaluation in evaluations
+    ]
 
     result_rows = [
         DownloadReviewRuleResult(
@@ -141,18 +157,20 @@ def run_download_inspection(project, verify_result, file_summary) -> InspectionO
             raw_detail_json={"temp_files": temp_files},
         )
     )
+    temp_override = manual_overrides.get("temp_file_check")
+    if temp_override:
+        apply_manual_override_to_result(result_rows[-1], temp_override)
 
     DownloadReviewRuleResult.objects.filter(job_project=project).delete()
     DownloadReviewRuleResult.objects.bulk_create(result_rows)
+    mark_overrides_applied(manual_overrides.values())
 
     failed_count = sum(
         1
-        for evaluation in evaluations
-        if evaluation.status in (DownloadReviewRuleStatus.FAIL, DownloadReviewRuleStatus.ERROR)
+        for result in result_rows
+        if result.status in (DownloadReviewRuleStatus.FAIL, DownloadReviewRuleStatus.ERROR)
     )
-    if temp_failed:
-        failed_count += 1
-    total_count = len(evaluations) + 1
+    total_count = len(result_rows)
     passed_count = total_count - failed_count
     artifact_results = _artifact_results_from_evaluations(evaluations)
 

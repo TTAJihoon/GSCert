@@ -54,6 +54,7 @@ WORKFLOW_DATABASE_ALIAS = "workflow"
 WORKFLOW_MODEL_NAMES = {
     "downloadreviewjob",
     "downloadreviewproject",
+    "downloadreviewmanualoverride",
     "downloadreviewrule",
     "downloadreviewruleresult",
     "downloadreviewlog",

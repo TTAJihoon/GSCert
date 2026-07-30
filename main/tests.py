@@ -19,6 +19,7 @@ from main.models import (
     DownloadReviewJobStatus,
     DownloadReviewLog,
     DownloadReviewLogLevel,
+    DownloadReviewManualOverride,
     DownloadReviewProject,
     DownloadReviewProjectReviewStatus,
     DownloadReviewProjectStatus,
@@ -67,6 +68,7 @@ from main.views.review.ecm_download_review_api import (
     local_review_rules_manifest,
     project_full_documents_download,
     projects,
+    rule_result_manual_pass,
     rule_result_artifact,
 )
 from main.utils.ecm_reference_sheet import parse_sheet_projects, read_csv_rows, split_company_product
@@ -1255,6 +1257,127 @@ class DownloadReviewChangeNoteApiTests(TestCase):
             expected="파일 존재",
             actual="파일 존재",
             message="정상 확인",
+        )
+
+
+class DownloadReviewManualOverrideTests(TestCase):
+    databases = {"default", "workflow"}
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_manual_pass_requires_memo(self):
+        _job, project = self._make_project()
+        result = self._add_rule_result(project, status=DownloadReviewRuleStatus.FAIL)
+
+        response = rule_result_manual_pass(
+            self.factory.post(
+                f"/api/rule-results/{result.id}/manual-pass/",
+                data=json.dumps({"memo": "   "}),
+                content_type="application/json",
+            ),
+            result.id,
+        )
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(data["success"])
+        self.assertIn("사유", data["message"])
+        self.assertFalse(DownloadReviewManualOverride.objects.exists())
+
+    def test_manual_pass_updates_current_result_and_project_payload(self):
+        self._seed_rule()
+        _job, project = self._make_project()
+        result = self._add_rule_result(project, status=DownloadReviewRuleStatus.FAIL)
+
+        response = rule_result_manual_pass(
+            self.factory.post(
+                f"/api/rule-results/{result.id}/manual-pass/",
+                data=json.dumps({"memo": "원본 파일을 별도 확인해 정상으로 판단"}),
+                content_type="application/json",
+                REMOTE_ADDR="127.0.0.1",
+            ),
+            result.id,
+        )
+        data = json.loads(response.content.decode("utf-8"))
+        result.refresh_from_db()
+        project.refresh_from_db()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS)
+        self.assertEqual(project.review_status, DownloadReviewProjectReviewStatus.COMPLETED)
+        self.assertEqual(data["items"][0]["manual_override"]["memo"], "원본 파일을 별도 확인해 정상으로 판단")
+        self.assertEqual(data["display_items"][0]["status"], DownloadReviewRuleStatus.PASS)
+        self.assertEqual(data["display_items"][0]["manual_override"]["memo"], "원본 파일을 별도 확인해 정상으로 판단")
+
+    def test_manual_pass_persists_across_next_inspection(self):
+        self._seed_rule()
+        DownloadReviewManualOverride.objects.create(
+            center_code="bundang",
+            project_number="TTA-26-00020",
+            rule_code="required-contract",
+            rule_name="계약서",
+            memo="ECM 외부 대조로 계약서를 확인함",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            download_root = Path(tmpdir)
+            project_dir = download_root / "TTA-26-00020"
+            project_dir.mkdir(parents=True)
+            _job, project = self._make_project(download_dir=str(project_dir))
+            verify_result = verify_downloaded_files(str(project_dir), project.project_number)
+
+            with self.settings(AGENT_DOWNLOAD_BASE_DIR=download_root):
+                outcome = run_download_inspection(project, verify_result, {})
+
+        result = DownloadReviewRuleResult.objects.get(job_project=project, rule_code="required-contract")
+        override = DownloadReviewManualOverride.objects.get(project_number=project.project_number, rule_code="required-contract")
+
+        self.assertEqual(outcome.failed_count, 0)
+        self.assertEqual(outcome.artifact_results["계약서"], "O")
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS)
+        self.assertEqual(result.raw_detail_json["manual_override"]["memo"], "ECM 외부 대조로 계약서를 확인함")
+        self.assertIsNotNone(override.last_applied_at)
+
+    def _seed_rule(self):
+        DownloadReviewRule.objects.create(
+            code="required-contract",
+            name="계약서",
+            rule_type="required_file_name_contains",
+            config_json={"contains": "계약서", "artifact_column": "계약서"},
+            sort_order=1,
+        )
+
+    def _make_project(self, *, download_dir=""):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00020"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            center_code="bundang",
+            project_number="TTA-26-00020",
+            download_dir=download_dir,
+            ecm_row_json={
+                "project_number": "TTA-26-00020",
+                "company": "에이치소프트",
+                "product": "SecureFlow V1.0",
+                "pl": "김준호",
+            },
+        )
+        return job, project
+
+    def _add_rule_result(self, project, *, status):
+        return DownloadReviewRuleResult.objects.create(
+            job_project=project,
+            rule_code="required-contract",
+            rule_name="계약서",
+            sequence=1,
+            status=status,
+            expected="계약서 파일 1개",
+            actual="조건에 맞는 파일 없음",
+            message="계약서 파일을 찾지 못했습니다.",
+            raw_detail_json={"artifact_column": "계약서"},
         )
 
 

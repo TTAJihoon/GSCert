@@ -4,8 +4,8 @@
 {% block title %}ECM 제출물 자동 점검{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=25">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=25" defer></script>
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=26">
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=26" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -338,6 +338,29 @@
     </div>
     <div class="modal-body note-modal-body">
       <pre id="changeNoteContent" class="change-note-content"></pre>
+    </div>
+  </section>
+</div>
+
+<div class="modal-backdrop note-modal-backdrop" id="manualOverrideModal" hidden>
+  <section class="modal-panel manual-override-panel" role="dialog" aria-modal="true" aria-labelledby="manualOverrideTitle">
+    <div class="modal-header">
+      <div>
+        <p class="eyebrow">점검 결과</p>
+        <h2 id="manualOverrideTitle">수동 적합 처리</h2>
+      </div>
+      <button class="icon-button" type="button" id="closeManualOverrideModal" aria-label="닫기">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="modal-body manual-override-body">
+      <p class="manual-override-rule" id="manualOverrideRuleName"></p>
+      <textarea id="manualOverrideMemo" class="manual-override-memo" rows="7" required></textarea>
+      <p class="manual-override-error" id="manualOverrideError" hidden></p>
+      <div class="modal-actions">
+        <button class="secondary-button" type="button" id="cancelManualOverride">취소</button>
+        <button class="primary-button" type="button" id="confirmManualOverride">적합으로 변경</button>
+      </div>
     </div>
   </section>
 </div>

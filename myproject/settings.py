@@ -114,6 +114,7 @@ WORKFLOW_MODEL_NAMES = {
     'similaranalysisjob',
     'downloadreviewjob',
     'downloadreviewproject',
+    'downloadreviewmanualoverride',
     'downloadreviewruleresult',
     'downloadreviewlog',
     'downloadreviewlock',

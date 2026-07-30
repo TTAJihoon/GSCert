@@ -31,6 +31,7 @@ Django `DATABASES` alias 3개로 나뉜다. 어떤 모델이 어느 DB로 가는
 | `automation_job` | `DownloadReviewJob` | workflow | 다운로드 검토 **잡** |
 | `automation_job_project` | `DownloadReviewProject` | workflow | 잡에 속한 **프로젝트별** 처리 상태 |
 | `inspection_result` | `DownloadReviewRuleResult` | workflow | 프로젝트별 **규칙 점검 결과** |
+| `inspection_manual_override` | `DownloadReviewManualOverride` | workflow | 수동 적합 처리 메모(센터/프로젝트/규칙 기준, 재점검 재적용) |
 | `automation_log` | `DownloadReviewLog` | workflow | 잡/프로젝트 처리 로그 |
 | `automation_lock` | `DownloadReviewLock` | workflow | 단일 워커 동시성 락(단일 행) |
 | `main_job` | `Job` | default | 레거시 잡(상태/최종 링크) |
@@ -160,7 +161,25 @@ PL(프로젝트 리더) 이름을 센터에 매핑한다. `sync_reference_projec
 | `raw_detail_json` | json | |
 | `created_at` | datetime | |
 
-### 4.4 `automation_log` — 처리 로그 (`DownloadReviewLog`)
+### 4.4 `inspection_manual_override` — 수동 적합 처리 (`DownloadReviewManualOverride`)
+재점검 후 이전 `inspection_result`가 정리되어도 수동 적합 메모가 유지되도록, 결과 FK가 아니라
+`center_code + project_number + rule_code` 키로 저장한다. 같은 키의 override가 있으면 다음 점검 결과와
+관계없이 `pass`로 재적용하고 UI에는 보라색 정상 배지와 메모를 표시한다.
+
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `id` | UUID, PK | |
+| `center_code` | varchar(20), index | 센터 코드 |
+| `project_number` | varchar(32), index | 프로젝트번호 |
+| `rule_code` | varchar(80), index | 규칙 코드 |
+| `rule_name` | varchar(255) | 표시용 규칙명 |
+| `memo` | text | 수동 적합 처리 사유(필수) |
+| `created_by` | varchar(120) | 요청 IP 등 |
+| `created_at`/`updated_at`/`last_applied_at` | datetime | |
+
+제약: `(center_code, project_number, rule_code)` unique.
+
+### 4.5 `automation_log` — 처리 로그 (`DownloadReviewLog`)
 | 컬럼 | 타입 | 비고 |
 |---|---|---|
 | `id` | PK(auto) | |
@@ -172,7 +191,7 @@ PL(프로젝트 리더) 이름을 센터에 매핑한다. `sync_reference_projec
 | `admin_only` | bool | 관리자 전용 여부 |
 | `created_at` | datetime, index | |
 
-### 4.5 `automation_lock` — 워커 동시성 락 (`DownloadReviewLock`)
+### 4.6 `automation_lock` — 워커 동시성 락 (`DownloadReviewLock`)
 단일 행(id=1)으로 워커 동시 실행을 제어.
 
 | 컬럼 | 타입 | 비고 |

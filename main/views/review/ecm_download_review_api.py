@@ -26,6 +26,7 @@ from main.views.review.ecm_download_review_jobs import (
     get_project_results_excel_response,
     get_project_results_payload,
     get_rule_result_artifact_response,
+    mark_rule_result_manual_pass,
     parse_json_body,
 )
 from main.views.review.ecm_reference_db import (
@@ -454,6 +455,28 @@ def rule_result_artifact(request, result_id, artifact_id):
         response = JsonResponse(_error_payload(exc, str(exc)), status=exc.status_code, json_dumps_params={"ensure_ascii": False})
         response["Cache-Control"] = "no-store"
         return response
+
+
+@require_POST
+def rule_result_manual_pass(request, result_id):
+    try:
+        payload = parse_json_body(request)
+        response_payload = mark_rule_result_manual_pass(
+            result_id,
+            payload.get("memo"),
+            requested_by=_client_ip(request),
+        )
+        status = 200
+    except DownloadReviewJobRequestError as exc:
+        response_payload = _error_payload(exc, str(exc), details=exc.details)
+        status = exc.status_code
+    except DownloadReviewNotFoundError as exc:
+        response_payload = _error_payload(exc, str(exc))
+        status = exc.status_code
+
+    response = JsonResponse(response_payload, status=status, json_dumps_params={"ensure_ascii": False})
+    response["Cache-Control"] = "no-store"
+    return response
 
 
 def _error_payload(exc, message, details=None):
