@@ -48,6 +48,11 @@ from main.views.review.ecm_rulebase import (
     get_rulebase_bundle_payload,
     get_rulebase_manifest_payload,
 )
+from main.views.review.ecm_pl_assignment import (
+    PlAssignmentError,
+    apply_pl_assignment_changes,
+    get_pl_assignment_payload,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -473,6 +478,29 @@ def rule_result_manual_pass(request, result_id):
     except DownloadReviewNotFoundError as exc:
         response_payload = _error_payload(exc, str(exc))
         status = exc.status_code
+
+    response = JsonResponse(response_payload, status=status, json_dumps_params={"ensure_ascii": False})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_GET
+def pl_assignments(request):
+    payload = get_pl_assignment_payload()
+    response = JsonResponse(payload, json_dumps_params={"ensure_ascii": False})
+    response["Cache-Control"] = "no-store"
+    return response
+
+
+@require_POST
+def pl_assignments_apply(request):
+    try:
+        payload = parse_json_body(request)
+        response_payload = apply_pl_assignment_changes(payload.get("changes"))
+        status = 200
+    except (PlAssignmentError, DownloadReviewJobRequestError) as exc:
+        response_payload = _error_payload(exc, str(exc), details=getattr(exc, "details", None))
+        status = getattr(exc, "status_code", 400)
 
     response = JsonResponse(response_payload, status=status, json_dumps_params={"ensure_ascii": False})
     response["Cache-Control"] = "no-store"

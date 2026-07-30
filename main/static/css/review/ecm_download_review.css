@@ -1127,6 +1127,122 @@
   font-weight: 800;
 }
 
+.pl-assignment-panel {
+  width: min(880px, calc(100vw - 48px));
+  height: min(620px, calc(100vh - 48px));
+  min-width: min(680px, calc(100vw - 48px));
+  min-height: min(460px, calc(100vh - 48px));
+  resize: none;
+}
+
+.pl-assignment-body {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+
+.pl-assignment-error {
+  margin: 0 0 10px;
+  color: var(--review-danger);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.pl-assignment-grid {
+  display: grid;
+  grid-template-columns: 1fr 56px 1fr;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.pl-assignment-side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  gap: 8px;
+}
+
+.pl-assignment-tabs {
+  flex: 0 0 auto;
+  width: 100%;
+  flex-wrap: wrap;
+}
+
+.pl-assignment-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  overflow-y: auto;
+  border: 1px solid var(--review-line);
+  border-radius: 8px;
+  background: var(--review-surface);
+}
+
+.pl-assignment-list-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  color: var(--review-text);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pl-assignment-list-item:hover {
+  background: rgba(15, 23, 42, .04);
+}
+
+.pl-assignment-list-item.selected {
+  background: var(--review-primary);
+  color: #fff;
+}
+
+.pl-assignment-list-item .pl-assignment-count {
+  flex: 0 0 auto;
+  color: inherit;
+  font-weight: 800;
+  opacity: .75;
+}
+
+.pl-assignment-list-empty {
+  padding: 14px 10px;
+  color: var(--review-muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.pl-assignment-arrows {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.pl-assignment-arrow {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 1px solid var(--review-line);
+  border-radius: 8px;
+  background: var(--review-surface);
+  color: var(--review-text);
+  font-size: 15px;
+}
+
+.pl-assignment-arrow:disabled {
+  color: var(--review-muted);
+  cursor: not-allowed;
+  opacity: .55;
+}
+
 .change-note-content {
   margin: 0;
   min-height: 100%;

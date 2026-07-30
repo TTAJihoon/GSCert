@@ -3,7 +3,9 @@ const apiEndpoints = {
   projects: "/api/projects/",
   jobs: "/api/jobs/",
   activeJob: "/api/jobs/active/",
-  jobsForceStop: "/api/jobs/force-stop/"
+  jobsForceStop: "/api/jobs/force-stop/",
+  plAssignments: "/api/pl-assignments/",
+  plAssignmentsApply: "/api/pl-assignments/apply/"
 };
 
 const centerLabels = {
@@ -11,6 +13,16 @@ const centerLabels = {
   bundang: "분당",
   yeongnam: "영남"
 };
+
+// 'PL 배정 목록' 모달 상태. 서버에서 받은 원본은 plAssignOriginalCenterByName에,
+// 사용자가 좌/우 탭 사이에서 이동시키는 동안의 작업 중 상태는
+// plAssignCurrentCenterByName에 둔다 - '확인'을 눌러야 둘의 차이만 서버에 반영된다.
+let plAssignData = null;
+let plAssignCountByName = {};
+let plAssignOriginalCenterByName = {};
+let plAssignCurrentCenterByName = {};
+let plAssignActiveTab = { left: "", right: "" };
+let plAssignSelected = { left: new Set(), right: new Set() };
 
 function readJsonScript(id, fallback) {
   const node = document.getElementById(id);
@@ -1555,6 +1567,155 @@ async function confirmManualPassOverride() {
   }
 }
 
+async function openPlAssignmentModal() {
+  qs("plAssignmentError").hidden = true;
+  qs("plAssignmentError").textContent = "";
+  qs("plAssignmentModal").hidden = false;
+  ["left", "right"].forEach((side) => {
+    const list = document.querySelector(`[data-pl-list="${side}"]`);
+    if (list) list.innerHTML = `<li class="pl-assignment-list-empty">불러오는 중입니다...</li>`;
+  });
+
+  try {
+    const payload = await requestJson(apiEndpoints.plAssignments);
+    plAssignData = payload;
+    plAssignCountByName = {};
+    plAssignOriginalCenterByName = {};
+    plAssignCurrentCenterByName = {};
+    Object.entries(payload.assignments || {}).forEach(([code, items]) => {
+      (items || []).forEach((item) => {
+        plAssignCountByName[item.name] = item.project_count;
+        plAssignOriginalCenterByName[item.name] = code;
+        plAssignCurrentCenterByName[item.name] = code;
+      });
+    });
+
+    const centers = payload.centers || [];
+    const firstRealCenter = centers.find((center) => center.code !== "unknown");
+    plAssignActiveTab = {
+      left: firstRealCenter?.code || centers[0]?.code || "",
+      right: "unknown"
+    };
+    plAssignSelected = { left: new Set(), right: new Set() };
+    renderPlAssignmentSide("left");
+    renderPlAssignmentSide("right");
+  } catch (error) {
+    qs("plAssignmentError").textContent = error.message || "PL 배정 목록을 불러오지 못했습니다.";
+    qs("plAssignmentError").hidden = false;
+  }
+}
+
+function closePlAssignmentModal() {
+  qs("plAssignmentModal").hidden = true;
+  plAssignData = null;
+  plAssignCountByName = {};
+  plAssignOriginalCenterByName = {};
+  plAssignCurrentCenterByName = {};
+  plAssignSelected = { left: new Set(), right: new Set() };
+}
+
+function renderPlAssignmentSide(side) {
+  renderPlAssignmentTabs(side);
+  renderPlAssignmentList(side);
+}
+
+function renderPlAssignmentTabs(side) {
+  const nav = document.querySelector(`[data-pl-tabs="${side}"]`);
+  if (!nav || !plAssignData) return;
+  nav.innerHTML = (plAssignData.centers || []).map((center) => {
+    const active = plAssignActiveTab[side] === center.code;
+    return `<button class="center-tab-button${active ? " active" : ""}" type="button" data-pl-tab-code="${escapeHtml(center.code)}">${escapeHtml(center.label)}</button>`;
+  }).join("");
+  nav.querySelectorAll("[data-pl-tab-code]").forEach((button) => {
+    button.addEventListener("click", () => {
+      plAssignActiveTab[side] = button.dataset.plTabCode;
+      plAssignSelected[side].clear();
+      renderPlAssignmentSide(side);
+    });
+  });
+}
+
+function plAssignNamesForCenter(code) {
+  return Object.keys(plAssignCurrentCenterByName)
+    .filter((name) => plAssignCurrentCenterByName[name] === code)
+    .sort((a, b) => (plAssignCountByName[b] || 0) - (plAssignCountByName[a] || 0) || a.localeCompare(b, "ko"));
+}
+
+function renderPlAssignmentList(side) {
+  const list = document.querySelector(`[data-pl-list="${side}"]`);
+  if (!list) return;
+  const names = plAssignNamesForCenter(plAssignActiveTab[side]);
+  if (!names.length) {
+    list.innerHTML = `<li class="pl-assignment-list-empty">배정된 PL이 없습니다.</li>`;
+    return;
+  }
+  list.innerHTML = names.map((name) => {
+    const selected = plAssignSelected[side].has(name);
+    const count = plAssignCountByName[name] || 0;
+    return `<li class="pl-assignment-list-item${selected ? " selected" : ""}" data-pl-name="${escapeHtml(name)}">
+      <span>${escapeHtml(name)}</span>
+      <span class="pl-assignment-count">${count}개</span>
+    </li>`;
+  }).join("");
+  list.querySelectorAll("[data-pl-name]").forEach((item) => {
+    item.addEventListener("click", () => {
+      const name = item.dataset.plName;
+      if (plAssignSelected[side].has(name)) {
+        plAssignSelected[side].delete(name);
+      } else {
+        plAssignSelected[side].add(name);
+      }
+      renderPlAssignmentList(side);
+    });
+  });
+}
+
+function movePlAssignmentSelection(fromSide, toSide) {
+  const targetCenter = plAssignActiveTab[toSide];
+  const selectedNames = [...plAssignSelected[fromSide]];
+  if (!targetCenter || !selectedNames.length) return;
+  selectedNames.forEach((name) => {
+    plAssignCurrentCenterByName[name] = targetCenter;
+  });
+  plAssignSelected[fromSide].clear();
+  renderPlAssignmentList("left");
+  renderPlAssignmentList("right");
+}
+
+async function confirmPlAssignmentChanges() {
+  const changes = [];
+  Object.keys(plAssignCurrentCenterByName).forEach((name) => {
+    const fromCenter = plAssignOriginalCenterByName[name];
+    const toCenter = plAssignCurrentCenterByName[name];
+    if (fromCenter !== toCenter) {
+      changes.push({ name, from_center: fromCenter, to_center: toCenter });
+    }
+  });
+  if (!changes.length) {
+    closePlAssignmentModal();
+    return;
+  }
+
+  const button = qs("confirmPlAssignment");
+  button.disabled = true;
+  button.textContent = "적용 중";
+  try {
+    await requestJson(apiEndpoints.plAssignmentsApply, {
+      method: "POST",
+      body: JSON.stringify({ changes })
+    });
+    closePlAssignmentModal();
+    resetProjectFilters();
+    await loadProjects();
+  } catch (error) {
+    qs("plAssignmentError").textContent = error.message || "PL 배정 적용에 실패했습니다.";
+    qs("plAssignmentError").hidden = false;
+  } finally {
+    button.disabled = false;
+    button.textContent = "확인";
+  }
+}
+
 function updateInspectionModalFromPayload(payload) {
   const payloadProject = payload.project ? normalizeApiJobProject(payload.project) : {};
   const projectNumber = payloadProject.number || qs("modalTitle").textContent.replace(" 규칙별 점검 결과", "");
@@ -2577,13 +2738,14 @@ function bindControls() {
   });
   qs("searchProjects").addEventListener("click", applyProjectFilters);
 
-  qs("refreshProjects").addEventListener("click", () => {
-    resetProjectFilters();
-    loadProjects();
-    qs("refreshProjects").innerHTML = `<i class="fa-solid fa-check"></i> 갱신 완료`;
-    setTimeout(() => {
-      qs("refreshProjects").innerHTML = `<i class="fa-solid fa-rotate-right"></i> DB 새로고침`;
-    }, 1200);
+  qs("openPlAssignment").addEventListener("click", openPlAssignmentModal);
+  qs("closePlAssignmentModal").addEventListener("click", closePlAssignmentModal);
+  qs("cancelPlAssignment").addEventListener("click", closePlAssignmentModal);
+  qs("confirmPlAssignment").addEventListener("click", confirmPlAssignmentChanges);
+  qs("plAssignMoveRight").addEventListener("click", () => movePlAssignmentSelection("left", "right"));
+  qs("plAssignMoveLeft").addEventListener("click", () => movePlAssignmentSelection("right", "left"));
+  qs("plAssignmentModal").addEventListener("click", (event) => {
+    if (event.target === qs("plAssignmentModal")) closePlAssignmentModal();
   });
 
   document.querySelectorAll("[data-center-tab]").forEach((button) => {
@@ -2677,6 +2839,10 @@ function bindControls() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
+    if (!qs("plAssignmentModal").hidden) {
+      closePlAssignmentModal();
+      return;
+    }
     if (!qs("manualOverrideModal").hidden) {
       closeManualPassPopup();
       return;

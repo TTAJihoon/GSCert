@@ -144,50 +144,47 @@ class Command(BaseCommand):
             if not center_code:
                 continue
             mapping[normalize_person_name(row.name)] = (
+                row.name,
                 center_code,
                 row.center_label or self._center_label(center_code),
             )
         return mapping
 
     def _sync_pl_map(self, db_alias, new_assignments=None):
+        """이름 -> (이름, 센터코드, 센터라벨) 최종 배정을 계산해 다시 적재한다.
+
+        우선순위: 이번 실행에서 새로 받은 배정(new_assignments, --assign-unknown-pl)
+        > 기존 저장값(existing_custom — 관리자가 웹 'PL 배정 목록'이나 이전
+        --assign-unknown-pl 로 재배정한 값 포함) > 하드코딩 기본값(CENTER_PL_NAMES).
+        예전에는 하드코딩 기본값에 있는 이름은 기존 저장값을 무시하고 무조건
+        기본값으로 되돌렸기 때문에, 관리자가 재배정해도 다음 동기화 때 원복되는
+        문제가 있었다.
+        """
         new_assignments = new_assignments or {}
         existing_custom = self._stored_pl_center_map(db_alias)
-        default_names = set()
-        rows = []
-        next_order = {}
 
+        desired = {}
         for center_code, definition in CENTER_PL_NAMES.items():
-            next_order[center_code] = len(definition["names"])
-            for order, name in enumerate(definition["names"], start=1):
-                default_names.add(normalize_person_name(name))
-                rows.append(
-                    ReferenceCenterPl(
-                        center_code=center_code,
-                        center_label=definition["label"],
-                        name=name,
-                        display_order=order,
-                    )
-                )
+            for name in definition["names"]:
+                desired[normalize_person_name(name)] = (name, center_code, definition["label"])
 
-        custom_map = {
-            name: center_code
-            for name, (center_code, _label) in existing_custom.items()
-            if name and name not in default_names
-        }
+        for normalized_name, (name, center_code, label) in existing_custom.items():
+            desired[normalized_name] = (name, center_code, label)
+
         for name, center_code in new_assignments.items():
-            normalized = normalize_person_name(name)
-            if normalized and normalized not in default_names:
-                custom_map[normalized] = center_code
-
-        for name, center_code in sorted(custom_map.items()):
-            center_code = self._normalize_center_code(center_code)
-            if not center_code:
+            normalized_center = self._normalize_center_code(center_code)
+            if not normalized_center:
                 continue
+            desired[normalize_person_name(name)] = (name, normalized_center, self._center_label(normalized_center))
+
+        next_order = {}
+        rows = []
+        for name, center_code, label in sorted(desired.values(), key=lambda item: (item[1], item[0])):
             next_order[center_code] = next_order.get(center_code, 0) + 1
             rows.append(
                 ReferenceCenterPl(
                     center_code=center_code,
-                    center_label=self._center_label(center_code),
+                    center_label=label,
                     name=name,
                     display_order=next_order[center_code],
                 )

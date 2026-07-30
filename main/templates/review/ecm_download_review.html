@@ -4,8 +4,8 @@
 {% block title %}ECM 제출물 자동 점검{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=26">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=26" defer></script>
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=27">
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=27" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -97,9 +97,9 @@
               <i class="fa-solid fa-file-excel"></i>
               선택 엑셀 다운로드
             </button>
-            <button class="secondary-button compact-action" type="button" id="refreshProjects">
-              <i class="fa-solid fa-rotate-right"></i>
-              DB 새로고침
+            <button class="secondary-button compact-action" type="button" id="openPlAssignment">
+              <i class="fa-solid fa-people-arrows"></i>
+              PL 배정 목록
             </button>
           </div>
         </div>
@@ -360,6 +360,45 @@
       <div class="modal-actions">
         <button class="secondary-button" type="button" id="cancelManualOverride">취소</button>
         <button class="primary-button" type="button" id="confirmManualOverride">적합으로 변경</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="modal-backdrop note-modal-backdrop" id="plAssignmentModal" hidden>
+  <section class="modal-panel pl-assignment-panel" role="dialog" aria-modal="true" aria-labelledby="plAssignmentTitle">
+    <div class="modal-header">
+      <div>
+        <p class="eyebrow">센터 관리</p>
+        <h2 id="plAssignmentTitle">PL 배정 목록</h2>
+      </div>
+      <button class="icon-button" type="button" id="closePlAssignmentModal" aria-label="닫기">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="modal-body pl-assignment-body">
+      <p class="pl-assignment-error" id="plAssignmentError" hidden></p>
+      <div class="pl-assignment-grid">
+        <section class="pl-assignment-side" data-pl-side="left">
+          <nav class="center-tabs pl-assignment-tabs" data-pl-tabs="left" aria-label="왼쪽 센터 선택"></nav>
+          <ul class="pl-assignment-list" data-pl-list="left"></ul>
+        </section>
+        <div class="pl-assignment-arrows">
+          <button class="mini-button pl-assignment-arrow" type="button" id="plAssignMoveRight" title="선택한 PL을 오른쪽 탭으로 이동">
+            <i class="fa-solid fa-arrow-right"></i>
+          </button>
+          <button class="mini-button pl-assignment-arrow" type="button" id="plAssignMoveLeft" title="선택한 PL을 왼쪽 탭으로 이동">
+            <i class="fa-solid fa-arrow-left"></i>
+          </button>
+        </div>
+        <section class="pl-assignment-side" data-pl-side="right">
+          <nav class="center-tabs pl-assignment-tabs" data-pl-tabs="right" aria-label="오른쪽 센터 선택"></nav>
+          <ul class="pl-assignment-list" data-pl-list="right"></ul>
+        </section>
+      </div>
+      <div class="modal-actions">
+        <button class="secondary-button" type="button" id="cancelPlAssignment">취소</button>
+        <button class="primary-button" type="button" id="confirmPlAssignment">확인</button>
       </div>
     </div>
   </section>

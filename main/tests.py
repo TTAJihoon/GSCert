@@ -26,6 +26,7 @@ from main.models import (
     DownloadReviewRule,
     DownloadReviewRuleResult,
     DownloadReviewRuleStatus,
+    ReferenceCenterPl,
     ReferenceProject,
 )
 from main.views.review.ecm_reference_db import (
@@ -66,6 +67,8 @@ from main.views.review.ecm_download_review_api import (
     latest_project_results,
     local_review_rules_bundle,
     local_review_rules_manifest,
+    pl_assignments,
+    pl_assignments_apply,
     project_full_documents_download,
     projects,
     rule_result_manual_pass,
@@ -1162,6 +1165,116 @@ class DownloadReviewProjectsApiTests(TestCase):
         )
 
 
+class PlAssignmentApiTests(TestCase):
+    """'PL 배정 목록' 기능(구 'DB 새로고침' 버튼 자리) API 회귀 테스트."""
+
+    databases = {"default", "workflow", "reference"}
+
+    def setUp(self):
+        self.factory = RequestFactory()
+        ReferenceCenterPl.objects.using("reference").bulk_create([
+            ReferenceCenterPl(center_code="sangam", center_label="상암", name="김진영", display_order=1),
+            ReferenceCenterPl(center_code="bundang", center_label="분당", name="임우섭", display_order=1),
+        ])
+        ReferenceProject.objects.using("reference").bulk_create([
+            ReferenceProject(
+                project_number="TTA-26-90001", center_code="sangam", center_label="상암",
+                primary_tester="김진영",
+            ),
+            ReferenceProject(
+                project_number="TTA-26-90002", center_code="unknown", center_label="미분류",
+                primary_tester="신규PL",
+            ),
+            ReferenceProject(
+                project_number="TTA-26-90003", center_code="unknown", center_label="미분류",
+                primary_tester="신규PL",
+            ),
+        ])
+
+    def _get_assignments(self):
+        request = self.factory.get("/api/pl-assignments/")
+        response = pl_assignments(request)
+        return json.loads(response.content)
+
+    def _apply(self, changes):
+        request = self.factory.post(
+            "/api/pl-assignments/apply/",
+            data=json.dumps({"changes": changes}),
+            content_type="application/json",
+        )
+        return pl_assignments_apply(request)
+
+    def test_get_lists_centers_and_unassigned_with_project_counts(self):
+        data = self._get_assignments()
+
+        self.assertTrue(data["success"])
+        center_codes = {center["code"] for center in data["centers"]}
+        self.assertEqual(center_codes, {"sangam", "bundang", "yeongnam", "unknown"})
+        self.assertEqual(
+            data["assignments"]["sangam"],
+            [{"name": "김진영", "project_count": 1}],
+        )
+        self.assertEqual(
+            data["assignments"]["unknown"],
+            [{"name": "신규PL", "project_count": 2}],
+        )
+
+    def test_unassigned_to_center_creates_mapping_and_moves_existing_projects(self):
+        response = self._apply([{"name": "신규PL", "from_center": "unknown", "to_center": "bundang"}])
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["moved_project_count"], 2)
+        self.assertEqual(payload["updated_pl_count"], 1)
+
+        pl_row = ReferenceCenterPl.objects.using("reference").get(name="신규PL")
+        self.assertEqual(pl_row.center_code, "bundang")
+
+        moved_numbers = set(
+            ReferenceProject.objects.using("reference")
+            .filter(primary_tester="신규PL")
+            .values_list("project_number", "center_code")
+        )
+        self.assertEqual(
+            moved_numbers,
+            {("TTA-26-90002", "bundang"), ("TTA-26-90003", "bundang")},
+        )
+
+    def test_center_to_center_move_updates_mapping_but_keeps_existing_projects(self):
+        response = self._apply([{"name": "김진영", "from_center": "sangam", "to_center": "yeongnam"}])
+        payload = json.loads(response.content)
+
+        self.assertTrue(payload["success"])
+        self.assertEqual(payload["moved_project_count"], 0)
+        self.assertEqual(payload["updated_pl_count"], 1)
+
+        pl_row = ReferenceCenterPl.objects.using("reference").get(name="김진영")
+        self.assertEqual(pl_row.center_code, "yeongnam")
+
+        # 기존 프로젝트는 그대로 상암에 남아있어야 한다(다음 시트 동기화부터 반영).
+        existing_project = ReferenceProject.objects.using("reference").get(project_number="TTA-26-90001")
+        self.assertEqual(existing_project.center_code, "sangam")
+
+    def test_center_to_unassigned_deletes_mapping_but_keeps_existing_projects(self):
+        response = self._apply([{"name": "김진영", "from_center": "sangam", "to_center": "unknown"}])
+        payload = json.loads(response.content)
+
+        self.assertTrue(payload["success"])
+        self.assertFalse(
+            ReferenceCenterPl.objects.using("reference").filter(name="김진영").exists()
+        )
+        existing_project = ReferenceProject.objects.using("reference").get(project_number="TTA-26-90001")
+        self.assertEqual(existing_project.center_code, "sangam")
+
+    def test_apply_rejects_empty_changes(self):
+        response = self._apply([])
+        payload = json.loads(response.content)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(payload["success"])
+
+
 class DownloadReviewChangeNoteApiTests(TestCase):
     databases = {"default", "workflow"}
 
@@ -1261,7 +1374,7 @@ class DownloadReviewChangeNoteApiTests(TestCase):
 
 
 class DownloadReviewManualOverrideTests(TestCase):
-    databases = {"default", "workflow"}
+    databases = {"default", "workflow", "reference"}
 
     def setUp(self):
         self.factory = RequestFactory()
