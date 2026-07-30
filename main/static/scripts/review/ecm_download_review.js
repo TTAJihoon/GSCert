@@ -2698,24 +2698,40 @@ function stopResultsPolling() {
   }
 }
 
+async function refreshTabData(tab) {
+  if (tab === "projects") {
+    await loadProjects();
+    await refreshActiveJob();
+    return;
+  }
+  if (tab === "progress") {
+    await refreshActiveJob();
+    return;
+  }
+  if (tab === "results") {
+    await loadResultJobs(state.resultJobId);
+  }
+}
+
 function bindControls() {
   document.querySelectorAll(".tab-button").forEach((button) => {
-    button.addEventListener("click", () => {
+    button.addEventListener("click", async () => {
+      const tab = button.dataset.tab;
       document.querySelectorAll(".tab-button").forEach((item) => item.classList.remove("active"));
       document.querySelectorAll(".tab-panel").forEach((item) => item.classList.remove("active"));
       button.classList.add("active");
-      qs(`tab-${button.dataset.tab}`).classList.add("active");
-      if (button.dataset.tab === "progress") {
-        refreshActiveJob();
+      qs(`tab-${tab}`).classList.add("active");
+      if (tab === "progress") {
         startProgressPolling();
         stopResultsPolling();
-      } else if (button.dataset.tab === "results") {
+      } else if (tab === "results") {
         startResultsPolling();
         stopProgressPolling();
       } else {
         stopProgressPolling();
         stopResultsPolling();
       }
+      await refreshTabData(tab);
       // 탭이 보이게 된 직후 해당 테이블 너비를 컨테이너에 맞춘다.
       fitVisibleResizableTables();
     });
