@@ -1558,6 +1558,62 @@ class CsrfFailureViewTests(SimpleTestCase):
         self.assertEqual(response["Cache-Control"], "no-store")
 
 
+class DownloadReviewManualOverrideRobustnessTests(TestCase):
+    databases = {"default", "workflow"}
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_manual_pass_succeeds_when_project_recalculation_fails(self):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00030"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            center_code="bundang",
+            project_number="TTA-26-00030",
+            review_status=DownloadReviewProjectReviewStatus.NEEDS_FIX,
+        )
+        result = DownloadReviewRuleResult.objects.create(
+            job_project=project,
+            rule_code="artifact_14",
+            rule_name="시험기록서",
+            sequence=14,
+            status=DownloadReviewRuleStatus.FAIL,
+            expected="파일명에 기록서 포함",
+            actual="조건에 맞는 파일을 찾지 못했습니다.",
+            message="시험기록서 없음",
+        )
+
+        with self.assertLogs("main.views.review.ecm_download_review_jobs", level="ERROR"):
+            with patch(
+                "main.views.review.ecm_download_review_jobs._recalculate_project_review_after_manual_override",
+                side_effect=RuntimeError("recalculate failed"),
+            ):
+                response = rule_result_manual_pass(
+                    self.factory.post(
+                        f"/api/rule-results/{result.id}/manual-pass/",
+                        data=json.dumps({"memo": "외부 자료로 확인"}),
+                        content_type="application/json",
+                    ),
+                    result.id,
+                )
+        data = json.loads(response.content.decode("utf-8"))
+        result.refresh_from_db()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(data["success"])
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS)
+        self.assertTrue(
+            DownloadReviewManualOverride.objects.filter(
+                project_number="TTA-26-00030",
+                rule_code="artifact_14",
+            ).exists()
+        )
+
+
 class DownloadReviewManualOverrideTests(TestCase):
     databases = {"default", "workflow", "reference"}
 

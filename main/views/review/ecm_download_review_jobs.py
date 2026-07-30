@@ -760,6 +760,8 @@ def mark_rule_result_manual_pass(result_id, memo, *, requested_by=""):
         raise DownloadReviewJobRequestError("수동 적합 처리 사유를 입력해야 합니다.")
 
     workflow_alias = getattr(settings, "WORKFLOW_DATABASE_ALIAS", "workflow")
+    project_id = None
+    log_context = {}
     with transaction.atomic(using=workflow_alias):
         try:
             result = (
@@ -787,22 +789,32 @@ def mark_rule_result_manual_pass(result_id, memo, *, requested_by=""):
         )
         apply_manual_override_to_result(result, override, save=True)
         mark_overrides_applied([override])
-        _recalculate_project_review_after_manual_override(project)
-        DownloadReviewLog.objects.create(
-            job=project.job,
-            job_project=project,
-            level=DownloadReviewLogLevel.INFO,
-            event_code="manual_pass_override",
-            message=f"{project.project_number} {result.rule_name} 수동 적합 처리",
-            detail_json={
-                "rule_code": result.rule_code,
-                "rule_name": result.rule_name,
-                "memo": memo,
-                "requested_by": requested_by or "",
-            },
-        )
+        project_id = project.id
+        log_context = {
+            "job_id": project.job_id,
+            "job_project_id": project.id,
+            "project_number": project.project_number,
+            "rule_code": result.rule_code,
+            "rule_name": result.rule_name,
+            "memo": memo,
+            "requested_by": requested_by or "",
+        }
 
-    return get_project_results_payload(project.id)
+    _safe_recalculate_project_review_after_manual_override(project_id)
+    _safe_create_download_log(
+        job_id=log_context.get("job_id"),
+        job_project_id=log_context.get("job_project_id"),
+        level=DownloadReviewLogLevel.INFO,
+        event_code="manual_pass_override",
+        message=f"{log_context.get('project_number')} {log_context.get('rule_name')} 수동 적합 처리",
+        detail_json={
+            "rule_code": log_context.get("rule_code"),
+            "rule_name": log_context.get("rule_name"),
+            "memo": log_context.get("memo"),
+            "requested_by": log_context.get("requested_by"),
+        },
+    )
+    return _manual_pass_response_payload(project_id, result_id)
 
 
 def get_project_change_note_payload(job_project_id):
@@ -1088,15 +1100,73 @@ def _recalculate_project_review_after_manual_override(project):
         )
     except Exception as exc:
         logger.warning("Manual override reference writeback failed: %s (%s)", project.project_number, exc)
-        DownloadReviewLog.objects.create(
-            job=project.job,
-            job_project=project,
+        _safe_create_download_log(
+            job_id=project.job_id,
+            job_project_id=project.id,
             level=DownloadReviewLogLevel.WARNING,
             event_code="manual_pass_reference_write_failed",
             message=f"{project.project_number} 수동 적합 기준 DB 반영 실패",
             detail_json={"reference_review": reference_review},
             admin_only=True,
         )
+
+
+def _safe_recalculate_project_review_after_manual_override(project_id):
+    try:
+        project = (
+            DownloadReviewProject.objects
+            .select_related("job")
+            .get(id=project_id)
+        )
+        _recalculate_project_review_after_manual_override(project)
+    except Exception as exc:
+        logger.exception("Manual override project recalculation failed: %s (%s)", project_id, exc)
+        _safe_create_download_log(
+            job_project_id=project_id,
+            level=DownloadReviewLogLevel.WARNING,
+            event_code="manual_pass_recalculate_failed",
+            message="수동 적합 후 프로젝트 상태 재계산 실패",
+            detail_json={},
+            admin_only=True,
+        )
+
+
+def _safe_create_download_log(**kwargs):
+    try:
+        DownloadReviewLog.objects.create(**kwargs)
+    except Exception as exc:
+        logger.warning("Download review log write failed: %s", exc, exc_info=True)
+
+
+def _manual_pass_response_payload(project_id, result_id):
+    try:
+        return get_project_results_payload(project_id)
+    except Exception as exc:
+        logger.exception("Manual override response refresh failed: %s (%s)", project_id, exc)
+        try:
+            result = (
+                DownloadReviewRuleResult.objects
+                .select_related("job_project", "job_project__job")
+                .get(id=result_id)
+            )
+            project = result.job_project
+            item = serialize_rule_result(result)
+            return {
+                "success": True,
+                "message": "수동 적합 처리는 저장되었습니다. 결과 목록을 다시 조회해 주세요.",
+                "job": serialize_job(project.job),
+                "project": serialize_project(project),
+                "items": [item],
+                "display_items": _display_items_for_results([result], [item]),
+            }
+        except Exception:
+            logger.exception("Manual override fallback payload failed: %s", result_id)
+            return {
+                "success": True,
+                "message": "수동 적합 처리는 저장되었습니다. 페이지를 새로고침해 결과를 확인해 주세요.",
+                "items": [],
+                "display_items": [],
+            }
 
 
 def _artifact_results_from_rule_results(results):
