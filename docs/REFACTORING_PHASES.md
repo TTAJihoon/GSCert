@@ -29,7 +29,7 @@
 - `main/utils/weekly.py` — `sync_reference_db()`가 `manage.py sqlite reference.xlsx reference.db` 대신 `manage.py import_reference_db --source-xlsx reference.xlsx`로 PostgreSQL에 직접 적재(A안: SQLite 중간단계 제거)
 - `main/utils/embedding_to_faiss.py` — `fetch_texts_from_pg()`, `build_faiss_from_pg()` 추가 (PostgreSQL SwData에서 직접 읽어 FAISS **증분** 갱신)
 - `main/management/commands/embed_db.py` — `db_path` 생략 시 PostgreSQL 소스 사용
-- `launcher.ps1` — `W`(weekly 동기화), `I`(FAISS 증분 임베딩) 메뉴 추가
+- `launcher.ps1` — `W`(weekly 동기화), `f`(FAISS 증분 임베딩) 메뉴 제공
 
 ### 1-3. 웹 reference.db 사용처 → PostgreSQL ✅
 - `main/views/testing/history.py` — 시험 이력 조회를 `SwData.objects.using('reference')` ORM으로 전환

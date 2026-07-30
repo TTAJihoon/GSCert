@@ -10,8 +10,8 @@ Django `DATABASES` alias 3개로 나뉜다. 어떤 모델이 어느 DB로 가는
 | alias | 엔진 | 위치 | 용도 |
 |---|---|---|---|
 | `default` | SQLite | `db.sqlite3` (프로젝트 루트) | 기타(레거시 `Job` 등). 세션/auth 등 Django 기본 테이블도 여기. |
-| `workflow` | SQLite | `main/data/workflow.db` (**서버 로컬**) | 다운로드/점검 **실행 상태**(잡·프로젝트·결과·로그·락). 서버마다 로컬. |
-| `reference` | **PostgreSQL** | `gscert_reference` (주 서버, env로 접속) | **공유 기준 데이터**(점검규칙·프로젝트·PL 매핑·인증이력). 여러 서버가 공유. |
+| `workflow` | SQLite | `main/data/workflow.db` (**서버 로컬**) | 다운로드/점검 **실행 상태**(잡·프로젝트·결과·로그·락)와 유사 분석 작업. 서버마다 로컬. |
+| `reference` | **PostgreSQL** | `gscert_reference` (주 서버, env로 접속) | **공유 기준 데이터**(점검규칙·프로젝트·PL 매핑·인증이력·수동 적합 메모). 여러 서버가 공유. |
 
 - 접속 정보(`reference`): `REFERENCE_PG_NAME/USER/PASSWORD/HOST/PORT` 환경변수.
 - 라우팅 규칙(`settings.py`):
@@ -34,6 +34,7 @@ Django `DATABASES` alias 3개로 나뉜다. 어떤 모델이 어느 DB로 가는
 | `inspection_result` | `DownloadReviewRuleResult` | workflow | 프로젝트별 **규칙 점검 결과** |
 | `automation_log` | `DownloadReviewLog` | workflow | 잡/프로젝트 처리 로그 |
 | `automation_lock` | `DownloadReviewLock` | workflow | 단일 워커 동시성 락(단일 행) |
+| `main_similaranalysisjob` | `SimilarAnalysisJob` | workflow | 유사제품 자동 입력/비교 작업 상태와 결과 |
 | `main_job` | `Job` | default | 레거시 잡(상태/최종 링크) |
 
 > ⚠️ 크로스-DB 관계 불가: `inspection_result.rule_code`는 `inspection_rule`(다른 DB)로의 FK가 아니라
@@ -44,7 +45,7 @@ Django `DATABASES` alias 3개로 나뉜다. 어떤 모델이 어느 DB로 가는
 ## 3. reference DB (PostgreSQL, 공유 기준 데이터)
 
 ### 3.1 `reference_center_pl` — 센터별 PL 이름 매핑
-PL(프로젝트 리더) 이름을 센터에 매핑한다. `sync_reference_projects_from_sheet`가 기본 PL 목록을 채우고, `launcher.ps1`의 `G` 메뉴에서 배정한 미분류 PL 추가 매핑도 같은 테이블에 보존한다.
+PL(프로젝트 리더) 이름을 센터에 매핑한다. `sync_reference_projects_from_sheet`가 기본 PL 목록을 채우고, `/download-review/`의 `PL 배정 목록` 모달이나 관리 명령의 `--assign-unknown-pl` 보조 옵션에서 배정한 추가 PL 매핑도 같은 테이블에 보존한다.
 
 | 컬럼 | 타입 | 비고 |
 |---|---|---|
@@ -202,6 +203,18 @@ override가 있으면 다음 점검 결과와 관계없이 `pass`로 재적용�
 | `job_id` | FK(nullable) → automation_job | |
 | `locked_at`/`heartbeat_at`/`updated_at` | datetime | |
 | `note` | varchar(255) | |
+
+### 4.6 `main_similaranalysisjob` — 유사제품 자동 입력 작업 (`SimilarAnalysisJob`)
+| 컬럼 | 타입 | 비고 |
+|---|---|---|
+| `id` | UUID, PK | |
+| `status` | varchar(20), index | `queued`/`running`/`completed`/`failed` |
+| `progress` | smallint | 진행률 |
+| `progress_message` | varchar(500) | 진행 메시지 |
+| `input_files_json` | json | 입력 파일 목록 |
+| `result_json` | json | 분석 결과 |
+| `error_message` | text | |
+| `created_at`/`started_at`/`completed_at`/`updated_at` | datetime | |
 
 ---
 

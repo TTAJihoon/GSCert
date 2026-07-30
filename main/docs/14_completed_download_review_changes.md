@@ -1,0 +1,61 @@
+# Download Review 완료 변경 정리
+
+## 목적
+
+`00_next_step.md`가 누적 이력 문서가 되지 않도록, 최근 완료된 download-review 변경을 한곳에 요약한다. 운영자가 지금 따라야 할 절차는 각 기준 문서와 `00_next_step.md`를 우선한다.
+
+## DB와 수동 적합 처리
+
+- 수동 적합 처리 API `POST /api/rule-results/<result_id>/manual-pass/`를 추가했다.
+- 사용자가 `정상`이 아닌 결과를 `적합`으로 바꾸려면 메모를 반드시 입력해야 한다.
+- 수동 적합 메모는 `inspection_manual_override`에 저장한다.
+- `inspection_manual_override`는 PostgreSQL `reference` DB에 둔다. 재점검으로 `inspection_result`가 새로 만들어져도 센터/프로젝트번호/규칙코드가 같으면 override를 다시 적용하기 위해서다.
+- 운영 반영용 migration과 이관 명령을 추가했다.
+  ```powershell
+  .\.venv\Scripts\python.exe manage.py migrate --database=reference --settings=myproject.settings
+  .\.venv\Scripts\python.exe manage.py migrate_manual_overrides_to_reference --settings=myproject.settings
+  ```
+- 수동 적합 저장 뒤 프로젝트 상태 재계산, 기준 DB write-back, 로그 기록, 결과 재조회가 일부 실패해도 저장 성공 자체가 되돌아가지 않도록 분리했다.
+
+## 결과 UI
+
+- 규칙 결과 모달에서 `산출물` 열을 제거했다.
+- `HTML 다운로드` 왼쪽에 `전체 산출물 다운로드` 버튼을 추가했다.
+- `전체 산출물 다운로드` 왼쪽에 `수정 내용` 버튼을 추가했다.
+- `수정 내용.txt`가 ECM 다운로드 파일 또는 보관/로그에서 발견되면 버튼이 활성화되고, 클릭 시 txt 본문을 팝업으로 표시한다.
+- 수동 적합 처리된 정상 항목은 기존 초록색이 아니라 보라색 정상 배지로 표시한다.
+- 보라색 정상 배지는 정상 항목 필터에 포함되며, 마우스 오버 또는 클릭 시 수동 처리 메모를 확인할 수 있다.
+- `프로젝트 선택`, `현재 작업 진행 상황`, `작업 조회` 탭은 클릭해 이동할 때마다 데이터를 다시 조회한다.
+
+## 다운로드 성능
+
+- 전체 산출물 다운로드는 브라우저가 GET attachment URL을 직접 열도록 바꿨다.
+- 서버는 ECM 전체 폴더 파일을 ZIP 엔트리 단위로 스트리밍한다. 첫 파일의 ZIP 헤더를 먼저 보내므로 전체 압축 완료를 기다리지 않고 다운로드 응답이 시작된다.
+- 앞으로 같은 기능을 재사용할 때는 `main/static/scripts/review/ecm_download_review.js`의 `startFullProjectFolderDownload(project)` 또는 같은 GET attachment 패턴을 사용한다.
+- `fetch/POST -> JSON download_url -> anchor click` 방식은 사용자에게 다운로드 시작이 늦게 보이므로 새 UI에는 쓰지 않는다.
+
+## 점검 규칙 동작
+
+- 9-6 버전 비교 기준을 완화했다.
+  - `v1`, `v1.0`, `ver 3.0`, 숫자 버전 `1`, `3.0`, 문자 버전 `Enterprise`를 버전으로 본다.
+  - `EBS ISM3.0`처럼 마지막 단어에 문자와 숫자가 붙으면 제품명은 `EBS ISM`, 버전은 `3.0`으로 분리한다.
+  - 시험계획서 버전 비교는 숫자 버전의 `v`/`ver` 접두사를 무시하고, 문자 버전은 공백과 대소문자를 무시한다.
+- 9-12 비교는 공백과 줄바꿈을 제외하고 비교한다.
+- 10-7 결함리포트 시트 구성 비교는 시트명의 공백을 제거한 뒤 비교한다. 예: `1차 결함리포트`와 `1차결함리포트`는 같은 시트명이다.
+- ECM 산출물 파일명 끝의 개정 버전(`v1`, `v1.0`, `v1.1`, `1.1` 등)을 파싱해 중복 후보를 정리한다.
+- 같은 산출물은 major별 최신 minor만 검사한다. 예: `기능리스트 v1.0`과 `기능리스트 v1.1`이 있으면 `v1.1`만 검사한다.
+- 결함리포트는 major 차수별로 최신 minor를 유지한다. 예: `v1.0`, `v1.1`, `v2.0`이면 `v1.1`, `v2.0`을 검사한다.
+- 새 버전 파일이 기존 산출물 폴더 밖에 추가되어도, 기존 폴더의 같은 산출물 후보와 같은 이름 그룹이면 최신 파일을 검사 대상으로 끌어온다.
+
+## 프로젝트와 PL 배정
+
+- Google Sheet 프로젝트 동기화는 PL 매핑이 없더라도 프로젝트를 `center_code=unknown`으로 보존한다.
+- `/download-review/`의 `PL 배정 목록` 모달에서 미배정 PL을 센터로 옮길 수 있다.
+- 미배정 PL을 센터에 배정하면 `reference_center_pl`에 매핑을 저장하고, 아직 점검하지 않은 미배정 프로젝트를 새 센터로 함께 이동한다.
+- 이미 점검된 프로젝트는 자동 이동하지 않는다. 완료된 점검 결과가 의도치 않게 다른 센터 목록으로 이동하는 것을 막기 위해서다.
+
+## Windows 로컬 앱 배포
+
+- 공식 배포 대상은 `GSCertLocalReviewDashboard` 앱이다.
+- 다운로드 API는 `C:\Claude_GSCert\local_review_app\dist\GSCertLocalReviewDashboard` 폴더를 ZIP으로 스트리밍한다.
+- 사용자 안내 문구는 `GSCertLocalReviewDashboard.exe를 실행하세요` 기준으로 맞췄다.

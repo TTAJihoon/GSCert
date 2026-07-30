@@ -29,8 +29,8 @@ Treat `main/docs/00_next_step.md` as the current handoff, not as a history log. 
 - Keep numbered design documents under `main/docs/`, not the repository root.
 - Keep folder `readme.md` files as directory/file guides, not design-history logs.
 - Preserve the current split:
-  - `reference` PostgreSQL: shared project list, PL mapping, certification history, and `inspection_rule`.
-  - `workflow.db`: local job history, project processing state, rule results, logs, and locks.
+  - `reference` PostgreSQL: shared project list, PL mapping, certification history, `inspection_rule`, and `inspection_manual_override`.
+  - `workflow.db`: local job history, project processing state, rule results, logs, locks, and similar-analysis jobs.
   - legacy `ecmlist*.db`: compatibility path only when PostgreSQL project source is disabled.
 - Keep `GET` for reads and `POST` for state changes.
 - Do not expose server absolute paths, screenshots paths, or stack traces in user-facing API/UI responses.
@@ -63,5 +63,6 @@ For UI changes, restart the server and verify `/download-review/`.
 - 194 is the main download-review server and handles bundang/sangam/yeongnam through `ecm-http`.
 - 241 is not a download-review worker target; it should route download-review traffic back to 194.
 - Project/rule data should come from shared PostgreSQL `reference` in normal operation.
+- Manual pass overrides are shared business judgments and should stay in PostgreSQL `reference`, not local `workflow.db`.
 - Test-only start window is currently allowed all day. Restore operation to `20:00-07:00` when live testing ends.
-- Draft rules remain as test scaffolding until matching real rules are implemented.
+- Draft rules are compatibility/test scaffolding; use `--only-real` for current implemented 1~18 rules.

@@ -341,61 +341,51 @@ print(project["product_name"])
 
 ## 현재 구현된 상태
 
+운영 기준에서 프로젝트 기준정보, PL 매핑, 인증 이력, 점검규칙, 수동 적합 메모는 PostgreSQL `reference` DB를 사용한다. 작업 상태, 점검 결과 원본, 유사 분석 작업은 서버 로컬 `workflow.db`에 남긴다. 상세 구조는 `13_db_schema.md`가 기준이다.
+
 현재 구현된 서버 API는 다음과 같다.
 
 | API | 상태 | 설명 |
 | --- | --- | --- |
 | `GET /api/local-review/health/` | 구현 완료 | 서버 연결 상태 확인 |
 | `GET /api/local-review/projects/<project_number>/metadata/?center=sangam` | 구현 완료 | 프로젝트 기준정보 조회 |
+| `GET /api/projects/?center=sangam` | 구현 완료 | download-review 프로젝트 목록/검색/필터 조회 |
+| `GET /api/pl-assignments/` | 구현 완료 | 센터별 PL과 미배정 PL 목록 조회 |
+| `POST /api/pl-assignments/apply/` | 구현 완료 | 미배정 PL 또는 기존 PL의 센터 배정 변경 |
+| `POST /api/rule-results/<result_id>/manual-pass/` | 구현 완료 | 점검 결과 수동 적합 처리와 메모 저장 |
 
-아직 완료되지 않은 항목은 다음과 같다.
-
-| 항목 | 상태 |
-| --- | --- |
-| PostgreSQL DB `gscert_prod` 생성 | 미완료 |
-| PostgreSQL 앱 계정 `gscert_app` 생성 | 미완료 |
-| 기존 SQLite 데이터를 PostgreSQL로 이전 | 미완료 |
-| 기준정보 조회 소스를 SQLite에서 PostgreSQL로 전환 | 미완료 |
-| 외부 API 인증 토큰 적용 | 미완료 |
-
-즉, API 경로는 준비됐지만 현재 기준정보 조회는 아직 기존 SQLite 기준정보 DB를 사용한다. PostgreSQL로 실제 조회하려면 DB 생성, 계정 생성, 데이터 이전, 조회 repository 전환이 추가로 필요하다.
+외부 API 인증 토큰은 설정값 `LOCAL_REVIEW_API_TOKEN`이 있을 때 적용된다. 비어 있으면 기존 호환성을 위해 인증 없이 동작한다.
 
 ## 서버에서 PostgreSQL을 사용할 때의 접속 방식
 
-Django 서버는 PostgreSQL에 로컬 접속한다.
+Django 기본 설정(`myproject.settings`)은 `reference` alias로 PostgreSQL에 접속한다.
 
 ```text
-Host: 127.0.0.1
-Port: 5432
-Database: gscert_prod
-User: gscert_app
+Database alias: reference
+Default database: gscert_reference
+Default user: postgres
+Default host: localhost
+Default port: 5432
 ```
 
 환경 변수 예시는 다음과 같다.
 
 ```powershell
-$env:GSCERT_DB_NAME = "gscert_prod"
-$env:GSCERT_DB_USER = "gscert_app"
-$env:GSCERT_DB_PASSWORD = "<gscert_app 비밀번호>"
-$env:GSCERT_DB_HOST = "127.0.0.1"
-$env:GSCERT_DB_PORT = "5432"
+$env:REFERENCE_PG_NAME = "gscert_reference"
+$env:REFERENCE_PG_USER = "postgres"
+$env:REFERENCE_PG_PASSWORD = "<PostgreSQL password>"
+$env:REFERENCE_PG_HOST = "localhost"
+$env:REFERENCE_PG_PORT = "5432"
 ```
 
-현재 SSL은 사용하지 않는 것으로 결정했으므로 `GSCERT_DB_SSLMODE`은 설정하지 않는다.
-
-PostgreSQL settings 모듈은 다음 파일에 있다.
-
-```text
-myproject/postgres_settings.py
-```
-
-서버에서 PostgreSQL 설정으로 Django를 확인할 때는 다음처럼 settings를 지정한다.
+서버에서 현재 운영 설정으로 Django 연결을 확인할 때는 다음처럼 실행한다.
 
 ```powershell
-.\.venv\Scripts\python.exe manage.py check --settings=myproject.postgres_settings
+.\.venv\Scripts\python.exe manage.py check --settings=myproject.settings
+.\.venv\Scripts\python.exe manage.py migrate --database=reference --settings=myproject.settings
 ```
 
-운영 서비스도 같은 settings를 사용하도록 서비스 실행 명령 또는 환경 변수를 조정해야 한다.
+`myproject.postgres_settings`와 `myproject.postgres_data_settings`는 전체 DB를 PostgreSQL로 놓고 확인하거나 데이터 적재 작업을 별도로 수행해야 할 때 사용하는 보조 설정이다. 일반 운영 서비스 기준은 `myproject.settings`다.
 
 ## 외부 PC에서 조회 테스트하는 방법
 
@@ -439,7 +429,7 @@ Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/local-review/projects/TTA-
 | `end_date` | 시험 종료일 |
 | `review` | 현재 점검결과 |
 
-현재 `start_date`, `end_date`는 API 필드만 준비되어 있고 실제 값 제공은 추가 구현이 필요하다.
+`start_date`, `end_date`는 `reference_project.start_date`, `reference_project.expected_end_date` 기준으로 제공된다. 기준 행을 찾지 못하거나 값이 비어 있으면 빈 값으로 내려가고, 관련 점검규칙은 기준정보 없음으로 실패 처리한다.
 
 ## PostgreSQL 직접 접속을 열어야 하는 경우
 
@@ -457,31 +447,28 @@ Invoke-RestMethod -Uri "http://210.96.71.194:8000/api/local-review/projects/TTA-
 
 데스크톱 앱 배포 구조에서는 PostgreSQL 직접 접속을 열 필요가 없다.
 
-## PostgreSQL 전환 작업 순서
+## 서버 적용 순서
 
-1. 서버에서 PostgreSQL 관리자 비밀번호를 확인한다.
-2. `gscert_prod` DB를 생성한다.
-3. `gscert_app` 계정을 생성한다.
-4. `gscert_app`에 `gscert_prod` 권한을 부여한다.
-5. 서버 환경 변수에 DB 접속 정보를 등록한다.
-6. `myproject.postgres_settings`로 Django 연결을 확인한다.
-7. Django migration을 실행한다.
-8. 기존 SQLite 데이터를 PostgreSQL로 이전한다.
-9. 기준정보 조회 코드를 PostgreSQL repository로 전환한다.
-10. 외부 PC에서 API 조회를 테스트한다.
+GitHub에서 최신 코드를 pull한 뒤 PostgreSQL `reference` DB migration을 먼저 맞춘다.
 
-## 서버 적용 시 주의사항
+```powershell
+.\.venv\Scripts\python.exe manage.py migrate --database=reference --settings=myproject.settings
+```
 
-GitHub에서 코드를 pull하는 것만으로 PostgreSQL 전환이 끝나지는 않는다.
+수동 적합 메모를 workflow SQLite에 임시 저장했던 서버라면 한 번만 이관 명령을 실행한다.
 
-서버에서 추가로 수행해야 하는 작업은 다음과 같다.
+```powershell
+.\.venv\Scripts\python.exe manage.py migrate_manual_overrides_to_reference --settings=myproject.settings
+```
+
+그 다음 Django 서버를 재시작한다. 워커는 이미 실행 중인 작업이 새 코드로 재점검하거나 수동 적합 재적용을 즉시 해야 하는 경우 재시작한다.
+
+새 서버를 구축하는 경우에는 다음이 별도 배포 절차다.
 
 - Python 패키지 설치 또는 갱신
-- PostgreSQL DB 생성
-- PostgreSQL 계정 생성
-- 환경 변수 등록
-- migration 실행
-- 기존 SQLite 데이터 이전
+- PostgreSQL 설치와 `gscert_reference` DB 준비
+- `env.ps1` 또는 서비스 환경 변수에 `REFERENCE_PG_*` 등록
+- `migrate --database=reference`
+- `import_reference_db --source-xlsx main\data\reference.xlsx`
+- `sync_reference_projects_from_sheet` 또는 weekly 동기화
 - 서비스 재시작
-
-코드 반영은 `git pull`로 가능하지만, DB 생성과 데이터 이전은 별도 배포 절차로 처리해야 한다.

@@ -4,15 +4,15 @@
 
 다른 대화창이나 이후 작업자가 현재 남은 판단 지점을 빠르게 확인하도록 정리한다.
 
-과거의 긴 결정 로그는 `archive/2026-07-doc-cleanup/`에 보관했다. 이 문서는 지금 기준으로 실제로 확인하거나 결정해야 할 항목만 남긴다.
+과거의 긴 결정 로그는 `archive/2026-07-doc-cleanup/`에 보관했다. 이미 완료된 기능 변경은 `14_completed_download_review_changes.md`로 분리하고, 이 문서에는 지금 기준으로 실제로 확인하거나 결정해야 할 항목만 남긴다.
 
 ## 현재 진행 상태
 
 - 브랜치: `codex-job-runner-persistence`
-- download-review는 194 서버 단일 처리와 `ecm-http` source를 기준으로 전환 중이다.
+- download-review는 194 서버 단일 처리와 `ecm-http` source를 기준으로 운영한다.
 - 점검규칙 1~18번은 구현되어 있고, 웹과 Windows 앱은 공용 규칙 DB/API/엔진을 사용한다.
-- 기준 프로젝트와 점검규칙은 공유 PostgreSQL `reference` DB를 기준으로 본다.
-- 작업 상태와 점검 결과는 서버 로컬 `workflow.db`에 저장한다.
+- 기준 프로젝트, PL 매핑, 점검규칙, 수동 적합 메모는 공유 PostgreSQL `reference` DB를 기준으로 본다.
+- 작업 상태, 점검 결과 원본, 유사 분석 작업은 서버 로컬 `workflow.db`에 저장한다.
 
 ## 결정/확인 필요
 
@@ -71,23 +71,9 @@
 - `03_inspection_rule_manual.md`
 - `09_rule_db_edit_quick_guide.md`
 
-### 4. Windows 앱 배포 기준
+### 4. 문서 archive 유지 방식
 
-결정됨: dashboard 앱(`GSCertLocalReviewDashboard`, `run_dashboard.py`)을 유일한 공식 배포 대상으로 확정했다. 기존 `run.py`/`GSCertLocalReview.exe` 빌드 경로는 제거했다.
-
-확인할 것:
-
-- 배포 대상 폴더는 `local_review_app/dist/GSCertLocalReviewDashboard/` 전체인지.
-- 규칙 bundle 업데이트만으로 충분한 변경과 exe 재배포가 필요한 변경을 사용자에게 어떻게 안내할지.
-
-관련 문서:
-
-- `07_local_windows_app_test_manual.md`
-- `08_rulebase_shared_architecture.md`
-
-### 5. 문서 archive 유지 방식
-
-이번 정리에서 과거 설계 문서는 삭제하지 않고 archive로 이동했다.
+과거 설계 문서는 삭제하지 않고 archive로 이동했다.
 
 결정할 것:
 
@@ -103,5 +89,4 @@
 1. 센터별 `verify_ecm_http --download` 실측.
 2. 샘플 zip 1~18번 전체 통과 재확인.
 3. 운영 시간 제한 `20:00-07:00` 복구.
-4. Windows 앱 배포 대상과 구버전/신버전 병행 정책 확정.
-5. 문서 archive 구조가 충분한지 한 번 더 확인.
+4. 문서 archive 구조가 충분한지 한 번 더 확인.

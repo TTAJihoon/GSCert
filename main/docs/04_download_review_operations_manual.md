@@ -66,15 +66,32 @@ dry-run으로 작업 상태 전이와 규칙 실행 경로를 먼저 확인한�
 
 | DB | 용도 | 관리 기준 |
 | --- | --- | --- |
-| `reference` PostgreSQL | 프로젝트 기준정보, PL 매핑, 인증이력, 점검규칙 | 주 서버 공유 DB |
-| `workflow` SQLite | 작업, 프로젝트 처리 상태, 점검결과, 로그, lock | 서버 로컬 실행 DB |
+| `reference` PostgreSQL | 프로젝트 기준정보, PL 매핑, 인증이력, 점검규칙, 수동 적합 메모 | 주 서버 공유 DB |
+| `workflow` SQLite | 작업, 프로젝트 처리 상태, 점검결과, 로그, lock, 유사 분석 작업 | 서버 로컬 실행 DB |
 | `default` SQLite | Django 기본 테이블, 레거시 `Job` | 일반 Django DB |
 
 주의:
 
 - `inspection_rule`은 공유 PostgreSQL `reference` DB의 테이블이다.
+- `inspection_manual_override`도 공유 PostgreSQL `reference` DB의 테이블이다.
 - `inspection_result`는 서버 로컬 `workflow.db`의 테이블이다.
 - 두 DB가 다르므로 결과는 `rule_code`/`rule_name` 문자열로 규칙을 식별한다.
+
+## 배포 직후 DB 반영
+
+코드를 pull한 뒤 수동 적합 처리나 기준정보 관련 migration이 포함되어 있으면 reference DB를 먼저 맞춘다.
+
+```powershell
+.\.venv\Scripts\python.exe manage.py migrate --database=reference --settings=myproject.settings
+```
+
+수동 적합 메모를 workflow SQLite에 임시 저장했던 서버라면 한 번만 이관 명령을 실행한다.
+
+```powershell
+.\.venv\Scripts\python.exe manage.py migrate_manual_overrides_to_reference --settings=myproject.settings
+```
+
+Django 서버 재시작 후 `/download-review/`에서 수동 적합 처리와 결과 재조회가 동작하는지 확인한다. 워커는 이미 실행 중인 작업이 새 로직으로 재점검해야 할 때 재시작한다.
 
 ## 기준 프로젝트 동기화
 
@@ -140,6 +157,7 @@ git diff --check
 | worker가 멈춘 것 같음 | heartbeat, `automation_lock`, worker process |
 | ECM 다운로드가 실패함 | `verify_ecm_http`, `12_http_ecm_source_decisions.md` |
 | 파일은 있는데 규칙이 실패함 | `inspection_result.raw_detail_json`, `03_inspection_rule_manual.md` |
+| 수동 적합 처리가 실패함 | `inspection_manual_override` migration, `/api/rule-results/{id}/manual-pass/`, 서버 로그 |
 | UI 결과 문구가 이상함 | `gscert_review_core/result_display.py`, `/api/job-projects/{id}/results/` |
 
 ## 백업 기준

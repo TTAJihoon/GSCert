@@ -61,7 +61,7 @@ PostgreSQL을 setup 이후에 준비했다면, 아래만 수동 실행하면 된
 ```powershell
 .\.venv\Scripts\python.exe manage.py embed_db        # PostgreSQL 소스, 증분
 ```
-또는 launcher.ps1 의 `I` 메뉴 사용. 이후 신규 데이터는 `weekly`(launcher `W`) → `embed_db` 순으로 증분 갱신.
+또는 launcher.ps1 의 `f` 메뉴 사용. 이후 신규 데이터는 `weekly`(launcher `W`) → `embed_db` 순으로 증분 갱신.
 
 ## 5. 서버 시작
 

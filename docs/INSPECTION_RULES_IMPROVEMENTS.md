@@ -13,7 +13,7 @@
 | 4 | 규칙별 `engine_min_version` + 미지원 명시 경고 | ⬜ 미착수 | 로컬 앱 조용한 skip 방지 |
 | 5 | 시드를 코드 → 선언 파일(YAML)로 분리 | ⬜ 미착수 | |
 | 6 | 검사관용 규칙 편집 UI (폼+미리보기+롤백) | ⬜ 미착수 | |
-| 7 | 테스트 라우팅 정렬 (ui_mock ↔ 운영) | ⏸ **보류 (재검토 조건 기록)** | 본 문서 §7 |
+| 7 | 테스트 라우팅 정렬 (ui_mock ↔ 운영) | 🟡 **부분 정렬, 재검토 조건 기록** | 본 문서 §7 |
 | 8 | 운영 시간창 복구 (00–24시 → 20–07시) | ⏳ **운영 전환 전 필수** | 본 문서 §8 |
 | 9 | 외부 자동화 경계 테스트 하네스 | 🟡 **부분 착수** | 본 문서 §9 |
 | 10 | 산출물 source 추상화 (ECM 분리 경계) | 🟢 **seam 도입** | 본 문서 §10 |
@@ -115,34 +115,39 @@
 
 ---
 
-## 7. 테스트 DB 라우팅 정렬 (ui_mock ↔ 운영) — ⏸ 보류
+## 7. 테스트 DB 라우팅 정렬 (ui_mock ↔ 운영) — 🟡 부분 정렬
 
-### 배경 (2026-06-29 조사 결과)
+### 배경과 현재 상태
 
 테스트는 `manage.py test main.tests --settings=myproject.ui_mock_settings`로 돌린다.
-그런데 규칙 DB 라우팅이 운영과 다르다:
+운영과 테스트 DB 라우팅은 의도적으로 완전히 같지는 않다:
 
 | | 운영 `settings.py` | `ui_mock_settings.py` |
 |---|---|---|
 | `downloadreviewrule` 위치 | `reference` (PostgreSQL) | `workflow` (SQLite, `WORKFLOW_MODEL_NAMES`) |
-| `reference` alias | 있음 | **없음** |
-| Reference 라우터 | 활성 | 미등록 |
+| `downloadreviewmanualoverride` 위치 | `reference` (PostgreSQL) | `reference` (SQLite alias) |
+| `reference` alias | 있음 | 있음(SQLite `reference_mock.db`) |
+| Reference 라우터 | 활성 | 활성 |
 
 이전에 전체 테스트가 `table "inspection_rule" already exists`로 깨졌는데,
 이는 마이그레이션 0006이 fresh DB에서 0001과 같은 alias에 테이블을 재생성했기 때문이다.
-→ **0006을 멱등(RunPython + 존재 확인)으로 고쳐 해결**했고, 66개 전부 통과한다.
-(라우팅 차이 자체는 그대로 남겨둔 상태.)
+→ **0006을 멱등(RunPython + 존재 확인)으로 고쳐 해결**했다.
+
+2026-07 수동 적합 처리 이관 작업에서 `ui_mock_settings.py`에도 `reference` alias와
+`ReferenceDatabaseRouter`를 추가했다. 다만 `DownloadReviewRule`은 테스트 DB 충돌과 기존 테스트 비용을
+줄이기 위해 아직 `workflow` SQLite에 둔다. 운영 parity가 중요한 `DownloadReviewManualOverride`는
+`reference` alias로 이동했다.
 
 ### 보류 결정 + 재검토 조건 ⚠️
 
-현재 **교차 DB(cross-DB) 쿼리 위험이 낮아** 라우팅 정렬은 보류한다. 근거:
+현재 **규칙 조회의 교차 DB(cross-DB) 쿼리 위험은 낮아** `DownloadReviewRule`의 테스트 라우팅 완전 정렬은 보류한다. 근거:
 - `DownloadReviewRule`(reference)을 가리키는 FK/M2M 없음(0005에서 제거, `rule_code`/`rule_name`
   스칼라로 비정규화 — `main/models.py` 주석 참조).
 - 모든 rule 쿼리는 `DownloadReviewRule.objects` 단독. 유일한 prefetch(`rule_results`)는
   Project→RuleResult로 둘 다 workflow(동일 DB).
 - inspection_rule을 workflow 테이블과 조인하는 raw SQL/`.using()` 혼용 없음.
 
-따라서 ui_mock(rule→workflow 단일 DB)이 운영(2-DB)을 못 흉내내도 잡을 버그가 없다.
+따라서 ui_mock(rule→workflow 단일 DB)이 운영(2-DB)을 완전히 흉내내지는 못해도, 지금 구조에서는 잡지 못하는 운영 버그가 제한적이다. 반대로 수동 적합 메모처럼 공유 판단 데이터인 모델은 테스트에서도 `reference` alias로 둔다.
 
 **다음 중 하나라도 발생하면 즉시 재검토** (그 순간 ui_mock 테스트가 운영 버그를 못 잡게 됨):
 - `DownloadReviewRule`에 FK를 다시 추가(예: `RuleResult.rule` 복원)하거나
@@ -155,9 +160,8 @@
 1. **공통 base 설정 + 얇은 테스트 override**로 라우팅을 한 곳에서 정의 → 설정 모듈 2개가
    따로 노는 근본 드리프트를 제거(이번 사고의 뿌리). ui_mock 수기 패치보다 우선.
 2. CI가 PostgreSQL 가능하면 → reference를 **실제 PG**로 쓰는 테스트 설정(완전 충실도).
-3. 최소 절충: ui_mock에 `reference`(SQLite) alias + `ReferenceDatabaseRouter` 추가하고
-   `downloadreviewrule`을 `WORKFLOW_MODEL_NAMES`에서 빼 `REFERENCE_MODEL_NAMES`로 이동.
-   (구조 parity는 얻지만 PG 엔진 parity는 못 얻음.)
+3. 최소 절충: `downloadreviewrule`도 `WORKFLOW_MODEL_NAMES`에서 빼 `REFERENCE_MODEL_NAMES`로 이동.
+   (현재 `reference` SQLite alias와 라우터는 이미 있으므로 구조 parity는 더 가까워지지만 PG 엔진 parity는 못 얻음.)
 
 > 주의: 0006은 이미 멱등이므로 어느 선택지든 fresh DB 충돌은 재발하지 않는다.
 

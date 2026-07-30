@@ -13,6 +13,7 @@
 | 다른 PC에서 바로 이어받기 | `00_next_step.md` | `04_download_review_operations_manual.md` |
 | 전체 문서 지도를 확인하기 | `readme.md` | 이 문서 |
 | 남은 결정 사항 확인 | `02_open_decisions.md` | `00_next_step.md` |
+| 최근 완료된 변경 확인 | `14_completed_download_review_changes.md` | `00_next_step.md` |
 | 점검규칙을 수정하기 | `09_rule_db_edit_quick_guide.md` | `03_inspection_rule_manual.md`, `08_rulebase_shared_architecture.md` |
 | 점검 결과 기대값/실제값/메시지 표시를 수정하기 | `05_developer_change_manual.md` | `gscert_review_core/result_display.py`, `03_inspection_rule_manual.md` |
 | 서버/worker를 실행하기 | `04_download_review_operations_manual.md` | `11_artifact_source_boundary.md`, `12_http_ecm_source_decisions.md` |
@@ -27,6 +28,7 @@
 
 - `00_next_step.md`: 현재 브랜치, 최신 구조, 바로 다음 작업.
 - `02_open_decisions.md`: 아직 확정하거나 실측해야 할 결정 항목.
+- `14_completed_download_review_changes.md`: 최근 완료된 UI/DB/규칙 변경의 이력성 요약.
 - `01_manual_index.md`: 지금 보고 있는 문서.
 - `readme.md`: `main/docs` 폴더의 짧은 안내.
 
@@ -51,8 +53,8 @@
 
 | DB | 역할 |
 | --- | --- |
-| `reference` PostgreSQL | 공유 기준정보, 프로젝트 목록, PL 매핑, 인증이력, 점검규칙 |
-| `workflow` SQLite | 서버 로컬 작업, 프로젝트 처리 상태, 점검결과, 로그, lock |
+| `reference` PostgreSQL | 공유 기준정보, 프로젝트 목록, PL 매핑, 인증이력, 점검규칙, 수동 적합 메모 |
+| `workflow` SQLite | 서버 로컬 작업, 프로젝트 처리 상태, 점검결과, 로그, lock, 유사 분석 작업 |
 | `default` SQLite | Django 기본 테이블과 레거시 `Job` |
 
 ### 4. ECM/source 경계

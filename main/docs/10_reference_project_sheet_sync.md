@@ -2,7 +2,7 @@
 
 ## 목적
 
-인증위 Google Sheet의 프로젝트 목록을 PostgreSQL reference DB에 적재해서 웹과 Windows 프로그램이 같은 프로젝트 기준정보를 사용하도록 한다.
+인증위 Google Sheet의 프로젝트 목록을 PostgreSQL `reference` DB에 적재해서 웹과 Windows 프로그램이 같은 프로젝트 기준정보를 사용하도록 한다.
 
 ## 저장 구조
 
@@ -25,26 +25,23 @@
 | 데이터 범위 | B열 값이 이어지는 동안 B~I열을 프로젝트 행으로 해석 |
 | 회사명/제품명 | B열에서 괄호와 괄호 안 내용을 제거한 뒤 `-` 기준 1회 분리 |
 | 센터 | H열 시험원을 `,`로 나눈 첫 번째 이름을 `reference_center_pl`과 매칭 |
-| 미분류 | PL 이름이 매핑에 없으면 `center_code=unknown`, `center_label=미분류`로 저장 |
+| 미배정 PL | PL 이름이 매핑에 없으면 프로젝트를 버리지 않고 `center_code=unknown`, `center_label=미분류`로 저장 |
+
+미배정 PL이 있어도 프로젝트는 `reference_project`에 남는다. 이후 `/download-review/` 화면의 `PL 배정 목록`에서 사용자가 센터를 지정할 수 있다.
 
 ## 실행
 
 비밀번호는 코드나 문서에 저장하지 않고 실행 환경변수로만 지정한다.
 
 ```powershell
-$env:GSCERT_DB_HOST = "210.96.71.241"
-$env:GSCERT_DB_PORT = "5432"
-$env:GSCERT_DB_NAME = "gscert_prod"
-$env:GSCERT_DB_USER = "postgres"
-$env:GSCERT_DB_PASSWORD = "<PostgreSQL password>"
+$env:REFERENCE_PG_HOST = "localhost"
+$env:REFERENCE_PG_PORT = "5432"
+$env:REFERENCE_PG_NAME = "gscert_reference"
+$env:REFERENCE_PG_USER = "postgres"
+$env:REFERENCE_PG_PASSWORD = "<PostgreSQL password>"
 
-.\.venv\Scripts\python.exe manage.py sync_reference_projects_from_sheet `
-  --settings=myproject.postgres_data_settings
+.\.venv\Scripts\python.exe manage.py sync_reference_projects_from_sheet --settings=myproject.settings
 ```
-
-`launcher.ps1`의 `G` 메뉴는 `--assign-unknown-pl` 옵션을 붙여 실행한다. Google Sheet의 첫 번째 시험원이 센터 매핑에 없으면 미분류 PL을 번호로 보여주고, 사용자가 번호를 선택한 뒤 `분당`/`상암`/`영남` 또는 `1`/`2`/`3`을 입력하면 해당 PL을 `reference_center_pl`에 저장한다. 저장된 추가 PL 매핑은 다음 동기화에서도 유지되며, 같은 실행 안에서 해당 프로젝트의 `center_code`도 다시 계산된다.
-
-비대화형 실행(예: 웹 서버 콘솔 API)은 `--assign-unknown-pl`을 붙이지 않는다. 이 경우 미분류 PL 이름만 경고로 출력하고 프로젝트는 `center_code=unknown`으로 저장한다.
 
 파싱만 확인하려면 DB 접속 없이 dry-run을 사용한다.
 
@@ -53,6 +50,27 @@ $env:GSCERT_DB_PASSWORD = "<PostgreSQL password>"
   --dry-run `
   --no-schema-check `
   --settings=myproject.ui_mock_settings
+```
+
+서버 관리 콘솔의 Google Sheets 동기화 버튼은 비대화형으로 이 명령을 실행한다. 미배정 PL은 경고로 출력되지만 프로젝트는 `unknown` 센터로 저장된다.
+
+## 미배정 PL 배정
+
+운영자가 미배정 PL을 센터에 배정할 때는 `/download-review/`의 `PL 배정 목록` 모달을 사용한다.
+
+동작 기준:
+
+- `GET /api/pl-assignments/`가 센터별 PL과 미배정 PL 목록을 내려준다.
+- `POST /api/pl-assignments/apply/`가 변경 목록을 저장한다.
+- 미배정 PL을 센터로 옮기면 `reference_center_pl`에 매핑을 만들고, 아직 점검하지 않은 미배정 프로젝트도 새 센터로 이동한다.
+- 이미 점검된 프로젝트는 자동 이동하지 않는다. 완료된 점검 결과가 의도치 않게 다른 센터 목록으로 이동하는 것을 막기 위해서다.
+
+관리 명령의 `--assign-unknown-pl` 옵션은 터미널에서 번호를 입력해 즉시 배정하는 보조 경로다. 서버 콘솔이나 웹 요청처럼 비대화형으로 실행되는 경로에서는 사용하지 않는다.
+
+```powershell
+.\.venv\Scripts\python.exe manage.py sync_reference_projects_from_sheet `
+  --assign-unknown-pl `
+  --settings=myproject.settings
 ```
 
 ## API 사용
@@ -76,7 +94,3 @@ Windows 프로그램 메타데이터 API:
 ```text
 GET /api/local-review/projects/{project_number}/metadata/?center=sangam
 ```
-
-## 현재 접속 이슈
-
-2026-06-24 현재 개발 PC에서 `210.96.71.241:5432` 접속 시 PostgreSQL이 현재 접속 IP `210.96.71.254`를 `pg_hba.conf`에서 허용하지 않아 적재가 차단되었다. 서버에서 해당 IP 또는 필요한 210 대역을 허용한 뒤 위 실행 명령을 다시 수행하면 된다.

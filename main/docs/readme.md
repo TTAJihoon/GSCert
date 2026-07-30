@@ -24,6 +24,7 @@
 | 산출물 source 경계 | `11_artifact_source_boundary.md` | ECM/로컬/다른 저장소 source 추가 기준 |
 | ECM HTTP 결정 | `12_http_ecm_source_decisions.md` | Playwright -> HTTP 직접연동 ADR |
 | DB 스키마 | `13_db_schema.md` | `default`/`workflow`/`reference` DB와 테이블 구조 |
+| 완료 변경 요약 | `14_completed_download_review_changes.md` | 최근 완료된 UI/DB/규칙 변경의 이력성 요약 |
 | Codex skill | `codex_skills/` | 다른 PC에서 이어받을 때 설치할 유지보수 skill 원본 |
 
 ## 보관 문서
@@ -39,6 +40,7 @@ main/docs/archive/2026-07-doc-cleanup/
 ## 관리 기준
 
 - `00_next_step.md`는 누적 이력이 아니라 최신 인수인계만 남긴다.
+- 완료된 기능 변경의 묶음 요약은 `14_completed_download_review_changes.md`에 둔다.
 - 점검규칙을 바꾸면 `03_inspection_rule_manual.md`와 `09_rule_db_edit_quick_guide.md`를 확인한다.
 - 운영 절차, 환경변수, worker 실행 방식이 바뀌면 `04_download_review_operations_manual.md`를 갱신한다.
 - 코드 위치나 검증 절차가 바뀌면 `05_developer_change_manual.md`를 갱신한다.

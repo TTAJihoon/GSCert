@@ -19,12 +19,12 @@
 
 ## DB Split
 
-- `reference` PostgreSQL: shared project list, PL mapping, certification history, and `inspection_rule`.
-- `workflow` SQLite (`main/data/workflow.db`): server-local jobs, project processing state, `inspection_result`, logs, and locks.
+- `reference` PostgreSQL: shared project list, PL mapping, certification history, `inspection_rule`, and `inspection_manual_override`.
+- `workflow` SQLite (`main/data/workflow.db`): server-local jobs, project processing state, `inspection_result`, logs, locks, and similar-analysis jobs.
 - `default` SQLite (`db.sqlite3`): Django default tables and legacy `Job`.
 - legacy `ecmlist*.db`: compatibility path when `DOWNLOAD_REVIEW_PROJECT_SOURCE` is not `postgres`.
 
-`inspection_rule` and `inspection_result` live in different DBs, so results identify rules with denormalized `rule_code` and `rule_name`.
+`inspection_rule` and `inspection_result` live in different DBs, so results identify rules with denormalized `rule_code` and `rule_name`. Manual pass overrides are stored in `inspection_manual_override` by `center_code + project_number + rule_code`, so they survive result-row replacement during reinspection.
 
 ## Center Behavior
 

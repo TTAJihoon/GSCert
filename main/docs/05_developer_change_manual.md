@@ -10,6 +10,7 @@
 | --- | --- |
 | 프로젝트 목록/검색/기준정보 API | `main/views/review/ecm_download_review_jobs.py`, `main/views/review/ecm_reference_db.py`, `06_postgresql_api_access_manual.md` |
 | PostgreSQL 기준정보/스키마 | `main/models.py`, `main/db_routers.py`, `13_db_schema.md` |
+| 수동 적합 처리/override | `main/views/review/ecm_manual_override.py`, `main/views/review/ecm_download_review_jobs.py`, `13_db_schema.md` |
 | Google Sheet -> `reference_project` 적재 | `main/management/commands/sync_reference_projects_from_sheet.py`, `10_reference_project_sheet_sync.md` |
 | 작업 생성/취소/조회 API | `main/views/review/ecm_download_review_jobs.py` |
 | worker 처리 | `main/views/review/ecm_download_review_worker.py`, `main/management/commands/run_download_worker.py` |
@@ -59,8 +60,8 @@ JSON 조건만 바꾸는 경우:
 
 | DB | 변경 기준 |
 | --- | --- |
-| `reference` PostgreSQL | 공유 기준정보, 프로젝트, PL 매핑, 인증이력, 점검규칙 |
-| `workflow` SQLite | 서버 로컬 작업, 프로젝트 처리 상태, 점검결과, 로그, lock |
+| `reference` PostgreSQL | 공유 기준정보, 프로젝트, PL 매핑, 인증이력, 점검규칙, 재점검 후에도 유지되어야 하는 수동 판단 |
+| `workflow` SQLite | 서버 로컬 작업, 프로젝트 처리 상태, 점검결과, 로그, lock, 유사 분석 작업 |
 | `default` SQLite | Django 기본 테이블, 레거시 `Job` |
 
 확인할 것:
@@ -125,6 +126,7 @@ git diff --check
 | 운영 명령/절차 | `04_download_review_operations_manual.md` |
 | 코드 위치/검증 절차 | `05_developer_change_manual.md` |
 | DB 구조 | `13_db_schema.md` |
+| 완료된 변경 묶음 요약 | `14_completed_download_review_changes.md` |
 | 기준정보/API 사용법 | `06_postgresql_api_access_manual.md` |
 | Windows 앱 테스트/배포 | `07_local_windows_app_test_manual.md` |
 | ECM source/HTTP 결정 | `11_artifact_source_boundary.md`, `12_http_ecm_source_decisions.md` |
@@ -135,5 +137,6 @@ git diff --check
 - 사용자 또는 이전 작업자가 만든 변경을 되돌리지 않는다.
 - `workflow.db`는 서버 로컬 실행 DB다. 커밋 대상이 아니다.
 - `inspection_rule`은 공유 PostgreSQL `reference` DB에 있으므로 운영 직접 수정 전에는 백업/승인을 확인한다.
+- `inspection_manual_override`도 공유 PostgreSQL `reference` DB에 둔다. 재점검 후에도 유지되어야 하는 사용자 판단이므로 `inspection_result` FK에 묶지 않는다.
 - 점검규칙은 가능하면 JSON으로 표현하고, 새 동작이 필요할 때만 검사 엔진 코드를 늘린다.
 - 새 문서나 readme를 추가했으면 `01_manual_index.md`에서 찾을 수 있게 연결한다.

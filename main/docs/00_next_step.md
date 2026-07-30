@@ -8,44 +8,37 @@
   ```powershell
   .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --settings=myproject.ui_mock_settings --noreload
   ```
-- 점검 규칙 1~18번은 실제 규칙으로 구현되어 있으며, `seed_download_review_rules --only-real --enable --update-existing` 기준으로 운영 DB에 반영한다.
+- 운영 기준 프로젝트, PL 매핑, 점검규칙, 수동 적합 메모는 공유 PostgreSQL `reference` DB를 사용한다.
+- 작업 상태, 프로젝트 처리 상태, 규칙 결과, 로그, lock, 유사 분석 작업은 서버 로컬 `workflow.db`에 저장한다.
+- 점검 규칙 1~18번은 실제 규칙으로 구현되어 있으며, 운영 반영은 `seed_download_review_rules --only-real --enable --update-existing` 기준으로 한다.
 - Windows 로컬 앱 배포 ZIP은 `GET /api/local-review/app/download/`에서 `C:\Claude_GSCert\local_review_app\dist\GSCertLocalReviewDashboard` 폴더를 스트리밍한다.
 
-## 최신 변경 요약
+## 최신 완료 요약
 
-- `{버전}` 파싱 기준을 완화했다.
-  - `v1`, `v1.0`, `ver 3.0`, 숫자 버전 `1`, `3.0`, 문자 버전 `Enterprise`를 버전으로 본다.
-  - `EBS ISM3.0`처럼 마지막 단어에 문자와 숫자가 붙으면 제품명은 `EBS ISM`, 버전은 `3.0`으로 분리한다.
-  - 시험계획서 버전 비교는 숫자 버전의 `v`/`ver` 접두사를 무시하고, 문자 버전은 공백과 대소문자를 무시한다.
-- 결함리포트 시트 구성 비교는 시트명의 공백을 제거한 뒤 비교한다. 예: `1차 결함리포트`와 `1차결함리포트`는 같은 시트명이다.
-- download-review 규칙 결과 모달에서 `산출물` 열을 제거했다.
-- 규칙 결과 모달의 `HTML 다운로드` 버튼 왼쪽에 `전체 산출물 다운로드` 버튼을 추가했다.
-  - 버튼은 `GET /api/projects/<프로젝트번호>/full-documents-download/?cert_date=...`를 직접 열어 브라우저 다운로드를 즉시 시작한다.
-  - 서버는 ECM 전체 폴더 파일을 ZIP 엔트리 단위로 스트리밍한다. 첫 파일의 ZIP 헤더를 먼저 보내므로 전체 압축 완료를 기다리지 않고 다운로드 요청이 시작된다.
-  - 앞으로 같은 기능을 재사용할 때는 JS의 `startFullProjectFolderDownload(project)` 헬퍼 또는 같은 GET attachment 엔드포인트를 사용한다. `fetch/POST -> JSON download_url` 방식은 브라우저 다운로드 시작을 늦추므로 UI에서는 쓰지 않는다.
-- ECM 산출물 파일명 끝의 개정 버전(`v1`, `v1.0`, `v1.1`, `1.1` 등)을 파싱해 중복 후보를 정리한다.
-  - 같은 산출물은 major별 최신 minor만 남긴다. 예: `기능리스트 v1.0`과 `기능리스트 v1.1`이 있으면 `v1.1`만 검사한다.
-  - 결함리포트는 major 차수별로 최신 minor를 유지한다. 예: `v1.0`, `v1.1`, `v2.0`이면 `v1.1`, `v2.0`을 검사한다.
-  - 새 버전 파일이 기존 산출물 폴더 밖에 추가되어도, 기존 폴더의 같은 산출물 후보와 같은 이름 그룹이면 최신 파일을 검사 대상으로 끌어온다.
-- 규칙 결과 모달의 `전체 산출물 다운로드` 왼쪽에 `수정 내용` 버튼을 추가했다.
-  - 기본 비활성화 상태이며, ECM 다운로드 파일 또는 보관/로그에서 `수정 내용.txt`가 발견되면 활성화된다.
-  - 버튼은 `GET /api/job-projects/<job_project_id>/change-note/`로 txt 본문을 조회해 팝업에 표시한다.
-- 규칙 결과 모달에서 `정상`이 아닌 결과 배지를 클릭하면 수동 적합 처리할 수 있다.
-  - `POST /api/rule-results/<result_id>/manual-pass/`는 빈 메모를 거부하고, 사유 메모를 `inspection_manual_override`에 센터/프로젝트번호/규칙코드 기준으로 저장한다.
-  - 수동 적합 결과는 상태값은 `pass`로 집계하되 `manual_override` 메타데이터를 함께 내려, UI에서 보라색 정상 배지로 표시한다. 정상 항목 필터에는 포함된다.
-  - 다음 점검에서도 같은 센터/프로젝트번호/규칙코드 override가 있으면 자동 점검 결과와 관계없이 동일 메모로 수동 적합을 다시 적용한다.
-  - API 요청은 CSRF 쿠키/Referer가 안정적으로 포함되도록 `same-origin` 옵션과 `X-Requested-With` 헤더를 사용한다.
-  - `/api/` CSRF 실패와 수동 적합 처리 중 서버 예외는 HTML 대신 JSON 오류 메시지로 내려 UI에서 실제 실패 원인을 표시한다.
-  - 수동 적합 저장은 프로젝트 상태 재계산, 기준 DB write-back, 로그 기록, 결과 재조회 실패와 분리되어 후속 반영 실패가 저장 성공을 되돌리지 않는다.
-  - 수동 적합 메모(`inspection_manual_override`)는 재점검 재적용을 위해 공유 PostgreSQL `reference` DB에 저장한다.
-  - 운영 반영 시 `.\.venv\Scripts\python.exe manage.py migrate --database=reference --settings=myproject.settings`를 먼저 실행하고, 기존 workflow 저장분이 있으면 `migrate_manual_overrides_to_reference`로 이관한다.
-  - reference 테이블 누락 상태에서도 현재 결과에는 수동 적합 메모를 저장하고 `manual_pass_override` 로그 fallback으로 재점검 재적용을 시도한다.
+완료된 변경의 상세 목록은 `14_completed_download_review_changes.md`를 본다. 현재 운영자가 바로 알아야 할 완료 항목은 다음과 같다.
+
+- 수동 적합 처리 메모는 `inspection_manual_override` 테이블에 저장하며, 이 테이블은 PostgreSQL `reference` DB 소속이다.
+- 수동 적합 결과는 다음 재점검에서도 센터/프로젝트번호/규칙코드 기준으로 재적용되고, UI에서는 보라색 정상 배지와 메모로 표시된다.
+- 전체 산출물 다운로드는 `GET /api/projects/<프로젝트번호>/full-documents-download/?cert_date=...` attachment 응답을 직접 열어, ZIP 전체 생성 완료를 기다리지 않고 다운로드를 시작한다.
+- `수정 내용.txt`가 발견되면 결과 모달의 `수정 내용` 버튼이 활성화되고 팝업으로 본문을 표시한다.
+- 파일명 개정 버전 dedup, 9-6 버전 파싱 완화, 10번 결함리포트 시트명 공백 무시 비교가 반영되어 있다.
 - `프로젝트 선택`, `현재 작업 진행 상황`, `작업 조회` 탭은 클릭해 이동할 때마다 해당 탭 데이터를 다시 조회한다.
+
+## 운영 반영 체크
+
+GitHub 최신 코드를 서버에 받은 뒤 DB와 서비스를 다음 순서로 맞춘다.
+
+```powershell
+.\.venv\Scripts\python.exe manage.py migrate --database=reference --settings=myproject.settings
+.\.venv\Scripts\python.exe manage.py migrate_manual_overrides_to_reference --settings=myproject.settings
+```
+
+수동 적합 처리 API나 화면 변경을 확인하려면 Django 서버 재시작이 필요하다. 워커는 이미 실행 중인 작업이 새 규칙/override 재적용 로직을 즉시 써야 할 때 재시작한다.
 
 ## 바로 다음 작업
 
-1. 실제 샘플 ZIP 또는 운영 ECM 프로젝트로 파일명 개정 버전 dedup, 9-6 버전 추출, 10번 결함리포트 시트명 공백 무시, `수정 내용` 팝업, 모달 전체 산출물 다운로드 스트리밍, 수동 적합 처리/재점검 재적용을 브라우저에서 확인한다.
-2. UI 변경 후 서버를 재시작하고 `/download-review/`에서 정적 파일 `?v=29`가 로드되는지 확인한다.
+1. 운영 ECM 프로젝트 1건으로 수동 적합 처리 저장, 보라색 정상 배지, 재점검 재적용을 브라우저에서 확인한다.
+2. 같은 프로젝트에서 전체 산출물 다운로드 스트리밍, `수정 내용` 팝업, 파일명 개정 버전 dedup을 확인한다.
 3. live 테스트가 끝나면 download-review 작업 시작 시간 제한을 운영 기준 `20:00-07:00`으로 되돌린다.
 
 ## 기본 검증 명령

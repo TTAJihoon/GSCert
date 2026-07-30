@@ -17,6 +17,8 @@ Rules live in shared PostgreSQL `reference` DB through `DownloadReviewRule` (`in
 
 Rule results live in local `workflow.db` through `DownloadReviewRuleResult` (`inspection_result`). Store both pass and fail results for every rule executed. Because rules and results are in different DBs, results keep denormalized `rule_code` and `rule_name` instead of an FK.
 
+Manual pass overrides live in shared PostgreSQL `reference` through `DownloadReviewManualOverride` (`inspection_manual_override`). They are keyed by `center_code + project_number + rule_code`, not by `inspection_result.id`, because reinspection can replace result rows.
+
 ## Canonical Rule Manual
 
 The source of truth for artifact rules is:
