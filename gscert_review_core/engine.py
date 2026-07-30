@@ -3565,9 +3565,11 @@ def _evaluate_quality_inspection_table_check(rule, sequence, project, context, v
         subject="품질검사표 바닥글",
         default_message="품질검사표 바닥글에 잘못된 단어가 작성됨",
     )
+    forbidden_footer_words = _print_terms_text(config.get("forbidden_footer_terms")) or "(없음)"
+    required_footer_words = _print_terms_text(config.get("required_footer_terms")) or "(없음)"
     if footer_forbidden_check.get("details"):
         checks.append({
-            "expected": f"[바닥글 금지어] {_stringify_check_value(footer_forbidden_check.get('expected', ''))}",
+            "expected": f"[바닥글 금지어] 모든 시트 바닥글 금지어 미포함: {forbidden_footer_words}",
             "actual": _stringify_check_value(footer_forbidden_check.get("actual", "")),
             "passed": bool(footer_forbidden_check.get("passed")),
             "message": footer_forbidden_check.get("message") or "품질검사표 바닥글에 잘못된 단어가 작성됨",
@@ -3582,7 +3584,7 @@ def _evaluate_quality_inspection_table_check(rule, sequence, project, context, v
     )
     if footer_required_check.get("details"):
         checks.append({
-            "expected": f"[바닥글 필수어] {_stringify_check_value(footer_required_check.get('expected', ''))}",
+            "expected": f"[바닥글 필수어] 모든 시트 바닥글 필수어 포함: {required_footer_words}",
             "actual": _stringify_check_value(footer_required_check.get("actual", "")),
             "passed": bool(footer_required_check.get("passed")),
             "message": footer_required_check.get("message") or "품질검사표 바닥글에 필요한 단어가 누락됨",
