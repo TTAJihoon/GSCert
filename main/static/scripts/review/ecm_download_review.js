@@ -1421,7 +1421,6 @@ function setModalDownload(filename) {
     link.hidden = false;
     return;
   }
-
   link.hidden = true;
 }
 
@@ -1433,7 +1432,7 @@ function setModalFullFolderDownload(project) {
     state.modalFullFolderProject = null;
     button.hidden = true;
     button.disabled = false;
-    button.innerHTML = `<i class="fa-solid fa-folder-arrow-down"></i> 전체 폴더 다운로드`;
+    button.innerHTML = `<i class="fa-solid fa-folder-arrow-down" aria-hidden="true"></i> 전체 산출물 다운로드`;
     button.removeAttribute("title");
     return;
   }
@@ -1444,8 +1443,8 @@ function setModalFullFolderDownload(project) {
   };
   button.hidden = false;
   button.disabled = false;
-  button.title = "시험 이력 조회의 전체 문서 다운로드와 동일하게 ECM 전체 폴더를 다운로드합니다.";
-  button.innerHTML = `<i class="fa-solid fa-folder-arrow-down"></i> 전체 폴더 다운로드`;
+  button.title = "시험 이력 조회의 전체 문서 다운로드와 동일하게 ECM 전체 산출물을 다운로드합니다.";
+  button.innerHTML = `<i class="fa-solid fa-folder-arrow-down" aria-hidden="true"></i> 전체 산출물 다운로드`;
 }
 
 function setModalChangeNote(project, note) {
@@ -1760,11 +1759,10 @@ function fullProjectFolderDownloadUrl(project) {
 }
 
 function startFullProjectFolderDownload(project) {
-  // 전체 폴더 다운로드를 재사용할 때는 이 헬퍼를 사용한다.
+  // 전체 산출물 다운로드를 재사용할 때는 이 헬퍼를 사용한다.
   // fetch/POST로 준비 완료 JSON을 기다리면 브라우저 다운로드 시작이 늦어진다.
   triggerAttachmentDownload(fullProjectFolderDownloadUrl(project));
 }
-
 function collectDownloadStyles() {
   const styles = [];
   Array.from(document.styleSheets).forEach((sheet) => {
@@ -1840,12 +1838,12 @@ async function downloadCurrentProjectFullFolder(event) {
   if (!project?.number || !button || button.disabled) return;
 
   button.disabled = true;
-  button.innerHTML = `<i class="fa-solid fa-folder-arrow-down"></i> 다운로드 시작`;
+  button.innerHTML = `<i class="fa-solid fa-folder-arrow-down" aria-hidden="true"></i> 다운로드 시작`;
   startFullProjectFolderDownload(project);
   window.setTimeout(() => {
     if (state.modalFullFolderProject?.number === project.number) {
       button.disabled = false;
-      button.innerHTML = `<i class="fa-solid fa-folder-arrow-down"></i> 전체 폴더 다운로드`;
+      button.innerHTML = `<i class="fa-solid fa-folder-arrow-down" aria-hidden="true"></i> 전체 산출물 다운로드`;
     }
   }, 1500);
 }
