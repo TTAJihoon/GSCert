@@ -10,7 +10,7 @@ from unittest.mock import patch
 from xml.sax.saxutils import escape
 
 from django.core.management import call_command
-from django.db.utils import DatabaseError
+from django.db.utils import DatabaseError, OperationalError
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
@@ -38,6 +38,7 @@ from main.views.review.ecm_reference_db import (
     write_project_review_result,
 )
 from main.views.review.ecm_download_review_worker import run_worker_once
+from main.views.review.ecm_manual_override import manual_overrides_for_project
 from main.views.review.ecm_download_review_inspection import (
     ExcelSheet,
     ExcelWorkbook,
@@ -1612,6 +1613,53 @@ class DownloadReviewManualOverrideRobustnessTests(TestCase):
                 rule_code="artifact_14",
             ).exists()
         )
+
+    def test_manual_pass_succeeds_when_manual_override_table_is_unavailable(self):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00031"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            center_code="bundang",
+            project_number="TTA-26-00031",
+            review_status=DownloadReviewProjectReviewStatus.NEEDS_FIX,
+        )
+        result = DownloadReviewRuleResult.objects.create(
+            job_project=project,
+            rule_code="artifact_17",
+            rule_name="SW저작권확인서",
+            sequence=17,
+            status=DownloadReviewRuleStatus.FAIL,
+            expected="파일명에 확인서 포함",
+            actual="조건에 맞는 파일을 찾지 못했습니다.",
+            message="확인서 없음",
+        )
+
+        with self.assertLogs("main.views.review.ecm_download_review_jobs", level="ERROR"):
+            with patch(
+                "main.views.review.ecm_download_review_jobs.DownloadReviewManualOverride.objects.update_or_create",
+                side_effect=OperationalError("no such table: inspection_manual_override"),
+            ):
+                response = rule_result_manual_pass(
+                    self.factory.post(
+                        f"/api/rule-results/{result.id}/manual-pass/",
+                        data=json.dumps({"memo": "제출자 확인"}),
+                        content_type="application/json",
+                    ),
+                    result.id,
+                )
+        data = json.loads(response.content.decode("utf-8"))
+        result.refresh_from_db()
+        overrides = manual_overrides_for_project(project, ["artifact_17"])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(data["success"])
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS)
+        self.assertEqual(result.raw_detail_json["manual_override"]["memo"], "제출자 확인")
+        self.assertFalse(DownloadReviewManualOverride.objects.exists())
+        self.assertEqual(overrides["artifact_17"].memo, "제출자 확인")
 
 
 class DownloadReviewManualOverrideTests(TestCase):

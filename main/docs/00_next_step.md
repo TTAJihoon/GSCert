@@ -37,6 +37,8 @@
   - API 요청은 CSRF 쿠키/Referer가 안정적으로 포함되도록 `same-origin` 옵션과 `X-Requested-With` 헤더를 사용한다.
   - `/api/` CSRF 실패와 수동 적합 처리 중 서버 예외는 HTML 대신 JSON 오류 메시지로 내려 UI에서 실제 실패 원인을 표시한다.
   - 수동 적합 저장은 프로젝트 상태 재계산, 기준 DB write-back, 로그 기록, 결과 재조회 실패와 분리되어 후속 반영 실패가 저장 성공을 되돌리지 않는다.
+  - 운영 `workflow.db`에 `inspection_manual_override` 테이블이 없으면 `.\.venv\Scripts\python.exe manage.py migrate --database=workflow --settings=myproject.settings`를 실행해야 한다.
+  - 테이블 누락 상태에서도 현재 결과에는 수동 적합 메모를 저장하고 `manual_pass_override` 로그 fallback으로 재점검 재적용을 시도한다.
 - `프로젝트 선택`, `현재 작업 진행 상황`, `작업 조회` 탭은 클릭해 이동할 때마다 해당 탭 데이터를 다시 조회한다.
 
 ## 바로 다음 작업

@@ -1,23 +1,72 @@
+import logging
 from dataclasses import replace
+from types import SimpleNamespace
 
 from django.utils import timezone
 
-from main.models import DownloadReviewManualOverride, DownloadReviewRuleStatus
+from main.models import DownloadReviewLog, DownloadReviewManualOverride, DownloadReviewRuleStatus
 
 
 MANUAL_OVERRIDE_KEY = "manual_override"
+logger = logging.getLogger(__name__)
 
 
 def manual_overrides_for_project(project, rule_codes):
     codes = sorted({str(code or "").strip() for code in rule_codes if str(code or "").strip()})
     if not codes:
         return {}
-    overrides = DownloadReviewManualOverride.objects.filter(
-        center_code=str(project.center_code or "").strip(),
-        project_number=str(project.project_number or "").strip(),
-        rule_code__in=codes,
-    )
-    return {override.rule_code: override for override in overrides}
+    result = {}
+    try:
+        overrides = DownloadReviewManualOverride.objects.filter(
+            center_code=str(project.center_code or "").strip(),
+            project_number=str(project.project_number or "").strip(),
+            rule_code__in=codes,
+        )
+        result = {override.rule_code: override for override in overrides}
+    except Exception as exc:
+        logger.warning("Manual override table lookup failed; using log fallback: %s", exc, exc_info=True)
+
+    missing_codes = [code for code in codes if code not in result]
+    if missing_codes:
+        result.update(_manual_overrides_from_logs(project, missing_codes))
+    return result
+
+
+def _manual_overrides_from_logs(project, rule_codes):
+    project_number = str(project.project_number or "").strip()
+    center_code = str(project.center_code or "").strip()
+    codes = set(rule_codes)
+    overrides = {}
+    try:
+        logs = (
+            DownloadReviewLog.objects
+            .filter(event_code="manual_pass_override")
+            .order_by("-created_at")[:1000]
+        )
+    except Exception as exc:
+        logger.warning("Manual override log fallback lookup failed: %s", exc, exc_info=True)
+        return overrides
+
+    for log in logs:
+        detail = log.detail_json if isinstance(log.detail_json, dict) else {}
+        code = str(detail.get("rule_code") or "").strip()
+        if code not in codes or code in overrides:
+            continue
+        if str(detail.get("project_number") or "").strip() != project_number:
+            continue
+        detail_center = str(detail.get("center_code") or "").strip()
+        if detail_center and detail_center != center_code:
+            continue
+        overrides[code] = SimpleNamespace(
+            id=f"log:{log.id}",
+            memo=str(detail.get("memo") or ""),
+            rule_code=code,
+            rule_name=str(detail.get("rule_name") or ""),
+            updated_at=log.created_at,
+        )
+        if len(overrides) == len(codes):
+            break
+    return overrides
 
 
 def apply_manual_override_to_evaluation(evaluation, override):

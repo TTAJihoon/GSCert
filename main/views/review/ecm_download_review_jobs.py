@@ -1,17 +1,19 @@
 import json
 import logging
 import re
+import time
 import zipfile
 from dataclasses import dataclass
 from datetime import timedelta, timezone as datetime_timezone
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db import transaction
-from django.db.utils import DatabaseError
+from django.db.utils import DatabaseError, OperationalError
 from django.http import FileResponse, HttpResponse
 from django.utils import timezone
 
@@ -760,61 +762,135 @@ def mark_rule_result_manual_pass(result_id, memo, *, requested_by=""):
         raise DownloadReviewJobRequestError("수동 적합 처리 사유를 입력해야 합니다.")
 
     workflow_alias = getattr(settings, "WORKFLOW_DATABASE_ALIAS", "workflow")
-    project_id = None
-    log_context = {}
     with transaction.atomic(using=workflow_alias):
         try:
-            result = (
-                DownloadReviewRuleResult.objects
-                .select_for_update()
-                .select_related("job_project", "job_project__job")
-                .get(id=result_id)
-            )
+            result = _get_rule_result_for_manual_pass(result_id, for_update=True)
         except DownloadReviewRuleResult.DoesNotExist as exc:
             raise DownloadReviewNotFoundError("점검 결과를 찾을 수 없습니다.") from exc
 
         if not result.rule_code:
             raise DownloadReviewJobRequestError("규칙 코드가 없는 결과는 수동 적합 처리할 수 없습니다.")
 
-        project = result.job_project
-        override, _created = DownloadReviewManualOverride.objects.update_or_create(
-            center_code=str(project.center_code or "").strip(),
-            project_number=str(project.project_number or "").strip(),
-            rule_code=str(result.rule_code or "").strip(),
-            defaults={
-                "rule_name": result.rule_name,
-                "memo": memo,
-                "created_by": requested_by or "",
-            },
-        )
-        apply_manual_override_to_result(result, override, save=True)
-        mark_overrides_applied([override])
-        project_id = project.id
-        log_context = {
-            "job_id": project.job_id,
-            "job_project_id": project.id,
-            "project_number": project.project_number,
-            "rule_code": result.rule_code,
-            "rule_name": result.rule_name,
-            "memo": memo,
-            "requested_by": requested_by or "",
-        }
+        context = _manual_pass_context(result, memo, requested_by)
 
-    _safe_recalculate_project_review_after_manual_override(project_id)
+    override, override_persisted = _manual_override_for_context(context)
+
+    with transaction.atomic(using=workflow_alias):
+        try:
+            result = _get_rule_result_for_manual_pass(result_id, for_update=True)
+        except DownloadReviewRuleResult.DoesNotExist as exc:
+            raise DownloadReviewNotFoundError("점검 결과를 찾을 수 없습니다.") from exc
+
+        apply_manual_override_to_result(result, override, save=True)
+        if override_persisted:
+            _safe_mark_overrides_applied([override])
+
+    _safe_recalculate_project_review_after_manual_override(context["job_project_id"])
     _safe_create_download_log(
-        job_id=log_context.get("job_id"),
-        job_project_id=log_context.get("job_project_id"),
+        job_id=context.get("job_id"),
+        job_project_id=context.get("job_project_id"),
         level=DownloadReviewLogLevel.INFO,
         event_code="manual_pass_override",
-        message=f"{log_context.get('project_number')} {log_context.get('rule_name')} 수동 적합 처리",
+        message=f"{context.get('project_number')} {context.get('rule_name')} 수동 적합 처리",
         detail_json={
-            "rule_code": log_context.get("rule_code"),
-            "rule_name": log_context.get("rule_name"),
-            "memo": log_context.get("memo"),
-            "requested_by": log_context.get("requested_by"),
+            "center_code": context.get("center_code"),
+            "project_number": context.get("project_number"),
+            "rule_code": context.get("rule_code"),
+            "rule_name": context.get("rule_name"),
+            "memo": context.get("memo"),
+            "requested_by": context.get("requested_by"),
+            "override_persisted": override_persisted,
         },
     )
-    return _manual_pass_response_payload(project_id, result_id)
+    return _manual_pass_response_payload(context["job_project_id"], result_id)
+
+
+def _get_rule_result_for_manual_pass(result_id, *, for_update=False):
+    queryset = (
+        DownloadReviewRuleResult.objects
+        .select_related("job_project", "job_project__job")
+    )
+    if for_update:
+        queryset = queryset.select_for_update()
+    return queryset.get(id=result_id)
+
+
+def _manual_pass_context(result, memo, requested_by):
+    project = result.job_project
+    return {
+        "job_id": project.job_id,
+        "job_project_id": project.id,
+        "center_code": str(project.center_code or "").strip(),
+        "project_number": str(project.project_number or "").strip(),
+        "rule_code": str(result.rule_code or "").strip(),
+        "rule_name": result.rule_name,
+        "memo": memo,
+        "requested_by": requested_by or "",
+    }
+
+
+def _manual_override_for_context(context):
+    for attempt in range(3):
+        try:
+            override, _created = DownloadReviewManualOverride.objects.update_or_create(
+                center_code=context["center_code"],
+                project_number=context["project_number"],
+                rule_code=context["rule_code"],
+                defaults={
+                    "rule_name": context["rule_name"],
+                    "memo": context["memo"],
+                    "created_by": context["requested_by"],
+                },
+            )
+            return override, True
+        except OperationalError as exc:
+            if _is_sqlite_locked_error(exc) and attempt < 2:
+                time_to_sleep = 0.15 * (attempt + 1)
+                time.sleep(time_to_sleep)
+                continue
+            if _is_manual_override_storage_unavailable(exc):
+                logger.exception("Manual override table unavailable; using log fallback: %s", exc)
+                return _ephemeral_manual_override(context), False
+            raise
+        except DatabaseError as exc:
+            if _is_manual_override_storage_unavailable(exc):
+                logger.exception("Manual override table unavailable; using log fallback: %s", exc)
+                return _ephemeral_manual_override(context), False
+            raise
+    return _ephemeral_manual_override(context), False
+
+
+def _ephemeral_manual_override(context):
+    return SimpleNamespace(
+        id=f"log:{context['center_code']}:{context['project_number']}:{context['rule_code']}",
+        memo=context["memo"],
+        rule_code=context["rule_code"],
+        rule_name=context["rule_name"],
+        updated_at=timezone.now(),
+    )
+
+
+def _is_sqlite_locked_error(exc):
+    return "database is locked" in str(exc).lower()
+
+
+def _is_manual_override_storage_unavailable(exc):
+    message = str(exc).lower()
+    return (
+        "inspection_manual_override" in message
+        and (
+            "no such table" in message
+            or "no such column" in message
+            or "has no column" in message
+        )
+    )
+
+
+def _safe_mark_overrides_applied(overrides):
+    try:
+        mark_overrides_applied(overrides)
+    except Exception as exc:
+        logger.warning("Manual override applied timestamp update failed: %s", exc, exc_info=True)
 
 
 def get_project_change_note_payload(job_project_id):
