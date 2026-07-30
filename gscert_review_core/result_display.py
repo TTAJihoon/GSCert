@@ -166,7 +166,7 @@ def friendly_message(status: str, message: str, expected: str, actual: str) -> s
         return f"자동 점검 대상이 아닙니다. 수동으로 확인해 주세요.\n확인 기준: {expected}"
     if status == ERROR:
         return f"점검 중 오류가 발생했습니다. 오류 내용: {actual or issue}"
-    return f"차이: {issue}\n위 기대값과 실제값이 다른 부분을 수정해 주세요."
+    return f"차이: {issue}"
 
 
 def friendly_issue(message: str, expected: str, actual: str) -> str:
@@ -180,24 +180,24 @@ def friendly_issue(message: str, expected: str, actual: str) -> str:
     expected_flat = expected.replace("\n", " ")
     actual_flat = actual.replace("\n", " ")
     if "금지어" in expected_flat and ("금지어 포함" in actual_flat or "작성되면 안됨" in text):
-        return f"문서에 포함되면 안 되는 문구가 발견되었습니다. 실제 값: {actual_flat}"
+        return f"문서에 포함되면 안 되는 문구가 발견되었습니다.\n실제 값: {actual_flat}"
     if "필수어" in expected_flat and ("누락" in text or actual_flat in {"-", "/"}):
-        return f"문서에 반드시 들어가야 하는 문구가 누락되었습니다. 기대값: {expected_flat}, 실제 값: {actual_flat}"
+        return f"문서에 반드시 들어가야 하는 문구가 누락되었습니다.\n기대값: {expected_flat}\n실제 값: {actual_flat}"
     if "작성자" in expected_flat or "검토자" in expected_flat or "PL" in text:
-        return f"작성자/검토자 정보가 기준정보와 다릅니다. 기대값: {expected_flat}, 실제 값: {actual_flat}"
+        return f"작성자/검토자 정보가 기준정보와 다릅니다.\n기대값: {expected_flat}\n실제 값: {actual_flat}"
     if "파일" in expected_flat and ("찾지 못했습니다" in text or "조건에 맞는 파일" in actual_flat):
-        return f"필요한 파일이 없거나 파일명이 기준과 맞지 않습니다. 기대값: {expected_flat}, 실제 값: {actual_flat}"
+        return f"필요한 파일이 없거나 파일명이 기준과 맞지 않습니다.\n기대값: {expected_flat}\n실제 값: {actual_flat}"
     if "시트" in expected_flat and "시트" in actual_flat:
-        return f"Excel 시트 구성이 기준과 다릅니다. 기대값: {expected_flat}, 실제 값: {actual_flat}"
+        return f"Excel 시트 구성이 기준과 다릅니다.\n기대값: {expected_flat}\n실제 값: {actual_flat}"
     if any(token in expected_flat for token in ["날짜", "기간", "보고일자", "작성일"]) or any(
         token in text for token in ["날짜", "기간", "보고일자", "작성일"]
     ):
-        return f"문서의 날짜/기간 값이 기준정보와 다릅니다. 기대값: {expected_flat}, 실제 값: {actual_flat}"
+        return f"문서의 날짜/기간 값이 기준정보와 다릅니다.\n기대값: {expected_flat}\n실제 값: {actual_flat}"
     if any(token in expected_flat for token in ["점수표", "품질부특성", "측정값"]) or any(
         token in text for token in ["품질부특성", "값이 다름", "상이함"]
     ):
-        return f"품질 관련 값 비교 결과가 기준과 다릅니다. 기대값: {expected_flat}, 실제 값: {actual_flat}"
-    return text or f"기대값은 {expected_flat}, 실제값은 {actual_flat}입니다."
+        return f"품질 관련 값 비교 결과가 기준과 다릅니다.\n기대값: {expected_flat}\n실제 값: {actual_flat}"
+    return text or f"기대값은 {expected_flat}\n실제값은 {actual_flat}입니다."
 
 
 def clean_display_text(value: str) -> str:
