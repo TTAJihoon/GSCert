@@ -1168,6 +1168,26 @@ def _test_plan_configuration_id_check(table, config, context):
     }
 
 
+def _schedule_column_values(table, header, *, limit=4):
+    """시험일정류 표에서 header 셀 다음 열의 값을 최대 limit개 뽑는다.
+
+    시험계획서(2.2 시험일정, 헤더 'WD')와 시험성적서(4.4 시험일정, 헤더
+    '소요일수')는 같은 일정을 서로 다른 표 모양으로 담고 있어, 헤더 텍스트만
+    다르게 넘겨서 재사용한다.
+    """
+    header_cell = _find_cell_containing(table, header)
+    column = header_cell["column"] if header_cell else 2
+    start_row = header_cell["row"] + 1 if header_cell else 1
+    values = []
+    for row_index in range(start_row, len(table or []) + 1):
+        value = _table_cell(table, row_index, column)
+        if value:
+            values.append(value)
+        if len(values) >= limit:
+            break
+    return values, header_cell
+
+
 def _test_plan_schedule_check(table, config, context):
     """시험일정 표의 WD 열을 확인한다.
 
@@ -1175,23 +1195,37 @@ def _test_plan_schedule_check(table, config, context):
     요구한다. 예전에는 표준 신규시험(환경구축1/제품분석1/시험(WD-3)/종료1)
     고정 패턴을 그대로 강제했으나, 제품명 변경 등에 따른 간소화 시험은
     반나절(0.5) 단위로 일정을 잡는 등 표준 패턴과 다르게 작성되는 경우가
-    있다. 따라서 각 행 배분을 강제하지 않고, WD 값이 모두 채워져 있고
-    합계가 등록된 총 WD와 일치하는지만 확인한다.
+    있다.
+
+    가장 신뢰할 수 있는 기준은 같은 시험 일정을 담고 있는 시험성적서
+    4.4 시험일정(소요일수 열)이므로, 13번(시험성적서) 규칙이 먼저 실행되며
+    남긴 그 값과 그대로 비교한다 - 계획서와 성적서 값이 같으면 통과, 다르면
+    계획서 쪽을 부적합 처리한다(<세부사양> 표 비교와 동일한 방식).
+    성적서 쪽 값을 못 구한 경우에만(파싱 실패 등) WD 값이 채워져 있고
+    합계가 등록된 총 WD와 같은지로 대체 검증한다.
     """
     header = str(config.get("schedule_header") or "WD")
-    header_cell = _find_cell_containing(table, header)
-    column = header_cell["column"] if header_cell else 2
-    start_row = header_cell["row"] + 1 if header_cell else 1
-    actual_values = []
-    for row_index in range(start_row, len(table) + 1):
-        value = _table_cell(table, row_index, column)
-        if value:
-            actual_values.append({"row": row_index, "value": value})
-        if len(actual_values) >= 4:
-            break
+    actual_value_items, header_cell = _schedule_column_values(table, header)
+    normalized_actual = [_normalize_number_text(value) for value in actual_value_items]
 
+    report_variable = config.get("report_schedule_variable") or "시험성적서_시험일정"
+    report_values = _context_variable(context, report_variable)
+    if isinstance(report_values, list) and report_values:
+        normalized_report = [_normalize_number_text(value) for value in report_values]
+        passed = bool(header_cell) and normalized_actual == normalized_report
+        return {
+            "name": "schedule_wd",
+            "passed": passed,
+            "expected": f"시험성적서 4.4 시험일정과 동일: {', '.join(report_values)}",
+            "actual": ", ".join(actual_value_items) or "WD 값 없음",
+            "message": config.get("schedule_message") or "시험일정 WD가 시험성적서와 다름",
+            "header_cell": header_cell or {},
+            "values": actual_value_items,
+        }
+
+    # 성적서 쪽 시험일정을 못 구했을 때의 대체 검증: 값이 채워져 있고 합계가
+    # 등록된 총 WD와 일치하는지만 확인한다(고정 배분 패턴은 강제하지 않음).
     wd = _context_wd_int(context)
-    normalized_actual = [_normalize_number_text(item["value"]) for item in actual_values]
     numeric_values = []
     all_numeric = bool(normalized_actual)
     for text in normalized_actual:
@@ -1203,14 +1237,14 @@ def _test_plan_schedule_check(table, config, context):
     total = sum(numeric_values) if all_numeric else None
     passed = bool(
         header_cell
-        and len(actual_values) >= 4
+        and len(actual_value_items) >= 4
         and all_numeric
         and wd is not None
         and total is not None
         and abs(total - wd) < 1e-6
     )
     expected_total = str(wd) if wd is not None else "{WD}"
-    actual_text = ", ".join(item["value"] for item in actual_values) or "WD 값 없음"
+    actual_text = ", ".join(actual_value_items) or "WD 값 없음"
     if total is not None:
         actual_text = f"{actual_text} (합계 {total:g})"
     return {
@@ -1220,7 +1254,7 @@ def _test_plan_schedule_check(table, config, context):
         "actual": actual_text,
         "message": config.get("schedule_message") or "시험일정 WD가 틀림",
         "header_cell": header_cell or {},
-        "values": actual_values,
+        "values": actual_value_items,
     }
 
 
@@ -1865,6 +1899,15 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
     try:
         rounds = _docx_defect_report_round_dates(docx_file)
         spec_table = _docx_first_table_after_text(docx_file, config.get("spec_marker") or "<세부사양>")
+        # 마커 기반 탐색(_docx_first_table_after_text)은 안 쓴다: '4.4 시험일정'은
+        # 목차에도 그대로 나와서 목차 뒤 첫 표(회사 개요 표 등)를 잘못 집어온다.
+        # 대신 헤더 셀 자체('소요일수')로 표를 직접 찾는다(문서 전체에 유일함).
+        report_schedule_table = _docx_table_with_header(
+            docx_file, config.get("report_schedule_header") or "소요일수",
+        )
+        report_schedule_values, _ = _schedule_column_values(
+            report_schedule_table, config.get("report_schedule_header") or "소요일수",
+        )
         artifact = _store_pdf_first_page_artifact(
             project,
             rule,
@@ -1893,6 +1936,9 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
             **({"결함차수": len(rounds)} if rounds else {}),
             **rounds,
             "시험성적서_세부사양표": spec_table or [],
+            # 시험계획서 2.2 시험일정 WD 열과 직접 대조하기 위한 값(4.4 시험일정의
+            # '소요일수' 열). 계획서 쪽에서 값이 있으면 이걸 기준으로 비교한다.
+            "시험성적서_시험일정": report_schedule_values,
         },
         "spec_table": spec_table or [],
         "artifacts": [artifact],
@@ -3657,6 +3703,31 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
     }
 
     if len(matched) != 1:
+        # 품질평가보고서 파일 자체가 없어도(예: 제품명변경 등 간소화 심사에서
+        # '인증제품 변경 검토 보고서'처럼 다른 이름의 보고서로 대체 제출되는
+        # 경우), 같은 폴더에 '보고서'가 포함된 문서가 있으면 그 파일을 대체
+        # 산출물로 인정해 적합 처리한다.
+        if not matched:
+            alt_keyword = str(config.get("alternate_report_keyword") or "보고서")
+            alt_candidates = [
+                file_info
+                for file_info in files
+                if alt_keyword in file_info.name and _is_word_file(file_info)
+            ]
+            if alt_candidates:
+                alt_file = alt_candidates[0]
+                raw_detail["alternate_report_file"] = _display_path(alt_file.path, project.project_number)
+                return RuleEvaluation(
+                    rule=rule,
+                    sequence=sequence,
+                    status=DownloadReviewRuleStatus.PASS,
+                    expected="품질평가보고서 Word 파일 1개",
+                    actual=alt_file.name,
+                    message=f"품질평가보고서 대신 {alt_file.name}이 존재함",
+                    file_path=_representative_path([alt_file], project.project_number),
+                    file_name=alt_file.name,
+                    raw_detail=raw_detail,
+                )
         return _quality_report_failure(
             rule,
             sequence,
@@ -5682,6 +5753,20 @@ def _docx_tables(file_info):
         _word_table_rows(table, ns)
         for table in root.xpath(".//w:tbl", namespaces=ns)
     ]
+
+
+def _docx_table_with_header(file_info, header):
+    """헤더 셀 텍스트로 표를 직접 찾는다(선행 마커 텍스트에 의존하지 않음).
+
+    _docx_first_table_after_text는 마커가 목차에도 그대로 나오면(예: 절 제목이
+    '4.4 시험일정'처럼 목차 항목과 동일한 텍스트) 목차 바로 뒤의 엉뚱한 표를
+    집어오는 문제가 있다. 헤더가 문서 전체에서 그 표에만 유일하게 있다면
+    이 방식이 더 안전하다.
+    """
+    for table in _docx_tables(file_info):
+        if _find_cell_containing(table, header):
+            return table
+    return []
 
 
 def _word_table_rows(table, ns):
