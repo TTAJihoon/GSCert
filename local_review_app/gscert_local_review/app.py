@@ -782,6 +782,12 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _check_version_on_startup(self):
+        """시작 시 서버 규칙 버전을 확인하고, 다르면(최초 실행으로 규칙이 아예 없는
+        경우 포함) 사용자 클릭 없이 바로 동기화한다. 대시보드 화면에는 이 자동 확인을
+        대신할 '버전 확인' 버튼이 없으므로, 여기서 자동으로 끝내지 않으면 최초 실행 시
+        규칙이 하나도 없는 채로 점검을 시도해 진행이 막힌다.
+        """
+        had_cache = bool(self.rule_cache.rulebase_version)
         try:
             manifest = GSCertApiClient(
                 self.server_url.text().strip() or DEFAULT_SERVER_URL,
@@ -789,13 +795,56 @@ class MainWindow(QMainWindow):
                 token=self.api_token.text().strip(),
             ).rule_manifest()
         except Exception:
-            return  # 오프라인/서버 오류 → 캐시 규칙으로 계속(조용히 건너뜀)
+            if not had_cache:
+                self._set_action_status("규칙 다운로드 실패", C_DANGER)
+                QMessageBox.warning(
+                    self,
+                    "규칙을 받지 못했습니다",
+                    "서버에서 점검 규칙을 받지 못해 아직 점검을 실행할 수 없습니다.\n"
+                    "서버 URL/네트워크 연결을 확인한 뒤 앱을 다시 실행하거나,\n"
+                    "'서버 연결 확인'으로 연결 상태를 먼저 점검해 주세요.",
+                )
+            return  # 캐시가 있으면 오프라인/서버 오류 시 조용히 캐시로 계속
+
         server_ver = str(manifest.get("rulebase_version") or "")
         cached_ver = self.rule_cache.rulebase_version or ""
-        base_text = self._rule_cache_text(self.rule_cache)
-        if server_ver and server_ver != cached_ver:
-            self.rulebase_status.setText(f"{base_text}  ⚠ 서버 v{server_ver} 업데이트 있음")
-            self._set_action_status("규칙 업데이트 권장", C_WARNING)
+        if not server_ver or server_ver == cached_ver:
+            return  # 이미 최신 상태 — 할 일 없음
+
+        # 버전이 다르거나(최초 실행으로 cached_ver 가 없는 경우 포함) 조용히 동기화한다.
+        try:
+            bundle = self._client().rule_bundle()
+            self.rule_cache = save_rule_cache(bundle)
+        except ApiClientError as exc:
+            if not had_cache:
+                self._set_action_status("규칙 다운로드 실패", C_DANGER)
+                QMessageBox.warning(
+                    self,
+                    "규칙을 받지 못했습니다",
+                    f"점검 규칙 다운로드에 실패했습니다:\n{exc}\n\n"
+                    "서버 연결을 확인한 뒤 앱을 다시 실행해 주세요.",
+                )
+            return
+        except OSError as exc:
+            if not had_cache:
+                self._show_error(f"규칙 캐시 저장에 실패했습니다: {exc}")
+            return
+
+        self.rulebase_status.setText(self._rule_cache_text(self.rule_cache))
+        self._refresh_status_perm()
+
+        required_engine = str(bundle.get("engine_min_version") or "")
+        if not engine_supports(required_engine):
+            QMessageBox.warning(
+                self,
+                "앱 업데이트 필요",
+                f"최신 규칙을 받았지만, 이 규칙셋은 엔진 v{required_engine} 이상이 필요합니다.\n"
+                f"현재 앱 엔진은 v{ENGINE_VERSION} 이라 점검이 차단됩니다.\n"
+                "최신 GSCertLocalReviewDashboard 로 업데이트(재설치)하세요.",
+            )
+            return
+
+        self._set_action_status(f"규칙 v{self.rule_cache.rulebase_version} 로 갱신됨", C_SUCCESS)
 
     # ── Header ────────────────────────────────────────────────────────────────
 

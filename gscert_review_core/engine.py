@@ -1169,6 +1169,15 @@ def _test_plan_configuration_id_check(table, config, context):
 
 
 def _test_plan_schedule_check(table, config, context):
+    """시험일정 표의 WD 열을 확인한다.
+
+    규칙 문서(3.7 시험계획서)는 'WD 열이 존재하고 값이 작성되어 있는지'만
+    요구한다. 예전에는 표준 신규시험(환경구축1/제품분석1/시험(WD-3)/종료1)
+    고정 패턴을 그대로 강제했으나, 제품명 변경 등에 따른 간소화 시험은
+    반나절(0.5) 단위로 일정을 잡는 등 표준 패턴과 다르게 작성되는 경우가
+    있다. 따라서 각 행 배분을 강제하지 않고, WD 값이 모두 채워져 있고
+    합계가 등록된 총 WD와 일치하는지만 확인한다.
+    """
     header = str(config.get("schedule_header") or "WD")
     header_cell = _find_cell_containing(table, header)
     column = header_cell["column"] if header_cell else 2
@@ -1182,14 +1191,33 @@ def _test_plan_schedule_check(table, config, context):
             break
 
     wd = _context_wd_int(context)
-    expected_values = ["1", "1", str(wd - 3) if wd is not None else "{WD}-3", "1"]
     normalized_actual = [_normalize_number_text(item["value"]) for item in actual_values]
-    passed = wd is not None and normalized_actual == expected_values
+    numeric_values = []
+    all_numeric = bool(normalized_actual)
+    for text in normalized_actual:
+        try:
+            numeric_values.append(float(text))
+        except (TypeError, ValueError):
+            all_numeric = False
+            break
+    total = sum(numeric_values) if all_numeric else None
+    passed = bool(
+        header_cell
+        and len(actual_values) >= 4
+        and all_numeric
+        and wd is not None
+        and total is not None
+        and abs(total - wd) < 1e-6
+    )
+    expected_total = str(wd) if wd is not None else "{WD}"
+    actual_text = ", ".join(item["value"] for item in actual_values) or "WD 값 없음"
+    if total is not None:
+        actual_text = f"{actual_text} (합계 {total:g})"
     return {
         "name": "schedule_wd",
         "passed": passed,
-        "expected": ", ".join(expected_values),
-        "actual": ", ".join(item["value"] for item in actual_values) or "WD 값 없음",
+        "expected": f"WD 열 값 4개 작성 / 합계 {expected_total}",
+        "actual": actual_text,
         "message": config.get("schedule_message") or "시험일정 WD가 틀림",
         "header_cell": header_cell or {},
         "values": actual_values,
@@ -1583,16 +1611,26 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
             for folder, folder_files in folders.items()
             if len(folder_files) >= min_images
         }
-        parent_candidates = {}
-        for folder, folder_files in candidate_folders.items():
-            if not folder:
-                continue
-            parent_candidates.setdefault(folder[:-1], []).append((folder, folder_files))
 
-        for parent, candidates in sorted(parent_candidates.items(), key=lambda item: "/".join(item[0])):
-            if len(candidates) >= required_folder_count:
-                selected = sorted(candidates, key=lambda item: "/".join(item[0]))[:required_folder_count]
-                return selected, parent, selected_folder, candidate_folders
+        # 후보 폴더(이미지 min_images개 이상)들을 상위 폴더 기준으로 묶어
+        # required_folder_count개 이상 형제가 있는지 찾는다. 대부분은 같은
+        # 바로 위 폴더(부모) 아래 나란히 있지만('형상/최초형상', '형상/최종형상'),
+        # '패치 전/기존 제품 형상', '패치 후/재인증 제품 형상'처럼 각 후보 폴더가
+        # 서로 다른 한 단계 상위 폴더 아래 하나씩만 있는 구조도 실제로 쓰인다.
+        # 이런 경우를 놓치지 않도록 조상 단계를 부모→조부모 순으로 넓혀가며 찾는다.
+        max_depth = max((len(folder) for folder in candidate_folders), default=0)
+        for ancestor_level in range(1, max_depth + 1):
+            ancestor_candidates = {}
+            for folder, folder_files in candidate_folders.items():
+                if len(folder) < ancestor_level:
+                    continue
+                ancestor = folder[:-ancestor_level] if ancestor_level else folder
+                ancestor_candidates.setdefault(ancestor, []).append((folder, folder_files))
+
+            for ancestor, candidates in sorted(ancestor_candidates.items(), key=lambda item: "/".join(item[0])):
+                if len(candidates) >= required_folder_count:
+                    selected = sorted(candidates, key=lambda item: "/".join(item[0]))[:required_folder_count]
+                    return selected, ancestor, selected_folder, candidate_folders
         return [], None, selected_folder, candidate_folders
 
     # 원래 규칙대로 먼저 전체 파일에서 직접 '설계'(또는 대체) 폴더를 찾는다.
@@ -1849,7 +1887,10 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
 
     raw_detail.update({
         "variables": {
-            "결함차수": len(rounds),
+            # rounds가 비어 있으면(최신 서식에 표 자체가 없음) 결함차수를 0으로
+            # 단정하지 않고 값을 생략한다 - 결함리포트 규칙(artifact_10)이 이 경우
+            # 결함리포트 파일 자체에서 차수를 추론하는 폴백을 타도록 하기 위함.
+            **({"결함차수": len(rounds)} if rounds else {}),
             **rounds,
             "시험성적서_세부사양표": spec_table or [],
         },
@@ -1861,10 +1902,12 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
     footer_form = _resolve_rule_value(str(config.get("footer_form_number") or ""), context)
     sub_checks = []
     # 1) 결함리포트 송부 표 1차/2차 보고일자
+    # 표 자체가 문서에 없으면(최신 서식) 검증할 대상이 없는 것이므로 통과 처리한다.
+    # 표는 있는데 1차/2차 보고일자가 비어 있는 경우만 부적합으로 본다.
     sub_checks.append({
         "expected": "결함리포트 송부 표에 1차/2차 보고일자",
-        "actual": ", ".join(f"{key}: {value}" for key, value in rounds.items()) or "날짜 없음",
-        "passed": ("1차" in rounds and "2차" in rounds),
+        "actual": ", ".join(f"{key}: {value}" for key, value in rounds.items()) or "표 없음(최신 서식)",
+        "passed": (not rounds) or ("1차" in rounds and "2차" in rounds),
         "message": config.get("round_date_message") or "결함리포트 송부 정보 확인 불가",
     })
     # 2) 머리글에 프로젝트번호
@@ -1939,6 +1982,15 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
     _collect_defect_report_variables_from_latest_file(raw_detail, versioned_files)
 
     defect_round_count = _context_int(context, "결함차수")
+    inferred_round_count = False
+    if defect_round_count is None:
+        # 13번(시험성적서)이 결함차수를 산출하지 못한 경우(최신 서식에 결함리포트
+        # 송부 표 자체가 없음) 결함리포트 파일들의 시트 구성에서 직접 차수를
+        # 추론한다. 시험성적서 파싱에만 의존하면 그 표가 없는 모든 제출물이
+        # 무조건 부적합 처리되어 버린다.
+        defect_round_count = _infer_defect_round_count_from_files(versioned_files)
+        inferred_round_count = defect_round_count is not None
+    raw_detail["defect_round_count_inferred_from_files"] = inferred_round_count
     if defect_round_count is None:
         return _defect_report_failure(
             rule,
@@ -1946,7 +1998,7 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
             matched,
             project,
             raw_detail,
-            expected="13번 시험성적서에서 {결함차수} 산출",
+            expected="13번 시험성적서 또는 결함리포트 시트 구성에서 {결함차수} 산출",
             actual="{결함차수} 없음",
             message=config.get("count_mismatch_message") or "시험성적서의 결함 차수와 결함리포트 개수가 다름",
         )
@@ -2177,6 +2229,28 @@ def _defect_report_failure(rule, sequence, matched, project, raw_detail, *, expe
     )
 
 
+def _infer_defect_round_count_from_files(versioned_files):
+    """결함리포트 파일들의 시트명에서 직접 결함차수를 추론한다.
+
+    시험성적서에 결함리포트 송부 표가 없어 결함차수를 못 구한 경우의 폴백.
+    가장 높은 버전 파일의 시트 중 'N차 결함리포트' 형태의 최대 N을 차수로 본다.
+    """
+    versions = [version for version in versioned_files if version > 0]
+    if not versions:
+        return None
+    latest_file = versioned_files[max(versions)]
+    try:
+        workbook = _read_excel_workbook(latest_file)
+    except DownloadReviewInspectionError:
+        return None
+    round_numbers = set()
+    for sheet in workbook.sheets:
+        match = re.match(r"^\s*(\d+)\s*차\s*결함리포트", sheet.name or "")
+        if match:
+            round_numbers.add(int(match.group(1)))
+    return max(round_numbers) if round_numbers else None
+
+
 def _defect_report_versioned_files(files, config):
     pattern = re.compile(str(config.get("version_pattern") or r"(?i)v(\d+)(?:[._-]\d+)*"))
     versioned = {}
@@ -2243,9 +2317,20 @@ def _expected_defect_report_sheet_names(version, final_version):
 
 
 def _check_defect_report_environment(workbook_by_version):
+    """차수별(N차 결함리포트) 시트의 시험환경이 모든 버전에서 동일한지 확인한다.
+
+    '최종결함리포트'/'시험분석자료'는 결과 요약용 시트로 시험환경 항목을 아예
+    싣지 않는 표준 서식이라(표지+보고일자만 존재), 이 시트들까지 포함해
+    시험환경 값을 요구하면 정상 제출물도 '시험환경 없음'으로 오탐한다.
+    규칙 문서도 'v1.0, v2.0, v3.0' 즉 차수별 리포트 시트만 언급하므로
+    차수 시트로 범위를 한정한다.
+    """
+    round_sheet_pattern = re.compile(r"^\s*\d+\s*차\s*결함리포트")
     values = []
     for version, workbook in sorted(workbook_by_version.items()):
         for sheet in workbook.sheets:
+            if not round_sheet_pattern.match(sheet.name or ""):
+                continue
             value = _sheet_top_rows_label_value(sheet, "시험환경")
             if not value:
                 return {
@@ -2306,9 +2391,13 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
                     and _sheet_top_rows_cell_containing(sheet, base_sheet_name)
                 )
             )
+            # expected_date가 비어 있는 건 'N차' 라운드인데 시험성적서에 결함리포트
+            # 송부 표가 없어(최신 서식) 기준 날짜를 못 구한 경우다(최종결함리포트/
+            # 시험분석자료는 항상 context.end_date가 있으므로 영향받지 않음).
+            # 이때는 비교 기준이 없으므로 보고일자 값 자체의 존재만 확인한다.
             passed = bool(
                 header_found
-                and _same_date_text(report_date, expected_date)
+                and (_same_date_text(report_date, expected_date) if expected_date else bool(report_date))
             )
             detail = {
                 "version": version,
@@ -5535,6 +5624,14 @@ def _safe_artifact_id(value):
 
 
 def _docx_defect_report_round_dates(file_info):
+    """시험성적서에서 '결함리포트 송부' 표의 차수별 보고일자를 읽는다.
+
+    최신 시험성적서 서식에는 이 표 자체가 없는 경우가 있다(예: 재인증/간소화
+    시험처럼 결함 이력을 별도 요약하지 않는 서식). 표가 없다고 시험성적서 전체
+    점검을 에러로 처리하면 안 되므로, 못 찾으면 예외 대신 빈 dict를 반환한다.
+    결함차수는 이 표가 아니어도 결함리포트 파일 자체에서 추론할 수 있다
+    (_infer_defect_round_count_from_files 참고).
+    """
     tables = _docx_tables(file_info)
     target_text = ""
     for table in tables:
@@ -5543,7 +5640,7 @@ def _docx_defect_report_round_dates(file_info):
             target_text = flattened
             break
     if not target_text:
-        raise DownloadReviewInspectionError("결함리포트 송부 표를 찾을 수 없습니다.")
+        return {}
 
     rounds = {}
     for match in re.finditer(r"([1-9]\d*)\s*차\s*[:：]\s*(\d{4})\s*[./-]\s*(\d{1,2})\s*[./-]\s*(\d{1,2})", target_text):
