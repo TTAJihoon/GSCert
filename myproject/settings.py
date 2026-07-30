@@ -165,6 +165,7 @@ CSRF_TRUSTED_ORIGINS = [
     for host in {MAIN_SERVER_IP, SUB_SERVER_IP, '127.0.0.1', 'localhost'}
     for scheme in ('https', 'http')
 ]
+CSRF_FAILURE_VIEW = 'main.views.csrf.csrf_failure'
 # nginx 가 X-Forwarded-Proto 를 넘기므로 Django 가 https 요청을 https 로 인식하게 한다.
 SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 

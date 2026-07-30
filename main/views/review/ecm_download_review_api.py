@@ -478,6 +478,13 @@ def rule_result_manual_pass(request, result_id):
     except DownloadReviewNotFoundError as exc:
         response_payload = _error_payload(exc, str(exc))
         status = exc.status_code
+    except Exception as exc:
+        logger.exception("Manual pass override failed: %s", result_id)
+        response_payload = _error_payload(
+            exc,
+            "수동 적합 처리 중 서버 오류가 발생했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.",
+        )
+        status = 500
 
     response = JsonResponse(response_payload, status=status, json_dumps_params={"ensure_ascii": False})
     response["Cache-Control"] = "no-store"

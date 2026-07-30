@@ -698,6 +698,7 @@ function jobsUrl() {
 async function requestJson(url, options = {}) {
   const headers = {
     "Accept": "application/json",
+    "X-Requested-With": "XMLHttpRequest",
     ...(options.headers || {})
   };
   if (options.body && !headers["Content-Type"]) {
@@ -709,17 +710,41 @@ async function requestJson(url, options = {}) {
   }
 
   const response = await fetch(url, {
+    credentials: "same-origin",
+    referrerPolicy: "same-origin",
     ...options,
     headers
   });
-  const payload = await response.json().catch(() => ({}));
+  const responseText = await response.text();
+  let payload = {};
+  if (responseText) {
+    try {
+      payload = JSON.parse(responseText);
+    } catch (error) {
+      payload = {};
+    }
+  }
   if (!response.ok) {
-    const error = new Error(payload.message || "요청을 처리하지 못했습니다.");
+    const error = new Error(payload.message || fallbackRequestErrorMessage(response, responseText));
     error.payload = payload;
     error.status = response.status;
     throw error;
   }
   return payload;
+}
+
+function fallbackRequestErrorMessage(response, bodyText = "") {
+  const body = String(bodyText || "");
+  if (response.status === 403 && /csrf|forbidden|referer/i.test(body)) {
+    return "보안 토큰 확인에 실패했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.";
+  }
+  if (response.status === 404) {
+    return "요청 주소를 찾지 못했습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요.";
+  }
+  if (response.status >= 500) {
+    return "서버 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.";
+  }
+  return `요청을 처리하지 못했습니다. (HTTP ${response.status})`;
 }
 
 function normalizeReview(value) {

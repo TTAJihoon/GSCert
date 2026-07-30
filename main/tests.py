@@ -74,6 +74,7 @@ from main.views.review.ecm_download_review_api import (
     rule_result_manual_pass,
     rule_result_artifact,
 )
+from main.views.csrf import csrf_failure
 from main.utils.ecm_reference_sheet import parse_sheet_projects, read_csv_rows, split_company_product
 from gscert_review_core import engine
 
@@ -1400,6 +1401,50 @@ class DownloadReviewChangeNoteApiTests(TestCase):
             actual="파일 존재",
             message="정상 확인",
         )
+
+
+class CsrfFailureViewTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_api_csrf_failure_returns_json(self):
+        request = self.factory.post(
+            "/api/rule-results/00000000-0000-0000-0000-000000000000/manual-pass/",
+            HTTP_ACCEPT="application/json",
+            HTTP_X_REQUESTED_WITH="XMLHttpRequest",
+        )
+
+        response = csrf_failure(request, reason="Referer checking failed")
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(data["success"])
+        self.assertEqual(data["error_code"], "csrf_failed")
+        self.assertIn("새로고침", data["message"])
+        self.assertEqual(response["Cache-Control"], "no-store")
+
+    def test_manual_pass_unexpected_error_returns_json(self):
+        request = self.factory.post(
+            "/api/rule-results/00000000-0000-0000-0000-000000000000/manual-pass/",
+            data=json.dumps({"memo": "원본 파일 확인"}),
+            content_type="application/json",
+        )
+
+        with self.assertLogs("main.views.review.ecm_download_review_api", level="ERROR"):
+            with patch(
+                "main.views.review.ecm_download_review_api.mark_rule_result_manual_pass",
+                side_effect=RuntimeError("boom"),
+            ):
+                response = rule_result_manual_pass(
+                    request,
+                    "00000000-0000-0000-0000-000000000000",
+                )
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 500)
+        self.assertFalse(data["success"])
+        self.assertIn("수동 적합 처리", data["message"])
+        self.assertEqual(response["Cache-Control"], "no-store")
 
 
 class DownloadReviewManualOverrideTests(TestCase):
