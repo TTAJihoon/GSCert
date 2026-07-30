@@ -28,6 +28,7 @@ from main.models import (
     DownloadReviewRuleStatus,
     ReferenceCenterPl,
     ReferenceProject,
+    SwData,
 )
 from main.views.review.ecm_reference_db import (
     ARTIFACT_REVIEW_COLUMNS,
@@ -562,6 +563,116 @@ class SyncReferenceProjectsFromSheetCommandTests(SimpleTestCase):
             )
 
         self.assertIn("센터 미분류 PL: 보류PL", out.getvalue())
+
+    def _write_source_csv(self, project_rows):
+        csv_text = "\n".join([
+            ",2026년 6월 22일(월),,,,,,,",
+            ",,,,,,,,",
+            ",,,,,,,,",
+            *project_rows,
+            ",,,,,,,,",
+        ])
+        temp = tempfile.NamedTemporaryFile("w", encoding="utf-8-sig", newline="", suffix=".csv", delete=False)
+        with temp:
+            temp.write(csv_text)
+        return Path(temp.name)
+
+
+class SyncNewCertifiedProjectsCommandTests(TestCase):
+    """weekly(W) 동기화가 SwData 신규 건을 ReferenceProject에 반영하는 신규 명령어 테스트.
+
+    'G'(Google Sheets 동기화) 메뉴가 하던 일을, 이제는 SwData(인증획득목록 엑셀)를
+    기준으로 새로 추가된 건만 구글시트(신청일/계약일 보완용)와 매칭해 반영한다.
+    """
+
+    databases = {"reference"}
+
+    def setUp(self):
+        ReferenceCenterPl.objects.using("reference").create(
+            center_code="sangam", center_label="상암", name="박지훈", display_order=1,
+        )
+        # since_serial=10 기준으로 11번(신규)만 대상이 되도록 함.
+        SwData.objects.using("reference").create(
+            serial_number=10, test_number="TTA-26-00099", company="이전회사", product="이전제품",
+            test_lab="박지훈", cert_date="6/1", start_date="2026.06.01", end_date="2026.06.02",
+            total_wd="10",
+        )
+        SwData.objects.using("reference").create(
+            serial_number=11, test_number="TTA-26-00001", company="회사A", product="제품A",
+            test_lab="박지훈", cert_date="6/22", start_date="2026.06.03", end_date="2026.06.30",
+            total_wd="18",
+        )
+
+    def test_new_swdata_row_matched_to_sheet_creates_reference_project(self):
+        csv_path = self._write_source_csv([
+            ",회사A(비고)-제품A,18,2026.06.01,2026.06.02,2026.06.03,2026.06.30,박지훈, TTA-26-00001",
+        ])
+        out = StringIO()
+
+        call_command(
+            "sync_new_certified_projects",
+            "--since-serial", "10",
+            "--source-csv", str(csv_path),
+            stdout=out,
+        )
+
+        project = ReferenceProject.objects.using("reference").get(project_number="TTA-26-00001")
+        # 회사명/제품명/PL/WD/시험기간은 SwData(기준 원본) 값을 그대로 씀.
+        self.assertEqual(project.company, "회사A")
+        self.assertEqual(project.product, "제품A")
+        self.assertEqual(project.primary_tester, "박지훈")
+        self.assertEqual(project.wd, "18")
+        self.assertEqual(project.start_date, "2026.06.03")
+        self.assertEqual(project.expected_end_date, "2026.06.30")
+        # 신청일/계약일은 SwData에 없으므로 구글시트에서 보완.
+        self.assertEqual(project.request_date, "2026.06.01")
+        self.assertEqual(project.contract_date, "2026.06.02")
+        # 센터는 ReferenceCenterPl 매핑을 통해 유도.
+        self.assertEqual(project.center_code, "sangam")
+        # 이전(10번) 건은 대상이 아니므로 생성되지 않음.
+        self.assertFalse(
+            ReferenceProject.objects.using("reference").filter(project_number="TTA-26-00099").exists()
+        )
+
+    def test_new_swdata_row_not_in_sheet_is_skipped(self):
+        csv_path = self._write_source_csv([])  # 구글시트에 해당 프로젝트번호가 없음
+        out = StringIO()
+
+        call_command(
+            "sync_new_certified_projects",
+            "--since-serial", "10",
+            "--source-csv", str(csv_path),
+            stdout=out,
+        )
+
+        self.assertFalse(
+            ReferenceProject.objects.using("reference").filter(project_number="TTA-26-00001").exists()
+        )
+        self.assertIn("건너뜀", out.getvalue())
+
+    def test_existing_reference_project_keeps_review_result(self):
+        ReferenceProject.objects.using("reference").create(
+            project_number="TTA-26-00001",
+            center_code="unknown",
+            company="옛회사명",
+            review_result="X",
+            inspection_date="2026.06.20 10:00",
+        )
+        csv_path = self._write_source_csv([
+            ",회사A(비고)-제품A,18,2026.06.01,2026.06.02,2026.06.03,2026.06.30,박지훈, TTA-26-00001",
+        ])
+
+        call_command(
+            "sync_new_certified_projects",
+            "--since-serial", "10",
+            "--source-csv", str(csv_path),
+            stdout=StringIO(),
+        )
+
+        project = ReferenceProject.objects.using("reference").get(project_number="TTA-26-00001")
+        self.assertEqual(project.company, "회사A")  # SwData 값으로 최신화됨
+        self.assertEqual(project.review_result, "X")  # 점검 결과는 보존됨
+        self.assertEqual(project.inspection_date, "2026.06.20 10:00")
 
     def _write_source_csv(self, project_rows):
         csv_text = "\n".join([

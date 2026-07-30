@@ -61,8 +61,7 @@ function Show-Menu {
     Write-Host "  s.    status       - 서버/워커 상태 확인"
     Write-Host "  C.    collectstatic- 정적 파일(css/js) 수집 (nginx 반영)$venvWarn"
     Write-Host "  N.    nginx        - nginx 시작/중지/reload  $ngxStat" -ForegroundColor $ngxColor
-    Write-Host "  W.    weekly 동기화 - ECM xlsx → PostgreSQL reference DB 적재$venvWarn"
-    Write-Host "  G.    Google Sheets- 인증위 시트 → PostgreSQL reference_project 적재(미분류 PL 배정)$venvWarn"
+    Write-Host "  W.    weekly 동기화 - ECM xlsx → PostgreSQL reference DB 적재 + 신규 건 점검대상 프로젝트 반영$venvWarn"
     Write-Host "  f.    FAISS 임베딩  - reference DB 신규 데이터 증분 임베딩$venvWarn"
     Write-Host "  D.    규칙 DB 반영  - 점검규칙(config)을 PostgreSQL에 반영 (seed)$venvWarn"
     Write-Host "  B.    로컬 검토 앱   - 빌드 / 빌드 없이 실행 선택"
@@ -272,20 +271,6 @@ while ($true) {
                 }
             } else {
                 Write-Host "올바른 번호를 입력해 주세요." -ForegroundColor Red
-            }
-        }
-        'G' {
-            Write-Host ""
-            Write-Host "=== Google Sheets 동기화 (인증위 시트 → PostgreSQL reference_project) ===" -ForegroundColor Cyan
-            $VenvPython = Join-Path $ScriptDir ".venv\Scripts\python.exe"
-            if (-not (Test-Path $VenvPython)) { $VenvPython = Join-Path $ScriptDir "venv\Scripts\python.exe" }
-            if (-not (Test-Path $VenvPython)) {
-                Write-Host "[ERROR] 가상환경 Python을 찾을 수 없습니다. 먼저 S(초기 환경 설정)를 실행하세요." -ForegroundColor Red
-            } else {
-                & $VenvPython (Join-Path $ScriptDir "manage.py") sync_reference_projects_from_sheet --assign-unknown-pl
-                if ($?) {
-                    Write-Host "[OK] Google Sheets 동기화 완료" -ForegroundColor Green
-                }
             }
         }
         'F' {

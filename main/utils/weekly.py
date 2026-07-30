@@ -689,6 +689,55 @@ def sync_reference_db():
     logging.info("reference PostgreSQL DB 적재 완료")
 
 
+def sync_new_reference_projects(since_serial: int):
+    """SwData에 이번 실행으로 새로 들어온 건을 ReferenceProject(점검대상 프로젝트 목록)에 반영한다.
+
+    예전에는 launcher.ps1의 'G'(Google Sheets 동기화)가 구글시트 전체를 기준으로
+    ReferenceProject를 채웠지만, 이제는 SwData(인증획득목록 엑셀)가 기준이라
+    weekly 동기화가 방금 추가한 신규 건만 골라 구글시트(신청일/계약일 보완용)와
+    매칭해 반영한다. 'G'는 더 이상 필요 없어 launcher 메뉴에서 제거했다(관리
+    명령 자체는 전체 재동기화/복구용으로 남겨둠).
+    """
+    import subprocess
+
+    if not CFG.manage_py.exists():
+        raise FileNotFoundError(f"manage.py 파일을 찾을 수 없습니다: {CFG.manage_py}")
+
+    cmd = [
+        str(CFG.python_executable),
+        str(CFG.manage_py),
+        "sync_new_certified_projects",
+        "--since-serial",
+        str(since_serial),
+        "--settings",
+        CFG.django_settings,
+    ]
+
+    env = os.environ.copy()
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
+
+    logging.info("신규 점검대상 프로젝트 반영 실행: %s", " ".join(cmd))
+    completed = subprocess.run(
+        cmd,
+        cwd=str(CFG.project_root),
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        check=False,
+        env=env,
+    )
+    if completed.stdout.strip():
+        logging.info("신규 프로젝트 반영 stdout: %s", completed.stdout.strip())
+    if completed.stderr.strip():
+        logging.error("신규 프로젝트 반영 stderr: %s", completed.stderr.strip())
+    if completed.returncode != 0:
+        raise RuntimeError(f"신규 프로젝트 반영 실패: exit_code={completed.returncode}")
+
+    logging.info("신규 점검대상 프로젝트 반영 완료")
+
+
 # =========================
 # HTTP 직접연동 다운로드 (서버 → ECM, requests)
 # =========================
@@ -859,6 +908,13 @@ def main():
 
     # 5) 저장소 기준 DB 적재
     sync_reference_db()
+
+    # 6) 방금 SwData에 새로 들어온 건을 점검대상 프로젝트(ReferenceProject)에 반영
+    #    (last_serial보다 큰 SwData 행 = 이번에 새로 추가된 건)
+    try:
+        sync_new_reference_projects(last_serial)
+    except Exception:
+        logging.exception("신규 점검대상 프로젝트 반영 실패(SwData 적재 자체는 완료됨)")
 
     logging.info("DONE")
 
