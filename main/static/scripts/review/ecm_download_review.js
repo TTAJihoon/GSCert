@@ -669,6 +669,27 @@ function escapeMultiline(value) {
     .join("<br>");
 }
 
+// "차이:"/"기대값:"/"실제값:" 줄로만 이루어진 메시지(friendly_message 출력)는
+// 라벨을 굵게 표시하고, 값이 전부 같은 위치(가장 긴 라벨 기준)에서 시작하도록
+// grid로 정렬한다. 이 형식이 아닌 메시지(적합/오류/미지원 등)는 기존처럼 표시.
+const ISSUE_MESSAGE_LINE_RE = /^(차이|기대값|실제값):\s*([\s\S]*)$/;
+
+function formatIssueMessage(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  const lines = String(value).split(/\r\n|\n/);
+  const parsedLines = lines.map((line) => {
+    const match = line.match(ISSUE_MESSAGE_LINE_RE);
+    return match ? { label: match[1], content: match[2] } : null;
+  });
+  if (!lines.length || parsedLines.some((item) => item === null)) {
+    return escapeMultiline(value);
+  }
+  return `<div class="issue-message-grid">${parsedLines.map((item) => `
+    <strong class="issue-message-label">${escapeHtml(item.label)}:</strong>
+    <span class="issue-message-value">${escapeHtml(item.content)}</span>
+  `).join("")}</div>`;
+}
+
 function getCookie(name) {
   return document.cookie
     .split(";")
@@ -2418,7 +2439,7 @@ function renderInspectionSingleRow(rule) {
       <td>${escapeHtml(rule.file_name || "-")}</td>
       <td>${escapeMultiline(rule.expected || "-")}</td>
       <td>${escapeMultiline(rule.actual || "-")}</td>
-      <td>${escapeMultiline(rule.message || "-")}</td>
+      <td>${formatIssueMessage(rule.message || "-")}</td>
     </tr>
   `;
 }
@@ -2441,7 +2462,7 @@ function renderInspectionSubCheckRows(rule, subChecks) {
         ${index === 0 ? `<td rowspan="${rowCount}">${escapeHtml(rule.file_name || "-")}</td>` : ""}
         <td>${escapeMultiline(sub.expected || "-")}</td>
         <td class="${mismatch ? "cell-mismatch" : ""}">${escapeMultiline(sub.actual || "-")}</td>
-        <td>${escapeMultiline(sub.message || (mismatch ? "실제값이 기대값과 다릅니다." : "-"))}</td>
+        <td>${formatIssueMessage(sub.message || (mismatch ? "실제값이 기대값과 다릅니다." : "-"))}</td>
       </tr>
     `;
   }).join("");
