@@ -854,6 +854,7 @@ function normalizeApiJobProject(item) {
 function normalizeApiJob(item) {
   return {
     id: item.id,
+    displayId: formatJobIdLabel(item.id, item.requested_at),
     centerCode: item.center_code || "",
     centerLabel: item.center_label || "",
     requestedAt: formatDateTime(item.requested_at),
@@ -878,6 +879,20 @@ function formatDateTime(value) {
     hour: "2-digit",
     minute: "2-digit"
   });
+}
+
+// 작업 ID(UUID)는 그 자체로는 날짜 등 규칙이 안 보여 언제 요청된 건지 알 수 없다.
+// 실제 ID(취소/조회 API 호출용)는 그대로 두고, 화면에 보여줄 라벨만 '요청일자-짧은ID'
+// 형태로 만든다.
+function formatJobIdLabel(id, requestedAtIso) {
+  if (!id) return "-";
+  const shortId = String(id).replace(/-/g, "").slice(0, 8).toUpperCase();
+  const parsed = requestedAtIso ? new Date(requestedAtIso) : null;
+  if (!parsed || Number.isNaN(parsed.getTime())) return shortId;
+  const y = parsed.getFullYear();
+  const m = String(parsed.getMonth() + 1).padStart(2, "0");
+  const d = String(parsed.getDate()).padStart(2, "0");
+  return `${y}${m}${d}-${shortId}`;
 }
 
 function badge(status, options = {}) {
@@ -1272,7 +1287,7 @@ function renderProgress() {
     <span class="dot dot-run"></span>
     <div><span class="label">현재 작업</span><strong>${activeJob.status_label || "진행 중"}</strong></div>
   `;
-  qs("jobId").textContent = activeJob.id;
+  qs("jobId").textContent = formatJobIdLabel(activeJob.id, activeJob.requested_at);
   qs("jobProgress").textContent = `${completed} / ${total}`;
   qs("currentProject").textContent = currentProject?.number || "-";
   qs("failedCount").textContent = `${failed}건`;
@@ -1337,7 +1352,7 @@ function renderJobs() {
   qs("jobList").innerHTML = state.resultJobs.map((job) => `
     <article class="job-card ${state.resultJobId === job.id ? "active" : ""}" role="button" tabindex="0" data-job-id="${escapeHtml(job.id)}">
       <div class="job-title">
-        <span>${escapeHtml(job.id)}</span>
+        <span>${escapeHtml(job.displayId)}</span>
         <span>${badge(job.centerLabel || centerLabels[job.centerCode] || "-")} ${badge(job.statusLabel || job.status)}</span>
       </div>
       <div class="job-meta">
@@ -1394,7 +1409,7 @@ function renderResults() {
     return;
   }
 
-  qs("resultCaption").textContent = `${job.id} · 완료 ${job.success}건 · 실패 ${job.failed}건`;
+  qs("resultCaption").textContent = `${job.displayId} · 완료 ${job.success}건 · 실패 ${job.failed}건`;
 
   if (state.resultProjectLoadError) {
     qs("resultRows").innerHTML = `
@@ -1965,7 +1980,7 @@ function openRequestCompleteModal(payload, requestedCount) {
     body: `
       <div class="modal-message success">
         <strong>${escapeHtml(payload.message || "작업 요청이 등록되었습니다.")}</strong>
-        <p>요청 프로젝트 ${requestedCount}건 · 작업 ID ${escapeHtml(payload.job_id || "-")}</p>
+        <p>요청 프로젝트 ${requestedCount}건 · 작업 ID ${escapeHtml(formatJobIdLabel(payload.job_id, payload.requested_at))}</p>
         <p>현재 상태: ${escapeHtml(payload.status_label || payload.status || "-")}</p>
       </div>
     `
@@ -1975,7 +1990,7 @@ function openRequestCompleteModal(payload, requestedCount) {
 function openCancelJobModal(job) {
   openModal({
     eyebrow: "예약 취소",
-    title: `${job.id} 작업 취소`,
+    title: `${job.displayId} 작업 취소`,
     body: `
       <div class="modal-message warning">
         <strong>예약됨 또는 대기중인 작업을 취소합니다.</strong>

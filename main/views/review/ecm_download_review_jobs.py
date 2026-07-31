@@ -169,6 +169,7 @@ def create_download_review_job(payload, request_ip=None, now=None):
         "center_label": center_label(job.center_code),
         "status": job.status,
         "status_label": job_status_label(job.status),
+        "requested_at": _iso(job.requested_at),
         "requested_project_count": job.requested_project_count,
         "available_after": job.available_after.isoformat() if job.available_after else None,
         "message": job_request_message(job.status),

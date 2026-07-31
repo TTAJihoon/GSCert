@@ -758,6 +758,17 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
         self.assertTrue(engine._version_matches("v1", "1"))
         self.assertFalse(engine._version_matches("Enterprise", "Standard"))
 
+    def test_version_matches_ignores_trailing_zero_precision_differences(self):
+        # 실제 사례(TTA-26-01501): 등록된 제품명은 'v1.0'인데 시험계획서 문서에는
+        # 'v1'로만 적혀 있어, 예전에는 문자열 비교('1.0' != '1')로 오탐 부적합
+        # 처리됐다. 숫자로는 같은 버전이므로 일치로 봐야 한다.
+        self.assertTrue(engine._version_matches("v1.0", "v1"))
+        self.assertTrue(engine._version_matches("v1.0", "1"))
+        self.assertTrue(engine._version_matches("2.10.0", "2.10"))
+        # 끝자리 0 무시일 뿐 실제로 다른 버전까지 같다고 보면 안 된다.
+        self.assertFalse(engine._version_matches("2.10", "2.1"))
+        self.assertFalse(engine._version_matches("v1.0", "v2"))
+
     def test_defect_report_sheet_names_ignore_whitespace(self):
         workbook = engine.ExcelWorkbook([
             engine.ExcelSheet("1차결함리포트", []),
@@ -3197,6 +3208,66 @@ class DownloadReviewJobsApiTests(TestCase):
                         "each_child_has_entry": True,
                         "txt_only_pass": True,
                         "unwrap_single_folder": True,
+                        "failure_message": "보안성 rawdata 확인 불가",
+                    },
+                    {
+                        "keyword": "성능",
+                        "min_entries": 1,
+                        "failure_message": "성능 rawdata 확인 불가",
+                    },
+                ],
+                "pass_message": "rawdata 폴더 구조를 확인했습니다.",
+            },
+        )
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={"project_number": "TTA-26-00010"},
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+
+        outcome = run_download_inspection(project, verify_result, {})
+        result = DownloadReviewRuleResult.objects.get(job_project=project, rule_name="1차/2차/성능/보안RawData")
+
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS, result.raw_detail_json)
+        self.assertEqual(outcome.artifact_results["1차/2차/성능/보안RawData"], "O")
+
+    def test_security_rawdata_passes_on_exception_marker_file_even_without_subfolders(self):
+        # 실제 사례(TTA-26-01501): 보안시험 폴더 안에 하위 폴더 2개 구조 없이
+        # "인빅티 대상아님"이라는 0바이트 안내 파일만 있어도, pass_if_file_name_contains
+        # 목록의 단어 중 하나(예: '대상')만 포함되면 폴더 구조와 무관하게 적합 처리한다.
+        project_dir = Path(self.temp_dir.name) / "rawdata_security_exception"
+        project_dir.mkdir(parents=True)
+        rawdata_zip_path = project_dir / "TTA-26-00010 rawdata.zip"
+        with zipfile.ZipFile(rawdata_zip_path, "w") as archive:
+            archive.writestr("결함/raw.txt", b"defect")
+            archive.writestr("보안시험/인빅티 대상아님", b"")  # 0바이트, 하위 폴더 없음
+            archive.writestr("성능시험/측정자료/raw.txt", b"performance")
+
+        DownloadReviewRule.objects.create(
+            code="artifact_12",
+            name="1차/2차/성능/보안RawData",
+            rule_type="rawdata_folder_structure_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=120,
+            config_json={
+                "artifact_column": "1차/2차/성능/보안RawData",
+                "folder_checks": [
+                    {"keyword": "결함", "failure_message": "결함리포트 rawdata 확인 불가"},
+                    {
+                        "keyword": "보안",
+                        "exact_child_folders": 2,
+                        "each_child_has_entry": True,
+                        "txt_only_pass": True,
+                        "unwrap_single_folder": True,
+                        "pass_if_file_name_contains": ["인빅티", "invicti", "수행", "대상", "시험", "면제"],
                         "failure_message": "보안성 rawdata 확인 불가",
                     },
                     {

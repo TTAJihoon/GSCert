@@ -1071,9 +1071,13 @@ def _version_matches(expected, actual):
     """버전 비교.
 
     - 접두사('v', 'ver' 등 숫자 앞 문자)는 있어도 없어도 무시한다.
-    - 숫자 부분(예: 4.0)이 같으면 같은 버전으로 본다.
+    - 숫자 부분(예: 4.0)이 같으면 같은 버전으로 본다 - 표기 자릿수가 달라도
+      (예: 'v1.0'과 실제 문서의 'v1', '2.10.0'과 '2.10') 수치가 같으면 동일
+      버전으로 인정한다. 등록된 제품명이 'v1.0'이어도 문서에 'v1'로만 적는
+      경우가 실제로 있어서, 문자열 그대로 비교하면(예전 방식) '1.0' != '1'로
+      오판했다.
     - 숫자 없는 문자 버전(예: Enterprise)은 공백과 대소문자를 무시해 비교한다.
-    예) 기대 'v4.0' vs 실제 '4.0'/'v4.0'/'ver4.0' → 모두 정상.
+    예) 기대 'v4.0' vs 실제 '4.0'/'v4.0'/'ver4.0'/'4' → 모두 정상.
     """
     def core(value):
         text = _normalize_no_space(value)
@@ -1083,7 +1087,9 @@ def _version_matches(expected, actual):
     expected_core = core(expected)
     actual_core = core(actual)
     if expected_core:
-        return expected_core == actual_core
+        if expected_core == actual_core:
+            return True
+        return _version_numbers_equal(expected_core, actual_core)
 
     def text_core(value):
         text = _normalize_no_space(value).lower()
@@ -1092,6 +1098,29 @@ def _version_matches(expected, actual):
     expected_text = text_core(expected)
     actual_text = text_core(actual)
     return bool(expected_text) and expected_text == actual_text
+
+
+def _version_numbers_equal(left, right):
+    """'1.0'과 '1', '2.10.0'과 '2.10'처럼 끝자리 0 유무만 다른 숫자 버전을 같다고 본다.
+
+    자리별로 정수 비교하므로 '2.10'과 '2.1'처럼 실제로 다른 버전은 여전히
+    다르게 판정된다(끝에 붙는 0만 무시).
+    """
+    def segments(value):
+        parts = [part for part in value.split(".") if part != ""]
+        try:
+            return [int(part) for part in parts]
+        except ValueError:
+            return None
+
+    left_segments = segments(left)
+    right_segments = segments(right)
+    if left_segments is None or right_segments is None:
+        return False
+    length = max(len(left_segments), len(right_segments))
+    left_segments += [0] * (length - len(left_segments))
+    right_segments += [0] * (length - len(right_segments))
+    return left_segments == right_segments
 
 
 def _test_plan_product_checks(table, config, context):
@@ -2040,13 +2069,17 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
     footer_text = _docx_footer_text(docx_file)
     footer_form = _resolve_rule_value(str(config.get("footer_form_number") or ""), context)
     sub_checks = []
-    # 1) 결함리포트 송부 표 1차/2차 보고일자
-    # 표 자체가 문서에 없으면(최신 서식) 검증할 대상이 없는 것이므로 통과 처리한다.
-    # 표는 있는데 1차/2차 보고일자가 비어 있는 경우만 부적합으로 본다.
+    # 1) 결함리포트 송부 표 차수별 보고일자
+    # 이 항목은 차수별 보고일자를 변수로 뽑아 결함리포트 규칙(artifact_10)에
+    # 넘겨주는 역할만 한다 - 몇 차까지 있어야 하는지(1차만/1~3차 등)는 실제
+    # 결함리포트 파일 구조와 대조해야 판단할 수 있고, 그건 artifact_10의
+    # 일이다. 예전에는 여기서 '1차, 2차가 둘 다 있어야 함'을 강제했는데,
+    # 실제로는 1차만 있는 프로젝트도 정상이라 오탐이었다. 표를 못 찾은
+    # 경우(최신 서식)도 포함해 여기서는 항상 통과 처리한다.
     sub_checks.append({
-        "expected": "결함리포트 송부 표에 1차/2차 보고일자",
+        "expected": "결함리포트 송부 표의 차수별 보고일자(있는 만큼)",
         "actual": ", ".join(f"{key}: {value}" for key, value in rounds.items()) or "표 없음(최신 서식)",
-        "passed": (not rounds) or ("1차" in rounds and "2차" in rounds),
+        "passed": True,
         "message": config.get("round_date_message") or "결함리포트 송부 정보 확인 불가",
     })
     # 2) 머리글에 프로젝트번호
@@ -5602,29 +5635,49 @@ def _files_under_folder(folder, files):
 
 
 def _any_file_name_contains(files, keyword):
-    needle = str(keyword or "")
-    if not needle:
+    """파일명에 keyword(문자열 또는 문자열 목록) 중 하나라도 포함되면 True.
+
+    목록으로 주면 OR 매칭(하나라도 포함되면 통과)이다. 0바이트 파일도
+    이름만 맞으면 그대로 인정한다(내용까지 확인하지 않음).
+    """
+    needles = [keyword] if isinstance(keyword, str) else list(keyword or [])
+    needles = [str(needle or "").strip() for needle in needles if str(needle or "").strip()]
+    if not needles:
         return False
-    return any(needle in str(file_info.name or "") for file_info in (files or []))
+    return any(
+        needle in str(file_info.name or "")
+        for file_info in (files or [])
+        for needle in needles
+    )
+
+
+def _exception_words_text(keyword):
+    """_any_file_name_contains 용 예외 단어를 메시지에 쓸 문자열로 만든다."""
+    needles = [keyword] if isinstance(keyword, str) else list(keyword or [])
+    needles = [str(needle or "").strip() for needle in needles if str(needle or "").strip()]
+    return "/".join(needles)
 
 
 def _run_folder_check(folders, file_folders, folder_check, files=None):
     keyword = str(folder_check.get("keyword") or "").strip()
     failure_message = str(folder_check.get("failure_message") or "폴더 구조 확인 불가")
-    # 하위 폴더가 없을 때 특정 단어가 든 파일이 있으면 통과 처리하는 예외(예: '보안성' 미수행 안내).
-    name_exception = str(folder_check.get("pass_if_file_name_contains") or "").strip()
+    # 특정 단어(문자열 또는 목록, OR 매칭)가 든 파일이 있으면 폴더 구조(폴더
+    # 존재 여부/하위 폴더 개수)와 무관하게 무조건 통과 처리하는 예외
+    # (예: '수행 안 함'/'대상 아님' 안내 파일, 0바이트여도 이름만 맞으면 인정).
+    name_exception = folder_check.get("pass_if_file_name_contains") or ""
+    name_exception_text = _exception_words_text(name_exception)
+    if name_exception and _any_file_name_contains(files, name_exception):
+        return {
+            "keyword": keyword,
+            "folder": "",
+            "passed": True,
+            "message": f"'{name_exception_text}' 포함 파일 존재하여 예외 통과",
+            "actual": f"'{name_exception_text}' 포함 파일 존재",
+        }
+
     # rawdata zip 안 어디에 있든 키워드를 포함한 폴더를 직접 찾는다.
     folder = _find_folder_by_keyword_chain(folders, [keyword]) if keyword else ()
     if not folder:
-        # 폴더 자체가 없어도, 예외 단어가 든 파일이 있으면 통과로 본다.
-        if name_exception and _any_file_name_contains(files, name_exception):
-            return {
-                "keyword": keyword,
-                "folder": "",
-                "passed": True,
-                "message": f"'{name_exception}' 포함 파일 존재하여 예외 통과",
-                "actual": f"'{name_exception}' 포함 파일 존재",
-            }
         return {
             "keyword": keyword,
             "folder": "",
@@ -5680,16 +5733,10 @@ def _run_folder_check(folders, file_folders, folder_check, files=None):
                 "actual": "txt 안내 파일만 존재: " + ", ".join(f.name for f in direct_files[:3]),
             }
 
-    # 예외: 하위 폴더가 없으면 예외 단어가 든 파일 존재 여부로 통과/실패를 판정한다.
+    # 예외 단어 매칭은 함수 맨 위에서 이미 확인했다(매칭됐으면 여기 도달하지
+    # 않고 통과로 반환됨). 하위 폴더가 없는데도 여기까지 왔다는 건 예외 단어도
+    # 없었다는 뜻이므로 실패로 본다.
     if name_exception and not child_folders:
-        if _any_file_name_contains(files, name_exception):
-            return {
-                "keyword": keyword,
-                "folder": "/".join(folder),
-                "passed": True,
-                "message": f"'{name_exception}' 포함 파일 존재하여 예외 통과",
-                "actual": f"'{name_exception}' 포함 파일 존재",
-            }
         return {
             "keyword": keyword,
             "folder": "/".join(folder),
