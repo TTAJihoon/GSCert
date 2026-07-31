@@ -38,6 +38,7 @@ from main.models import (
 )
 from main.views.review.ecm_reference_db import ARTIFACT_REVIEW_COLUMNS
 from main.views.review.ecm_manual_override import (
+    applied_overrides_in_detail,
     apply_manual_override_to_evaluation,
     apply_manual_override_to_result,
     manual_overrides_for_project,
@@ -111,12 +112,15 @@ def run_download_inspection(project, verify_result, file_summary) -> InspectionO
         project,
         [evaluation.rule.code for evaluation in evaluations] + ["temp_file_check"],
     )
-    evaluations = [
-        apply_manual_override_to_evaluation(evaluation, manual_overrides[evaluation.rule.code])
-        if evaluation.rule.code in manual_overrides
-        else evaluation
-        for evaluation in evaluations
-    ]
+    applied_manual_overrides = []
+    updated_evaluations = []
+    for evaluation in evaluations:
+        override = manual_overrides.get(evaluation.rule.code)
+        if override:
+            evaluation = apply_manual_override_to_evaluation(evaluation, override)
+            applied_manual_overrides.extend(applied_overrides_in_detail(evaluation.raw_detail, override))
+        updated_evaluations.append(evaluation)
+    evaluations = updated_evaluations
 
     result_rows = [
         DownloadReviewRuleResult(
@@ -159,11 +163,12 @@ def run_download_inspection(project, verify_result, file_summary) -> InspectionO
     )
     temp_override = manual_overrides.get("temp_file_check")
     if temp_override:
-        apply_manual_override_to_result(result_rows[-1], temp_override)
+        apply_manual_override_to_result(result_rows[-1], temp_override, only_when_failed=True)
+        applied_manual_overrides.extend(applied_overrides_in_detail(result_rows[-1].raw_detail_json, temp_override))
 
     DownloadReviewRuleResult.objects.filter(job_project=project).delete()
     DownloadReviewRuleResult.objects.bulk_create(result_rows)
-    mark_overrides_applied(manual_overrides.values())
+    mark_overrides_applied(applied_manual_overrides)
 
     failed_count = sum(
         1

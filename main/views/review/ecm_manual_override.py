@@ -131,6 +131,8 @@ def apply_manual_override_to_evaluation(evaluation, override):
         return evaluation
 
     if group.rule_override is not None:
+        if _is_pass_status(evaluation.status):
+            return evaluation
         raw_detail = _detail_with_manual_override(
             evaluation.raw_detail or {},
             group.rule_override,
@@ -149,6 +151,7 @@ def apply_manual_override_to_evaluation(evaluation, override):
         group.sub_check_overrides,
         original_status=evaluation.status,
         original_message=evaluation.message,
+        only_when_failed=True,
     )
     if not applied:
         return evaluation
@@ -160,9 +163,12 @@ def apply_manual_override_to_evaluation(evaluation, override):
     )
 
 
-def apply_manual_override_to_result(result, override, *, save=False, sub_check_key=""):
+def apply_manual_override_to_result(result, override, *, save=False, sub_check_key="", only_when_failed=False):
     group = _coerce_override_group(override)
     if not group:
+        return result
+
+    if only_when_failed and _is_pass_status(result.status):
         return result
 
     target_key = normalize_sub_check_key(sub_check_key)
@@ -173,6 +179,7 @@ def apply_manual_override_to_result(result, override, *, save=False, sub_check_k
             {target_key: selected},
             original_status=result.status,
             original_message=result.message,
+            only_when_failed=only_when_failed,
         )
         result.status = _status_from_detail(result.raw_detail_json, result.status)
         result.message = _message_from_detail(result.raw_detail_json, result.message)
@@ -203,11 +210,26 @@ def mark_overrides_applied(overrides):
         DownloadReviewManualOverride.objects.filter(id__in=ids).update(last_applied_at=timezone.now())
 
 
+def applied_overrides_in_detail(raw_detail, override):
+    group = _coerce_override_group(override)
+    if not group:
+        return []
+    payload_ids = _manual_override_payload_ids(raw_detail)
+    if not payload_ids:
+        return []
+    return [
+        item for item in group.all_overrides()
+        if str(getattr(item, "id", "") or "") in payload_ids
+    ]
+
+
 def manual_override_public(raw_detail):
     if not isinstance(raw_detail, dict):
         return None
     value = raw_detail.get(MANUAL_OVERRIDE_KEY)
     if not isinstance(value, dict) or not value.get("applied"):
+        return None
+    if _is_pass_status(value.get("original_status")):
         return None
     return {
         "applied": True,
@@ -261,7 +283,7 @@ def _detail_with_manual_override(raw_detail, override, *, original_status, origi
     return detail
 
 
-def _detail_with_sub_check_overrides(raw_detail, overrides_by_key, *, original_status, original_message):
+def _detail_with_sub_check_overrides(raw_detail, overrides_by_key, *, original_status, original_message, only_when_failed=False):
     detail = dict(raw_detail) if isinstance(raw_detail, dict) else {}
     sub_checks = detail.get("sub_checks")
     if not isinstance(sub_checks, list):
@@ -290,6 +312,9 @@ def _detail_with_sub_check_overrides(raw_detail, overrides_by_key, *, original_s
         row["sub_check_key"] = key
         override = normalized_overrides.get(key)
         if override is not None:
+            if only_when_failed and not _sub_check_needs_manual_override(row, original_status):
+                updated.append(row)
+                continue
             existing = row.get(MANUAL_OVERRIDE_KEY)
             row_original_status = _original_status_for_sub_check(row, existing, original_status)
             row_original_message = _original_message_for_sub_check(row, existing, original_message)
@@ -409,6 +434,47 @@ def _status_from_detail(raw_detail, fallback):
     if any(value is False for value in values):
         return DownloadReviewRuleStatus.FAIL
     return fallback
+
+
+def _manual_override_payload_ids(raw_detail):
+    if not isinstance(raw_detail, dict):
+        return set()
+
+    payloads = []
+    root_payload = raw_detail.get(MANUAL_OVERRIDE_KEY)
+    if isinstance(root_payload, dict):
+        payloads.append(root_payload)
+
+    manual_overrides = raw_detail.get(MANUAL_OVERRIDES_KEY)
+    if isinstance(manual_overrides, dict):
+        payloads.extend(item for item in manual_overrides.values() if isinstance(item, dict))
+
+    sub_checks = raw_detail.get("sub_checks")
+    if isinstance(sub_checks, list):
+        for item in sub_checks:
+            if not isinstance(item, dict):
+                continue
+            payload = item.get(MANUAL_OVERRIDE_KEY)
+            if isinstance(payload, dict):
+                payloads.append(payload)
+
+    return {
+        str(payload.get("id") or "")
+        for payload in payloads
+        if payload.get("applied") and str(payload.get("id") or "")
+    }
+
+
+def _sub_check_needs_manual_override(row, fallback_status):
+    if row.get("passed") is False:
+        return True
+    if row.get("passed") is True:
+        return False
+    return not _is_pass_status(fallback_status)
+
+
+def _is_pass_status(value):
+    return str(value or "").strip().lower() == str(DownloadReviewRuleStatus.PASS)
 
 
 def _message_from_detail(raw_detail, fallback):

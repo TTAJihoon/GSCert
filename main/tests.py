@@ -1928,6 +1928,39 @@ class DownloadReviewManualOverrideTests(TestCase):
         self.assertFalse(updated.raw_detail["sub_checks"][1]["passed"])
         self.assertNotIn("manual_override", updated.raw_detail["sub_checks"][1])
 
+    def test_sub_check_manual_pass_is_hidden_when_auto_check_passes(self):
+        _job, project = self._make_project()
+        DownloadReviewManualOverride.objects.create(
+            center_code="bundang",
+            project_number=project.project_number,
+            rule_code="required-contract",
+            sub_check_key="sub-1",
+            rule_name="Contract - A",
+            memo="A was verified manually",
+        )
+        evaluation = engine.RuleEvaluation(
+            rule=SimpleNamespace(code="required-contract", name="Contract"),
+            sequence=1,
+            status=DownloadReviewRuleStatus.FAIL,
+            expected="A / B",
+            actual="A ok / bad B",
+            message="B failed",
+            raw_detail={
+                "sub_checks": [
+                    {"expected": "[A] A", "actual": "A ok", "passed": True, "message": "A passed"},
+                    {"expected": "[B] B", "actual": "bad B", "passed": False, "message": "B failed"},
+                ],
+            },
+        )
+
+        overrides = manual_overrides_for_project(project, ["required-contract"])
+        updated = apply_manual_override_to_evaluation(evaluation, overrides["required-contract"])
+
+        self.assertEqual(updated.status, DownloadReviewRuleStatus.FAIL)
+        self.assertTrue(updated.raw_detail["sub_checks"][0]["passed"])
+        self.assertNotIn("manual_override", updated.raw_detail["sub_checks"][0])
+        self.assertFalse(updated.raw_detail["sub_checks"][1]["passed"])
+
     def test_manual_pass_persists_across_next_inspection(self):
         self._seed_rule()
         DownloadReviewManualOverride.objects.create(
@@ -1955,6 +1988,35 @@ class DownloadReviewManualOverrideTests(TestCase):
         self.assertEqual(result.status, DownloadReviewRuleStatus.PASS)
         self.assertEqual(result.raw_detail_json["manual_override"]["memo"], "ECM 외부 대조로 계약서를 확인함")
         self.assertIsNotNone(override.last_applied_at)
+
+    def test_manual_pass_is_hidden_when_next_inspection_passes_automatically(self):
+        self._seed_rule()
+        DownloadReviewManualOverride.objects.create(
+            center_code="bundang",
+            project_number="TTA-26-00020",
+            rule_code="required-contract",
+            rule_name="계약서",
+            memo="ECM 외부 대조로 계약서를 확인함",
+        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            download_root = Path(tmpdir)
+            project_dir = download_root / "TTA-26-00020"
+            project_dir.mkdir(parents=True)
+            (project_dir / "TTA-26-00020 계약서.pdf").write_bytes(b"contract")
+            _job, project = self._make_project(download_dir=str(project_dir))
+            verify_result = verify_downloaded_files(str(project_dir), project.project_number)
+
+            with self.settings(AGENT_DOWNLOAD_BASE_DIR=download_root):
+                outcome = run_download_inspection(project, verify_result, {})
+
+        result = DownloadReviewRuleResult.objects.get(job_project=project, rule_code="required-contract")
+        override = DownloadReviewManualOverride.objects.get(project_number=project.project_number, rule_code="required-contract")
+
+        self.assertEqual(outcome.failed_count, 0)
+        self.assertEqual(outcome.artifact_results["계약서"], "O")
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS)
+        self.assertNotIn("manual_override", result.raw_detail_json)
+        self.assertIsNone(override.last_applied_at)
 
     def _seed_rule(self):
         DownloadReviewRule.objects.create(

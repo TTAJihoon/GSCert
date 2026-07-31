@@ -19,6 +19,7 @@
 
 - 수동 적합 처리 메모는 `inspection_manual_override` 테이블에 저장하며, 이 테이블은 PostgreSQL `reference` DB 소속이다.
 - 수동 적합 결과는 다음 재점검에서도 센터/프로젝트번호/규칙코드/세부항목 키 기준으로 재적용되고, UI에서는 해당 세부항목만 보라색 정상 배지와 메모로 표시된다. 기존 규칙 단위 override(`sub_check_key=""`)는 호환용으로 규칙 전체에 적용된다.
+- 단, 재점검에서 자동 규칙 자체가 적합을 내면 저장된 수동 적합 메모는 보존하되 결과에는 적용하지 않는다. 이 경우 UI는 보라색이 아니라 초록색 정상 배지를 표시한다.
 - 테스트케이스처럼 선행 하위검사가 실패해 후속 하위검사를 실제 수행할 수 없는 경우에도 후속 세부항목은 부적합 placeholder로 표시해 결과 세부항목 수를 유지한다.
 - PostgreSQL `inspection_manual_override` 테이블이 아직 없을 때도 SQLSTATE `42P01` 또는 한국어 `릴레이션이 없습니다` 오류를 감지해 현재 요청은 로그 fallback으로 처리한다. 단, 운영 지속 저장을 위해 reference migration은 반드시 실행한다.
 - 전체 산출물 다운로드는 `GET /api/projects/<프로젝트번호>/full-documents-download/?cert_date=...` attachment 응답을 직접 열어, ZIP 전체 생성 완료를 기다리지 않고 다운로드를 시작한다.
