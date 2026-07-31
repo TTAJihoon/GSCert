@@ -10,7 +10,7 @@ from unittest.mock import patch
 from xml.sax.saxutils import escape
 
 from django.core.management import call_command
-from django.db.utils import DatabaseError, OperationalError
+from django.db.utils import DatabaseError, OperationalError, ProgrammingError
 from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
@@ -1661,6 +1661,57 @@ class DownloadReviewManualOverrideRobustnessTests(TestCase):
         self.assertFalse(DownloadReviewManualOverride.objects.exists())
         self.assertEqual(overrides["artifact_17"].memo, "제출자 확인")
 
+    def test_manual_pass_succeeds_when_postgres_reports_missing_override_table_in_korean(self):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00032"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            center_code="sangam",
+            project_number="TTA-26-00032",
+            review_status=DownloadReviewProjectReviewStatus.NEEDS_FIX,
+        )
+        result = DownloadReviewRuleResult.objects.create(
+            job_project=project,
+            rule_code="artifact_09",
+            rule_name="테스트케이스",
+            sequence=9,
+            status=DownloadReviewRuleStatus.FAIL,
+            expected="작성일 일치",
+            actual="작성일 불일치",
+            message="테스트케이스 작성일 불일치",
+        )
+
+        with self.assertLogs("main.views.review.ecm_download_review_jobs", level="ERROR"):
+            with patch(
+                "main.views.review.ecm_download_review_jobs.DownloadReviewManualOverride.objects.update_or_create",
+                side_effect=ProgrammingError('"inspection_manual_override" 이름의 릴레이션(relation)이 없습니다'),
+            ):
+                response = rule_result_manual_pass(
+                    self.factory.post(
+                        f"/api/rule-results/{result.id}/manual-pass/",
+                        data=json.dumps({"memo": "인증위 제출 엑셀을 잘못 기입함. 실제 날짜는 맞음."}),
+                        content_type="application/json",
+                    ),
+                    result.id,
+                )
+
+        data = json.loads(response.content.decode("utf-8"))
+        result.refresh_from_db()
+        overrides = manual_overrides_for_project(project, ["artifact_09"])
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(data["success"])
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS)
+        self.assertEqual(
+            result.raw_detail_json["manual_override"]["memo"],
+            "인증위 제출 엑셀을 잘못 기입함. 실제 날짜는 맞음.",
+        )
+        self.assertFalse(DownloadReviewManualOverride.objects.exists())
+        self.assertEqual(overrides["artifact_09"].memo, "인증위 제출 엑셀을 잘못 기입함. 실제 날짜는 맞음.")
+
 
 class DownloadReviewManualOverrideTests(TestCase):
     databases = {"default", "workflow", "reference"}
@@ -1783,14 +1834,15 @@ class DownloadReviewManualOverrideTests(TestCase):
         )
 
 
+@override_settings(DOWNLOAD_REVIEW_DEFAULT_CENTER="bundang")
 class DownloadReviewJobsApiTests(TestCase):
     databases = {"default", "workflow", "reference"}
 
     def setUp(self):
         self.factory = RequestFactory()
         self.temp_dir = tempfile.TemporaryDirectory()
-        # 이 클래스의 요청들은 center 를 지정하지 않으므로
-        # DOWNLOAD_REVIEW_DEFAULT_CENTER(현재 'bundang')로 해석된다.
+        # 이 클래스의 요청들은 center 를 지정하지 않으므로 fixture 센터인 bundang을
+        # 기본 센터로 고정한다.
         self._seed_reference_projects(
             "bundang",
             [

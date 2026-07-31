@@ -15,6 +15,7 @@
   .\.venv\Scripts\python.exe manage.py migrate --database=reference --settings=myproject.settings
   .\.venv\Scripts\python.exe manage.py migrate_manual_overrides_to_reference --settings=myproject.settings
   ```
+- PostgreSQL 테이블이 아직 없는 서버에서 `UndefinedTable`, SQLSTATE `42P01`, 또는 한국어 `릴레이션이 없습니다` 오류가 발생해도 수동 적합 요청은 로그 fallback으로 현재 결과에 적용한다. 이 fallback은 임시 방어이며, 재점검 간 안정적인 공유 저장을 위해서는 위 reference migration을 실행해야 한다.
 - 수동 적합 저장 뒤 프로젝트 상태 재계산, 기준 DB write-back, 로그 기록, 결과 재조회가 일부 실패해도 저장 성공 자체가 되돌아가지 않도록 분리했다.
 
 ## 결과 UI

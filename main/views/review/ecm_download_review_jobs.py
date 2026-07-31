@@ -876,14 +876,32 @@ def _is_sqlite_locked_error(exc):
 
 def _is_manual_override_storage_unavailable(exc):
     message = str(exc).lower()
+    cause = getattr(exc, "__cause__", None)
+    cause_message = str(cause).lower() if cause else ""
+    combined_message = f"{message} {cause_message}"
+    if "inspection_manual_override" not in combined_message:
+        return False
+
+    sqlstate = str(getattr(cause, "sqlstate", "") or getattr(cause, "pgcode", "") or "").lower()
+    cause_name = cause.__class__.__name__.lower() if cause else ""
+    if sqlstate == "42p01" or "undefinedtable" in cause_name:
+        return True
+
     return (
-        "inspection_manual_override" in message
-        and (
-            "no such table" in message
-            or "no such column" in message
-            or "has no column" in message
-            or "does not exist" in message
-            or "undefinedtable" in message
+        "no such table" in combined_message
+        or "no such column" in combined_message
+        or "has no column" in combined_message
+        or "does not exist" in combined_message
+        or "undefinedtable" in combined_message
+        or "존재하지" in combined_message
+        or (
+            "없습니다" in combined_message
+            and (
+                "릴레이션" in combined_message
+                or "relation" in combined_message
+                or "테이블" in combined_message
+                or "table" in combined_message
+            )
         )
     )
 
