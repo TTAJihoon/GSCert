@@ -31,5 +31,10 @@ DATABASE_ROUTERS = [
 ]
 
 REFERENCE_DATABASE_ALIAS = "reference"
-REFERENCE_MODEL_NAMES = {"swdata", "referencecenterpl", "referenceproject"}
+REFERENCE_MODEL_NAMES = {
+    "swdata",
+    "referencecenterpl",
+    "referenceproject",
+    "downloadreviewmanualoverride",
+}
 DOWNLOAD_REVIEW_PROJECT_SOURCE = os.environ.get("DOWNLOAD_REVIEW_PROJECT_SOURCE", "postgres")

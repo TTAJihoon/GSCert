@@ -469,6 +469,7 @@ def rule_result_manual_pass(request, result_id):
         response_payload = mark_rule_result_manual_pass(
             result_id,
             payload.get("memo"),
+            sub_check_key=payload.get("sub_check_key"),
             requested_by=_client_ip(request),
         )
         status = 200

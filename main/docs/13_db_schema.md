@@ -116,8 +116,9 @@ PL(프로젝트 리더) 이름을 센터에 매핑한다. `sync_reference_projec
 
 ### 3.5 `inspection_manual_override` — 수동 적합 처리
 재점검 후 이전 `inspection_result`가 정리되어도 수동 적합 메모가 유지되도록, 결과 FK가 아니라
-`center_code + project_number + rule_code` 키로 PostgreSQL `reference` DB에 저장한다. 같은 키의
-override가 있으면 다음 점검 결과와 관계없이 `pass`로 재적용하고 UI에는 보라색 정상 배지와 메모를 표시한다.
+`center_code + project_number + rule_code + sub_check_key` 키로 PostgreSQL `reference` DB에 저장한다. 같은 키의
+override가 있으면 다음 점검 결과와 관계없이 해당 세부항목만 `pass`로 재적용하고 UI에는 보라색 정상 배지와 메모를 표시한다.
+`sub_check_key=""`인 기존 규칙 단위 override는 호환을 위해 규칙 전체에 적용한다.
 
 | 컬럼 | 타입 | 비고 |
 |---|---|---|
@@ -125,12 +126,13 @@ override가 있으면 다음 점검 결과와 관계없이 `pass`로 재적용�
 | `center_code` | varchar(20), index | 센터 코드 |
 | `project_number` | varchar(32), index | 프로젝트번호 |
 | `rule_code` | varchar(80), index | 규칙 코드 |
+| `sub_check_key` | varchar(80) | 세부항목 키. 규칙 전체 override는 빈 문자열 |
 | `rule_name` | varchar(255) | 표시용 규칙명 |
 | `memo` | text | 수동 적합 처리 사유(필수) |
 | `created_by` | varchar(120) | 요청 IP 등 |
 | `created_at`/`updated_at`/`last_applied_at` | datetime | |
 
-제약: `(center_code, project_number, rule_code)` unique.
+제약: `(center_code, project_number, rule_code, sub_check_key)` unique.
 
 ---
 

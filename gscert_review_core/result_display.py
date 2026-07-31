@@ -22,6 +22,7 @@ class DisplayResultRow:
     rule_code: str
     rule_name: str
     status: str
+    sub_check_key: str
     expected: str
     actual: str
     message: str
@@ -42,6 +43,7 @@ def build_display_rows(results: Iterable[Any]) -> list[DisplayResultRow]:
         sub_checks = _raw_sub_checks(result)
         if sub_checks:
             for sub_index, sub in enumerate(sub_checks, start=1):
+                sub_check_key = _sub_check_key(sub, sub_index)
                 passed = sub.get("passed")
                 status = PASS if passed is True else FAIL if passed is False else _get_text(result, "status")
                 expected_raw = str(sub.get("expected") or "-")
@@ -61,6 +63,7 @@ def build_display_rows(results: Iterable[Any]) -> list[DisplayResultRow]:
                         rule_code=_get_text(result, "rule_code", "code"),
                         rule_name=title,
                         status=status,
+                        sub_check_key=sub_check_key,
                         expected=expected,
                         actual=actual,
                         message=message,
@@ -68,6 +71,7 @@ def build_display_rows(results: Iterable[Any]) -> list[DisplayResultRow]:
                         file_name=_get_text(result, "file_name"),
                         raw_detail={
                             "selected_sub_check": sub,
+                            "sub_check_key": sub_check_key,
                             "parent_rule": base_name,
                             "parent_raw_detail": _raw_detail(result),
                         },
@@ -87,6 +91,7 @@ def build_display_rows(results: Iterable[Any]) -> list[DisplayResultRow]:
                 rule_code=_get_text(result, "rule_code", "code"),
                 rule_name=_get_text(result, "rule_name", "name"),
                 status=status,
+                sub_check_key="",
                 expected=expected,
                 actual=actual,
                 message=message,
@@ -112,6 +117,7 @@ def serialize_display_row(
         "rule_name": row.rule_name,
         "status": row.status,
         "status_label": status_label,
+        "sub_check_key": row.sub_check_key,
         "expected": row.expected,
         "actual": row.actual,
         "message": row.message,
@@ -235,3 +241,11 @@ def _raw_detail(source: Any) -> dict[str, Any]:
 def _raw_sub_checks(source: Any) -> list[dict[str, Any]]:
     sub_checks = _raw_detail(source).get("sub_checks")
     return [item for item in sub_checks if isinstance(item, dict)] if isinstance(sub_checks, list) else []
+
+
+def _sub_check_key(sub_check: dict[str, Any], index: int) -> str:
+    for name in ("sub_check_key", "key", "id"):
+        value = str(sub_check.get(name) or "").strip()
+        if value:
+            return value
+    return f"sub-{index}"

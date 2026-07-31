@@ -9,7 +9,9 @@
 - 수동 적합 처리 API `POST /api/rule-results/<result_id>/manual-pass/`를 추가했다.
 - 사용자가 `정상`이 아닌 결과를 `적합`으로 바꾸려면 메모를 반드시 입력해야 한다.
 - 수동 적합 메모는 `inspection_manual_override`에 저장한다.
-- `inspection_manual_override`는 PostgreSQL `reference` DB에 둔다. 재점검으로 `inspection_result`가 새로 만들어져도 센터/프로젝트번호/규칙코드가 같으면 override를 다시 적용하기 위해서다.
+- `inspection_manual_override`는 PostgreSQL `reference` DB에 둔다. 재점검으로 `inspection_result`가 새로 만들어져도 센터/프로젝트번호/규칙코드/세부항목 키가 같으면 override를 다시 적용하기 위해서다.
+- 세부항목이 있는 규칙은 수동 적합 처리도 세부항목 단위로 저장·적용한다. 예를 들어 19-3만 수동 적합 처리하면 같은 상위 규칙의 19-4는 기존 부적합 상태를 유지한다.
+- 기존 규칙 단위 override(`sub_check_key=""`)는 호환을 위해 규칙 전체에 적용한다.
 - 운영 반영용 migration과 이관 명령을 추가했다.
   ```powershell
   .\.venv\Scripts\python.exe manage.py migrate --database=reference --settings=myproject.settings
@@ -43,6 +45,7 @@
   - 시험계획서 버전 비교는 숫자 버전의 `v`/`ver` 접두사를 무시하고, 문자 버전은 공백과 대소문자를 무시한다.
 - 9-12 비교는 공백과 줄바꿈을 제외하고 비교한다.
 - 10-7 결함리포트 시트 구성 비교는 시트명의 공백을 제거한 뒤 비교한다. 예: `1차 결함리포트`와 `1차결함리포트`는 같은 시트명이다.
+- 테스트케이스 규칙은 파일 없음, 파싱 실패, 시트 없음처럼 선행 조건에서 막히는 경우에도 후속 세부항목을 부적합 placeholder로 채워 결과 세부항목 수를 유지한다.
 - ECM 산출물 파일명 끝의 개정 버전(`v1`, `v1.0`, `v1.1`, `1.1` 등)을 파싱해 중복 후보를 정리한다.
 - 같은 산출물은 major별 최신 minor만 검사한다. 예: `기능리스트 v1.0`과 `기능리스트 v1.1`이 있으면 `v1.1`만 검사한다.
 - 결함리포트는 major 차수별로 최신 minor를 유지한다. 예: `v1.0`, `v1.1`, `v2.0`이면 `v1.1`, `v2.0`을 검사한다.

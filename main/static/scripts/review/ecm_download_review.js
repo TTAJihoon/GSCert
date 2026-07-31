@@ -1531,6 +1531,7 @@ function closeChangeNotePopup() {
 function openManualPassPopup(item) {
   state.manualOverrideTarget = {
     id: item.id,
+    subCheckKey: item.sub_check_key || "",
     ruleName: item.rule_name || "-",
     displayNumber: item.display_number || item.sequence || ""
   };
@@ -1595,7 +1596,7 @@ async function confirmManualPassOverride() {
   try {
     const payload = await requestJson(`/api/rule-results/${encodeURIComponent(target.id)}/manual-pass/`, {
       method: "POST",
-      body: JSON.stringify({ memo })
+      body: JSON.stringify({ memo, sub_check_key: target.subCheckKey || "" })
     });
     closeManualPassPopup();
     updateInspectionModalFromPayload(payload);
@@ -2287,11 +2288,13 @@ function ruleSubChecks(rule) {
   // 1) 백엔드가 명시적으로 sub_checks를 제공하면 그대로 사용한다(각 {expected, actual, passed, message}).
   //    결함리포트(차시별), 시험계획서(항목별) 등이 여기에 해당.
   if (Array.isArray(rd.sub_checks) && rd.sub_checks.length) {
-    return rd.sub_checks.map((sub) => ({
+    return rd.sub_checks.map((sub, index) => ({
       expected: sub.expected !== undefined && sub.expected !== null && sub.expected !== "" ? String(sub.expected) : "-",
       actual: sub.actual !== undefined && sub.actual !== null && sub.actual !== "" ? String(sub.actual) : "-",
       message: sub.message !== undefined && sub.message !== null && sub.message !== "" ? String(sub.message) : "",
       passed: typeof sub.passed === "boolean" ? sub.passed : null,
+      sub_check_key: sub.sub_check_key || sub.key || `sub-${index + 1}`,
+      manual_override: sub.manual_override && sub.manual_override.applied ? sub.manual_override : null,
     }));
   }
 
@@ -2314,6 +2317,7 @@ function ruleSubChecks(rule) {
       actual: actParts[i] !== undefined ? actParts[i] : "-",
       message: "",
       passed: usePerRow ? flags[i] : null,
+      sub_check_key: `sub-${i + 1}`,
     });
   }
   return rows;
@@ -2371,6 +2375,7 @@ function inspectionStatusCell(rule, statusValue) {
         type="button"
         class="status-badge-button manual-pass-note-button"
         data-manual-note-result="${escapeHtml(rule.id || "")}"
+        data-manual-note-sub-key="${escapeHtml(rule.sub_check_key || "")}"
         title="${escapeHtml(manualOverride.memo || "수동 적합 사유")}"
       >${badgeHtml}</button>
     `;
@@ -2381,6 +2386,7 @@ function inspectionStatusCell(rule, statusValue) {
         type="button"
         class="status-badge-button manual-pass-action-button"
         data-manual-pass-result="${escapeHtml(rule.id)}"
+        data-manual-pass-sub-key="${escapeHtml(rule.sub_check_key || "")}"
         title="사유를 입력하고 수동으로 정상 처리"
       >${badgeHtml}</button>
     `;
@@ -2451,9 +2457,14 @@ function renderInspectionSubCheckRows(rule, subChecks) {
   const perRowStatus = subChecks.every((sub) => typeof sub.passed === "boolean");
   return subChecks.map((sub, index) => {
     const mismatch = sub.passed === false;
+    const subRule = {
+      ...rule,
+      sub_check_key: sub.sub_check_key || `sub-${index + 1}`,
+      manual_override: sub.manual_override || rule.manual_override || null
+    };
     const statusCell = perRowStatus
-      ? `<td>${inspectionStatusCell(rule, sub.passed ? "정상" : "부적합")}</td>`
-      : (index === 0 ? `<td rowspan="${rowCount}">${inspectionStatusCell(rule, rule.status_label || rule.status || "-")}</td>` : "");
+      ? `<td>${inspectionStatusCell(subRule, sub.passed ? "정상" : "부적합")}</td>`
+      : (index === 0 ? `<td rowspan="${rowCount}">${inspectionStatusCell(subRule, rule.status_label || rule.status || "-")}</td>` : "");
     return `
       <tr${mismatch ? ' class="subcheck-row-mismatch"' : ""}>
         ${index === 0 ? `<td rowspan="${rowCount}">${escapeHtml(rule.display_number || rule.sequence || "-")}</td>` : ""}
@@ -2544,25 +2555,41 @@ function refreshInspectionTable() {
 function bindInspectionStatusActions() {
   document.querySelectorAll("[data-manual-pass-result]").forEach((button) => {
     button.addEventListener("click", () => {
-      const item = findInspectionItemByResultId(button.dataset.manualPassResult);
+      const item = findInspectionItemByResultId(
+        button.dataset.manualPassResult,
+        button.dataset.manualPassSubKey || ""
+      );
       if (item) openManualPassPopup(item);
     });
   });
   document.querySelectorAll("[data-manual-note-result]").forEach((button) => {
     button.addEventListener("click", () => {
-      const item = findInspectionItemByResultId(button.dataset.manualNoteResult);
+      const item = findInspectionItemByResultId(
+        button.dataset.manualNoteResult,
+        button.dataset.manualNoteSubKey || ""
+      );
       if (item) openManualPassNotePopup(item);
     });
   });
 }
 
-function findInspectionItemByResultId(resultId) {
+function findInspectionItemByResultId(resultId, subCheckKey = "") {
   const id = String(resultId || "");
+  const key = String(subCheckKey || "");
+  const sameResult = (item) => String(item.id || "") === id;
+  const sameSubCheck = (item) => String(item.sub_check_key || "") === key;
+  if (key) {
+    return (
+      state.inspectionItems.find((item) => sameResult(item) && sameSubCheck(item))
+      || state.inspectionRuleItems.find((item) => sameResult(item) && sameSubCheck(item))
+      || null
+    );
+  }
   return (
-    state.inspectionItems.find((item) => String(item.id || "") === id && manualOverrideOf(item))
-    || state.inspectionRuleItems.find((item) => String(item.id || "") === id && manualOverrideOf(item))
-    || state.inspectionItems.find((item) => String(item.id || "") === id)
-    || state.inspectionRuleItems.find((item) => String(item.id || "") === id)
+    state.inspectionItems.find((item) => sameResult(item) && manualOverrideOf(item))
+    || state.inspectionRuleItems.find((item) => sameResult(item) && manualOverrideOf(item))
+    || state.inspectionItems.find((item) => sameResult(item))
+    || state.inspectionRuleItems.find((item) => sameResult(item))
     || null
   );
 }

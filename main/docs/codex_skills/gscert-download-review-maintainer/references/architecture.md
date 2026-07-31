@@ -24,7 +24,7 @@
 - `default` SQLite (`db.sqlite3`): Django default tables and legacy `Job`.
 - legacy `ecmlist*.db`: compatibility path when `DOWNLOAD_REVIEW_PROJECT_SOURCE` is not `postgres`.
 
-`inspection_rule` and `inspection_result` live in different DBs, so results identify rules with denormalized `rule_code` and `rule_name`. Manual pass overrides are stored in `inspection_manual_override` by `center_code + project_number + rule_code`, so they survive result-row replacement during reinspection.
+`inspection_rule` and `inspection_result` live in different DBs, so results identify rules with denormalized `rule_code` and `rule_name`. Manual pass overrides are stored in `inspection_manual_override` by `center_code + project_number + rule_code + sub_check_key`, so they survive result-row replacement during reinspection while still applying to a single detail row when needed.
 
 ## Center Behavior
 

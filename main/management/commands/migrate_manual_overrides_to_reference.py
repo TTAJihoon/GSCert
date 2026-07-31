@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 from django.core.management.base import BaseCommand, CommandError
 from django.db import connections
 from django.db.utils import DatabaseError
@@ -37,6 +39,7 @@ class Command(BaseCommand):
                 center_code=row.center_code,
                 project_number=row.project_number,
                 rule_code=row.rule_code,
+                sub_check_key=getattr(row, "sub_check_key", ""),
                 defaults={
                     "id": row.id,
                     "rule_name": row.rule_name,
@@ -56,8 +59,46 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(f"{action} {copied} manual pass override(s)."))
 
     def _source_rows(self, source):
+        connection = connections[source]
+        table = DownloadReviewManualOverride._meta.db_table
+        table_names = connection.introspection.table_names()
+        if table not in table_names:
+            self.stdout.write("Source manual pass override table does not exist; nothing to migrate.")
+            return []
+
         try:
-            return list(DownloadReviewManualOverride.objects.using(source).order_by("created_at", "id"))
+            with connection.cursor() as cursor:
+                columns = {column.name for column in connection.introspection.get_table_description(cursor, table)}
+                selected_columns = [
+                    "id",
+                    "center_code",
+                    "project_number",
+                    "rule_code",
+                    "sub_check_key",
+                    "rule_name",
+                    "memo",
+                    "created_by",
+                    "created_at",
+                    "updated_at",
+                    "last_applied_at",
+                ]
+                select_sql = []
+                quote = connection.ops.quote_name
+                for column in selected_columns:
+                    if column in columns:
+                        select_sql.append(quote(column))
+                    elif column == "sub_check_key":
+                        select_sql.append("'' AS sub_check_key")
+                    else:
+                        select_sql.append(f"NULL AS {quote(column)}")
+                cursor.execute(
+                    f"SELECT {', '.join(select_sql)} FROM {quote(table)} ORDER BY {quote('created_at')}, {quote('id')}"
+                )
+                rows = cursor.fetchall()
+            return [
+                SimpleNamespace(**dict(zip(selected_columns, row)))
+                for row in rows
+            ]
         except DatabaseError as exc:
             message = str(exc).lower()
             if "inspection_manual_override" in message and (

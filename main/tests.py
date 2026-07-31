@@ -38,7 +38,7 @@ from main.views.review.ecm_reference_db import (
     write_project_review_result,
 )
 from main.views.review.ecm_download_review_worker import run_worker_once
-from main.views.review.ecm_manual_override import manual_overrides_for_project
+from main.views.review.ecm_manual_override import apply_manual_override_to_evaluation, manual_overrides_for_project
 from main.views.review.ecm_download_review_inspection import (
     ExcelSheet,
     ExcelWorkbook,
@@ -747,6 +747,61 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
         self.assertTrue(result["passed"], result)
         self.assertEqual(result["details"][0]["missing_sheets"], [])
         self.assertEqual(result["details"][0]["extra_sheets"], [])
+
+    def test_test_case_missing_file_emits_all_expected_sub_checks(self):
+        rule = SimpleNamespace(
+            config_json={
+                "filename_keywords": ["testcase", "{project_number}"],
+                "extensions": [".xlsx"],
+                "exact_count": 1,
+                "forbidden_footer_terms": [{"text": "TPG"}],
+                "forbidden_header_terms": [{"text": "TTA"}],
+                "required_footer_terms": [{"text": "TTA"}],
+                "title_text": "{project_number} testcase",
+                "author_label": "author",
+                "reviewer_label": "reviewer:",
+                "reviewer_expected": "reviewer",
+                "date_label": "date",
+                "result_header": "result",
+            },
+            target_file_type="any",
+            target_file_pattern="",
+        )
+        context = engine.RuleContext(
+            project_number="TTA-26-00010",
+            product_raw="",
+            product="",
+            version="",
+            company="",
+            pl="PL",
+            wd="",
+            start_date="2026.05.01",
+            end_date="2026.05.02",
+            year="2026",
+            request_date="",
+            contract_date="",
+            certification_committee_date="",
+            derived_variables={"잔여결함수": 2},
+            center="bundang",
+        )
+        verify_result = SimpleNamespace(files=[])
+
+        evaluation = engine._evaluate_test_case_check(
+            rule,
+            1,
+            SimpleNamespace(project_number="TTA-26-00010"),
+            context,
+            verify_result,
+        )
+
+        sub_checks = evaluation.raw_detail["sub_checks"]
+        self.assertEqual(evaluation.status, DownloadReviewRuleStatus.FAIL)
+        self.assertEqual(len(sub_checks), 8)
+        self.assertTrue(all(item.get("passed") is False for item in sub_checks))
+        self.assertEqual(sub_checks[0]["sub_check_key"], "sub-1")
+        self.assertEqual(sub_checks[-1]["sub_check_key"], "sub-8")
+        self.assertTrue(sub_checks[-1]["blocked_by_prerequisite"])
+        self.assertNotIn("_expected_sub_check_templates", evaluation.raw_detail)
 
     def test_artifact_revision_selection_uses_latest_minor_across_folders(self):
         rule = SimpleNamespace(
@@ -1762,6 +1817,92 @@ class DownloadReviewManualOverrideTests(TestCase):
         self.assertEqual(data["items"][0]["manual_override"]["memo"], "원본 파일을 별도 확인해 정상으로 판단")
         self.assertEqual(data["display_items"][0]["status"], DownloadReviewRuleStatus.PASS)
         self.assertEqual(data["display_items"][0]["manual_override"]["memo"], "원본 파일을 별도 확인해 정상으로 판단")
+
+    def test_manual_pass_updates_only_selected_sub_check(self):
+        self._seed_rule()
+        _job, project = self._make_project()
+        result = DownloadReviewRuleResult.objects.create(
+            job_project=project,
+            rule_code="required-contract",
+            rule_name="Contract",
+            sequence=1,
+            status=DownloadReviewRuleStatus.FAIL,
+            expected="A / B",
+            actual="bad A / bad B",
+            message="A failed",
+            raw_detail_json={
+                "sub_checks": [
+                    {"expected": "[A] A", "actual": "bad A", "passed": False, "message": "A failed"},
+                    {"expected": "[B] B", "actual": "bad B", "passed": False, "message": "B failed"},
+                ],
+            },
+        )
+
+        response = rule_result_manual_pass(
+            self.factory.post(
+                f"/api/rule-results/{result.id}/manual-pass/",
+                data=json.dumps({"memo": "A was verified manually", "sub_check_key": "sub-1"}),
+                content_type="application/json",
+            ),
+            result.id,
+        )
+        data = json.loads(response.content.decode("utf-8"))
+        result.refresh_from_db()
+        project.refresh_from_db()
+
+        sub_checks = result.raw_detail_json["sub_checks"]
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(result.status, DownloadReviewRuleStatus.FAIL)
+        self.assertEqual(project.review_status, DownloadReviewProjectReviewStatus.NEEDS_FIX)
+        self.assertTrue(sub_checks[0]["passed"])
+        self.assertEqual(sub_checks[0]["manual_override"]["sub_check_key"], "sub-1")
+        self.assertFalse(sub_checks[1]["passed"])
+        self.assertNotIn("manual_override", sub_checks[1])
+        self.assertTrue(
+            DownloadReviewManualOverride.objects.filter(
+                project_number=project.project_number,
+                rule_code="required-contract",
+                sub_check_key="sub-1",
+            ).exists()
+        )
+        self.assertEqual(data["display_items"][0]["status"], DownloadReviewRuleStatus.PASS)
+        self.assertEqual(data["display_items"][0]["manual_override"]["sub_check_key"], "sub-1")
+        self.assertEqual(data["display_items"][1]["status"], DownloadReviewRuleStatus.FAIL)
+        self.assertIsNone(data["display_items"][1]["manual_override"])
+
+    def test_sub_check_manual_pass_persists_only_for_matching_sub_check(self):
+        _job, project = self._make_project()
+        DownloadReviewManualOverride.objects.create(
+            center_code="bundang",
+            project_number=project.project_number,
+            rule_code="required-contract",
+            sub_check_key="sub-1",
+            rule_name="Contract - A",
+            memo="A was verified manually",
+        )
+        evaluation = engine.RuleEvaluation(
+            rule=SimpleNamespace(code="required-contract", name="Contract"),
+            sequence=1,
+            status=DownloadReviewRuleStatus.FAIL,
+            expected="A / B",
+            actual="bad A / bad B",
+            message="A failed",
+            raw_detail={
+                "sub_checks": [
+                    {"expected": "[A] A", "actual": "bad A", "passed": False, "message": "A failed"},
+                    {"expected": "[B] B", "actual": "bad B", "passed": False, "message": "B failed"},
+                ],
+            },
+        )
+
+        overrides = manual_overrides_for_project(project, ["required-contract"])
+        updated = apply_manual_override_to_evaluation(evaluation, overrides["required-contract"])
+
+        self.assertEqual(updated.status, DownloadReviewRuleStatus.FAIL)
+        self.assertTrue(updated.raw_detail["sub_checks"][0]["passed"])
+        self.assertEqual(updated.raw_detail["sub_checks"][0]["manual_override"]["memo"], "A was verified manually")
+        self.assertFalse(updated.raw_detail["sub_checks"][1]["passed"])
+        self.assertNotIn("manual_override", updated.raw_detail["sub_checks"][1])
 
     def test_manual_pass_persists_across_next_inspection(self):
         self._seed_rule()

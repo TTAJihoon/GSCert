@@ -38,6 +38,8 @@ from main.views.review.ecm_manual_override import (
     apply_manual_override_to_result,
     manual_override_public,
     mark_overrides_applied,
+    normalize_sub_check_key,
+    sub_check_key_for_index,
 )
 from main.views.review.ecm_reference_db import (
     ARTIFACT_REVIEW_COLUMNS,
@@ -756,7 +758,7 @@ def get_project_results_payload(job_project_id):
     }
 
 
-def mark_rule_result_manual_pass(result_id, memo, *, requested_by=""):
+def mark_rule_result_manual_pass(result_id, memo, *, sub_check_key="", requested_by=""):
     memo = str(memo or "").strip()
     if not memo:
         raise DownloadReviewJobRequestError("수동 적합 처리 사유를 입력해야 합니다.")
@@ -771,7 +773,8 @@ def mark_rule_result_manual_pass(result_id, memo, *, requested_by=""):
         if not result.rule_code:
             raise DownloadReviewJobRequestError("규칙 코드가 없는 결과는 수동 적합 처리할 수 없습니다.")
 
-        context = _manual_pass_context(result, memo, requested_by)
+        target_key = _manual_pass_target_key(result, sub_check_key)
+        context = _manual_pass_context(result, memo, requested_by, target_key)
 
     override, override_persisted = _manual_override_for_context(context)
 
@@ -781,7 +784,12 @@ def mark_rule_result_manual_pass(result_id, memo, *, requested_by=""):
         except DownloadReviewRuleResult.DoesNotExist as exc:
             raise DownloadReviewNotFoundError("점검 결과를 찾을 수 없습니다.") from exc
 
-        apply_manual_override_to_result(result, override, save=True)
+        apply_manual_override_to_result(
+            result,
+            override,
+            save=True,
+            sub_check_key=context["sub_check_key"],
+        )
         if override_persisted:
             _safe_mark_overrides_applied([override])
 
@@ -797,6 +805,7 @@ def mark_rule_result_manual_pass(result_id, memo, *, requested_by=""):
             "project_number": context.get("project_number"),
             "rule_code": context.get("rule_code"),
             "rule_name": context.get("rule_name"),
+            "sub_check_key": context.get("sub_check_key"),
             "memo": context.get("memo"),
             "requested_by": context.get("requested_by"),
             "override_persisted": override_persisted,
@@ -815,7 +824,32 @@ def _get_rule_result_for_manual_pass(result_id, *, for_update=False):
     return queryset.get(id=result_id)
 
 
-def _manual_pass_context(result, memo, requested_by):
+def _manual_pass_target_key(result, sub_check_key):
+    target_key = normalize_sub_check_key(sub_check_key)
+    raw_detail = result.raw_detail_json if isinstance(result.raw_detail_json, dict) else {}
+    sub_checks = raw_detail.get("sub_checks")
+    if not isinstance(sub_checks, list) or not sub_checks:
+        return ""
+
+    available = {
+        sub_check_key_for_index(item, index)
+        for index, item in enumerate(sub_checks, start=1)
+        if isinstance(item, dict)
+    }
+    if not target_key:
+        if len(available) > 1:
+            raise DownloadReviewJobRequestError(
+                "세부항목이 여러 개인 결과는 세부항목 식별자가 필요합니다. 페이지를 새로고침한 뒤 다시 시도해 주세요."
+            )
+        return next(iter(available), "")
+    if target_key not in available:
+        raise DownloadReviewJobRequestError(
+            "선택한 세부항목을 결과에서 찾을 수 없습니다. 페이지를 새로고침한 뒤 다시 시도해 주세요."
+        )
+    return target_key
+
+
+def _manual_pass_context(result, memo, requested_by, sub_check_key=""):
     project = result.job_project
     return {
         "job_id": project.job_id,
@@ -823,10 +857,20 @@ def _manual_pass_context(result, memo, requested_by):
         "center_code": str(project.center_code or "").strip(),
         "project_number": str(project.project_number or "").strip(),
         "rule_code": str(result.rule_code or "").strip(),
-        "rule_name": result.rule_name,
+        "rule_name": _manual_pass_rule_name(result, sub_check_key),
+        "sub_check_key": sub_check_key,
         "memo": memo,
         "requested_by": requested_by or "",
     }
+
+
+def _manual_pass_rule_name(result, sub_check_key):
+    if not sub_check_key:
+        return result.rule_name
+    for row in build_display_rows([result]):
+        if row.sub_check_key == sub_check_key:
+            return row.rule_name
+    return result.rule_name
 
 
 def _manual_override_for_context(context):
@@ -836,6 +880,7 @@ def _manual_override_for_context(context):
                 center_code=context["center_code"],
                 project_number=context["project_number"],
                 rule_code=context["rule_code"],
+                sub_check_key=context["sub_check_key"],
                 defaults={
                     "rule_name": context["rule_name"],
                     "memo": context["memo"],
@@ -862,10 +907,14 @@ def _manual_override_for_context(context):
 
 def _ephemeral_manual_override(context):
     return SimpleNamespace(
-        id=f"log:{context['center_code']}:{context['project_number']}:{context['rule_code']}",
+        id=(
+            f"log:{context['center_code']}:{context['project_number']}:"
+            f"{context['rule_code']}:{context.get('sub_check_key') or 'rule'}"
+        ),
         memo=context["memo"],
         rule_code=context["rule_code"],
         rule_name=context["rule_name"],
+        sub_check_key=context.get("sub_check_key", ""),
         updated_at=timezone.now(),
     )
 
@@ -884,7 +933,7 @@ def _is_manual_override_storage_unavailable(exc):
 
     sqlstate = str(getattr(cause, "sqlstate", "") or getattr(cause, "pgcode", "") or "").lower()
     cause_name = cause.__class__.__name__.lower() if cause else ""
-    if sqlstate == "42p01" or "undefinedtable" in cause_name:
+    if sqlstate in {"42p01", "42703"} or "undefinedtable" in cause_name or "undefinedcolumn" in cause_name:
         return True
 
     return (
@@ -1429,11 +1478,28 @@ def _display_items_for_results(results, serialized_items=None):
             "id": parent.get("id", ""),
             "job_project_id": parent.get("job_project_id", ""),
             "artifacts": parent.get("artifacts", []),
-            "manual_override": parent.get("manual_override"),
+            "manual_override": _display_row_manual_override(row, parent),
             "created_at": parent.get("created_at", ""),
         })
         display_items.append(item)
     return display_items
+
+
+def _display_row_manual_override(row, parent):
+    raw_detail = row.raw_detail if isinstance(row.raw_detail, dict) else {}
+    selected = raw_detail.get("selected_sub_check")
+    manual_override = manual_override_public(selected) if isinstance(selected, dict) else None
+    if manual_override:
+        return manual_override
+
+    parent_raw = raw_detail.get("parent_raw_detail")
+    manual_map = parent_raw.get("manual_overrides") if isinstance(parent_raw, dict) else None
+    if isinstance(manual_map, dict) and row.sub_check_key:
+        mapped = manual_override_public({"manual_override": manual_map.get(row.sub_check_key)})
+        if mapped:
+            return mapped
+
+    return parent.get("manual_override")
 
 
 def _project_excel_rows(project, results):

@@ -267,6 +267,7 @@ class DownloadReviewManualOverride(models.Model):
     center_code = models.CharField(max_length=20, db_index=True)
     project_number = models.CharField(max_length=32, db_index=True)
     rule_code = models.CharField(max_length=80, db_index=True)
+    sub_check_key = models.CharField(max_length=80, blank=True, default="")
     rule_name = models.CharField(max_length=255, blank=True)
     memo = models.TextField()
     created_by = models.CharField(max_length=120, blank=True)
@@ -278,13 +279,14 @@ class DownloadReviewManualOverride(models.Model):
         db_table = "inspection_manual_override"
         constraints = [
             models.UniqueConstraint(
-                fields=["center_code", "project_number", "rule_code"],
-                name="dr_manual_override_rule_uniq",
+                fields=["center_code", "project_number", "rule_code", "sub_check_key"],
+                name="dr_manual_override_scope_uniq",
             ),
         ]
         indexes = [
             models.Index(fields=["center_code", "project_number"], name="dr_manual_override_project_idx"),
             models.Index(fields=["project_number", "rule_code"], name="dr_manual_override_rule_idx"),
+            models.Index(fields=["project_number", "rule_code", "sub_check_key"], name="dr_manual_override_scope_idx"),
         ]
 
     def __str__(self):

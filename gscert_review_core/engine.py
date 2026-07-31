@@ -1356,6 +1356,7 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
         "matched_file_count": len(matched),
         "matched_files": [_display_path(file_info.path, project.project_number) for file_info in matched[:20]],
     }
+    raw_detail["_expected_sub_check_templates"] = _test_case_expected_sub_check_templates(config, context)
 
     if len(matched) != 1:
         return _test_case_failure(
@@ -1381,6 +1382,13 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
     try:
         workbook = _read_excel_workbook(file_info)
     except DownloadReviewInspectionError as exc:
+        raw_detail["sub_checks"] = _complete_expected_sub_checks(
+            [],
+            raw_detail.get("_expected_sub_check_templates"),
+            actual=str(exc),
+            message=config.get("parse_error_message") or str(exc),
+        )
+        raw_detail.pop("_expected_sub_check_templates", None)
         return RuleEvaluation(
             rule=rule,
             sequence=sequence,
@@ -1557,6 +1565,7 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
          "message": item.get("message", "")}
         for item in sub_checks
     ]
+    raw_detail.pop("_expected_sub_check_templates", None)
     all_passed = all(item["passed"] for item in sub_checks)
     first_fail = next((item for item in sub_checks if not item["passed"]), None)
     return RuleEvaluation(
@@ -1573,6 +1582,14 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
 
 
 def _test_case_failure(rule, sequence, matched, project, raw_detail, *, expected, actual, message):
+    existing = raw_detail.get("sub_checks") if isinstance(raw_detail, dict) else None
+    raw_detail["sub_checks"] = _complete_expected_sub_checks(
+        existing if isinstance(existing, list) else [],
+        raw_detail.get("_expected_sub_check_templates"),
+        actual=actual,
+        message=message,
+    )
+    raw_detail.pop("_expected_sub_check_templates", None)
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
@@ -1584,6 +1601,82 @@ def _test_case_failure(rule, sequence, matched, project, raw_detail, *, expected
         file_name=_representative_name(matched),
         raw_detail=raw_detail,
     )
+
+
+def _test_case_expected_sub_check_templates(config, context):
+    templates = [
+        {
+            "expected": "[sheet] one worksheet",
+            "message": config.get("sheet_count_message") or "Worksheet count check failed",
+        },
+    ]
+    if config.get("forbidden_footer_terms"):
+        templates.append({
+            "expected": "[footer] forbidden text not included",
+            "message": config.get("footer_message") or "Footer forbidden text check could not run",
+        })
+    if config.get("forbidden_header_terms"):
+        templates.append({
+            "expected": "[header] forbidden text not included",
+            "message": config.get("header_message") or "Header forbidden text check could not run",
+        })
+    if config.get("required_footer_terms"):
+        templates.append({
+            "expected": "[footer required] required text included",
+            "message": config.get("footer_required_message") or "Footer required text check could not run",
+        })
+
+    title_text = _resolve_rule_value(config.get("title_text") or "{project_number} test case", context)
+    author_label = str(config.get("author_label") or "author")
+    reviewer_label = str(config.get("reviewer_label") or "reviewer")
+    reviewer_expected = _resolve_center_expected(config, context, "reviewer_expected", "")
+    date_label = str(config.get("date_label") or "date")
+    result_header = str(config.get("result_header") or "test result")
+    residual_expected = _context_int(context, "잔여결함수")
+
+    templates.extend([
+        {
+            "expected": f"[title] contains {title_text}",
+            "message": config.get("project_number_message") or "Title check could not run",
+        },
+        {
+            "expected": f"[author/reviewer] {author_label} {context.pl} / {reviewer_label} {reviewer_expected}",
+            "message": config.get("author_message") or "Author/reviewer check could not run",
+        },
+        {
+            "expected": f"[date] {date_label} {context.start_date} ~ {context.end_date}",
+            "message": config.get("date_message") or "Date check could not run",
+        },
+        {
+            "expected": f"[residual defect] {result_header} F count = {residual_expected if residual_expected is not None else '{residual_defects}'}",
+            "message": config.get("residual_message") or "Residual defect check could not run",
+        },
+    ])
+    return templates
+
+
+def _complete_expected_sub_checks(existing, templates, *, actual, message):
+    templates = [item for item in (templates or []) if isinstance(item, dict)]
+    rows = []
+    for index, item in enumerate(existing or [], start=1):
+        if not isinstance(item, dict):
+            rows.append(item)
+            continue
+        row = dict(item)
+        row.setdefault("sub_check_key", f"sub-{index}")
+        rows.append(row)
+
+    for index in range(len(rows), len(templates)):
+        template = templates[index]
+        rows.append({
+            "sub_check_key": f"sub-{index + 1}",
+            "expected": template.get("expected") or "-",
+            "actual": actual or "Not checked",
+            "passed": False,
+            "message": message or template.get("message") or "Not checked because a prerequisite check failed",
+            "blocked_by_prerequisite": True,
+        })
+    return rows
 
 
 def _test_case_failed_result_rows(sheet, *, start_row, column):
