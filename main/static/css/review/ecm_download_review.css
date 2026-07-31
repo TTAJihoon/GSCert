@@ -1060,6 +1060,14 @@
   min-height: 34px;
 }
 
+.modal-change-note-button i,
+.modal-folder-download-button i,
+.modal-download-button i {
+  flex: 0 0 auto;
+  width: 1em;
+  text-align: center;
+}
+
 .modal-change-note-button[hidden],
 .modal-folder-download-button[hidden],
 .modal-download-button[hidden] {
@@ -1469,8 +1477,7 @@
   width: 250px;
 }
 
-/* '차이:'/'기대값:'/'실제값:' 라인으로만 이루어진 메시지(formatIssueMessage) —
-   라벨은 굵게, 값은 가장 긴 라벨 기준으로 같은 위치에서 시작하도록 정렬한다. */
+/* '차이:' 라인으로 이루어진 메시지(formatIssueMessage)의 라벨과 값을 정렬한다. */
 .issue-message-grid {
   display: grid;
   grid-template-columns: max-content 1fr;

@@ -669,20 +669,30 @@ function escapeMultiline(value) {
     .join("<br>");
 }
 
-// "차이:"/"기대값:"/"실제값:" 줄로만 이루어진 메시지(friendly_message 출력)는
-// 라벨을 굵게 표시하고, 값이 전부 같은 위치(가장 긴 라벨 기준)에서 시작하도록
-// grid로 정렬한다. 이 형식이 아닌 메시지(적합/오류/미지원 등)는 기존처럼 표시.
-const ISSUE_MESSAGE_LINE_RE = /^(차이|기대값|실제값):\s*([\s\S]*)$/;
+// 과거에 저장된 메시지에 기대값/실제값 상세가 포함되어 있어도,
+// 모달의 별도 컬럼과 중복되지 않도록 메시지 컬럼에서는 원인 요약만 보여준다.
+const EXPECTED_ACTUAL_MESSAGE_LINE_RE = /^(기대값|실제값)\s*[:은]/;
+const ISSUE_MESSAGE_LINE_RE = /^(차이):\s*([\s\S]*)$/;
+
+function messageWithoutExpectedActual(value) {
+  return String(value || "")
+    .split(/\r\n|\n/)
+    .filter((line) => !EXPECTED_ACTUAL_MESSAGE_LINE_RE.test(line.trim()))
+    .join("\n")
+    .trim();
+}
 
 function formatIssueMessage(value) {
   if (value === null || value === undefined || value === "") return "-";
-  const lines = String(value).split(/\r\n|\n/);
+  const visibleValue = messageWithoutExpectedActual(value);
+  if (!visibleValue) return "-";
+  const lines = visibleValue.split(/\r\n|\n/);
   const parsedLines = lines.map((line) => {
     const match = line.match(ISSUE_MESSAGE_LINE_RE);
     return match ? { label: match[1], content: match[2] } : null;
   });
   if (!lines.length || parsedLines.some((item) => item === null)) {
-    return escapeMultiline(value);
+    return escapeMultiline(visibleValue);
   }
   return `<div class="issue-message-grid">${parsedLines.map((item) => `
     <strong class="issue-message-label">${escapeHtml(item.label)}:</strong>
@@ -1478,7 +1488,7 @@ function setModalFullFolderDownload(project) {
     state.modalFullFolderProject = null;
     button.hidden = true;
     button.disabled = false;
-    button.innerHTML = `<i class="fa-solid fa-folder-arrow-down" aria-hidden="true"></i> 전체 산출물 다운로드`;
+    button.innerHTML = `<i class="fa-solid fa-folder" aria-hidden="true"></i> 전체 산출물 다운로드`;
     button.removeAttribute("title");
     return;
   }
@@ -1490,7 +1500,7 @@ function setModalFullFolderDownload(project) {
   button.hidden = false;
   button.disabled = false;
   button.title = "시험 이력 조회의 전체 문서 다운로드와 동일하게 ECM 전체 산출물을 다운로드합니다.";
-  button.innerHTML = `<i class="fa-solid fa-folder-arrow-down" aria-hidden="true"></i> 전체 산출물 다운로드`;
+  button.innerHTML = `<i class="fa-solid fa-folder" aria-hidden="true"></i> 전체 산출물 다운로드`;
 }
 
 function setModalChangeNote(project, note) {
@@ -1885,12 +1895,12 @@ async function downloadCurrentProjectFullFolder(event) {
   if (!project?.number || !button || button.disabled) return;
 
   button.disabled = true;
-  button.innerHTML = `<i class="fa-solid fa-folder-arrow-down" aria-hidden="true"></i> 다운로드 시작`;
+  button.innerHTML = `<i class="fa-solid fa-folder" aria-hidden="true"></i> 다운로드 시작`;
   startFullProjectFolderDownload(project);
   window.setTimeout(() => {
     if (state.modalFullFolderProject?.number === project.number) {
       button.disabled = false;
-      button.innerHTML = `<i class="fa-solid fa-folder-arrow-down" aria-hidden="true"></i> 전체 산출물 다운로드`;
+      button.innerHTML = `<i class="fa-solid fa-folder" aria-hidden="true"></i> 전체 산출물 다운로드`;
     }
   }, 1500);
 }

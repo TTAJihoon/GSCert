@@ -79,6 +79,7 @@ from main.views.review.ecm_download_review_api import (
 from main.views.csrf import csrf_failure
 from main.utils.ecm_reference_sheet import parse_sheet_projects, read_csv_rows, split_company_product
 from gscert_review_core import engine
+from gscert_review_core.result_display import friendly_message
 
 
 def _docx_bytes(*, paragraphs=None, tables=None, blocks=None, header=None, footer=None):
@@ -715,6 +716,29 @@ class DownloadVerifyTests(SimpleTestCase):
 
 
 class DownloadReviewInspectionCompareTests(SimpleTestCase):
+    def test_result_message_omits_expected_and_actual_details(self):
+        pass_message = friendly_message(DownloadReviewRuleStatus.PASS, "", "A", "A")
+        fail_message = friendly_message(
+            DownloadReviewRuleStatus.FAIL,
+            "차이: 보고일자가 다릅니다.\n기대값: 2026.05.01\n실제값: 2026.05.02",
+            "보고일자 2026.05.01",
+            "2026.05.02",
+        )
+        unsupported_message = friendly_message(
+            "unsupported",
+            "",
+            "문서 본문 직접 확인",
+            "-",
+        )
+
+        self.assertEqual(pass_message, "기준을 충족했습니다.")
+        self.assertEqual(fail_message, "차이: 문서의 날짜/기간 값이 기준정보와 다릅니다.")
+        self.assertNotIn("기대값", fail_message)
+        self.assertNotIn("실제값", fail_message)
+        self.assertNotIn("2026.05.01", fail_message)
+        self.assertNotIn("2026.05.02", fail_message)
+        self.assertNotIn("문서 본문 직접 확인", unsupported_message)
+
     def test_product_version_split_accepts_numeric_and_word_suffixes(self):
         cases = {
             "자료분석 플랫폼 v1": ("자료분석 플랫폼", "v1"),
