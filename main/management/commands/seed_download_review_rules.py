@@ -624,7 +624,9 @@ def _actual_rule_spec(index, column_name):
                         "each_child_has_entry": True,
                         "unwrap_single_folder": True,
                         "txt_only_pass": True,
-                        "pass_if_file_name_contains": "보안성",
+                        "pass_if_file_name_contains": [
+                            "보안성", "인빅티", "invicti", "수행", "대상", "시험", "면제",
+                        ],
                         "failure_message": "보안성 rawdata를 찾을 수 없습니다",
                     },
                     {
