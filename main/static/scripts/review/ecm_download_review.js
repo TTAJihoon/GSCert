@@ -1389,13 +1389,18 @@ function renderJobPagination() {
   const end = total ? Math.min(offset + state.resultJobs.length, total) : 0;
 
   pager.innerHTML = `
-    <span class="job-page-info">${start}-${end} / ${total} · ${page}/${totalPages}페이지</span>
+    <span class="job-page-info">
+      <i class="fa-solid fa-list-check" aria-hidden="true"></i>
+      <span>${start}-${end} / ${total} · ${page}/${totalPages}페이지</span>
+    </span>
     <div class="job-page-actions">
-      <button class="mini-button" type="button" data-job-page="prev" ${offset <= 0 ? "disabled" : ""}>
-        이전
+      <button class="mini-button job-page-button" type="button" data-job-page="prev" aria-label="이전 작업 페이지" ${offset <= 0 ? "disabled" : ""}>
+        <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+        <span>이전</span>
       </button>
-      <button class="mini-button" type="button" data-job-page="next" ${!state.resultPagination.hasMore ? "disabled" : ""}>
-        다음
+      <button class="mini-button job-page-button" type="button" data-job-page="next" aria-label="다음 작업 페이지" ${!state.resultPagination.hasMore ? "disabled" : ""}>
+        <span>다음</span>
+        <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
       </button>
     </div>
   `;

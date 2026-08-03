@@ -4,8 +4,8 @@
 {% block title %}ECM 제출물 자동 점검{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=32">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=32" defer></script>
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=33">
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=33" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -269,14 +269,23 @@
             <p id="resultCaption">작업을 선택하면 프로젝트별 결과를 표시합니다.</p>
           </div>
           <div class="result-toolbar">
-            <button class="secondary-button compact-action" type="button" id="downloadJobResults" disabled>
+            <button class="secondary-button compact-action result-download-button" type="button" id="downloadJobResults" disabled>
               <i class="fa-solid fa-file-excel"></i>
               전체 엑셀 다운로드
             </button>
-            <div class="segmented" aria-label="결과 필터">
-              <button class="segment active" type="button" data-result-filter="all">전체</button>
-              <button class="segment" type="button" data-result-filter="success">처리 완료</button>
-              <button class="segment" type="button" data-result-filter="failed">실패</button>
+            <div class="segmented result-filter-tabs" aria-label="결과 필터">
+              <button class="segment active" type="button" data-result-filter="all">
+                <i class="fa-solid fa-layer-group"></i>
+                전체
+              </button>
+              <button class="segment" type="button" data-result-filter="success">
+                <i class="fa-solid fa-circle-check"></i>
+                처리 완료
+              </button>
+              <button class="segment" type="button" data-result-filter="failed">
+                <i class="fa-solid fa-circle-xmark"></i>
+                실패
+              </button>
             </div>
           </div>
         </div>
