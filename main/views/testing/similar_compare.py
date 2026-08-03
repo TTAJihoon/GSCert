@@ -7,6 +7,8 @@ from threading import Lock
 
 from main.models import SwData
 
+from .history import _build_notes_buttons
+
 BASE_DIR = Path(__file__).resolve().parents[3]
 INDEX_PATH = BASE_DIR / "main" / "data" / "faiss_bge_m3_ko.idmap.index"
 MODEL_NAME = "upskyy/bge-m3-korean"
@@ -33,6 +35,9 @@ _FIELD_TO_KR = {
     'test_lab': '시험원',
     'start_date': '시작일자',
     'end_date': '종료일자',
+    'recert_type': '재인증구분',
+    'prev_cert_info': '기인증번호제품정보버전',
+    'kolas': 'KOLAS',
 }
 
 
@@ -92,10 +97,16 @@ def select_data_from_db(indices):
         return []
 
     qs = SwData.objects.using('reference').filter(serial_number__in=indices)
-    return [
-        {_FIELD_TO_KR[k]: v for k, v in obj.items() if k in _FIELD_TO_KR}
-        for obj in qs.values()
-    ]
+    rows = []
+    for obj in qs.values():
+        row = {
+            _FIELD_TO_KR[key]: value
+            for key, value in obj.items()
+            if key in _FIELD_TO_KR
+        }
+        row['특이사항_버튼'] = _build_notes_buttons(row)
+        rows.append(row)
+    return rows
 
 
 def _parse_cert_date(value):

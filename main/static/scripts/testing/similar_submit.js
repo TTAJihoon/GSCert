@@ -18,6 +18,33 @@ function htmlWithBreaks(value, fallback = '-') {
   return escapeHtml(text).replace(/\n/g, '<br>');
 }
 
+function renderNotesButtons(row) {
+  const buttons = Array.isArray(row['특이사항_버튼'])
+    ? row['특이사항_버튼']
+    : [];
+  if (!buttons.length) return '';
+
+  const buttonHtml = buttons.map(button => {
+    const type = String(button.type || 'notes').replace(/[^a-z-]/gi, '');
+    const tooltip = String(button.tooltip || '').trim();
+    const tooltipHtml = tooltip
+      ? `<span class="notes-popover">${escapeHtml(tooltip).replace(/\n/g, '<br>')}</span>`
+      : '';
+    return `
+      <button type="button" class="notes-btn notes-btn-${escapeAttr(type)}"
+        ${tooltip ? 'data-has-tooltip="true"' : ''}>
+        ${escapeHtml(button.label || '특이사항')}
+        ${tooltipHtml}
+      </button>
+    `;
+  }).join('');
+
+  return `
+    <p>특이사항</p>
+    <div class="similar-notes-btn-group">${buttonHtml}</div>
+  `;
+}
+
 // /summarize_document/ 검색 응답을 화면 및 sessionStorage 복원에 공통 사용한다.
 function renderSimilarResults(data, summaryContent, resultsContent) {
   const summaries = Array.isArray(data.summary)
@@ -63,6 +90,7 @@ function renderSimilarResults(data, summaryContent, resultsContent) {
     const copyWd = (row['총WD'] || '-').toString();
     const copyDesc = row['제품설명'] || '-';
     const copyText = `${copyWd} WD / ${copyTestNo} / ${copyCompany}-${copyProduct} / ${copyDesc}`;
+    const notesButtonsHtml = renderNotesButtons(row);
 
     return `
       <div class="similar-product">
@@ -104,6 +132,7 @@ function renderSimilarResults(data, summaryContent, resultsContent) {
           <p>인증일자</p><span class="product-tag">${htmlWithBreaks(row['인증일자'])}</span>
           <p>시험번호</p><span class="product-tag">${htmlWithBreaks(row['시험번호'])}</span>
           <p>WD</p><span class="product-tag wd-tag">${escapeHtml((row['총WD'] || '-').toString())}</span>
+          ${notesButtonsHtml}
           <p>시험기간</p><span class="product-tag">${escapeHtml(row['시작일자'] || '-')}~${escapeHtml(row['종료일자'] || '-')}</span>
           <p>시험원</p><span class="product-tag">${htmlWithBreaks(row['시험원'])}</span>
         </div>

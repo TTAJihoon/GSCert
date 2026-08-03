@@ -5360,6 +5360,44 @@ class SimilarSummarySelectionTests(SimpleTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("1개 이상", json.loads(response.content)["response"])
 
+    @patch("main.views.testing.similar_compare.SwData.objects.using")
+    def test_similar_rows_include_same_notes_buttons_as_history(self, using):
+        from main.views.testing.similar_compare import select_data_from_db
+
+        class FakeQuerySet:
+            def filter(self, **kwargs):
+                self.filter_kwargs = kwargs
+                return self
+
+            def values(self):
+                return [
+                    {
+                        "serial_number": 7,
+                        "test_number": "TTA-26-00007",
+                        "total_wd": "18",
+                        "recert_type": "재인증",
+                        "prev_cert_info": "GS-A-25-0001 제품 1.0",
+                        "renewal": "재계약으로 시험 기간 조정",
+                        "kolas": "KOLAS 인정",
+                        "notes": "기능 변경으로 WD 2일 조정",
+                    }
+                ]
+
+        queryset = FakeQuerySet()
+        using.return_value = queryset
+
+        rows = select_data_from_db([7])
+
+        self.assertEqual(queryset.filter_kwargs, {"serial_number__in": [7]})
+        self.assertEqual(
+            [button["label"] for button in rows[0]["특이사항_버튼"]],
+            ["재인증", "재계약", "KOLAS", "특이사항"],
+        )
+        self.assertEqual(
+            rows[0]["특이사항_버튼"][-1]["tooltip"],
+            "기능 변경으로 WD 2일 조정",
+        )
+
     @patch("main.views.testing.similar_summary.rerank_multiple_similar_candidates")
     @patch("main.views.testing.similar_summary.compare_multiple_from_index")
     def test_search_accepts_default_and_custom_summary_sentences(
