@@ -939,6 +939,16 @@
   gap: 10px;
 }
 
+.job-center-tabs {
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+.job-center-tabs .center-tab-button {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .job-card {
   display: grid;
   gap: 8px;
@@ -957,6 +967,28 @@
 .job-card-actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.job-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 36px;
+  margin-top: 12px;
+}
+
+.job-page-info {
+  color: var(--review-muted);
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.job-page-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .job-title {

@@ -1,4 +1,5 @@
 const maxRetryCount = 2;
+const jobListPageSize = 5;
 const apiEndpoints = {
   projects: "/api/projects/",
   jobs: "/api/jobs/",
@@ -411,6 +412,13 @@ const state = {
   focusedProject: null,
   resultJobId: null,
   resultFilter: "all",
+  resultJobCenter: "all",
+  resultPagination: {
+    total: 0,
+    limit: jobListPageSize,
+    offset: 0,
+    hasMore: false
+  },
   heartbeatWarning: false,
   emptyJob: false,
   forceEmptyPreview: false,
@@ -721,8 +729,12 @@ function projectsUrl() {
 function jobsUrl() {
   const params = new URLSearchParams({
     status: "all",
-    limit: "50"
+    limit: String(jobListPageSize),
+    offset: String(state.resultPagination.offset || 0)
   });
+  if (state.resultJobCenter && state.resultJobCenter !== "all") {
+    params.set("center", state.resultJobCenter);
+  }
   return `${apiEndpoints.jobs}?${params.toString()}`;
 }
 
@@ -798,6 +810,7 @@ function normalizeApiProject(item) {
     centerLabel: item.center_label || centerLabels[item.center_code || state.center] || "",
     review: normalizeReview(item.review),
     reviewRaw: item.review_raw || item.review || "",
+    selectable: item.selectable !== false,
     inspectionDate: item.inspection_date || "-",
     activeJobId: item.active_job_id || "",
     activeJobStatus: item.active_job_status || "",
@@ -910,6 +923,10 @@ function isProjectLocked(item) {
   return Boolean(item.activeJobId);
 }
 
+function isProjectCompleted(item) {
+  return item?.review === "완료";
+}
+
 function hasInspectionResult(item) {
   // 점검이 끝난(또는 작업이 실패한) 프로젝트는 모두 상세를 볼 수 있다.
   // 완료/수정 필요 → 규칙별 점검 결과, 실패/보류 → 실패 오류 내용.
@@ -918,7 +935,7 @@ function hasInspectionResult(item) {
 }
 
 function isProjectSelectable(item) {
-  return !isProjectLocked(item);
+  return Boolean(item) && item.selectable !== false && !isProjectLocked(item) && !isProjectCompleted(item);
 }
 
 function projectWorkStatusLabel(item) {
@@ -1015,7 +1032,7 @@ function renderProjects() {
   const rows = filteredProjects();
   state.selected.forEach((number) => {
     const item = mockProjects.find((project) => project.number === number);
-    if (!item || isProjectLocked(item)) {
+    if (!isProjectSelectable(item)) {
       state.selected.delete(number);
     }
   });
@@ -1043,14 +1060,14 @@ function renderProjects() {
   }
 
   qs("projectRows").innerHTML = rows.map((item) => {
-    const locked = isProjectLocked(item);
-    const checked = !locked && state.selected.has(item.number) ? "checked" : "";
-    const disabled = locked ? "disabled" : "";
+    const selectable = isProjectSelectable(item);
+    const checked = selectable && state.selected.has(item.number) ? "checked" : "";
+    const disabled = selectable ? "" : "disabled";
     const selected = state.focusedProject?.number === item.number ? "selected" : "";
-    const lockedClass = locked ? "completed-locked" : "";
+    const lockedClass = selectable ? "" : "completed-locked";
     const hasDetail = hasInspectionResult(item);
     const activeLabel = projectWorkStatusLabel(item);
-    const checkboxLabel = activeLabel !== "요청 가능"
+    const checkboxLabel = !selectable
       ? `${item.number} ${activeLabel} 상태`
       : `${item.number} 선택`;
     return `
@@ -1089,7 +1106,7 @@ function bindProjectRows() {
       event.stopPropagation();
       const number = checkbox.dataset.projectCheck;
       const item = mockProjects.find((project) => project.number === number);
-      if (!item || isProjectLocked(item)) return;
+      if (!isProjectSelectable(item)) return;
       state.selectionMessage = "";
 
       if (event.shiftKey && state.lastCheckedIndex >= 0) {
@@ -1099,7 +1116,7 @@ function bindProjectRows() {
           if (cb.disabled) return;
           const n = cb.dataset.projectCheck;
           const it = mockProjects.find((p) => p.number === n);
-          if (!it || isProjectLocked(it)) return;
+          if (!isProjectSelectable(it)) return;
           state.selected.add(n);
         });
       } else {
@@ -1153,7 +1170,7 @@ function renderSelection() {
       : "현재 작업이 진행 중입니다. 요청하면 예약됨 상태로 등록됩니다.");
   const hasJobTarget = [...state.selected].some((number) => {
     const item = mockProjects.find((project) => project.number === number);
-    return item && item.review !== "완료";
+    return isProjectSelectable(item);
   });
   qs("requestJob").disabled = !hasJobTarget;
 }
@@ -1205,18 +1222,27 @@ async function refreshActiveJob() {
   renderSelection();
 }
 
-async function loadResultJobs(preferredJobId = null, { silent = false } = {}) {
+async function loadResultJobs(preferredJobId = null, { silent = false, resetPage = false } = {}) {
   state.resultLoadError = "";
+  if (resetPage) {
+    state.resultPagination.offset = 0;
+  }
   if (!silent) {
     qs("jobList").innerHTML = `<p class="muted">작업 목록을 불러오는 중입니다.</p>`;
+    qs("jobListPager").innerHTML = `<span class="job-page-info">작업 목록을 불러오는 중입니다.</span>`;
     qs("resultRows").innerHTML = `
       <tr><td colspan="9" class="empty-cell">작업을 불러오는 중입니다.</td></tr>
     `;
   }
-
   try {
     const payload = await requestJson(jobsUrl());
     state.resultJobs = payload.items.map(normalizeApiJob);
+    state.resultPagination = {
+      total: payload.pagination?.total || 0,
+      limit: payload.pagination?.limit || jobListPageSize,
+      offset: payload.pagination?.offset || 0,
+      hasMore: Boolean(payload.pagination?.has_more)
+    };
     state.resultJobId = preferredJobId
       || (state.resultJobs.some((job) => job.id === state.resultJobId) ? state.resultJobId : null)
       || state.resultJobs[0]?.id
@@ -1229,6 +1255,12 @@ async function loadResultJobs(preferredJobId = null, { silent = false } = {}) {
     state.resultJobs = [];
     state.resultProjects = [];
     state.resultJobId = null;
+    state.resultPagination = {
+      total: 0,
+      limit: jobListPageSize,
+      offset: 0,
+      hasMore: false
+    };
     state.resultLoadError = error.message;
     state.resultProjectLoadError = "";
     renderJobs();
@@ -1338,7 +1370,41 @@ function renderProgress() {
   bindErrorButtons();
 }
 
+function renderJobCenterTabs() {
+  document.querySelectorAll("[data-job-center-tab]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.jobCenterTab === state.resultJobCenter);
+  });
+}
+
+function renderJobPagination() {
+  const pager = qs("jobListPager");
+  if (!pager) return;
+
+  const total = state.resultPagination.total || 0;
+  const limit = state.resultPagination.limit || jobListPageSize;
+  const offset = state.resultPagination.offset || 0;
+  const page = total ? Math.floor(offset / limit) + 1 : 1;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const start = total ? offset + 1 : 0;
+  const end = total ? Math.min(offset + state.resultJobs.length, total) : 0;
+
+  pager.innerHTML = `
+    <span class="job-page-info">${start}-${end} / ${total} · ${page}/${totalPages}페이지</span>
+    <div class="job-page-actions">
+      <button class="mini-button" type="button" data-job-page="prev" ${offset <= 0 ? "disabled" : ""}>
+        이전
+      </button>
+      <button class="mini-button" type="button" data-job-page="next" ${!state.resultPagination.hasMore ? "disabled" : ""}>
+        다음
+      </button>
+    </div>
+  `;
+}
+
 function renderJobs() {
+  renderJobCenterTabs();
+  renderJobPagination();
+
   if (state.resultLoadError && state.resultJobs.length === 0) {
     qs("jobList").innerHTML = `<p class="muted">${escapeHtml(state.resultLoadError)}</p>`;
     return;
@@ -2888,7 +2954,7 @@ function bindControls() {
   qs("requestJob").addEventListener("click", async () => {
     const jobNumbers = [...state.selected].filter((number) => {
       const item = mockProjects.find((project) => project.number === number);
-      return item && item.review !== "완료";
+      return isProjectSelectable(item);
     });
     const count = jobNumbers.length;
     if (count === 0) return;
@@ -2904,10 +2970,12 @@ function bindControls() {
       });
       state.selectionMessage = payload.message || `${count}개 프로젝트가 등록되었습니다.`;
       state.resultJobId = payload.job_id || state.resultJobId;
+      state.resultJobCenter = "all";
+      state.resultPagination.offset = 0;
       state.selected.clear();
       await refreshActiveJob();
       await loadProjects();
-      await loadResultJobs(payload.job_id);
+      await loadResultJobs(payload.job_id, { resetPage: true });
       openRequestCompleteModal(payload, count);
     } catch (error) {
       state.selectionMessage = error.message;
@@ -2917,6 +2985,33 @@ function bindControls() {
 
   qs("downloadJobResults").addEventListener("click", downloadJobResults);
   qs("bulkDownload").addEventListener("click", bulkDownloadSelected);
+
+  document.querySelectorAll("[data-job-center-tab]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const nextCenter = button.dataset.jobCenterTab || "all";
+      if (state.resultJobCenter === nextCenter) return;
+      state.resultJobCenter = nextCenter;
+      state.resultJobId = null;
+      state.resultProjects = [];
+      renderJobCenterTabs();
+      await loadResultJobs(null, { resetPage: true });
+    });
+  });
+
+  qs("jobListPager").addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-job-page]");
+    if (!button || button.disabled) return;
+
+    const limit = state.resultPagination.limit || jobListPageSize;
+    const offset = state.resultPagination.offset || 0;
+    const direction = button.dataset.jobPage;
+    state.resultPagination.offset = direction === "prev"
+      ? Math.max(0, offset - limit)
+      : offset + limit;
+    state.resultJobId = null;
+    state.resultProjects = [];
+    await loadResultJobs();
+  });
 
   document.querySelectorAll("[data-result-filter]").forEach((button) => {
     button.addEventListener("click", () => {
