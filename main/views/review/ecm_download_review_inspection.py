@@ -66,6 +66,10 @@ from gscert_review_core.engine import (  # noqa: F401
 IMAGE_EXTENSIONS = engine.IMAGE_EXTENSIONS
 WORD_EXTENSIONS = engine.WORD_EXTENSIONS
 
+# 임시파일(~$) 검사는 DB inspection_rule 테이블에 속하지 않는 전역 검사라 enabled
+# 플래그로 끌 수 없다. 실제 점검에서 제외하기로 해 여기서 껐다(다시 켜려면 True로).
+TEMP_FILE_CHECK_ENABLED = False
+
 
 @dataclass(frozen=True)
 class InspectionOutcome:
@@ -139,32 +143,33 @@ def run_download_inspection(project, verify_result, file_summary) -> InspectionO
         for evaluation in evaluations
     ]
 
-    # 임시파일(~$) 검사 — DB 규칙과 무관한 전역 검사.
-    temp_files = _find_temp_files(verify_result)
-    temp_failed = bool(temp_files)
-    result_rows.append(
-        DownloadReviewRuleResult(
-            job_project=project,
-            rule_code="temp_file_check",
-            rule_name="임시파일 검사",
-            sequence=len(evaluations) + 1,
-            file_path="",
-            file_name="",
-            status=DownloadReviewRuleStatus.FAIL if temp_failed else DownloadReviewRuleStatus.PASS,
-            expected="임시/잠금 파일(~$) 없음",
-            actual=("삭제 필요:\n" + "\n".join(temp_files[:20])) if temp_failed else "임시파일 없음",
-            message=(
-                "MS Office 임시파일(~$)이 포함되어 있습니다. 해당 파일을 삭제 후 다시 제출하세요."
-                if temp_failed
-                else "임시파일이 없습니다."
-            ),
-            raw_detail_json={"temp_files": temp_files},
+    # 임시파일(~$) 검사 — DB 규칙과 무관한 전역 검사. TEMP_FILE_CHECK_ENABLED로만 on/off.
+    if TEMP_FILE_CHECK_ENABLED:
+        temp_files = _find_temp_files(verify_result)
+        temp_failed = bool(temp_files)
+        result_rows.append(
+            DownloadReviewRuleResult(
+                job_project=project,
+                rule_code="temp_file_check",
+                rule_name="임시파일 검사",
+                sequence=len(evaluations) + 1,
+                file_path="",
+                file_name="",
+                status=DownloadReviewRuleStatus.FAIL if temp_failed else DownloadReviewRuleStatus.PASS,
+                expected="임시/잠금 파일(~$) 없음",
+                actual=("삭제 필요:\n" + "\n".join(temp_files[:20])) if temp_failed else "임시파일 없음",
+                message=(
+                    "MS Office 임시파일(~$)이 포함되어 있습니다. 해당 파일을 삭제 후 다시 제출하세요."
+                    if temp_failed
+                    else "임시파일이 없습니다."
+                ),
+                raw_detail_json={"temp_files": temp_files},
+            )
         )
-    )
-    temp_override = manual_overrides.get("temp_file_check")
-    if temp_override:
-        apply_manual_override_to_result(result_rows[-1], temp_override, only_when_failed=True)
-        applied_manual_overrides.extend(applied_overrides_in_detail(result_rows[-1].raw_detail_json, temp_override))
+        temp_override = manual_overrides.get("temp_file_check")
+        if temp_override:
+            apply_manual_override_to_result(result_rows[-1], temp_override, only_when_failed=True)
+            applied_manual_overrides.extend(applied_overrides_in_detail(result_rows[-1].raw_detail_json, temp_override))
 
     DownloadReviewRuleResult.objects.filter(job_project=project).delete()
     DownloadReviewRuleResult.objects.bulk_create(result_rows)

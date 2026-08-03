@@ -39,6 +39,7 @@
 6. 작업 자체가 실패하면 프로젝트 점검결과는 `보류`가 되며, 규칙별 `O/X` write-back은 수행하지 않는다.
 7. `config_json.artifact_column`이 `ecm_list` 산출물 컬럼과 매핑되면 해당 컬럼에 `O` 또는 `X`를 write-back한다.
 8. 규칙이 `raw_detail_json.variables`에 저장한 값은 같은 실행의 후속 규칙에서 `{변수명}` 자리표시자로 참조할 수 있다.
+9. `config_json.disabled_sub_checks`(1-based 세부항목 순번 문자열 목록)에 들어있는 세부항목은 `engine._apply_disabled_sub_checks`가 결과에서 완전히 제외하고 status/expected/actual을 남은 항목만으로 다시 계산한다. 규칙 전체 on/off는 `enabled` 필드, 세부항목 on/off는 이 키를 쓴다. 서버 관리 콘솔(`launcher.ps1`) `D` 메뉴 → `2) 수정`에서 `manage.py rule_toggle`로 조작하며, 세부항목 라벨은 `main/rule_sub_check_catalog.py`(이 문서의 "세부 점검 규칙 ID" 표를 옮긴 참고용 카탈로그) 기준으로 표시된다.
 
 ## 공통 변수
 

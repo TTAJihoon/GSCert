@@ -63,7 +63,7 @@ function Show-Menu {
     Write-Host "  N.    nginx        - nginx 시작/중지/reload  $ngxStat" -ForegroundColor $ngxColor
     Write-Host "  W.    weekly 동기화 - ECM xlsx → PostgreSQL reference DB 적재 + 신규 건 점검대상 프로젝트 반영$venvWarn"
     Write-Host "  f.    FAISS 임베딩  - reference DB 신규 데이터 증분 임베딩$venvWarn"
-    Write-Host "  D.    규칙 DB 반영  - 점검규칙(config)을 PostgreSQL에 반영 (seed)$venvWarn"
+    Write-Host "  D.    점검규칙 관리 - 반영(seed) / 규칙·세부항목 on-off$venvWarn"
     Write-Host "  B.    로컬 검토 앱   - 빌드 / 빌드 없이 실행 선택"
     Write-Host "  git.  Git 관리      - 원격 pull / 로컬 커밋·push"
     $pgHost = if ($env:REFERENCE_PG_HOST) { $env:REFERENCE_PG_HOST } else { "미설정" }
@@ -313,12 +313,17 @@ while ($true) {
         }
         'D' {
             Write-Host ""
-            Write-Host "=== 점검규칙 DB 반영 (seed_download_review_rules) ===" -ForegroundColor Cyan
+            Write-Host "=== 점검규칙 관리 ===" -ForegroundColor Cyan
+            Write-Host "  1) 반영 - 점검규칙 정의(config_json)를 PostgreSQL(reference DB)에 반영 (seed)"
+            Write-Host "  2) 수정 - 규칙 전체 또는 세부항목을 켜고 끄기"
+            $dSel = Read-Host "선택 (1/2)"
+
             $VenvPython = Join-Path $ScriptDir ".venv\Scripts\python.exe"
             if (-not (Test-Path $VenvPython)) { $VenvPython = Join-Path $ScriptDir "venv\Scripts\python.exe" }
             if (-not (Test-Path $VenvPython)) {
                 Write-Host "[ERROR] 가상환경 Python을 찾을 수 없습니다. 먼저 S(초기 환경 설정)를 실행하세요." -ForegroundColor Red
-            } else {
+            } elseif ($dSel -eq '1') {
+                Write-Host ""
                 Write-Host "  코드의 점검규칙 정의(config_json)를 PostgreSQL(reference DB)에 반영합니다." -ForegroundColor Gray
                 Write-Host "  ※ 주 서버(reference PostgreSQL)에서 실행해야 합니다." -ForegroundColor Yellow
                 Write-Host ""
@@ -333,6 +338,55 @@ while ($true) {
                 } else {
                     Write-Host "[ERROR] seed 실패. 위 출력을 확인하세요(주 서버 PostgreSQL 접속/규칙 검증)." -ForegroundColor Red
                 }
+            } elseif ($dSel -eq '2') {
+                Write-Host ""
+                Write-Host "  1) 규칙별   - 규칙 하나를 통째로 켜거나 끈다"
+                Write-Host "  2) 세부항목별 - 규칙 안의 세부 점검항목 하나만 켜거나 끈다"
+                $modeSel = Read-Host "선택 (1/2)"
+                $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+
+                if ($modeSel -eq '1') {
+                    Write-Host ""
+                    & $VenvPython (Join-Path $ScriptDir "manage.py") rule_toggle list-rules
+                    Write-Host ""
+                    $code = Read-Host "on/off 할 규칙의 code 입력 (예: artifact_12)"
+                    if ($code) {
+                        $onoff = Read-Host "켤까요, 끌까요? (on/off)"
+                        if ($onoff -eq 'on') {
+                            & $VenvPython (Join-Path $ScriptDir "manage.py") rule_toggle toggle-rule --code $code --enable
+                        } elseif ($onoff -eq 'off') {
+                            & $VenvPython (Join-Path $ScriptDir "manage.py") rule_toggle toggle-rule --code $code --disable
+                        } else {
+                            Write-Host "[취소] on 또는 off 만 입력할 수 있습니다." -ForegroundColor Yellow
+                        }
+                    }
+                } elseif ($modeSel -eq '2') {
+                    Write-Host ""
+                    & $VenvPython (Join-Path $ScriptDir "manage.py") rule_toggle list-rules
+                    Write-Host ""
+                    $code = Read-Host "세부항목을 볼 규칙의 code 입력 (예: artifact_11)"
+                    if ($code) {
+                        Write-Host ""
+                        & $VenvPython (Join-Path $ScriptDir "manage.py") rule_toggle list-sub-checks --code $code
+                        Write-Host ""
+                        $position = Read-Host "on/off 할 세부항목 번호 입력"
+                        $onoff = Read-Host "켤까요, 끌까요? (on/off)"
+                        if ($position -and $onoff -eq 'on') {
+                            & $VenvPython (Join-Path $ScriptDir "manage.py") rule_toggle toggle-sub-check --code $code --position $position --enable
+                        } elseif ($position -and $onoff -eq 'off') {
+                            & $VenvPython (Join-Path $ScriptDir "manage.py") rule_toggle toggle-sub-check --code $code --position $position --disable
+                        } else {
+                            Write-Host "[취소] 번호와 on/off를 모두 입력해야 합니다." -ForegroundColor Yellow
+                        }
+                    }
+                } else {
+                    Write-Host "[취소] 1 또는 2를 선택해 주세요." -ForegroundColor Yellow
+                }
+                $ErrorActionPreference = $prevEAP
+                Write-Host ""
+                Write-Host "  변경은 즉시 reference DB에 저장됩니다. 이미 실행 중인 점검에는 영향 없고, 새로 시작하는 점검부터 적용됩니다." -ForegroundColor Gray
+            } else {
+                Write-Host "[취소] 1 또는 2를 선택해 주세요." -ForegroundColor Yellow
             }
         }
         'GIT' {

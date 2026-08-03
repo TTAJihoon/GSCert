@@ -14,7 +14,7 @@ import os
 import re
 import struct
 import unicodedata
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, time
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
@@ -201,6 +201,53 @@ def _collect_evaluation_variables(context, evaluation):
     if not evaluation.raw_detail:
         return
     context.derived_variables.update(_raw_detail_variables(evaluation.raw_detail))
+
+
+def _apply_disabled_sub_checks(rule, evaluation):
+    """rule.config_json["disabled_sub_checks"](세부항목 1-based 순번 목록, 문자열/숫자
+    혼용 허용)에 담긴 항목을 sub_checks에서 완전히 제거하고, 남은 항목만으로
+    status/expected/actual을 다시 계산한다. 제외된 항목은 화면에 아예 표시되지
+    않고 전체 규칙 판정에도 영향을 주지 않는다.
+    """
+    if evaluation.status not in (DownloadReviewRuleStatus.PASS, DownloadReviewRuleStatus.FAIL):
+        return evaluation
+    config = getattr(rule, "config_json", None) or {}
+    disabled = config.get("disabled_sub_checks")
+    if not disabled:
+        return evaluation
+    raw_detail = evaluation.raw_detail
+    if not isinstance(raw_detail, dict):
+        return evaluation
+    sub_checks = raw_detail.get("sub_checks")
+    if not isinstance(sub_checks, list) or not sub_checks:
+        return evaluation
+    disabled_positions = {str(item).strip() for item in disabled if str(item or "").strip()}
+    if not disabled_positions:
+        return evaluation
+    kept = [
+        item
+        for index, item in enumerate(sub_checks, start=1)
+        if str(index) not in disabled_positions
+    ]
+    if len(kept) == len(sub_checks):
+        return evaluation
+
+    new_raw_detail = dict(raw_detail)
+    new_raw_detail["sub_checks"] = kept
+    new_raw_detail["disabled_sub_check_count"] = len(sub_checks) - len(kept)
+    if not kept:
+        return replace(evaluation, raw_detail=new_raw_detail)
+
+    all_passed = all(item.get("passed") for item in kept)
+    first_fail = next((item for item in kept if not item.get("passed")), None)
+    return replace(
+        evaluation,
+        status=DownloadReviewRuleStatus.PASS if all_passed else DownloadReviewRuleStatus.FAIL,
+        expected=" / ".join(str(item.get("expected", "")) for item in kept),
+        actual=" / ".join(str(item.get("actual", "")) for item in kept),
+        message="" if all_passed else (first_fail.get("message") or evaluation.message),
+        raw_detail=new_raw_detail,
+    )
 
 
 def _raw_detail_variables(raw_detail):
@@ -6346,6 +6393,7 @@ def evaluate_rules(rules, context, files, *, project=None, sink=None):
     evaluations = []
     for sequence, rule in enumerate(rules, start=1):
         evaluation = _evaluate_rule(rule, sequence, project, context, verify_result, None)
+        evaluation = _apply_disabled_sub_checks(rule, evaluation)
         evaluations.append(evaluation)
         _collect_evaluation_variables(context, evaluation)
     return evaluations
