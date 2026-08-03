@@ -9,13 +9,14 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="{% static 'css/testing/history.css' %}?v=4"/>
+<link rel="stylesheet" href="{% static 'css/testing/history.css' %}?v=5"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 <script src="{% static 'scripts/testing/history_set_date.js' %}" defer></script>
 <script src="{% static 'scripts/testing/history_Listener.js' %}?v=4" defer></script>
 <script src="{% static 'scripts/testing/history_resizable_columns.js' %}?v=2" defer></script>
 <script src="{% static 'scripts/testing/history_document.js' %}" defer></script>
 <script src="{% static 'scripts/testing/history_notes_popover.js' %}?v=2" defer></script>
+<script src="{% static 'scripts/testing/history_product_copy.js' %}?v=2" defer></script>
 <script src="{% static 'scripts/sidebar_toggle.js' %}?v=1" defer></script>
 {% endblock %}
 
@@ -187,17 +188,19 @@
           <tbody id="resultsTableBody">
             {% for table in response_tables %}
             <tr>
-              <td>{{ table.인증일자 }}</td>
+              <td class="cert-date-copy-cell" tabindex="0" role="button"
+                aria-label="{{ table.인증일자 }} 제품 정보 복사"
+                title="클릭하면 제품 정보가 복사됩니다. 날짜 텍스트는 드래그하여 선택할 수 있습니다.">{{ table.인증일자 }}</td>
               <td>{{ table.인증번호 }}</td>
-              <td>{{ table.시험번호 }}</td>
-              <td>{{ table.회사명 }}</td>
-              <td>{{ table.제품 }}</td>
-              <td>{{ table.제품설명 }}</td>
+              <td class="history-copy-test-number">{{ table.시험번호 }}</td>
+              <td class="history-copy-company">{{ table.회사명 }}</td>
+              <td class="history-copy-product">{{ table.제품 }}</td>
+              <td class="history-copy-description">{{ table.제품설명 }}</td>
               <td>{{ table.SW분류 }}</td>
               <td>{{ table.시작일자 }}</td>
               <td>{{ table.종료일자 }}</td>
               <td>{{ table.시험원 }}</td>
-              <td>{{ table.총WD }}</td>
+              <td class="history-copy-wd">{{ table.총WD }}</td>
               <td class="col-notes-cell">
                 <div class="notes-btn-group">
                   {% for btn in table.특이사항_버튼 %}
@@ -305,5 +308,8 @@
     </div>
     {% endif %}
   </div>
+</div>
+<div class="history-copy-toast hidden" id="historyCopyToast" role="status" aria-live="polite">
+  제품 정보가 복사되었습니다.
 </div>
 {% endblock %}

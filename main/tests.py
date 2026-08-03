@@ -5184,6 +5184,38 @@ class NormalizeCellTextTests(SimpleTestCase):
         self.assertIsNone(self._norm(None))
 
 
+class HistoryProductCopyTests(SimpleTestCase):
+    @patch("main.views.testing.history.GS_history")
+    def test_certification_date_cell_and_copy_source_cells_are_rendered(self, gs_history):
+        gs_history.return_value = [
+            {
+                "인증일자": "2026.08.03",
+                "인증번호": "GS-A-26-0001",
+                "시험번호": "TTA-26-00012",
+                "회사명": "테스트 회사",
+                "제품": "제품명",
+                "제품설명": "제품 개요 문장",
+                "SW분류": "응용 소프트웨어",
+                "시작일자": "2026.07.01",
+                "종료일자": "2026.07.20",
+                "시험원": "시험원",
+                "총WD": "12",
+                "특이사항": "-",
+            }
+        ]
+
+        response = self.client.post("/history/", {})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'class="cert-date-copy-cell"')
+        self.assertContains(response, 'class="history-copy-test-number"')
+        self.assertContains(response, 'class="history-copy-company"')
+        self.assertContains(response, 'class="history-copy-product"')
+        self.assertContains(response, 'class="history-copy-description"')
+        self.assertContains(response, 'class="history-copy-wd"')
+        self.assertContains(response, 'id="historyCopyToast"')
+
+
 class SimilarSummarySelectionTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
