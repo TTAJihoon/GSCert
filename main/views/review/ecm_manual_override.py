@@ -210,6 +210,15 @@ def mark_overrides_applied(overrides):
         DownloadReviewManualOverride.objects.filter(id__in=ids).update(last_applied_at=timezone.now())
 
 
+def mark_overrides_applied_safely(overrides):
+    """mark_overrides_applied를 실행하되 override 테이블 접근 실패(예: reference DB에
+    inspection_manual_override 테이블 부재)로 점검 작업 전체가 실패하지 않게 한다."""
+    try:
+        mark_overrides_applied(overrides)
+    except Exception as exc:
+        logger.warning("Manual override applied timestamp update failed: %s", exc, exc_info=True)
+
+
 def applied_overrides_in_detail(raw_detail, override):
     group = _coerce_override_group(override)
     if not group:

@@ -2330,6 +2330,9 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
     })
     # 5) 보고일자 (차시·시트별)
     sub_checks.extend(report_date_check.get("sub_checks", []))
+    # 6) 시험분석자료 요약표(품질특성별/결함정도별)가 실제 결함 목록과 일치하는지
+    if final_workbook:
+        sub_checks.extend(_defect_report_summary_consistency_checks(final_workbook))
 
     raw_detail["sub_checks"] = sub_checks
     variables = raw_detail.get("variables") or _defect_report_variables(final_workbook)
@@ -2776,6 +2779,100 @@ def _defect_analysis_value(workbook, keyword, *, offset_rows, offset_cols):
                 return sheet.rows[target_row][target_col]
             return ""
     return ""
+
+
+def _defect_report_column_run(sheet, *, start_row, column):
+    """start_row(1-based)부터 column(0-based)에 연속으로 값이 있는 셀까지 모은다."""
+    values = []
+    row_index = start_row - 1
+    while row_index < len(sheet.rows):
+        value = sheet.rows[row_index][column] if column < len(sheet.rows[row_index]) else ""
+        if not str(value or "").strip():
+            break
+        values.append(str(value).strip())
+        row_index += 1
+    return values
+
+
+def _defect_report_nth_label_row(sheet, keyword, column, occurrence):
+    """column(0-based)에서 keyword가 포함된 occurrence번째(1-based) 셀의 row_index(0-based)."""
+    seen = 0
+    for row_index, row in enumerate(sheet.rows):
+        value = row[column] if column < len(row) else ""
+        if keyword in str(value or ""):
+            seen += 1
+            if seen == occurrence:
+                return row_index
+    return None
+
+
+def _defect_report_summary_consistency_check(sheet, values, label_row, *, keyword_labels):
+    """values(문자열 목록)에서 각 키워드가 포함된 개수를 세어, label_row 아래
+    1~N칸 셀 값과 일치하는지 확인한다. keyword_labels: [(keyword, 표시라벨), ...]."""
+    if label_row is None:
+        return None
+    expected_parts = []
+    actual_parts = []
+    passed = True
+    for offset, (keyword, label) in enumerate(keyword_labels, start=1):
+        count = sum(1 for value in values if keyword in value)
+        target_row = label_row + offset
+        actual_value = (
+            sheet.rows[target_row][4]
+            if target_row < len(sheet.rows) and 4 < len(sheet.rows[target_row])
+            else ""
+        )
+        expected_parts.append(f"{label}: {count}개")
+        actual_parts.append(f"{label}: {actual_value}개")
+        if str(actual_value).strip() != str(count):
+            passed = False
+    return {
+        "expected": "\n".join(expected_parts),
+        "actual": "\n".join(actual_parts),
+        "passed": passed,
+    }
+
+
+def _defect_report_summary_consistency_checks(workbook):
+    """시험분석자료 시트의 품질특성별/결함정도별 결함내역 요약표가 실제 결함
+    목록(G열=품질특성, E열=결함정도)의 개수와 일치하는지 검증한다."""
+    sheet = _workbook_sheet(workbook, "시험분석자료")
+    if not sheet:
+        return []
+
+    quality_values = _defect_report_column_run(sheet, start_row=7, column=6)
+    quality_label_row = _defect_report_nth_label_row(sheet, "수정전", column=4, occurrence=1)
+    quality_check = _defect_report_summary_consistency_check(
+        sheet,
+        quality_values,
+        quality_label_row,
+        keyword_labels=[
+            ("기능", "기능적합성"),
+            ("성능", "성능효율성"),
+            ("호환", "호환성"),
+            ("사용", "사용성"),
+            ("신뢰", "신뢰성"),
+            ("보안", "보안성"),
+            ("유지", "유지보수성"),
+            ("이식", "이식성"),
+            ("일반적", "일반적요구사항"),
+        ],
+    )
+    if quality_check:
+        quality_check["message"] = "시험분석자료의 품질특성별 결함내역 표가 결함 목록과 다릅니다"
+
+    severity_values = _defect_report_column_run(sheet, start_row=7, column=4)
+    severity_label_row = _defect_report_nth_label_row(sheet, "수정전", column=4, occurrence=2)
+    severity_check = _defect_report_summary_consistency_check(
+        sheet,
+        severity_values,
+        severity_label_row,
+        keyword_labels=[("H", "H"), ("M", "M"), ("L", "L")],
+    )
+    if severity_check:
+        severity_check["message"] = "시험분석자료의 결함정도별 결함내역 표가 결함 목록과 다릅니다"
+
+    return [check for check in (quality_check, severity_check) if check]
 
 
 def _context_int(context, key):

@@ -42,7 +42,7 @@ from main.views.review.ecm_manual_override import (
     apply_manual_override_to_evaluation,
     apply_manual_override_to_result,
     manual_overrides_for_project,
-    mark_overrides_applied,
+    mark_overrides_applied_safely,
 )
 
 from gscert_review_core import engine
@@ -168,7 +168,7 @@ def run_download_inspection(project, verify_result, file_summary) -> InspectionO
 
     DownloadReviewRuleResult.objects.filter(job_project=project).delete()
     DownloadReviewRuleResult.objects.bulk_create(result_rows)
-    mark_overrides_applied(applied_manual_overrides)
+    mark_overrides_applied_safely(applied_manual_overrides)
 
     failed_count = sum(
         1
