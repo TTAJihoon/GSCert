@@ -2882,42 +2882,53 @@ def _defect_report_summary_consistency_check(sheet, values, label_row, *, keywor
 
 def _defect_report_summary_consistency_checks(workbook):
     """시험분석자료 시트의 품질특성별/결함정도별 결함내역 요약표가 실제 결함
-    목록(G열=품질특성, E열=결함정도)의 개수와 일치하는지 검증한다."""
+    목록(G열=품질특성, E열=결함정도)의 개수와 일치하는지 검증한다.
+
+    결함 목록의 시작 행은 고정 행 번호가 아니라, G열에서 `품질특성` 헤더 셀을,
+    E열에서 `결함정도` 헤더 셀을 찾아 그 바로 다음 행부터로 본다(서식이 바뀌어
+    헤더 행 위치가 달라져도 안전하게 동작한다).
+    """
     sheet = _workbook_sheet(workbook, "시험분석자료")
     if not sheet:
         return []
 
-    quality_values = _defect_report_column_run(sheet, start_row=7, column=6)
-    quality_label_row = _defect_report_nth_label_row(sheet, "수정전", column=4, occurrence=1)
-    quality_check = _defect_report_summary_consistency_check(
-        sheet,
-        quality_values,
-        quality_label_row,
-        keyword_labels=[
-            ("기능", "기능적합성"),
-            ("성능", "성능효율성"),
-            ("호환", "호환성"),
-            ("사용", "사용성"),
-            ("신뢰", "신뢰성"),
-            ("보안", "보안성"),
-            ("유지", "유지보수성"),
-            ("이식", "이식성"),
-            ("일반적", "일반적요구사항"),
-        ],
-    )
-    if quality_check:
-        quality_check["message"] = "시험분석자료의 품질특성별 결함내역 표가 결함 목록과 다릅니다"
+    quality_header_row = _defect_report_nth_label_row(sheet, "품질특성", column=6, occurrence=1)
+    quality_check = None
+    if quality_header_row is not None:
+        quality_values = _defect_report_column_run(sheet, start_row=quality_header_row + 2, column=6)
+        quality_label_row = _defect_report_nth_label_row(sheet, "수정전", column=4, occurrence=1)
+        quality_check = _defect_report_summary_consistency_check(
+            sheet,
+            quality_values,
+            quality_label_row,
+            keyword_labels=[
+                ("기능", "기능적합성"),
+                ("성능", "성능효율성"),
+                ("호환", "호환성"),
+                ("사용", "사용성"),
+                ("신뢰", "신뢰성"),
+                ("보안", "보안성"),
+                ("유지", "유지보수성"),
+                ("이식", "이식성"),
+                ("일반적", "일반적요구사항"),
+            ],
+        )
+        if quality_check:
+            quality_check["message"] = "시험분석자료의 품질특성별 결함내역 표가 결함 목록과 다릅니다"
 
-    severity_values = _defect_report_column_run(sheet, start_row=7, column=4)
-    severity_label_row = _defect_report_nth_label_row(sheet, "수정전", column=4, occurrence=2)
-    severity_check = _defect_report_summary_consistency_check(
-        sheet,
-        severity_values,
-        severity_label_row,
-        keyword_labels=[("H", "H"), ("M", "M"), ("L", "L")],
-    )
-    if severity_check:
-        severity_check["message"] = "시험분석자료의 결함정도별 결함내역 표가 결함 목록과 다릅니다"
+    severity_header_row = _defect_report_nth_label_row(sheet, "결함정도", column=4, occurrence=1)
+    severity_check = None
+    if severity_header_row is not None:
+        severity_values = _defect_report_column_run(sheet, start_row=severity_header_row + 2, column=4)
+        severity_label_row = _defect_report_nth_label_row(sheet, "수정전", column=4, occurrence=2)
+        severity_check = _defect_report_summary_consistency_check(
+            sheet,
+            severity_values,
+            severity_label_row,
+            keyword_labels=[("H", "H"), ("M", "M"), ("L", "L")],
+        )
+        if severity_check:
+            severity_check["message"] = "시험분석자료의 결함정도별 결함내역 표가 결함 목록과 다릅니다"
 
     return [check for check in (quality_check, severity_check) if check]
 
