@@ -97,6 +97,44 @@ function Select-Target($verb) {
     }
 }
 
+# weekly 동기화가 갱신한 main/data/reference.xlsx를 커밋·푸시한다.
+# 변경이 없으면 조용히 넘어간다(빈 커밋 방지). git push 전에는 pull --rebase로
+# 원격 변경을 먼저 통합해 non-fast-forward 거부를 방지한다(GIT 메뉴와 동일 패턴).
+function Sync-ReferenceDataFile {
+    $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    Push-Location $ScriptDir
+    try {
+        $dataFile = "main/data/reference.xlsx"
+        $changed = (git status --porcelain -- $dataFile)
+        if (-not $changed) {
+            Write-Host "  reference.xlsx 변경 없음 — 커밋 생략." -ForegroundColor Gray
+            return
+        }
+        Write-Host ""
+        Write-Host "  reference.xlsx 변경을 커밋·푸시합니다..." -ForegroundColor Cyan
+        git add -- $dataFile
+        git commit -m "data: reference.xlsx 갱신"
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[ERROR] git commit 실패. 위 출력을 확인하세요." -ForegroundColor Red
+            return
+        }
+        git pull --rebase
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "[ERROR] git pull --rebase 실패(충돌 가능). 'git status'로 충돌 해결 후 GIT 메뉴에서 다시 push 하세요." -ForegroundColor Red
+            return
+        }
+        git push
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "[OK] reference.xlsx 커밋·푸시 완료." -ForegroundColor Green
+        } else {
+            Write-Host "[ERROR] git push 실패. 위 출력을 확인하세요." -ForegroundColor Red
+        }
+    } finally {
+        Pop-Location
+        $ErrorActionPreference = $prevEAP
+    }
+}
+
 # HTTPS 적용 범위 선택 (nginx 시작/모드 변경 공용). 반환: 'All' | 'ConsultationOnly' | $null(취소)
 function Select-HttpsMode {
     Write-Host "HTTPS 적용 범위를 선택하세요:"
@@ -257,6 +295,7 @@ while ($true) {
                 Remove-Item Env:\GSCERT_WEEKLY_SOURCE_XLSX -ErrorAction SilentlyContinue
                 & $VenvPython (Join-Path $ScriptDir "main\utils\weekly.py")
                 Remove-Item Env:\GSCERT_WEEKLY_TARGET_DATE -ErrorAction SilentlyContinue
+                if ($?) { Sync-ReferenceDataFile }
             } elseif ($mode -eq '2') {
                 $xlsxPath = Read-Host "폴더 또는 파일 경로 입력 (폴더 지정 시 인증획득제품 최신 파일 자동 선택)"
                 $xlsxPath = $xlsxPath.Trim('"').Trim("'")
@@ -268,6 +307,7 @@ while ($true) {
                     Write-Host "  파일: $xlsxPath" -ForegroundColor Cyan
                     & $VenvPython (Join-Path $ScriptDir "main\utils\weekly.py")
                     Remove-Item Env:\GSCERT_WEEKLY_SOURCE_XLSX -ErrorAction SilentlyContinue
+                    if ($?) { Sync-ReferenceDataFile }
                 }
             } else {
                 Write-Host "올바른 번호를 입력해 주세요." -ForegroundColor Red
