@@ -1,6 +1,5 @@
 import json
 import logging
-import os
 
 from main.utils.gemini_gemma import (
     GemmaConfigError,
@@ -10,9 +9,6 @@ from main.utils.gemini_gemma import (
 )
 
 logger = logging.getLogger(__name__)
-
-DEFAULT_RERANK_MODEL = None
-
 
 def run_gemini_gemma(query):
     """현재 선택된 LLM으로 제품 개요를 한 문장으로 요약한다."""
@@ -201,8 +197,7 @@ def rerank_similar_candidates(query_text, candidates, top_n=30):
 """
 
     logger.debug("Gemini/Gemma rerank request start")
-    rerank_model = os.environ.get("GEMINI_RERANK_MODEL") or DEFAULT_RERANK_MODEL
-    result_text = generate_gemma_text(prompt, model=rerank_model)
+    result_text = generate_gemma_text(prompt)
     parsed = extract_json_object(result_text)
     results = parsed.get("results") if isinstance(parsed, dict) else None
     if not isinstance(results, list):
@@ -286,8 +281,7 @@ def rerank_multiple_similar_candidates(query_texts, candidates):
 """
 
     logger.debug("Gemini/Gemma multiple rerank request start")
-    rerank_model = os.environ.get("GEMINI_RERANK_MODEL") or DEFAULT_RERANK_MODEL
-    result_text = generate_gemma_text(prompt, model=rerank_model)
+    result_text = generate_gemma_text(prompt)
     parsed = extract_json_object(result_text)
     results = parsed.get("results") if isinstance(parsed, dict) else None
     if not isinstance(results, list):

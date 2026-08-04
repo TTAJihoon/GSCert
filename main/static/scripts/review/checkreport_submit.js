@@ -147,17 +147,17 @@
 
       const json = await resp.json();
 
-      // === 개발자도구 Console에 '실제 GPT 요청 내용'까지 출력 ===
+      // === 개발자도구 Console에 실제 LLM 요청 내용까지 출력 ===
       if (json?._debug?.gpt_input || json?._debug?.gpt_request) {
-        console.groupCollapsed("%c[CheckReport] GPT 디버그 정보", "color:#06b6d4;font-weight:bold");
+        console.groupCollapsed("%c[CheckReport] LLM 디버그 정보", "color:#06b6d4;font-weight:bold");
         if (json._debug.gpt_input) {
           console.info("합쳐진 원본 입력 (combined):", json._debug.gpt_input);
         }
         if (json._debug.gpt_request) {
-          console.info("OpenAI에 보낸 요청 전체 (messages/model/params):", json._debug.gpt_request);
+          console.info("선택된 LLM에 보낸 요청 전체:", json._debug.gpt_request);
         }
         if (json._debug.gpt_response_meta) {
-          console.info("OpenAI 응답 메타(usage 등):", json._debug.gpt_response_meta);
+          console.info("LLM 응답 메타(usage 등):", json._debug.gpt_response_meta);
         }
         console.groupEnd();
       }

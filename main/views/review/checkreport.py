@@ -11,11 +11,11 @@ from .checkreport_GPT import run_checkreport_gpt
 @csrf_exempt
 def parse_view(request: HttpRequest):
     """
-    단일 엔드포인트(A안): 업로드(docx+pdf) → 파싱 → (합쳐진 JSON 전체) → GPT → 테이블 스키마 JSON
+    단일 엔드포인트(A안): 업로드(docx+pdf) → 파싱 → (합쳐진 JSON 전체) → 선택 LLM → 테이블 스키마 JSON
     - 디버그: 'X-Debug-GPT: 1' 헤더 또는 '?debug=1' 쿼리/POST가 있으면,
       응답에 '_debug': {
         'gpt_input': <합쳐진 원본 전체 JSON>,
-        'gpt_request': <OpenAI에 실제로 보낸 요청 본문 전체>,
+        'gpt_request': <선택된 LLM에 실제로 보낸 요청 본문 전체>,
         'gpt_response_meta': <id/model/usage 등 요약>
       } 를 포함하여 브라우저 개발자도구에서 확인 가능.
     """
@@ -73,7 +73,7 @@ def parse_view(request: HttpRequest):
         }
     }
 
-    # 3) GPT 분석
+    # 3) 현재 서버관리콘솔에서 선택한 LLM으로 분석
     #   - 신버전(run_checkreport_gpt(parsed, debug))이면 디버그까지 받음
     #   - 구버전(run_checkreport_gpt(parsed))이면 타입 에러를 캐치해서 하위호환
     try:

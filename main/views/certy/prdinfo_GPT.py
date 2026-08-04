@@ -29,13 +29,13 @@ _PROMPT_TEMPLATE = """너는 SW 제품 분류와 검색 키워드를 추천하�
 
 
 def classify_sw_and_keywords(input_text: str):
-    logger.debug("Gemini/Gemma prdinfo request start")
+    logger.debug("Selected LLM prdinfo request start")
     prompt = _PROMPT_TEMPLATE.replace("{INPUT}", input_text)
     try:
         content = generate_gemma_text(prompt)
-        logger.debug("Gemini/Gemma prdinfo response: %s", content)
+        logger.debug("Selected LLM prdinfo response: %s", content)
     except Exception as e:
-        logger.warning("Gemma prdinfo call failed: %s", e)
+        logger.warning("LLM prdinfo call failed: %s", e)
         return None
 
     data = extract_json_object(content or "")

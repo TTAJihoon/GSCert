@@ -8,7 +8,6 @@ from dotenv import find_dotenv, load_dotenv
 from main.utils.llm_models import get_active_model, infer_provider
 
 
-DEFAULT_GEMMA_MODEL = "gemma-4-26b-a4b-it"
 DEFAULT_RETRY_COUNT = 1
 DEFAULT_RETRY_DELAY_SECONDS = 0.8
 

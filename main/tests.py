@@ -5342,6 +5342,102 @@ class LlmModelConsoleTests(SimpleTestCase):
                 self.assertContains(page, "runConsoleCommand")
 
 
+class SharedLlmFeatureRoutingTests(SimpleTestCase):
+    @patch("main.views.testing.security_GPT.generate_gemma_text")
+    def test_security_analysis_uses_console_selected_model_router(self, generate_text):
+        generate_text.return_value = "## 판단\n- 결론: 결함 아님"
+
+        with patch.dict(
+            "os.environ",
+            {
+                "GEMINI_MODEL": "legacy-model",
+                "GEMINI_SECURITY_MODEL": "legacy-security-model",
+                "GEMINI_SECURITY_FALLBACK_MODELS": "legacy-fallback",
+            },
+            clear=False,
+        ):
+            response = self.client.post(
+                "/security/gpt/recommend/",
+                data=json.dumps({"prompt": "파싱된 보안 리포트"}),
+                content_type="application/json",
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["response"], "## 판단\n- 결론: 결함 아님")
+        self.assertEqual(generate_text.call_args.kwargs, {"retries": 2})
+        self.assertIn("파싱된 보안 리포트", generate_text.call_args.args[0])
+
+    @patch("main.views.certy.prdinfo_GPT.generate_gemma_text")
+    def test_product_info_keywords_use_console_selected_model_router(self, generate_text):
+        from main.views.certy.prdinfo_GPT import classify_sw_and_keywords
+
+        generate_text.return_value = json.dumps(
+            {
+                "SW": "문서관리",
+                "keyword1": "문서검색",
+                "keyword2": "권한관리",
+            },
+            ensure_ascii=False,
+        )
+
+        result = classify_sw_and_keywords("문서를 검색하고 권한을 관리하는 제품")
+
+        self.assertEqual(result["SW"], "문서관리")
+        self.assertEqual(result["keyword1"], "문서검색")
+        self.assertEqual(generate_text.call_args.kwargs, {})
+
+    @patch(
+        "main.views.review.checkreport_GPT.get_active_model",
+        return_value=("openai", "gpt-5.6-luna"),
+    )
+    @patch("main.views.review.checkreport_GPT.generate_gemma_text")
+    def test_defect_report_analysis_uses_console_selected_model_router(
+        self,
+        generate_text,
+        get_active_model,
+    ):
+        from main.views.review.checkreport_GPT import run_checkreport_gpt
+
+        def fake_generate(prompt, usage_callback=None, **kwargs):
+            usage_callback(
+                {
+                    "provider": "openai",
+                    "model": "gpt-5.6-luna",
+                    "input_tokens": 120,
+                    "output_tokens": 30,
+                    "total_tokens": 150,
+                }
+            )
+            return json.dumps(
+                {
+                    "items": [
+                        {
+                            "no": 1,
+                            "category": "기술 오류",
+                            "severity": "중요",
+                            "summary": "단위 불일치",
+                        }
+                    ]
+                },
+                ensure_ascii=False,
+            )
+
+        generate_text.side_effect = fake_generate
+        result, debug = run_checkreport_gpt(
+            {"document": {"docx": {"content": []}, "pdf": {"pages": []}}},
+            debug=True,
+        )
+
+        self.assertEqual(result["total"], 1)
+        self.assertEqual(result["items"][0]["summary"], "단위 불일치")
+        self.assertEqual(debug["gpt_request"]["provider"], "openai")
+        self.assertEqual(debug["gpt_request"]["model"], "gpt-5.6-luna")
+        self.assertEqual(debug["gpt_response_meta"]["usage"]["total_tokens"], 150)
+        self.assertIn("<<PARSED_PAYLOAD_JSON_START>>", generate_text.call_args.args[0])
+        self.assertNotIn("model", generate_text.call_args.kwargs)
+        get_active_model.assert_called_once_with()
+
+
 class SimilarSummarySelectionTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
@@ -5701,6 +5797,7 @@ class SimilarSummarySelectionTests(SimpleTestCase):
         self.assertEqual(rows[0]["llm_score"], 80)
         self.assertEqual(rows[0]["similarity"], 0.8)
         self.assertNotIn("faiss_scores", rows[0])
+        self.assertNotIn("model", generate_text.call_args.kwargs)
 
 
 class SimilarDocumentParserTests(SimpleTestCase):

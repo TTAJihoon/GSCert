@@ -13,7 +13,6 @@ from main.utils.gemini_gemma import (
 )
 
 
-DEFAULT_SECURITY_FALLBACK_MODELS = "gemini-3.1-flash-lite"
 DEFAULT_SECURITY_RETRIES = 2
 
 
@@ -26,10 +25,7 @@ def _env_int(name, default):
 
 def _security_model_settings():
     return {
-        "model": os.environ.get("GEMINI_SECURITY_MODEL") or os.environ.get("GEMINI_MODEL"),
-        "fallback_models": os.environ.get("GEMINI_SECURITY_FALLBACK_MODELS")
-        or os.environ.get("GEMINI_FALLBACK_MODELS")
-        or DEFAULT_SECURITY_FALLBACK_MODELS,
+        # 모델은 서버관리콘솔의 LLM 선택값을 공통 라우터가 결정한다.
         "retries": _env_int("GEMINI_SECURITY_RETRIES", DEFAULT_SECURITY_RETRIES),
     }
 
@@ -72,7 +68,7 @@ def _build_security_recommendation_prompt(prompt):
 @require_http_methods(["POST"])
 def get_gpt_recommendation_view(request):
     """
-    프론트엔드로부터 받은 프롬프트를 Gemini API의 Gemma 모델에게 보내고, 답변을 반환합니다.
+    프론트엔드로부터 받은 프롬프트를 현재 선택된 LLM에 보내고 답변을 반환합니다.
     """
     try:
         data = json.loads(request.body)
@@ -95,7 +91,7 @@ def get_gpt_recommendation_view(request):
             status=429,
         )
     except GemmaGenerationError as e:
-        return JsonResponse({"error": f"Gemma API 호출 중 오류 발생: {e}"}, status=500)
+        return JsonResponse({"error": f"LLM 호출 중 오류 발생: {e}"}, status=500)
     except Exception as e:
         return JsonResponse({"error": f"AI 추천 생성 중 오류 발생: {e}"}, status=500)
 

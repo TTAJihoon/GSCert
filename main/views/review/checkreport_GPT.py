@@ -1,11 +1,9 @@
-import os
 import json
 from typing import Tuple, Dict, Any
-from django.http import JsonResponse, HttpRequest
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
 from textwrap import dedent
-from openai import OpenAI
+
+from main.utils.gemini_gemma import extract_json_object, generate_gemma_text
+from main.utils.llm_models import get_active_model
 
 PARSED_START = "<<PARSED_PAYLOAD_JSON_START>>"
 PARSED_END   = "<<PARSED_PAYLOAD_JSON_END>>"
@@ -201,24 +199,18 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
         ### 판단 지침 끝 ###
     """).strip()
 
-    # 1) 실제로 보낼 '요청 페이로드'를 선구성 (오류여도 디버그에 넣기 위함)
+    # 1) 현재 콘솔에서 선택한 모델을 기준으로 공급자 중립 프롬프트를 구성한다.
+    provider, model = get_active_model()
+    llm_prompt = (
+        "You are a strict technical reviewer. "
+        "Return ONLY a JSON object in the required schema.\n\n"
+        f"{instruction_text}\n\n"
+        f"{PARSED_START}\n{json.dumps(parsed_payload, ensure_ascii=False)}\n{PARSED_END}"
+    )
     request_payload: Dict[str, Any] = {
-        "model": "gpt-5",
-        "response_format": {"type": "json_object"},
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are a strict technical reviewer. Return ONLY a JSON object in the required schema."
-            },
-            {
-                "role": "user",
-                "content": json.dumps(instruction_text, ensure_ascii=False)
-            },
-            {
-                "role": "user",
-                "content": f"{PARSED_START}\n{json.dumps(parsed_payload, ensure_ascii=False)}\n{PARSED_END}"
-            }
-        ],
+        "provider": provider,
+        "model": model,
+        "input": llm_prompt,
     }
 
     # 2) 디버그 켜진 경우, 호출 전부터 gpt_request/instruction_text를 채워둠
@@ -226,25 +218,22 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
         debug_payload["gpt_request"] = request_payload
         debug_payload["instruction_text"] = instruction_text
 
-    # 3) API 키 확인 → 없으면 호출하지 않고 즉시 빈 결과 + 디버그 반환
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        if debug:
-            debug_payload["error"] = "OPENAI_API_KEY is not set (모델 호출 생략)."
-        return {"version": "1", "total": 0, "items": []}, debug_payload
-
-    # 4) 실제 호출
+    # 3) 공통 라우터가 선택 모델에 맞는 API 키와 공급자 어댑터를 사용한다.
     try:
-        client = OpenAI(api_key=api_key)
-        completion = client.chat.completions.create(**request_payload)
+        usage_meta: Dict[str, Any] = {}
+        content = generate_gemma_text(llm_prompt, usage_callback=usage_meta.update)
+        data = extract_json_object(content)
+        if not isinstance(data, dict):
+            raise ValueError("LLM 응답에서 JSON 객체를 찾을 수 없습니다.")
 
-        content = completion.choices[0].message.content if completion.choices else None
-        data = json.loads(content) if content else {"version": "1", "total": 0, "items": []}
-
-        # 5) 스키마 정규화
+        # 4) 스키마 정규화
         items = data.get("items", [])
+        if not isinstance(items, list):
+            items = []
         norm = []
         for idx, it in enumerate(items, start=1):
+            if not isinstance(it, dict):
+                continue
             norm.append({
                 "no":              it.get("no", idx),
                 "category":        it.get("category", ""),
@@ -256,25 +245,23 @@ def run_checkreport_gpt(parsed_payload: dict, debug: bool = False) -> Tuple[dict
             })
         result = {"version": "1", "total": len(norm), "items": norm}
 
-        # 6) 디버그 메타 (성공 시)
+        # 5) 디버그 메타 (성공 시)
         if debug:
-            usage = getattr(completion, "usage", None)
             debug_payload["gpt_response_meta"] = {
-                "id": getattr(completion, "id", None),
-                "created": getattr(completion, "created", None),
-                "model": getattr(completion, "model", None),
+                "provider": usage_meta.get("provider", provider),
+                "model": usage_meta.get("model", model),
                 "usage": {
-                    "prompt_tokens": getattr(usage, "prompt_tokens", None) if usage else None,
-                    "completion_tokens": getattr(usage, "completion_tokens", None) if usage else None,
-                    "total_tokens": getattr(usage, "total_tokens", None) if usage else None,
+                    "prompt_tokens": usage_meta.get("input_tokens"),
+                    "completion_tokens": usage_meta.get("output_tokens"),
+                    "total_tokens": usage_meta.get("total_tokens"),
                 }
             }
 
         return result, debug_payload
 
     except Exception as e:
-        # 7) 실패 시에도 디버그에 오류를 남김
+        # 6) 실패 시에도 디버그에 오류를 남김
         if debug:
-            debug_payload["error"] = f"OpenAI call failed: {e}"
+            debug_payload["error"] = f"LLM call failed: {e}"
         return {"version": "1", "total": 0, "items": []}, debug_payload
         

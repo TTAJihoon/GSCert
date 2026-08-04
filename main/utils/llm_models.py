@@ -80,9 +80,6 @@ def _configured_default_key() -> str:
     explicit = str(os.environ.get("GSCERT_LLM_DEFAULT") or "").strip()
     if explicit:
         return explicit
-    legacy_model = str(os.environ.get("GEMINI_MODEL") or "").strip()
-    if legacy_model:
-        return f"google:{legacy_model}"
     return DEFAULT_ACTIVE_MODEL
 
 
