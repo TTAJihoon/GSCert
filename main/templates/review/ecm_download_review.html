@@ -4,8 +4,8 @@
 {% block title %}ECM 제출물 자동 점검{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=34">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=34" defer></script>
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=35">
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=35" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -103,6 +103,32 @@
             </button>
           </div>
         </div>
+
+        <details class="help-panel project-help">
+          <summary>
+            <span>
+              <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+              프로젝트 선택 도움말
+            </span>
+            <i class="fa-solid fa-chevron-down help-chevron" aria-hidden="true"></i>
+          </summary>
+          <div class="help-grid">
+            <article class="help-item">
+              <span class="help-icon"><i class="fa-solid fa-list-check" aria-hidden="true"></i></span>
+              <div>
+                <strong>프로젝트 선택</strong>
+                <p>프로젝트 목록에서 센터를 선택하고 점검할 항목을 체크한 뒤 작업 요청 버튼으로 점검을 시작합니다.</p>
+              </div>
+            </article>
+            <article class="help-item">
+              <span class="help-icon"><i class="fa-solid fa-people-arrows" aria-hidden="true"></i></span>
+              <div>
+                <strong>PL 배정 목록</strong>
+                <p>각 시험소별로 PL 이름을 배정하여 프로젝트 목록의 센터 구분을 설정합니다.</p>
+              </div>
+            </article>
+          </div>
+        </details>
 
         <div class="filters" aria-label="프로젝트 필터">
           <label>

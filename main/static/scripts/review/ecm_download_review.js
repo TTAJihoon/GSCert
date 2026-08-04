@@ -1962,6 +1962,7 @@ function modalHtmlForDownload() {
 
   const clone = panel.cloneNode(true);
   clone.querySelector(".modal-header-actions")?.remove();
+  clone.querySelectorAll(".help-panel").forEach((help) => help.remove());
   clone.querySelectorAll("a[href]").forEach((link) => {
     const href = link.getAttribute("href");
     if (href && href !== "#") {
@@ -2211,7 +2212,7 @@ async function openInspectionModal(projectNumber) {
   openModal({
     eyebrow: "점검 결과",
     title: `${project.number} 규칙별 점검 결과`,
-    body: `<p class="modal-lead">최근 점검 결과를 불러오는 중입니다.</p>`
+    body: `${renderInspectionModalHelp()}<p class="modal-lead">최근 점검 결과를 불러오는 중입니다.</p>`
   });
   setModalFullFolderDownload(project);
 
@@ -2222,6 +2223,7 @@ async function openInspectionModal(projectNumber) {
   } catch (error) {
     if (error.payload?.error_code === "not_found") {
       qs("modalBody").innerHTML = `
+        ${renderInspectionModalHelp()}
         <div class="modal-message">
           <p>아직 이 프로젝트의 점검 이력이 없습니다. 프로젝트를 선택하고 점검을 시작하세요.</p>
         </div>
@@ -2235,6 +2237,7 @@ async function openInspectionModal(projectNumber) {
 function renderLocalInspectionFallback(project, error) {
   if (project.review === "보류") {
     qs("modalBody").innerHTML = `
+      ${renderInspectionModalHelp()}
       <div class="modal-message warning">
         <strong>${escapeHtml(project.holdReason || "작업 자체가 실패하여 보류되었습니다.")}</strong>
         <p>작업 자체가 실패했기 때문에 점검 규칙 결과는 생성되지 않았습니다. 원인을 확인한 뒤 다시 작업을 요청해야 합니다.</p>
@@ -2255,6 +2258,7 @@ function renderLocalInspectionFallback(project, error) {
     `).join("");
 
     qs("modalBody").innerHTML = `
+      ${renderInspectionModalHelp()}
       <p class="modal-lead">${project.rules.length
         ? "약 30개 점검 규칙을 표로 확인하는 화면입니다. 실제 규칙 정의 후 컬럼은 확장할 수 있습니다."
         : "최근 작업 이력이 없는 완료/수정 필요 프로젝트라 더미 규칙 결과를 표시합니다."}</p>
@@ -2276,6 +2280,7 @@ function renderLocalInspectionFallback(project, error) {
   }
 
   qs("modalBody").innerHTML = `
+    ${renderInspectionModalHelp()}
     <div class="modal-message warning">
       <strong>${escapeHtml(error.message || "점검 이력을 찾을 수 없습니다.")}</strong>
       <p>이 프로젝트에 연결된 완료/실패 작업 이력이 아직 없거나 규칙 결과가 생성되지 않았습니다.</p>
@@ -2300,6 +2305,7 @@ function renderLatestInspectionResult(payload) {
     const eyebrowEl = qs("modalEyebrow");
     if (eyebrowEl) eyebrowEl.textContent = "오류 상세";
     qs("modalBody").innerHTML = `
+      ${renderInspectionModalHelp()}
       <div class="modal-message warning">
         <strong>${escapeHtml(project.error || "작업이 실패하여 점검 규칙 결과가 생성되지 않았습니다.")}</strong>
         <dl class="error-detail-list">
@@ -2624,9 +2630,40 @@ function renderInspectionTableBlock(items) {
   `;
 }
 
+function renderInspectionModalHelp() {
+  return `
+    <details class="help-panel modal-help">
+      <summary>
+        <span>
+          <i class="fa-solid fa-circle-question" aria-hidden="true"></i>
+          규칙별 점검 결과 도움말
+        </span>
+        <i class="fa-solid fa-chevron-down help-chevron" aria-hidden="true"></i>
+      </summary>
+      <div class="help-grid">
+        <article class="help-item">
+          <span class="help-icon"><i class="fa-solid fa-folder" aria-hidden="true"></i></span>
+          <div>
+            <strong>전체 산출물 다운로드</strong>
+            <p>해당 프로젝트의 ECM에 업로드된 파일 전체를 다운로드합니다.</p>
+          </div>
+        </article>
+        <article class="help-item">
+          <span class="help-icon"><i class="fa-solid fa-table-list" aria-hidden="true"></i></span>
+          <div>
+            <strong>규칙별 점검 결과</strong>
+            <p>결과 카테고리를 클릭해 필터링하고, 부적합 결과는 결과 배지를 클릭해 메모와 함께 수동 정상 처리할 수 있습니다.</p>
+          </div>
+        </article>
+      </div>
+    </details>
+  `;
+}
+
 function renderInspectionResultContent(items, leadText = "", ruleItems = items) {
   return `
     <div class="inspection-result-shell">
+      ${renderInspectionModalHelp()}
       ${leadText ? `<p class="modal-lead">${escapeHtml(leadText)}</p>` : ""}
       <div id="inspectionSummaryBlock">${renderInspectionSummary(items, ruleItems)}</div>
       <div class="table-wrap modal-table inspection-result-table" id="inspectionTableBlock">
