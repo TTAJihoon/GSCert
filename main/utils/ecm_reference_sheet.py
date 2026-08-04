@@ -38,6 +38,9 @@ CENTER_PL_NAMES = {
 
 DATE_RE = re.compile(r"^\s*(\d{4})년\s*(\d{1,2})월\s*(\d{1,2})일(?:\([^)]*\))?.*$")
 PAREN_RE = re.compile(r"\([^)]*\)")
+# 회사명 맨 앞의 "(주)/(유)/(재)/(사)"는 영문명 등 부가 표기가 아니라 법인 표시 자체라
+# PAREN_RE로 지우면 안 된다(예: "(주)헬스맥스" → "헬스맥스"로 잘못 잘리는 문제).
+LEADING_ENTITY_PAREN_RE = re.compile(r"^\((주|유|재|사|합자|합명)\)")
 PROJECT_NUMBER_RE = re.compile(r"^[A-Z]{2,5}-\d{2}-\d{4,5}$")
 
 
@@ -160,12 +163,18 @@ def parse_cert_committee_date(value):
 
 
 def split_company_product(value):
-    cleaned = PAREN_RE.sub("", str(value or "")).strip()
+    text = str(value or "")
+    leading_entity = LEADING_ENTITY_PAREN_RE.match(text)
+    prefix = ""
+    if leading_entity:
+        prefix = leading_entity.group(0)
+        text = text[leading_entity.end():]
+    cleaned = PAREN_RE.sub("", text).strip()
     cleaned = re.sub(r"\s+", " ", cleaned)
     if "-" not in cleaned:
-        return cleaned, ""
+        return (prefix + cleaned).strip(), ""
     company, product = cleaned.split("-", 1)
-    return company.strip(), product.strip()
+    return (prefix + company.strip()).strip(), product.strip()
 
 
 def first_tester_name(value):

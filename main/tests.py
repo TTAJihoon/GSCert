@@ -506,6 +506,16 @@ class EcmReferenceSheetParserTests(SimpleTestCase):
         self.assertEqual(company, "주식회사 테스트")
         self.assertEqual(product, "제품명-v1.0")
 
+    def test_split_company_product_preserves_leading_corporate_marker(self):
+        # 실제 사례(TTA-26-01207): 회사명 맨 앞의 "(주)"는 법인 표시 자체라
+        # 뒤쪽 영문명 괄호와 함께 지워지면 안 된다.
+        company, product = split_company_product(
+            "(주)헬스맥스-바이오그램 미니 v1.0(Biogram mini v1.0)"
+        )
+
+        self.assertEqual(company, "(주)헬스맥스")
+        self.assertEqual(product, "바이오그램 미니 v1.0")
+
     def test_parse_sheet_projects_uses_date_block_and_pl_center(self):
         csv_text = "\n".join([
             ",2026년 6월 22일(월),,,,,,,",
