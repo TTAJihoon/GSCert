@@ -1219,6 +1219,44 @@ class DownloadReviewProjectsApiTests(TestCase):
         self.assertFalse(data["items"][1]["selectable"])
         self.assertEqual(data["items"][1]["active_state_label"], "완료")
 
+    def test_completed_project_marks_review_when_latest_result_has_manual_pass(self):
+        job = DownloadReviewJob.objects.create(
+            center_code="sangam",
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            completed_project_count=1,
+            selected_projects_json=["TTA-26-00009"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            center_code="sangam",
+            project_number="TTA-26-00009",
+            status=DownloadReviewProjectStatus.COMPLETED,
+            review_status=DownloadReviewProjectReviewStatus.COMPLETED,
+        )
+        DownloadReviewRuleResult.objects.create(
+            job_project=project,
+            rule_code="artifact_09",
+            rule_name="테스트케이스",
+            sequence=9,
+            status=DownloadReviewRuleStatus.PASS,
+            raw_detail_json={
+                "manual_override": {
+                    "applied": True,
+                    "memo": "제출본을 외부 자료로 확인",
+                    "rule_code": "artifact_09",
+                    "rule_name": "테스트케이스",
+                    "original_status": DownloadReviewRuleStatus.FAIL,
+                },
+            },
+        )
+
+        data = self._get_projects({"project_number": "TTA-26-00009"})
+
+        self.assertEqual(data["items"][0]["review"], "완료")
+        self.assertTrue(data["items"][0]["review_manual_override"]["applied"])
+        self.assertEqual(data["items"][0]["review_manual_override"]["memo"], "제출본을 외부 자료로 확인")
+
     def test_projects_filter_uses_allowlisted_query_params(self):
         data = self._get_projects({"company": "우리", "limit": "1"})
 
@@ -1849,6 +1887,8 @@ class DownloadReviewManualOverrideTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(result.status, DownloadReviewRuleStatus.PASS)
         self.assertEqual(project.review_status, DownloadReviewProjectReviewStatus.COMPLETED)
+        self.assertTrue(data["project"]["review_manual_override"]["applied"])
+        self.assertEqual(data["project"]["review_manual_override"]["memo"], "원본 파일을 별도 확인해 정상으로 판단")
         self.assertEqual(data["items"][0]["manual_override"]["memo"], "원본 파일을 별도 확인해 정상으로 판단")
         self.assertEqual(data["display_items"][0]["status"], DownloadReviewRuleStatus.PASS)
         self.assertEqual(data["display_items"][0]["manual_override"]["memo"], "원본 파일을 별도 확인해 정상으로 판단")
@@ -2463,6 +2503,47 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(projects_data["items"][0]["status_label"], "검사중")
         self.assertEqual(results_response.status_code, 200)
         self.assertEqual(results_data["items"][0]["status_label"], "정상")
+
+    def test_job_projects_endpoint_marks_completed_review_with_manual_pass(self):
+        job = DownloadReviewJob.objects.create(
+            center_code="bundang",
+            status=DownloadReviewJobStatus.COMPLETED,
+            requested_project_count=1,
+            completed_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            center_code="bundang",
+            project_number="TTA-26-00010",
+            status=DownloadReviewProjectStatus.COMPLETED,
+            review_status=DownloadReviewProjectReviewStatus.COMPLETED,
+            ecm_row_json={"project_number": "TTA-26-00010", "company": "에이치소프트"},
+        )
+        DownloadReviewRuleResult.objects.create(
+            job_project=project,
+            rule_code="artifact_13",
+            rule_name="시험성적서(PDF)",
+            sequence=13,
+            status=DownloadReviewRuleStatus.PASS,
+            raw_detail_json={
+                "manual_override": {
+                    "applied": True,
+                    "memo": "원본 제출물을 확인해 정상 처리",
+                    "rule_code": "artifact_13",
+                    "rule_name": "시험성적서(PDF)",
+                    "original_status": DownloadReviewRuleStatus.FAIL,
+                },
+            },
+        )
+
+        response = job_projects(self.factory.get(f"/api/jobs/{job.id}/projects/"), job.id)
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["items"][0]["review_status_label"], "완료")
+        self.assertTrue(data["items"][0]["review_manual_override"]["applied"])
+        self.assertEqual(data["items"][0]["review_manual_override"]["memo"], "원본 제출물을 확인해 정상 처리")
 
     def test_result_excel_endpoints_return_workbooks(self):
         from openpyxl import load_workbook

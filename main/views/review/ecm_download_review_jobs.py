@@ -291,6 +291,7 @@ def _attach_empty_active_project_state(item):
             "active_project_status": "",
             "active_project_status_label": "",
             "active_state_label": "완료" if completed else "",
+            "review_manual_override": None,
         }
     )
 
@@ -322,22 +323,23 @@ def _attach_latest_failed_project_states(items):
 
     for item in items:
         item_center = item.get("center_code") or normalize_center_code(None)
-        failed_project = latest_by_number.get((item_center, item.get("project_number")))
+        latest_project = latest_by_number.get((item_center, item.get("project_number")))
+        item["review_manual_override"] = project_review_manual_override(latest_project)
         if (
-            not failed_project
-            or failed_project.status != DownloadReviewProjectStatus.FAILED
-            or failed_project.review_status != DownloadReviewProjectReviewStatus.HELD
+            not latest_project
+            or latest_project.status != DownloadReviewProjectStatus.FAILED
+            or latest_project.review_status != DownloadReviewProjectReviewStatus.HELD
         ):
             continue
         item.update(
             {
                 "review": "실패",
                 "review_raw": "실패",
-                "latest_failed_job_project_id": str(failed_project.id),
-                "latest_failed_job_id": str(failed_project.job_id),
-                "latest_failed_step": failed_project.current_step,
-                "latest_failed_message": failed_project.error_message,
-                "latest_failed_detail": failed_project.error_detail,
+                "latest_failed_job_project_id": str(latest_project.id),
+                "latest_failed_job_id": str(latest_project.job_id),
+                "latest_failed_step": latest_project.current_step,
+                "latest_failed_message": latest_project.error_message,
+                "latest_failed_detail": latest_project.error_detail,
             }
         )
 
@@ -1207,6 +1209,73 @@ def review_status_label(status):
     return labels.get(status, status)
 
 
+def project_review_manual_override(project):
+    if not project or project.review_status != DownloadReviewProjectReviewStatus.COMPLETED:
+        return None
+
+    overrides = []
+    seen = set()
+    try:
+        results = project.rule_results.order_by("sequence", "id")
+        for result in results:
+            for override in _manual_overrides_from_raw_detail(result.raw_detail_json):
+                key = (
+                    override.get("id") or "",
+                    override.get("rule_code") or result.rule_code,
+                    override.get("sub_check_key") or "",
+                    override.get("memo") or "",
+                )
+                if key in seen:
+                    continue
+                seen.add(key)
+                if not override.get("rule_name"):
+                    override["rule_name"] = result.rule_name
+                overrides.append(override)
+    except DatabaseError:
+        logger.info("Failed to read manual review override state for %s.", project.project_number)
+        return None
+
+    if not overrides:
+        return None
+
+    first = overrides[0]
+    return {
+        "applied": True,
+        "count": len(overrides),
+        "memo": first.get("memo", ""),
+        "rule_code": first.get("rule_code", ""),
+        "rule_name": first.get("rule_name", ""),
+        "sub_check_key": first.get("sub_check_key", ""),
+        "updated_at": first.get("updated_at", ""),
+    }
+
+
+def _manual_overrides_from_raw_detail(raw_detail):
+    if not isinstance(raw_detail, dict):
+        return []
+
+    overrides = []
+    top_level = manual_override_public(raw_detail)
+    if top_level:
+        overrides.append(top_level)
+
+    manual_map = raw_detail.get("manual_overrides")
+    if isinstance(manual_map, dict):
+        for payload in manual_map.values():
+            override = manual_override_public({"manual_override": payload})
+            if override:
+                overrides.append(override)
+
+    sub_checks = raw_detail.get("sub_checks")
+    if isinstance(sub_checks, list):
+        for row in sub_checks:
+            override = manual_override_public(row) if isinstance(row, dict) else None
+            if override:
+                overrides.append(override)
+
+    return overrides
+
+
 def rule_status_label(status):
     labels = {
         DownloadReviewRuleStatus.PASS: "정상",
@@ -1434,6 +1503,7 @@ def serialize_project(project):
         "status_label": project_status_label(project.status),
         "review_status": project.review_status,
         "review_status_label": review_status_label(project.review_status),
+        "review_manual_override": project_review_manual_override(project),
         "current_step": project.current_step,
         "error_message": project.error_message,
         "error_detail": project.error_detail,

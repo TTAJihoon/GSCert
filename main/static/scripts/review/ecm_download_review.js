@@ -799,6 +799,19 @@ function normalizeReview(value) {
   return review;
 }
 
+function normalizeManualReviewOverride(value) {
+  if (!value || !value.applied) return null;
+  return {
+    applied: true,
+    count: Number(value.count || 1),
+    memo: String(value.memo || ""),
+    ruleCode: String(value.rule_code || ""),
+    ruleName: String(value.rule_name || ""),
+    subCheckKey: String(value.sub_check_key || ""),
+    updatedAt: String(value.updated_at || "")
+  };
+}
+
 function normalizeApiProject(item) {
   return {
     number: item.project_number,
@@ -810,6 +823,7 @@ function normalizeApiProject(item) {
     centerLabel: item.center_label || centerLabels[item.center_code || state.center] || "",
     review: normalizeReview(item.review),
     reviewRaw: item.review_raw || item.review || "",
+    reviewManualOverride: normalizeManualReviewOverride(item.review_manual_override),
     selectable: item.selectable !== false,
     inspectionDate: item.inspection_date || "-",
     activeJobId: item.active_job_id || "",
@@ -854,6 +868,7 @@ function normalizeApiJobProject(item) {
     status: item.status,
     statusLabel: item.status_label || item.status,
     review: item.review_status_label || item.review_status || "-",
+    reviewManualOverride: normalizeManualReviewOverride(item.review_manual_override),
     step: item.current_step || item.status_label || "-",
     retry: item.retry_count || 0,
     zip: item.zip_file_name || "-",
@@ -910,13 +925,27 @@ function formatJobIdLabel(id, requestedAtIso) {
 
 function badge(status, options = {}) {
   const manualOverride = options.manualOverride || null;
+  const manualReview = options.manualReview || null;
   const config = statusLabel[status] || [status, "badge-muted"];
-  const label = manualOverride?.applied ? "정상" : config[0];
-  const cls = manualOverride?.applied ? "badge-manual-pass" : config[1];
-  const title = manualOverride?.applied && manualOverride.memo
-    ? `수동 적합 사유: ${manualOverride.memo}`
-    : "";
+  let label = config[0];
+  let cls = config[1];
+  let title = "";
+  if (manualOverride?.applied) {
+    label = "정상";
+    cls = "badge-manual-pass";
+    title = manualOverride.memo ? `수동 적합 사유: ${manualOverride.memo}` : "";
+  } else if (manualReview?.applied) {
+    cls = "badge-manual-pass";
+    const count = Number(manualReview.count || 1);
+    const prefix = count > 1 ? `수동 적합 ${count}건 포함 완료` : "수동 적합 포함 완료";
+    title = manualReview.memo ? `${prefix}: ${manualReview.memo}` : prefix;
+  }
   return `<span class="badge ${cls}"${title ? ` title="${escapeHtml(title)}"` : ""}>${escapeHtml(label)}</span>`;
+}
+
+function projectReviewBadge(item) {
+  const manualReview = item?.review === "완료" ? item.reviewManualOverride : null;
+  return badge(item?.review || "-", { manualReview });
 }
 
 function isProjectLocked(item) {
@@ -1080,7 +1109,7 @@ function renderProjects() {
         <td>${item.company}</td>
         <td>${item.product}</td>
         <td>${item.pl}</td>
-        <td>${badge(item.review)}</td>
+        <td>${projectReviewBadge(item)}</td>
         <td>${badge(activeLabel)}</td>
         <td>
           <button class="mini-button" type="button" data-inspection-detail="${item.number}" ${hasDetail ? "" : "disabled"}>
@@ -1193,7 +1222,7 @@ function renderDetail() {
       <dt>회사명</dt><dd>${item.company}</dd>
       <dt>제품명</dt><dd>${item.product}</dd>
       <dt>시험PL</dt><dd>${item.pl}</dd>
-      <dt>점검결과</dt><dd>${badge(item.review)}</dd>
+      <dt>점검결과</dt><dd>${projectReviewBadge(item)}</dd>
       <dt>작업상태</dt><dd>${badge(projectWorkStatusLabel(item))}</dd>
       <dt>점검날짜</dt><dd>${item.inspectionDate || "-"}</dd>
     </dl>
@@ -1508,7 +1537,7 @@ function renderResults() {
       <td>${escapeHtml(item.company)}</td>
       <td>${escapeHtml(item.product)}</td>
       <td>${badge(item.statusLabel || item.status)}</td>
-      <td>${badge(item.review)}</td>
+      <td>${projectReviewBadge(item)}</td>
       <td>
         <button class="mini-button" type="button" data-rule-result="${escapeHtml(item.id)}">
           상세
