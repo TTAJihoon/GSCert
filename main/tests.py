@@ -5316,30 +5316,35 @@ class LlmModelConsoleTests(SimpleTestCase):
             reasoning={"effort": "low"},
         )
 
-    def test_server_console_llm_api_lists_and_switches_by_number(self):
+    def test_launcher_management_command_lists_and_switches_model(self):
         import os
 
         with tempfile.TemporaryDirectory() as temp_dir:
             state_file = Path(temp_dir) / "llm.json"
             with patch.dict(os.environ, self._environment(state_file), clear=False):
-                list_response = self.client.get("/api/server/llm/models/")
-                self.assertEqual(list_response.status_code, 200)
-                self.assertEqual(len(list_response.json()["models"]), 3)
+                output = StringIO()
+                call_command("llm_model", "list", stdout=output)
+                self.assertIn("1. Google / gemma-4-26b-a4b-it [사용 중]", output.getvalue())
+                self.assertIn("3. OpenAI / gpt-5.6-luna", output.getvalue())
 
-                select_response = self.client.post(
-                    "/api/server/llm/select/",
-                    data=json.dumps({"index": 3}),
-                    content_type="application/json",
-                )
-                self.assertEqual(select_response.status_code, 200)
-                self.assertEqual(
-                    select_response.json()["selected_model"]["key"],
-                    "openai:gpt-5.6-luna",
-                )
+                output = StringIO()
+                call_command("llm_model", "select", "--index", "3", stdout=output)
+                self.assertIn("OpenAI / gpt-5.6-luna 모델로 전환", output.getvalue())
 
-                page = self.client.get("/server-console/")
-                self.assertContains(page, 'placeholder="명령어 입력 (예: LLM)"')
-                self.assertContains(page, "runConsoleCommand")
+                output = StringIO()
+                call_command("llm_model", "list", stdout=output)
+                self.assertIn("3. OpenAI / gpt-5.6-luna [사용 중]", output.getvalue())
+
+        launcher = (Path(__file__).resolve().parent.parent / "launcher.ps1").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("LLM.  LLM 모델 관리", launcher)
+        self.assertIn("'LLM' {", launcher)
+        self.assertIn("llm_model select --index", launcher)
+
+    def test_unused_web_server_console_is_removed(self):
+        self.assertEqual(self.client.get("/server-console/").status_code, 404)
+        self.assertNotContains(self.client.get("/index/"), "서버 관리<br/>콘솔")
 
 
 class SharedLlmFeatureRoutingTests(SimpleTestCase):

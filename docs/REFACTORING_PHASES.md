@@ -35,7 +35,7 @@
 - `main/views/testing/history.py` — 시험 이력 조회를 `SwData.objects.using('reference')` ORM으로 전환
 - `main/views/testing/similar_compare.py` — 유사 시험 조회의 DB 조회를 ORM으로 전환 (FAISS 인덱스는 그대로)
 - `main/views/certy/prdinfo_db.py` — 제품정보 조회 ORM 전환
-- `main/views/server_console.py` — 임베딩 실행을 현재 시스템(`C:\Claude_GSCert`, PostgreSQL)으로 수정
+- 서버 운영 명령은 루트 `launcher.ps1` 메뉴로 통합
 
 ---
 

@@ -65,6 +65,7 @@ function Show-Menu {
     Write-Host "  f.    FAISS 임베딩  - reference DB 신규 데이터 증분 임베딩$venvWarn"
     Write-Host "  D.    점검규칙 관리 - 반영(seed) / 규칙·세부항목 on-off$venvWarn"
     Write-Host "  B.    로컬 검토 앱   - 빌드 / 빌드 없이 실행 선택"
+    Write-Host "  LLM.  LLM 모델 관리 - 사용 가능 모델 조회 / 현재 모델 전환"
     Write-Host "  git.  Git 관리      - 원격 pull / 로컬 커밋·push"
     $pgHost = if ($env:REFERENCE_PG_HOST) { $env:REFERENCE_PG_HOST } else { "미설정" }
     Write-Host "  P.    PostgreSQL 설정- 현재 HOST: $pgHost"
@@ -325,6 +326,34 @@ while ($true) {
                 if ($?) {
                     Write-Host "[OK] 임베딩 완료" -ForegroundColor Green
                 }
+            }
+        }
+        'LLM' {
+            Write-Host ""
+            Write-Host "=== LLM 모델 관리 ===" -ForegroundColor Cyan
+            $VenvPython = Join-Path $ScriptDir ".venv\Scripts\python.exe"
+            if (-not (Test-Path $VenvPython)) { $VenvPython = Join-Path $ScriptDir "venv\Scripts\python.exe" }
+            if (-not (Test-Path $VenvPython)) {
+                Write-Host "[ERROR] 가상환경 Python을 찾을 수 없습니다. 먼저 setup(초기 환경 설정)을 실행하세요." -ForegroundColor Red
+            } else {
+                $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+                & $VenvPython (Join-Path $ScriptDir "manage.py") llm_model list
+                $listOk = ($LASTEXITCODE -eq 0)
+                if ($listOk) {
+                    Write-Host ""
+                    $modelIndex = Read-Host "전환할 모델 번호 입력 (변경하지 않으려면 Enter)"
+                    if ($modelIndex) {
+                        & $VenvPython (Join-Path $ScriptDir "manage.py") llm_model select --index $modelIndex
+                        if ($LASTEXITCODE -eq 0) {
+                            Write-Host "  이후 모든 AI 기능에 즉시 적용됩니다." -ForegroundColor Yellow
+                        }
+                    } else {
+                        Write-Host "변경하지 않았습니다." -ForegroundColor Yellow
+                    }
+                } else {
+                    Write-Host "[ERROR] LLM 모델 목록을 조회하지 못했습니다." -ForegroundColor Red
+                }
+                $ErrorActionPreference = $prevEAP
             }
         }
         'P' {
