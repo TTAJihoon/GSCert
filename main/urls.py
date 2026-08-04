@@ -22,6 +22,8 @@ from main.views.server_console import (
     api_run_worker,
     api_stop_worker,
     api_task_status,
+    api_llm_models,
+    api_select_llm_model,
 )
 
 from main.views.review.checkreport import parse_view
@@ -111,4 +113,6 @@ urlpatterns = [
     path('api/server/worker/start/', api_run_worker, name='api_server_worker_start'),
     path('api/server/worker/stop/', api_stop_worker, name='api_server_worker_stop'),
     path('api/server/tasks/<str:task_id>/', api_task_status, name='api_server_task_status'),
+    path('api/server/llm/models/', api_llm_models, name='api_server_llm_models'),
+    path('api/server/llm/select/', api_select_llm_model, name='api_server_llm_select'),
 ]

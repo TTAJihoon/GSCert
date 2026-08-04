@@ -5216,6 +5216,132 @@ class HistoryProductCopyTests(SimpleTestCase):
         self.assertContains(response, 'id="historyCopyToast"')
 
 
+class LlmModelConsoleTests(SimpleTestCase):
+    def _environment(self, state_file, *, openai_key="openai-test-key"):
+        return {
+            "GSCERT_LLM_MODELS": (
+                "google:gemma-4-26b-a4b-it,"
+                "google:gemini-3.5-flash-lite,"
+                "openai:gpt-5.6-luna"
+            ),
+            "GSCERT_LLM_DEFAULT": "google:gemma-4-26b-a4b-it",
+            "GSCERT_LLM_STATE_FILE": str(state_file),
+            "GEMINI_API_KEY": "google-test-key",
+            "OPENAI_API_KEY": openai_key,
+        }
+
+    def test_registry_switches_provider_and_persists_selection(self):
+        import os
+        from main.utils.llm_models import (
+            get_active_model,
+            list_llm_models,
+            select_llm_model,
+        )
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_file = Path(temp_dir) / "llm.json"
+            with patch.dict(os.environ, self._environment(state_file), clear=False):
+                self.assertEqual(
+                    get_active_model(),
+                    ("google", "gemma-4-26b-a4b-it"),
+                )
+                selected = select_llm_model("openai:gpt-5.6-luna")
+                self.assertEqual(selected["model"], "gpt-5.6-luna")
+                self.assertEqual(get_active_model(), ("openai", "gpt-5.6-luna"))
+                self.assertTrue(
+                    next(
+                        model
+                        for model in list_llm_models()
+                        if model["key"] == "openai:gpt-5.6-luna"
+                    )["active"]
+                )
+
+    def test_registry_blocks_model_without_provider_key(self):
+        import os
+        from main.utils.llm_models import select_llm_model
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_file = Path(temp_dir) / "llm.json"
+            environment = self._environment(state_file, openai_key="")
+            with patch.dict(os.environ, environment, clear=False):
+                os.environ.pop("OPENAI_API_KEY", None)
+                with self.assertRaisesMessage(ValueError, "OPENAI_API_KEY"):
+                    select_llm_model("openai:gpt-5.6-luna")
+
+    @patch("main.utils.gemini_gemma._generate_openai_text")
+    @patch("main.utils.gemini_gemma.get_active_model")
+    def test_generation_router_uses_selected_openai_model(
+        self,
+        get_active_model,
+        generate_openai,
+    ):
+        from main.utils.gemini_gemma import generate_gemma_text
+
+        get_active_model.return_value = ("openai", "gpt-5.6-luna")
+        generate_openai.return_value = (
+            "응답",
+            SimpleNamespace(input_tokens=11, output_tokens=5, total_tokens=16),
+        )
+        usage = []
+
+        result = generate_gemma_text("요청", usage_callback=usage.append)
+
+        self.assertEqual(result, "응답")
+        generate_openai.assert_called_once_with("요청", "gpt-5.6-luna")
+        self.assertEqual(usage[0]["provider"], "openai")
+        self.assertEqual(usage[0]["input_tokens"], 11)
+
+    @patch("openai.OpenAI")
+    def test_openai_adapter_uses_responses_api_and_low_reasoning(self, openai_client):
+        import os
+        from main.utils.gemini_gemma import _generate_openai_text
+
+        response = SimpleNamespace(
+            output_text="Luna 응답",
+            usage=SimpleNamespace(input_tokens=8, output_tokens=3, total_tokens=11),
+        )
+        openai_client.return_value.responses.create.return_value = response
+        with patch.dict(
+            os.environ,
+            {"OPENAI_API_KEY": "openai-test-key", "OPENAI_REASONING_EFFORT": "low"},
+            clear=False,
+        ):
+            text, usage = _generate_openai_text("제품 요약", "gpt-5.6-luna")
+
+        self.assertEqual(text, "Luna 응답")
+        self.assertEqual(usage.total_tokens, 11)
+        openai_client.return_value.responses.create.assert_called_once_with(
+            input="제품 요약",
+            model="gpt-5.6-luna",
+            reasoning={"effort": "low"},
+        )
+
+    def test_server_console_llm_api_lists_and_switches_by_number(self):
+        import os
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_file = Path(temp_dir) / "llm.json"
+            with patch.dict(os.environ, self._environment(state_file), clear=False):
+                list_response = self.client.get("/api/server/llm/models/")
+                self.assertEqual(list_response.status_code, 200)
+                self.assertEqual(len(list_response.json()["models"]), 3)
+
+                select_response = self.client.post(
+                    "/api/server/llm/select/",
+                    data=json.dumps({"index": 3}),
+                    content_type="application/json",
+                )
+                self.assertEqual(select_response.status_code, 200)
+                self.assertEqual(
+                    select_response.json()["selected_model"]["key"],
+                    "openai:gpt-5.6-luna",
+                )
+
+                page = self.client.get("/server-console/")
+                self.assertContains(page, 'placeholder="명령어 입력 (예: LLM)"')
+                self.assertContains(page, "runConsoleCommand")
+
+
 class SimilarSummarySelectionTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()

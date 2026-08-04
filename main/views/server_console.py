@@ -10,6 +10,8 @@ from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
+from main.utils.llm_models import list_llm_models, select_llm_model
+
 _VENV_PYTHON = r"C:\Claude_GSCert\.venv\Scripts\python.exe"
 _CLAUDE_ROOT = r"C:\Claude_GSCert"
 
@@ -71,6 +73,39 @@ def _launch(args: list, cwd: str, env: dict, task: dict):
 
 def server_console(request):
     return render(request, "server_console.html")
+
+
+@require_GET
+def api_llm_models(request):
+    models = list_llm_models()
+    active = next((model for model in models if model["active"]), None)
+    return JsonResponse({"models": models, "active_model": active})
+
+
+@csrf_exempt
+@require_POST
+def api_select_llm_model(request):
+    try:
+        body = json.loads(request.body or b"{}")
+    except json.JSONDecodeError:
+        return JsonResponse({"error": "요청 JSON을 해석할 수 없습니다."}, status=400)
+
+    models = list_llm_models()
+    key = str(body.get("key") or "").strip()
+    if not key:
+        try:
+            index = int(body.get("index"))
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "선택할 모델 번호를 입력해주세요."}, status=400)
+        if index < 1 or index > len(models):
+            return JsonResponse({"error": "목록에 있는 모델 번호를 입력해주세요."}, status=400)
+        key = models[index - 1]["key"]
+
+    try:
+        selected = select_llm_model(key)
+    except ValueError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    return JsonResponse({"selected_model": selected, "models": list_llm_models()})
 
 
 @csrf_exempt

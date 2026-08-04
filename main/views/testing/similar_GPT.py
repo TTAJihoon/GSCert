@@ -11,11 +11,11 @@ from main.utils.gemini_gemma import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RERANK_MODEL = "gemini-3.1-flash-lite"
+DEFAULT_RERANK_MODEL = None
 
 
 def run_gemini_gemma(query):
-    """Gemini API hosted Gemma 모델로 제품 개요를 한 문장으로 요약한다."""
+    """현재 선택된 LLM으로 제품 개요를 한 문장으로 요약한다."""
     source_text = "\n".join(query) if isinstance(query, (list, tuple)) else str(query)
     logger.debug("Gemini/Gemma summary input: %s", source_text[:500])
     prompt = f"""

@@ -26,6 +26,13 @@ Resolve-Env 'REFERENCE_PG_PORT' '5432'
 Resolve-Env 'REFERENCE_PG_PASSWORD'   # PostgreSQL 비밀번호
 Resolve-Env 'GEMINI_API_KEY'          # 보안성 AI 추천 등
 Resolve-Env 'GOOGLE_API_KEY'          # GEMINI_API_KEY 대체용(선택)
+Resolve-Env 'OPENAI_API_KEY'           # OpenAI GPT 계열 모델(선택)
+
+# 서버 관리 콘솔의 LLM 명령에 표시할 모델과 최초 기본 모델.
+# 콘솔에서 선택한 값은 run/llm_selection.json 에 저장되어 이 기본값보다 우선한다.
+Resolve-Env 'GSCERT_LLM_MODELS' 'google:gemma-4-26b-a4b-it,google:gemini-3.5-flash-lite,openai:gpt-5.6-luna'
+Resolve-Env 'GSCERT_LLM_DEFAULT' 'google:gemma-4-26b-a4b-it'
+Resolve-Env 'OPENAI_REASONING_EFFORT' 'low'
 
 # ── 필수 비밀값 누락 시 경고 ──
 foreach ($required in @('REFERENCE_PG_PASSWORD', 'GEMINI_API_KEY')) {
