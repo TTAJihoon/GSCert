@@ -2675,28 +2675,17 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
             # 아니라 'N차 ' 접두어를 뗀 기본 명칭(예: '결함리포트')으로도 확인한다.
             # (이 완화가 없으면 보고일자가 일치해도 표지 문구 불일치로 부적합 처리된다.)
             base_sheet_name = re.sub(r"^\s*\d+차\s*", "", sheet_name)
-            # '시험분석자료' 시트도 실제 제출물에서는 '최종결함리포트'와 동일한 표지
-            # 서식(제목이 'TTA-XX-XXXXX 최종 결함리포트'로 적힘)을 그대로 쓰는 경우가
-            # 많아, 이 표현도 표지로 인정한다. (그렇지 않으면 보고일자가 정확히
-            # 일치해도 표지 문구가 '시험분석자료'가 아니라는 이유로 부적합 처리된다.)
-            alt_title = "최종결함리포트" if sheet_name == "시험분석자료" else None
-            header_found = bool(
-                sheet_text
-                or (
-                    sheet
-                    and base_sheet_name != sheet_name
-                    and _sheet_top_rows_cell_containing(sheet, base_sheet_name)
-                )
-                or (sheet and alt_title and _sheet_top_rows_cell_containing(sheet, alt_title))
+            title_found_text = sheet_text or (
+                (sheet and base_sheet_name != sheet_name and _sheet_top_rows_cell_containing(sheet, base_sheet_name))
+                or ""
             )
+            header_found = bool(title_found_text)
             # expected_date가 비어 있는 건 'N차' 라운드인데 시험성적서에 결함리포트
             # 송부 표가 없어(최신 서식) 기준 날짜를 못 구한 경우다(최종결함리포트/
             # 시험분석자료는 항상 context.end_date가 있으므로 영향받지 않음).
             # 이때는 비교 기준이 없으므로 보고일자 값 자체의 존재만 확인한다.
-            passed = bool(
-                header_found
-                and (_same_date_text(report_date, expected_date) if expected_date else bool(report_date))
-            )
+            date_passed = bool(_same_date_text(report_date, expected_date) if expected_date else bool(report_date))
+            passed = header_found and date_passed
             detail = {
                 "version": version,
                 "sheet": sheet_name,
@@ -2706,10 +2695,18 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
                 "project_text": project_text,
                 "sheet_text": sheet_text,
                 "passed": passed,
+                "header_found": header_found,
+                "date_passed": date_passed,
             }
             details.append(detail)
             # 차시별로 한 줄씩 표시되도록 " / " 로 구분해 누적한다.
             label = f"v{version}.0 {sheet_name}"
+            # 표지 제목과 보고일자는 서로 다른 원인이므로 별도 세부항목으로 나눠
+            # 비교한다(둘을 하나로 합치면 날짜가 정확히 일치해도 표지 제목 문제로
+            # 부적합이 되는 이유를 화면에서 알아볼 수 없다).
+            title_expected = f"{label} 표지 제목 '{sheet_name}' 포함"
+            title_actual = _normalize_spaces(_sheet_top_rows_all_text(sheet)) or "표지 제목 문구 없음"
+            sub_checks.append({"expected": title_expected, "actual": title_actual, "passed": header_found})
             # 형식이 달라도 값으로 비교되도록, 기대/실제 날짜를 정규화 형식(YYYY.MM.DD.)으로 나란히 표시한다.
             expected_display = _format_dot_date(expected_date) or (expected_date or "(기준없음)")
             actual_display = _format_dot_date(report_date) or (report_date or "문구없음")
@@ -2717,7 +2714,7 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
             sub_actual = f"{label} 실제 보고일자 {actual_display}"
             expected_parts.append(sub_expected)
             actual_parts.append(sub_actual)
-            sub_checks.append({"expected": sub_expected, "actual": sub_actual, "passed": passed})
+            sub_checks.append({"expected": sub_expected, "actual": sub_actual, "passed": date_passed})
             if not passed:
                 all_passed = False
 
@@ -2763,6 +2760,22 @@ def _sheet_top_rows_cell_containing(sheet, keyword, *, limit=4):
             if needle and needle in _normalize_no_space(value):
                 return value
     return ""
+
+
+def _sheet_top_rows_all_text(sheet, *, limit=4):
+    """상단 행의 비어있지 않은 모든 셀 값을 이어붙인다(표지 문구 진단용).
+
+    표지 제목이 기대와 달라 keyword 매칭이 실패해도, 실제로 어떤 문구가
+    적혀 있었는지를 세부항목 실제값으로 보여주기 위한 용도다."""
+    if not sheet:
+        return ""
+    parts = [
+        str(value).strip()
+        for row in sheet.rows[:limit]
+        for value in row
+        if str(value or "").strip()
+    ]
+    return " / ".join(parts)
 
 
 def _sheet_top_rows_label_value(sheet, keyword, *, limit=4):

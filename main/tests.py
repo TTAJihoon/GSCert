@@ -3805,9 +3805,11 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(result.raw_detail_json["report_date_checks"][0]["sheet_text"], "1차 결함리포트")
         self.assertEqual(result.raw_detail_json["report_date_checks"][0]["actual_date"], "2026.04.14.")
 
-    def test_defect_report_summary_sheet_accepts_final_report_cover_title(self):
-        """'시험분석자료' 시트의 표지 제목이 실제 제출물처럼 '최종 결함리포트'로 적혀
-        있어도(시트명 그대로가 아니어도) 보고일자가 일치하면 적합 처리되어야 한다."""
+    def test_defect_report_summary_sheet_title_mismatch_reported_separately_from_date(self):
+        """'시험분석자료' 시트의 표지 제목이 '최종결함리포트'로 잘못 적혀 있으면
+        표지 제목 세부항목은 부적합, 보고일자 세부항목은 (날짜가 일치하므로) 적합으로
+        각각 구분되어 표시되어야 한다(둘을 하나로 합치면 날짜가 일치해도 부적합 사유를
+        알아볼 수 없다)."""
         project_dir = Path(self.temp_dir.name) / "downloads"
         project_dir.mkdir(parents=True)
         master_db_path = Path(self.temp_dir.name) / "reference.db"
@@ -3901,8 +3903,19 @@ class DownloadReviewJobsApiTests(TestCase):
         result = DownloadReviewRuleResult.objects.get(job_project=project, rule_name="결함리포트")
         checks = result.raw_detail_json["report_date_checks"]
         summary_check = next(check for check in checks if check["sheet"] == "시험분석자료")
-        self.assertTrue(summary_check["passed"], checks)
-        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS, checks)
+        self.assertFalse(summary_check["passed"], checks)
+        self.assertFalse(summary_check["header_found"], checks)
+        self.assertTrue(summary_check["date_passed"], checks)
+        self.assertEqual(result.status, DownloadReviewRuleStatus.FAIL, checks)
+
+        sub_checks = result.raw_detail_json["sub_checks"]
+        title_sub_check = next(
+            item for item in sub_checks if item["expected"] == "v3.0 시험분석자료 표지 제목 '시험분석자료' 포함"
+        )
+        date_sub_check = next(item for item in sub_checks if item["expected"].startswith("v3.0 시험분석자료 기대 보고일자"))
+        self.assertFalse(title_sub_check["passed"])
+        self.assertIn("최종", title_sub_check["actual"])
+        self.assertTrue(date_sub_check["passed"], date_sub_check)
 
     def test_zero_residual_defect_variable_is_available_when_defect_count_missing(self):
         project_dir = Path(self.temp_dir.name) / "downloads"
