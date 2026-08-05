@@ -98,6 +98,7 @@ class RuleContext:
     certification_committee_date: str
     derived_variables: dict[str, object]
     center: str = ""
+    product_alt: str = ""
 
 
 @dataclass(frozen=True)
@@ -1248,6 +1249,12 @@ def _test_plan_product_checks(table, config, context):
     version_actual = _find_next_cell_by_label(table, version_label)
     application_actual = _find_next_cell_by_label(table, application_label)
     product_message = config.get("product_message") or "제품정보가 틀림"
+    # 인증획득목록 제품명은 '국문명 버전(영문명 버전)' 형식으로 병기되는 경우가 있어,
+    # 시험계획서에 국문명 또는 영문명 중 하나만 적혀 있어도 모두 정상으로 인정한다.
+    product_candidates = [name for name in (context.product, context.product_alt) if name]
+    product_actual_normalized = _normalize_spaces(product_actual)
+    product_name_passed = any(product_actual_normalized == candidate for candidate in product_candidates)
+    product_expected_display = " 또는 ".join(product_candidates) if product_candidates else context.product
     return [
         {
             "name": "version_exists",
@@ -1258,8 +1265,8 @@ def _test_plan_product_checks(table, config, context):
         },
         {
             "name": "product_name",
-            "passed": _normalize_spaces(product_actual) == context.product,
-            "expected": f"{product_label} 오른쪽 셀 = {context.product}",
+            "passed": product_name_passed,
+            "expected": f"{product_label} 오른쪽 셀 = {product_expected_display}",
             "actual": product_actual or "값 없음",
             "message": product_message,
         },
@@ -4973,6 +4980,27 @@ def _split_product_and_version(product_name):
     return value, ""
 
 
+def _split_dual_product_name(product_name):
+    """인증획득목록 제품명이 '국문명 버전(영문명 버전)' 형식인 경우 국문명/영문명을
+    각각 버전을 뺀 형태로 분리한다. 시험계획서 등 산출물에는 국문명 또는 영문명 중
+    하나만 적힐 수 있어 둘 다 기준값으로 인정해야 한다. 괄호가 없으면(영문명 병기
+    없이 단일 명칭만 있는 경우) 영문명은 빈 문자열로 반환한다."""
+    value = _normalize_spaces(product_name)
+    if not value:
+        return "", "", ""
+
+    match = re.match(r"^(.*?)\s*\(([^()]+)\)\s*$", value)
+    if not match:
+        product, version = _split_product_and_version(value)
+        return product, "", version
+
+    korean_part, english_part = match.group(1).strip(), match.group(2).strip()
+    korean_product, korean_version = _split_product_and_version(korean_part)
+    english_product, english_version = _split_product_and_version(english_part)
+    version = korean_version or english_version
+    return korean_product, english_product, version
+
+
 def _project_year(project_number):
     match = re.search(r"TTA-(\d{2})-", project_number or "", re.IGNORECASE)
     if not match:
@@ -6462,11 +6490,12 @@ def build_context(*, project_number="", product_name="", company="", pl="", wd="
                   certification_committee_date="", center=""):
     """프로젝트 메타데이터로 RuleContext 를 만든다(웹/로컬 공용)."""
     product_raw = _first_line(product_name)
-    product, version = _split_product_and_version(product_raw)
+    product, product_alt, version = _split_dual_product_name(product_raw)
     return RuleContext(
         project_number=project_number or "",
         product_raw=product_raw,
         product=product,
+        product_alt=product_alt,
         version=version,
         company=_first_line(company),
         pl=_first_pl_name(pl),

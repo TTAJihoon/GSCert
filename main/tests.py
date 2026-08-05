@@ -766,6 +766,51 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
             with self.subTest(raw=raw):
                 self.assertEqual(engine._split_product_and_version(raw), expected)
 
+    def test_split_dual_product_name_separates_korean_and_english_variants(self):
+        # 인증획득목록 제품명은 '국문명 버전(영문명 버전)'으로 병기되는 경우가 있다.
+        cases = {
+            "테스트제품 1.0(TestProduct 1.0)": ("테스트제품", "TestProduct", "1.0"),
+            "자료분석 플랫폼 v2.1(Data Analysis Platform v2.1)": (
+                "자료분석 플랫폼",
+                "Data Analysis Platform",
+                "v2.1",
+            ),
+            "헬스맥스 3.0": ("헬스맥스", "", "3.0"),
+        }
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(engine._split_dual_product_name(raw), expected)
+
+    def test_test_plan_product_check_accepts_either_korean_or_english_name(self):
+        context = engine.build_context(
+            project_number="TTA-26-00010",
+            product_name="테스트제품 1.0(TestProduct 1.0)",
+        )
+        self.assertEqual(context.product, "테스트제품")
+        self.assertEqual(context.product_alt, "TestProduct")
+
+        for actual_name in ("테스트제품", "TestProduct"):
+            with self.subTest(actual_name=actual_name):
+                table = [
+                    ["소프트웨어 명", actual_name],
+                    ["버전", "1.0"],
+                    ["시험신청번호", "TTA-26-00010"],
+                ]
+                checks = engine._test_plan_product_checks(table, {}, context)
+                product_check = next(item for item in checks if item["name"] == "product_name")
+                self.assertTrue(product_check["passed"], product_check)
+
+        table_wrong_name = [
+            ["소프트웨어 명", "다른제품"],
+            ["버전", "1.0"],
+            ["시험신청번호", "TTA-26-00010"],
+        ]
+        checks = engine._test_plan_product_checks(table_wrong_name, {}, context)
+        product_check = next(item for item in checks if item["name"] == "product_name")
+        self.assertFalse(product_check["passed"])
+        self.assertIn("테스트제품", product_check["expected"])
+        self.assertIn("TestProduct", product_check["expected"])
+
     def test_version_matches_accepts_word_versions_case_insensitively(self):
         self.assertTrue(engine._version_matches("Enterprise", "enterprise"))
         self.assertTrue(engine._version_matches("v1", "1"))
