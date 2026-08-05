@@ -2675,6 +2675,11 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
             # 아니라 'N차 ' 접두어를 뗀 기본 명칭(예: '결함리포트')으로도 확인한다.
             # (이 완화가 없으면 보고일자가 일치해도 표지 문구 불일치로 부적합 처리된다.)
             base_sheet_name = re.sub(r"^\s*\d+차\s*", "", sheet_name)
+            # '시험분석자료' 시트도 실제 제출물에서는 '최종결함리포트'와 동일한 표지
+            # 서식(제목이 'TTA-XX-XXXXX 최종 결함리포트'로 적힘)을 그대로 쓰는 경우가
+            # 많아, 이 표현도 표지로 인정한다. (그렇지 않으면 보고일자가 정확히
+            # 일치해도 표지 문구가 '시험분석자료'가 아니라는 이유로 부적합 처리된다.)
+            alt_title = "최종결함리포트" if sheet_name == "시험분석자료" else None
             header_found = bool(
                 sheet_text
                 or (
@@ -2682,6 +2687,7 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
                     and base_sheet_name != sheet_name
                     and _sheet_top_rows_cell_containing(sheet, base_sheet_name)
                 )
+                or (sheet and alt_title and _sheet_top_rows_cell_containing(sheet, alt_title))
             )
             # expected_date가 비어 있는 건 'N차' 라운드인데 시험성적서에 결함리포트
             # 송부 표가 없어(최신 서식) 기준 날짜를 못 구한 경우다(최종결함리포트/
