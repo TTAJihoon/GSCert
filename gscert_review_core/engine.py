@@ -443,8 +443,11 @@ def _evaluate_required_artifact_file(rule, sequence, project, context, verify_re
     )
 
 
+PROMOTIONAL_DOCUMENT_EXTENSIONS = {".hwp", ".doc", ".docx", ".docm"}
+
+
 def _evaluate_promotional_material_check(rule, sequence, project, verify_result):
-    """홍보이미지 규칙: hwp 파일(파일명에 금지어 미포함)이 있거나, 이미지 파일이
+    """홍보이미지 규칙: 한글/워드 파일(파일명에 금지어 미포함)이 있거나, 이미지 파일이
     1개 이상 있으면 적합으로 본다(둘 중 하나만 만족해도 통과, OR 조건).
     이미지 파일 쪽은 파일명 금지어(예: '예시')를 확인하지 않는다."""
     config = rule.config_json or {}
@@ -459,20 +462,22 @@ def _evaluate_promotional_material_check(rule, sequence, project, verify_result)
     def _is_forbidden(file_info):
         return any(keyword in file_info.name for keyword in forbidden_keywords)
 
-    hwp_files = [file_info for file_info in files if file_info.extension.lower() == ".hwp"]
-    hwp_ok_files = [file_info for file_info in hwp_files if not _is_forbidden(file_info)]
+    document_files = [
+        file_info for file_info in files if file_info.extension.lower() in PROMOTIONAL_DOCUMENT_EXTENSIONS
+    ]
+    document_ok_files = [file_info for file_info in document_files if not _is_forbidden(file_info)]
     image_files = [file_info for file_info in files if file_info.extension.lower() in IMAGE_EXTENSIONS]
 
-    passed = bool(hwp_ok_files) or bool(image_files)
+    passed = bool(document_ok_files) or bool(image_files)
     status = DownloadReviewRuleStatus.PASS if passed else DownloadReviewRuleStatus.FAIL
 
     forbidden_label = ", ".join(forbidden_keywords) or "(없음)"
-    expected = f"hwp 파일(파일명에 {forbidden_label} 미포함) 또는 이미지 파일 1개 이상"
+    expected = f"한글파일 또는 워드파일(파일명에 {forbidden_label} 미포함) 또는 이미지 파일 1개 이상"
 
     if passed:
         message = config.get("pass_message") or "홍보이미지를 확인했습니다."
-        if hwp_ok_files:
-            actual = f"hwp 파일 확인: {', '.join(f.name for f in hwp_ok_files[:5])}"
+        if document_ok_files:
+            actual = f"한글/워드 파일 확인: {', '.join(f.name for f in document_ok_files[:5])}"
         else:
             actual = f"이미지 파일 {len(image_files)}개 확인"
     elif not files:
@@ -481,14 +486,14 @@ def _evaluate_promotional_material_check(rule, sequence, project, verify_result)
             config.get("folder_missing_message") if config.get("folder_keyword_chain") and not selected_folder
             else config.get("missing_message")
         ) or "홍보이미지 파일을 찾을 수 없습니다"
-    elif hwp_files and not hwp_ok_files:
-        actual = f"파일명에 {forbidden_label} 포함된 hwp 파일만 존재: " + ", ".join(f.name for f in hwp_files[:5])
+    elif document_files and not document_ok_files:
+        actual = f"파일명에 {forbidden_label} 포함된 한글/워드 파일만 존재: " + ", ".join(f.name for f in document_files[:5])
         message = (
             config.get("forbidden_message")
             or f"홍보이미지 파일명에 {forbidden_label}가 포함되어 있습니다."
         )
     else:
-        actual = "hwp 파일도 이미지 파일도 없음"
+        actual = "한글/워드 파일도 이미지 파일도 없음"
         message = config.get("missing_message") or "홍보이미지 파일을 찾을 수 없습니다"
 
     return RuleEvaluation(
@@ -498,13 +503,13 @@ def _evaluate_promotional_material_check(rule, sequence, project, verify_result)
         expected=expected,
         actual=actual,
         message=message,
-        file_path=_representative_path(hwp_ok_files or image_files or files, project.project_number),
-        file_name=_representative_name(hwp_ok_files or image_files or files),
+        file_path=_representative_path(document_ok_files or image_files or files, project.project_number),
+        file_name=_representative_name(document_ok_files or image_files or files),
         raw_detail={
             "selected_folder": selected_folder,
             "forbidden_filename_keywords": forbidden_keywords,
-            "hwp_files": [file_info.name for file_info in hwp_files[:20]],
-            "hwp_ok_files": [file_info.name for file_info in hwp_ok_files[:20]],
+            "document_files": [file_info.name for file_info in document_files[:20]],
+            "document_ok_files": [file_info.name for file_info in document_ok_files[:20]],
             "image_files": [file_info.name for file_info in image_files[:20]],
         },
     )
