@@ -8,6 +8,7 @@ from django.db import DatabaseError
 from django.utils import timezone
 
 from main.models import ReferenceProject
+from main.utils.cert_date import format_cert_date
 from main.views.review.ecm_download_review_centers import (
     DownloadReviewCenterError,
     center_label,
@@ -550,7 +551,7 @@ def _serialize_project(row, columns, center_code):
         "center_code": center_code,
         "center_label": center_label(center_code),
         "project_number": _row_value(row, "프로젝트번호"),
-        "cert_date": _row_value(row, "인증일자"),
+        "cert_date": format_cert_date(_row_value(row, "인증일자")),
         "company": _row_value(row, "회사명"),
         "product": _row_value(row, "제품명"),
         "pl": _row_value(row, "시험PL"),
@@ -576,7 +577,7 @@ def _serialize_pg_project(project):
         "center_code": center_code,
         "center_label": project.center_label or label,
         "project_number": project.project_number,
-        "cert_date": project.cert_date,
+        "cert_date": format_cert_date(project.cert_date),
         "company": project.company,
         "product": project.product,
         "pl": project.pl,

@@ -1,11 +1,9 @@
-import re
-from datetime import date
-
 import numpy as np
 from pathlib import Path
 from threading import Lock
 
 from main.models import SwData
+from main.utils.cert_date import format_cert_date, parse_cert_date
 
 from .history import _build_notes_buttons
 
@@ -104,20 +102,14 @@ def select_data_from_db(indices):
             for key, value in obj.items()
             if key in _FIELD_TO_KR
         }
+        row['인증일자'] = format_cert_date(row.get('인증일자'))
         row['특이사항_버튼'] = _build_notes_buttons(row)
         rows.append(row)
     return rows
 
 
 def _parse_cert_date(value):
-    text = str(value or "").strip()
-    match = re.search(r"(\d{4})[.\-/](\d{1,2})[.\-/](\d{1,2})", text)
-    if not match:
-        return None
-    try:
-        return date(*(int(part) for part in match.groups()))
-    except ValueError:
-        return None
+    return parse_cert_date(value)
 
 
 def compare_from_index(text, k=30):

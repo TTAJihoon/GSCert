@@ -3389,6 +3389,99 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(result.status, DownloadReviewRuleStatus.PASS, result.raw_detail_json)
         self.assertEqual(outcome.artifact_results["1차/2차/성능/보안RawData"], "O")
 
+    def _create_promotional_material_rule(self):
+        DownloadReviewRule.objects.create(
+            code="artifact_18",
+            name="홍보이미지",
+            rule_type="promotional_material_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=180,
+            config_json={
+                "artifact_column": "홍보이미지",
+                "folder_keyword_chain": ["홍보"],
+                "forbidden_filename_keywords": ["예시"],
+                "pass_message": "홍보이미지를 확인했습니다.",
+                "forbidden_message": "홍보이미지 파일명에 '예시'가 포함되어 있습니다.",
+                "missing_message": "홍보이미지 파일을 찾을 수 없습니다",
+            },
+        )
+
+    def _run_promotional_material_check(self, project_dir):
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={"project_number": "TTA-26-00010"},
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+        outcome = run_download_inspection(project, verify_result, {})
+        result = DownloadReviewRuleResult.objects.get(job_project=project, rule_name="홍보이미지")
+        return outcome, result
+
+    def test_promotional_material_passes_with_hwp_file_without_forbidden_word(self):
+        self._create_promotional_material_rule()
+        project_dir = Path(self.temp_dir.name) / "promo_hwp_ok"
+        (project_dir / "홍보").mkdir(parents=True)
+        (project_dir / "홍보" / "홍보자료.hwp").write_bytes(b"hwp")
+
+        outcome, result = self._run_promotional_material_check(project_dir)
+
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS, result.raw_detail_json)
+        self.assertEqual(outcome.artifact_results["홍보이미지"], "O")
+
+    def test_promotional_material_passes_with_image_file_even_if_named_예시(self):
+        # 이미지 파일 쪽은 파일명에 '예시'가 있어도 금지어 검사를 하지 않는다.
+        self._create_promotional_material_rule()
+        project_dir = Path(self.temp_dir.name) / "promo_image_named_example"
+        (project_dir / "홍보").mkdir(parents=True)
+        (project_dir / "홍보" / "예시이미지.png").write_bytes(b"png")
+
+        outcome, result = self._run_promotional_material_check(project_dir)
+
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS, result.raw_detail_json)
+        self.assertEqual(outcome.artifact_results["홍보이미지"], "O")
+
+    def test_promotional_material_passes_when_hwp_has_forbidden_word_but_image_exists(self):
+        # hwp 파일명에 '예시'가 있어도 이미지 파일이 1개 이상 있으면 적합.
+        self._create_promotional_material_rule()
+        project_dir = Path(self.temp_dir.name) / "promo_hwp_forbidden_but_image_ok"
+        (project_dir / "홍보").mkdir(parents=True)
+        (project_dir / "홍보" / "예시자료.hwp").write_bytes(b"hwp")
+        (project_dir / "홍보" / "실제이미지.jpg").write_bytes(b"jpg")
+
+        outcome, result = self._run_promotional_material_check(project_dir)
+
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS, result.raw_detail_json)
+        self.assertEqual(outcome.artifact_results["홍보이미지"], "O")
+
+    def test_promotional_material_fails_when_only_hwp_has_forbidden_word(self):
+        self._create_promotional_material_rule()
+        project_dir = Path(self.temp_dir.name) / "promo_hwp_forbidden_only"
+        (project_dir / "홍보").mkdir(parents=True)
+        (project_dir / "홍보" / "예시자료.hwp").write_bytes(b"hwp")
+
+        outcome, result = self._run_promotional_material_check(project_dir)
+
+        self.assertEqual(result.status, DownloadReviewRuleStatus.FAIL, result.raw_detail_json)
+        self.assertEqual(outcome.artifact_results["홍보이미지"], "X")
+
+    def test_promotional_material_fails_with_neither_hwp_nor_image(self):
+        self._create_promotional_material_rule()
+        project_dir = Path(self.temp_dir.name) / "promo_no_match"
+        (project_dir / "홍보").mkdir(parents=True)
+        (project_dir / "홍보" / "안내.txt").write_bytes(b"txt")
+
+        outcome, result = self._run_promotional_material_check(project_dir)
+
+        self.assertEqual(result.status, DownloadReviewRuleStatus.FAIL, result.raw_detail_json)
+        self.assertEqual(outcome.artifact_results["홍보이미지"], "X")
+
     def test_image_screenshot_date_failure_lists_period_dates_and_count(self):
         project_dir = Path(self.temp_dir.name) / "downloads"
         project_dir.mkdir(parents=True)
@@ -5305,6 +5398,81 @@ class HistoryProductCopyTests(SimpleTestCase):
         self.assertContains(response, 'class="history-copy-description"')
         self.assertContains(response, 'class="history-copy-wd"')
         self.assertContains(response, 'id="historyCopyToast"')
+
+
+class CertDateFormatTests(SimpleTestCase):
+    """인증일자 표시 포맷(yyyy.mm.dd) 표준화 유틸 검증."""
+
+    def test_format_pads_and_normalizes_separators(self):
+        from main.utils.cert_date import format_cert_date
+
+        self.assertEqual(format_cert_date("2026.6.8"), "2026.06.08")
+        self.assertEqual(format_cert_date("2026-6-8"), "2026.06.08")
+        self.assertEqual(format_cert_date("2026/6/8"), "2026.06.08")
+        self.assertEqual(format_cert_date("2026.06.01."), "2026.06.01")
+        self.assertEqual(format_cert_date("2026.12.31"), "2026.12.31")
+
+    def test_format_falls_back_to_original_when_unparseable(self):
+        from main.utils.cert_date import format_cert_date
+
+        self.assertEqual(format_cert_date(""), "-")
+        self.assertEqual(format_cert_date(None), "-")
+        self.assertEqual(format_cert_date("-"), "-")
+        self.assertEqual(format_cert_date("미기재"), "미기재")
+
+    def test_parse_extracts_date_regardless_of_padding(self):
+        from datetime import date
+
+        from main.utils.cert_date import parse_cert_date
+
+        self.assertEqual(parse_cert_date("2026.6.8"), date(2026, 6, 8))
+        self.assertEqual(parse_cert_date("2026.06.08"), date(2026, 6, 8))
+        self.assertIsNone(parse_cert_date("모름"))
+
+
+class HistoryCertDatePeriodFilterTests(SimpleTestCase):
+    """시험 이력 화면의 인증일자 기간 필터 + 표시 포맷 표준화 검증."""
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _rows(self):
+        return [
+            {"인증일자": "2026.1.5", "인증번호": "GS-A-26-0001", "시험번호": "TTA-26-00001", "회사명": "A", "제품": "P1"},
+            {"인증일자": "2026.6.8", "인증번호": "GS-A-26-0002", "시험번호": "TTA-26-00002", "회사명": "B", "제품": "P2"},
+            {"인증일자": "2026.12.31", "인증번호": "GS-A-26-0003", "시험번호": "TTA-26-00003", "회사명": "C", "제품": "P3"},
+        ]
+
+    @patch("main.views.testing.history.GS_history")
+    def test_displays_padded_format_without_period_filter(self, gs_history):
+        from main.views.testing.history import history
+
+        gs_history.return_value = self._rows()
+        request = self.factory.post("/history/", {})
+        response = history(request)
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8")
+        self.assertIn("2026.01.05", content)
+        self.assertIn("2026.06.08", content)
+        self.assertIn("2026.12.31", content)
+
+    @patch("main.views.testing.history.GS_history")
+    def test_period_filter_excludes_rows_outside_range(self, gs_history):
+        from main.views.testing.history import history
+
+        gs_history.return_value = self._rows()
+        request = self.factory.post("/history/", {
+            "cert_date_start": "2026-02-01",
+            "cert_date_end": "2026-11-30",
+        })
+        response = history(request)
+
+        self.assertEqual(response.status_code, 200)
+        content = response.content.decode("utf-8")
+        self.assertNotIn("2026.01.05", content)
+        self.assertIn("2026.06.08", content)
+        self.assertNotIn("2026.12.31", content)
 
 
 class LlmModelConsoleTests(SimpleTestCase):

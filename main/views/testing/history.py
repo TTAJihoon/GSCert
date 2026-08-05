@@ -1,10 +1,12 @@
 import re
+from datetime import date
 
 from django.db.models import Q
 from django.shortcuts import render
 
 from main.models import SwData
 from main.request_logging import set_request_log_context
+from main.utils.cert_date import format_cert_date, parse_cert_date
 
 
 def _cert_date_sort_key(row):
@@ -94,6 +96,33 @@ def _build_notes_buttons(row: dict) -> list[dict]:
     return buttons
 
 
+def _parse_iso_date(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        return date.fromisoformat(text)
+    except ValueError:
+        return None
+
+
+def _filter_by_cert_date_range(tables, cert_date_start, cert_date_end):
+    """인증일자 기간(양 끝 포함)으로 결과를 좁힌다. 시작/종료 둘 다 없으면 그대로 반환."""
+    start = _parse_iso_date(cert_date_start)
+    end = _parse_iso_date(cert_date_end)
+    if not start and not end:
+        return tables
+    filtered = []
+    for table in tables:
+        cert_date = parse_cert_date(table.get('인증일자'))
+        if start and (not cert_date or cert_date < start):
+            continue
+        if end and (not cert_date or cert_date > end):
+            continue
+        filtered.append(table)
+    return filtered
+
+
 def history(request):
     if request.method == 'POST':
         gsnum = request.POST.get('gsnum', '')
@@ -104,6 +133,8 @@ def history(request):
         tester = request.POST.get('tester', '')
         startDate = request.POST.get('start_date', '')
         endDate = request.POST.get('end_date', '')
+        certDateStart = request.POST.get('cert_date_start', '')
+        certDateEnd = request.POST.get('cert_date_end', '')
         comment = request.POST.get('comment', '')
         search_terms = _search_terms(
             comment=comment,
@@ -113,6 +144,8 @@ def history(request):
             tester=tester,
             start_date=startDate,
             end_date=endDate,
+            cert_date_start=certDateStart,
+            cert_date_end=certDateEnd,
             gsnum=gsnum,
             project=project,
         )
@@ -131,16 +164,22 @@ def history(request):
             'tester': tester,
             'start_date': startDate,
             'end_date': endDate,
+            'cert_date_start': certDateStart,
+            'cert_date_end': certDateEnd,
             'comment': comment,
         }
 
         tables = GS_history(gsnum, project, company, product, sw_type, tester, comment, startDate, endDate)
+        tables = _filter_by_cert_date_range(tables, certDateStart, certDateEnd)
         set_request_log_context(request, result_count=len(tables))
 
         clean_tables = []
         for table in tables:
             clean_table = {
-                key.strip().replace(" ", "_").replace("/", "_").replace("\n", "_"): str(value).strip().replace("None", "-")
+                key.strip().replace(" ", "_").replace("/", "_").replace("\n", "_"): (
+                    format_cert_date(value) if key == '인증일자'
+                    else str(value).strip().replace("None", "-")
+                )
                 for key, value in table.items()
                 if not key.startswith('Unnamed')
             }
