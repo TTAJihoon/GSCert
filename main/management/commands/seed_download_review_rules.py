@@ -175,6 +175,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["계약"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["계약서", "{project_number}"],
                 "extensions": [".pdf"],
                 "exact_count": 1,
@@ -193,6 +194,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["계약"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["합의서", "{project_number}"],
                 "required_files": [
                     {"extensions": WORD_FILE_EXTENSIONS, "exact_count": 1},
@@ -240,6 +242,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["계약"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["수수료산정표", "{project_number}"],
                 "extensions": [".xlsx"],
                 "exact_count": 1,
@@ -257,6 +260,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["시험", "계획"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["구성도", "{project_number}"],
                 "extensions": [".png", ".pptx"],
                 "min_count": 1,
@@ -288,6 +292,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["시험", "계획"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["품질특성별", "{project_number}"],
                 "required_files": [
                     {"extensions": WORD_FILE_EXTENSIONS, "exact_count": 1},
@@ -328,6 +333,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["시험", "계획"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["기능", "{project_number}"],
                 "extensions": [".xlsx", ".xls"],
                 "exact_count": 1,
@@ -355,6 +361,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["시험", "계획"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["계획서", "{project_number}"],
                 "requires": ["시험성적서_세부사양표"],
                 "required_files": [
@@ -440,6 +447,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["설계"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["테스트케이스", "{project_number}"],
                 "requires": ["잔여결함수"],
                 "extensions": [".xlsx", ".xls"],
@@ -502,6 +510,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["수행"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["결함리포트", "{project_number}"],
                 "requires": ["결함차수"],
                 "produces": ["잔여결함수", "H", "R"],
@@ -549,6 +558,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["설계"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["점검표", "{project_number}"],
                 "requires": ["H", "R"],
                 "produces": ["측정항목별점수표"],
@@ -646,6 +656,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["시험", "종료"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["시험성적서", "{project_number}"],
                 "produces": ["결함차수", "시험성적서_세부사양표"],
                 "required_files": [
@@ -695,6 +706,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["인증관련"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["품질평가보고서", "{project_number}"],
                 "requires": ["품질부특성측정값"],
                 "extensions": WORD_FILE_EXTENSIONS,
@@ -729,6 +741,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["인증관련"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["품질검사표", "{project_number}"],
                 "requires": ["측정항목별점수표"],
                 "produces": ["품질부특성측정값"],
@@ -774,6 +787,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["인증관련"],
+                "folder_fallback_search_all": True,
                 "filename_keywords": ["확인서"],
                 "extensions": [".pdf"],
                 "min_count": 1,
@@ -791,6 +805,7 @@ def _actual_rule_spec(index, column_name):
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["홍보"],
+                "folder_fallback_search_all": True,
                 "forbidden_filename_keywords": ["예시"],
                 "folder_missing_message": "홍보 폴더를 찾을 수 없습니다",
                 "missing_message": "홍보이미지 파일을 찾을 수 없습니다",
