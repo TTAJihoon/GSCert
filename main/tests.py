@@ -781,6 +781,26 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
             with self.subTest(raw=raw):
                 self.assertEqual(engine._split_dual_product_name(raw), expected)
 
+    def test_build_context_splits_english_name_when_ecm_product_wraps_to_new_line(self):
+        # 실제 사례(TTA-26-00531): 인증획득목록 제품명이 '국문명 v1.0\n(영문명 v1.0)'처럼
+        # 줄바꿈으로 국문명/영문명이 나뉘어 있다. build_context가 첫 줄만 쓰면 영문명이
+        # 통째로 사라져 시험계획서에 영문명만 적힌 제출물이 항상 부적합 처리된다.
+        context = engine.build_context(
+            project_number="TTA-26-00531",
+            product_name="다바 에프엠에스 플랫폼 v1.0\n(DAVA FMS-Platform v1.0)",
+        )
+        self.assertEqual(context.product, "다바 에프엠에스 플랫폼")
+        self.assertEqual(context.product_alt, "DAVA FMS-Platform")
+        self.assertEqual(context.version, "v1.0")
+
+        table = [
+            ["소프트웨어 명", "DAVA FMS-Platform", "버전", "v1.0"],
+            ["시험신청번호", "TTA-26-00531", "TTA-26-00531", "TTA-26-00531"],
+        ]
+        checks = engine._test_plan_product_checks(table, {}, context)
+        product_check = next(item for item in checks if item["name"] == "product_name")
+        self.assertTrue(product_check["passed"], product_check)
+
     def test_test_plan_product_check_accepts_either_korean_or_english_name(self):
         context = engine.build_context(
             project_number="TTA-26-00010",

@@ -6489,7 +6489,11 @@ def build_context(*, project_number="", product_name="", company="", pl="", wd="
                   start_date="", end_date="", request_date="", contract_date="",
                   certification_committee_date="", center=""):
     """프로젝트 메타데이터로 RuleContext 를 만든다(웹/로컬 공용)."""
-    product_raw = _first_line(product_name)
+    # 인증획득목록 제품명은 '국문명 버전\n(영문명 버전)'처럼 국문명/영문명이 줄바꿈으로
+    # 나뉘어 병기되는 경우가 있다. _first_line을 쓰면 영문명이 통째로 잘려나가
+    # 시험계획서에 영문명만 적힌 제출물이 항상 부적합 처리되므로, 줄바꿈을 공백으로
+    # 합친 전체 값을 그대로 이중명칭 파서에 넘긴다.
+    product_raw = _normalize_spaces(product_name)
     product, product_alt, version = _split_dual_product_name(product_raw)
     return RuleContext(
         project_number=project_number or "",
