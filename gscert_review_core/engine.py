@@ -4780,6 +4780,9 @@ def _latest_revision_files(files):
     ]
 
 
+_FOLDER_FALLBACK_LABEL = "(폴더 무관 · 전체 검색)"
+
+
 def _files_in_configured_folder(rule, verify_result, *, ignore_target_file_type=False):
     config = rule.config_json or {}
     files = _matching_files(rule, verify_result, ignore_target_file_type=ignore_target_file_type)
@@ -4788,6 +4791,12 @@ def _files_in_configured_folder(rule, verify_result, *, ignore_target_file_type=
     # (최초/최종형상RawData 규칙은 _files_in_configured_folder를 쓰지 않고 직접 rawdata를 필터링한다.)
     files = [file_info for file_info in files if not _is_rawdata_file(file_info, "rawdata")]
     selected_files, selected_folder = _select_folder_chain_files(files, config.get("folder_keyword_chain"))
+    if not selected_files and files and config.get("folder_keyword_chain") and config.get("folder_fallback_search_all"):
+        # 지정 폴더 안에서 하나도 못 찾았을 때만 쓰는 안전망: 폴더 제한 없이 전체
+        # 제출물에서 다시 찾는다(파일명 키워드 검사는 각 평가 함수에서 그대로 하므로
+        # 무관한 파일을 잘못 통과시키지는 않는다). 폴더 안에서 이미 찾았다면 이
+        # 폴백은 타지 않아 기존 정밀 매칭 동작을 그대로 유지한다.
+        selected_files, selected_folder = files, _FOLDER_FALLBACK_LABEL
     selected_files = _expand_revision_related_files(selected_files, files)
     selected_files = _latest_revision_files(selected_files)
     return selected_files, selected_folder

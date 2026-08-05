@@ -913,6 +913,82 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
 
         self.assertEqual([file_info.path for file_info in selected], ["new/TTA-26-00010 기능리스트 v1.1.xlsx"])
 
+    def test_folder_fallback_search_disabled_by_default_leaves_misplaced_file_unmatched(self):
+        # 실제 사례: 유일한 파일(v1.0)이 폴더 구조를 안 지키고 단독으로 올라온 경우.
+        # 플래그가 없으면 지금까지의 동작(폴더 못 찾음 → 빈 결과)을 그대로 유지한다.
+        rule = SimpleNamespace(
+            config_json={"folder_keyword_chain": ["시험", "계획"]},
+            target_file_pattern="",
+            target_file_type="any",
+        )
+        verify_result = SimpleNamespace(files=[
+            engine.FileInfo(
+                name="TTA-26-00010 기능리스트 v1.0.xlsx",
+                path="추가제출/TTA-26-00010 기능리스트 v1.0.xlsx",
+                extension=".xlsx",
+            ),
+        ])
+
+        selected, selected_folder = engine._files_in_configured_folder(rule, verify_result)
+
+        self.assertEqual(selected, [])
+        self.assertEqual(selected_folder, "")
+
+    def test_folder_fallback_search_all_matches_misplaced_only_file(self):
+        # folder_fallback_search_all=True면, 지정 폴더 안에서 하나도 못 찾았을 때만
+        # 전체 제출물에서 다시 찾아 매칭시킨다.
+        rule = SimpleNamespace(
+            config_json={
+                "folder_keyword_chain": ["시험", "계획"],
+                "folder_fallback_search_all": True,
+            },
+            target_file_pattern="",
+            target_file_type="any",
+        )
+        verify_result = SimpleNamespace(files=[
+            engine.FileInfo(
+                name="TTA-26-00010 기능리스트 v1.0.xlsx",
+                path="추가제출/TTA-26-00010 기능리스트 v1.0.xlsx",
+                extension=".xlsx",
+            ),
+        ])
+
+        selected, selected_folder = engine._files_in_configured_folder(rule, verify_result)
+
+        self.assertEqual([file_info.name for file_info in selected], ["TTA-26-00010 기능리스트 v1.0.xlsx"])
+        self.assertTrue(selected_folder)
+
+    def test_folder_fallback_search_all_does_not_override_precise_folder_match(self):
+        # 폴더 안에서 이미 찾았다면 폴백은 타지 않고 기존 정밀 매칭 결과를 그대로 쓴다.
+        rule = SimpleNamespace(
+            config_json={
+                "folder_keyword_chain": ["시험", "계획"],
+                "folder_fallback_search_all": True,
+            },
+            target_file_pattern="",
+            target_file_type="any",
+        )
+        verify_result = SimpleNamespace(files=[
+            engine.FileInfo(
+                name="TTA-26-00010 기능리스트 v1.0.xlsx",
+                path="4.시험/가.계획/TTA-26-00010 기능리스트 v1.0.xlsx",
+                extension=".xlsx",
+            ),
+            engine.FileInfo(
+                name="다른제품 무관파일.xlsx",
+                path="추가제출/다른제품 무관파일.xlsx",
+                extension=".xlsx",
+            ),
+        ])
+
+        selected, selected_folder = engine._files_in_configured_folder(rule, verify_result)
+
+        self.assertEqual(selected_folder, "4.시험/가.계획")
+        self.assertEqual(
+            [file_info.name for file_info in selected],
+            ["TTA-26-00010 기능리스트 v1.0.xlsx"],
+        )
+
     def test_artifact_revision_parser_does_not_treat_trailing_date_as_revision(self):
         file_info = engine.FileInfo(
             name="TTA-26-00010 시험계획서 2026.05.10.xlsx",
