@@ -787,12 +787,10 @@ def _actual_rule_spec(index, column_name):
         return {
             **common,
             "target_file_type": "any",
+            "rule_type": "promotional_material_check",
             "config_json": {
                 "artifact_column": column_name,
                 "folder_keyword_chain": ["홍보"],
-                "filename_keywords": [],
-                "extensions": [],
-                "min_count": 1,
                 "forbidden_filename_keywords": ["예시"],
                 "folder_missing_message": "홍보 폴더를 찾을 수 없습니다",
                 "missing_message": "홍보이미지 파일을 찾을 수 없습니다",

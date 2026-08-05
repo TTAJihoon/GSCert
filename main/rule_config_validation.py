@@ -36,7 +36,7 @@ _CONTENT_CHECKS: dict[str, dict[str, Any]] = {
 }
 
 # rule_type 별 *핸들러가 반드시 참조하는* 최소 필수 키(없으면 점검이 깨짐).
-# 값이 빈 리스트여도 "키 존재"로 통과한다(예: 홍보이미지 filename_keywords=[]).
+# 값이 빈 리스트여도 "키 존재"로 통과한다.
 _RULE_REQUIRED_KEYS: dict[str, list[str]] = {
     "required_artifact_file": ["filename_keywords"],
     "downloadable_artifact_check": ["filename_keywords"],
