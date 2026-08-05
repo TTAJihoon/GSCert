@@ -443,7 +443,7 @@ def _evaluate_required_artifact_file(rule, sequence, project, context, verify_re
     )
 
 
-PROMOTIONAL_DOCUMENT_EXTENSIONS = {".hwp", ".doc", ".docx", ".docm"}
+PROMOTIONAL_DOCUMENT_EXTENSIONS = {".hwp", ".hwpx", ".doc", ".docx", ".docm"}
 
 
 def _evaluate_promotional_material_check(rule, sequence, project, verify_result):

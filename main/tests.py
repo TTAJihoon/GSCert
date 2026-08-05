@@ -3602,6 +3602,18 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(result.status, DownloadReviewRuleStatus.FAIL, result.raw_detail_json)
         self.assertEqual(outcome.artifact_results["홍보이미지"], "X")
 
+    def test_promotional_material_passes_with_hwpx_file_without_forbidden_word(self):
+        # 한글 신형식(hwpx)도 인정한다.
+        self._create_promotional_material_rule()
+        project_dir = Path(self.temp_dir.name) / "promo_hwpx_ok"
+        (project_dir / "홍보").mkdir(parents=True)
+        (project_dir / "홍보" / "홍보자료.hwpx").write_bytes(b"hwpx")
+
+        outcome, result = self._run_promotional_material_check(project_dir)
+
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS, result.raw_detail_json)
+        self.assertEqual(outcome.artifact_results["홍보이미지"], "O")
+
     def test_promotional_material_passes_with_image_file_even_if_named_예시(self):
         # 이미지 파일 쪽은 파일명에 '예시'가 있어도 금지어 검사를 하지 않는다.
         self._create_promotional_material_rule()
