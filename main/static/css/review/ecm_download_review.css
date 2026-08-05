@@ -286,6 +286,7 @@
 }
 
 #tab-projects .panel-main > .panel-header,
+#tab-projects .panel-main > .help-panel,
 #tab-projects .panel-main > .filters {
   flex: 0 0 auto;
 }
