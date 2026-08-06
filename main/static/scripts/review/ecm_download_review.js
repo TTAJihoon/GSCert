@@ -5,6 +5,8 @@ const apiEndpoints = {
   jobs: "/api/jobs/",
   activeJob: "/api/jobs/active/",
   jobsForceStop: "/api/jobs/force-stop/",
+  serverTime: "/api/server-time/",
+  serverTimeAction: "/api/server-time/action/",
   plAssignments: "/api/pl-assignments/",
   plAssignmentsApply: "/api/pl-assignments/apply/"
 };
@@ -439,7 +441,8 @@ const state = {
   manualOverrideTarget: null,
   inspectionRuleItems: [],
   inspectionItems: [],
-  inspectionFilter: null
+  inspectionFilter: null,
+  serverTime: null
 };
 
 function defaultProjectFilters() {
@@ -2933,6 +2936,139 @@ function stopResultsPolling() {
   }
 }
 
+let serverTimePollingTimer = null;
+
+function koreaDateTimeInputValue(value) {
+  if (!value) return "";
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
+  }).formatToParts(new Date(value));
+  const get = (type) => parts.find((item) => item.type === type)?.value || "";
+  return `${get("year")}-${get("month")}-${get("day")}T${get("hour")}:${get("minute")}`;
+}
+
+function formatServerDateTime(value) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("ko-KR", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
+function renderServerTime() {
+  const data = state.serverTime;
+  if (!data) return;
+  const labels = {
+    idle: "설정 가능",
+    changing: "시간 변경 중",
+    active: "임시 시간 사용 중",
+    restoring: "정상 시간 복구 중",
+    recovery_failed: "복구 확인 실패"
+  };
+  qs("serverTimeCurrent").textContent = formatServerDateTime(data.server_time);
+  qs("serverTimeState").textContent = labels[data.status] || data.status;
+  qs("serverTimeOwnerRow").hidden = !data.owner_name;
+  qs("serverTimeOwner").textContent = data.owner_name || "-";
+  qs("serverTimeRemainingRow").hidden = data.remaining_seconds == null;
+  qs("serverTimeRemaining").textContent = data.remaining_seconds == null
+    ? "-"
+    : `${Math.floor(data.remaining_seconds / 60)}분 ${String(data.remaining_seconds % 60).padStart(2, "0")}초`;
+
+  const idle = data.status === "idle";
+  const ownerControl = data.status === "active" || data.status === "recovery_failed";
+  const busy = !idle && !ownerControl;
+  qs("serverTimeChange").hidden = !idle;
+  qs("serverTimeReset").hidden = !ownerControl;
+  qs("serverTimeRestore").hidden = !ownerControl;
+  qs("serverTimeTargetLabel").hidden = busy;
+  qs("serverTimeName").disabled = busy;
+  qs("serverTimePin").disabled = busy;
+  qs("serverTimeTarget").disabled = busy;
+  qs("serverTimeChange").disabled = !data.agent_online;
+  qs("serverTimeReset").disabled = !data.agent_online;
+  qs("serverTimeRestore").disabled = !data.agent_online;
+  qs("serverTimeTarget").max = koreaDateTimeInputValue(data.normal_time_estimate);
+
+  if (!data.agent_online) {
+    qs("serverTimeNotice").textContent = "시간 변경 에이전트가 실행 중이 아니어서 현재 설정할 수 없습니다.";
+  } else if (data.status === "recovery_failed") {
+    qs("serverTimeNotice").textContent = data.error_message || "정상 시간 복구를 확인하지 못했습니다. 같은 이름과 PIN으로 다시 복구할 수 있습니다.";
+  } else if (ownerControl) {
+    qs("serverTimeNotice").textContent = "표시된 설정자와 동일한 이름 및 PIN으로 조기 복구하거나 과거 시간으로 재설정할 수 있습니다.";
+  } else {
+    qs("serverTimeNotice").textContent = "과거 날짜와 시간만 설정할 수 있으며 5분 뒤 자동으로 복구됩니다.";
+  }
+}
+
+async function refreshServerTime({ silent = false } = {}) {
+  try {
+    state.serverTime = await requestJson(apiEndpoints.serverTime);
+    renderServerTime();
+    if (!silent) qs("serverTimeError").hidden = true;
+  } catch (error) {
+    if (!silent) {
+      qs("serverTimeError").textContent = error.message;
+      qs("serverTimeError").hidden = false;
+    }
+  }
+}
+
+async function openServerTimeModal() {
+  qs("serverTimeModal").hidden = false;
+  qs("serverTimeError").hidden = true;
+  await refreshServerTime();
+  if (serverTimePollingTimer) clearInterval(serverTimePollingTimer);
+  serverTimePollingTimer = setInterval(() => refreshServerTime({ silent: true }), 1000);
+}
+
+function closeServerTimeModal() {
+  qs("serverTimeModal").hidden = true;
+  if (serverTimePollingTimer) {
+    clearInterval(serverTimePollingTimer);
+    serverTimePollingTimer = null;
+  }
+  qs("serverTimePin").value = "";
+}
+
+async function submitServerTimeAction(action) {
+  const data = state.serverTime;
+  if (!data) return;
+  const button = action === "change" ? qs("serverTimeChange") : action === "reset" ? qs("serverTimeReset") : qs("serverTimeRestore");
+  button.disabled = true;
+  qs("serverTimeError").hidden = true;
+  try {
+    state.serverTime = await requestJson(apiEndpoints.serverTimeAction, {
+      method: "POST",
+      body: JSON.stringify({
+        action,
+        revision: data.revision,
+        owner_name: qs("serverTimeName").value,
+        pin: qs("serverTimePin").value,
+        target_time: action === "restore" ? null : qs("serverTimeTarget").value
+      })
+    });
+    qs("serverTimePin").value = "";
+    renderServerTime();
+  } catch (error) {
+    qs("serverTimeError").textContent = error.message;
+    qs("serverTimeError").hidden = false;
+    await refreshServerTime({ silent: true });
+  } finally {
+    renderServerTime();
+  }
+}
+
 async function refreshTabData(tab) {
   if (tab === "projects") {
     await loadProjects();
@@ -2949,6 +3085,14 @@ async function refreshTabData(tab) {
 }
 
 function bindControls() {
+  qs("openServerTime").addEventListener("click", openServerTimeModal);
+  qs("closeServerTimeModal").addEventListener("click", closeServerTimeModal);
+  qs("serverTimeChange").addEventListener("click", () => submitServerTimeAction("change"));
+  qs("serverTimeReset").addEventListener("click", () => submitServerTimeAction("reset"));
+  qs("serverTimeRestore").addEventListener("click", () => submitServerTimeAction("restore"));
+  qs("serverTimeModal").addEventListener("click", (event) => {
+    if (event.target === qs("serverTimeModal")) closeServerTimeModal();
+  });
   document.querySelectorAll(".tab-button").forEach((button) => {
     button.addEventListener("click", async () => {
       const tab = button.dataset.tab;
@@ -3117,6 +3261,10 @@ function bindControls() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
+    if (!qs("serverTimeModal").hidden) {
+      closeServerTimeModal();
+      return;
+    }
     if (!qs("plAssignmentModal").hidden) {
       closePlAssignmentModal();
       return;

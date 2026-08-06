@@ -94,7 +94,7 @@ class DownloadReviewJob(models.Model):
     status = models.CharField(
         max_length=20,
         choices=DownloadReviewJobStatus.choices,
-        default=DownloadReviewJobStatus.SCHEDULED,
+        default=DownloadReviewJobStatus.QUEUED,
         db_index=True,
     )
     requested_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -445,3 +445,61 @@ class DownloadReviewLock(models.Model):
 
     def __str__(self):
         return f"automation_lock locked={self.locked}"
+
+
+class ServerTimeControlStatus(models.TextChoices):
+    IDLE = "idle", "Idle"
+    CHANGING = "changing", "Changing"
+    ACTIVE = "active", "Active"
+    RESTORING = "restoring", "Restoring"
+    RECOVERY_FAILED = "recovery_failed", "Recovery failed"
+
+
+class ServerTimeControl(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    status = models.CharField(
+        max_length=24,
+        choices=ServerTimeControlStatus.choices,
+        default=ServerTimeControlStatus.IDLE,
+        db_index=True,
+    )
+    revision = models.PositiveBigIntegerField(default=1)
+    pending_action = models.CharField(max_length=16, blank=True)
+    owner_name = models.CharField(max_length=80, blank=True)
+    pin_hash = models.CharField(max_length=255, blank=True)
+    requested_ip = models.GenericIPAddressField(blank=True, null=True)
+    target_time = models.DateTimeField(blank=True, null=True)
+    normal_time_before_change = models.DateTimeField(blank=True, null=True)
+    baseline_uptime_ms = models.PositiveBigIntegerField(blank=True, null=True)
+    expires_uptime_ms = models.PositiveBigIntegerField(blank=True, null=True)
+    w32time_was_running = models.BooleanField(default=True)
+    failed_pin_attempts = models.PositiveSmallIntegerField(default=0)
+    last_pin_failure_uptime_ms = models.PositiveBigIntegerField(blank=True, null=True)
+    agent_heartbeat_uptime_ms = models.PositiveBigIntegerField(blank=True, null=True)
+    error_message = models.CharField(max_length=500, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "server_time_control"
+
+    def __str__(self):
+        return f"server_time_control status={self.status} revision={self.revision}"
+
+
+class ServerTimeAudit(models.Model):
+    event_code = models.CharField(max_length=40, db_index=True)
+    owner_name = models.CharField(max_length=80, blank=True)
+    requested_ip = models.GenericIPAddressField(blank=True, null=True)
+    revision = models.PositiveBigIntegerField(default=0)
+    observed_os_time = models.DateTimeField()
+    normal_time_estimate = models.DateTimeField(blank=True, null=True)
+    detail_json = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "server_time_audit"
+        ordering = ["id"]
+
+    def __str__(self):
+        return f"{self.id} {self.event_code}"

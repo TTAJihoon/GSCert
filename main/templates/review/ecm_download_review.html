@@ -16,6 +16,10 @@
       <h1>ECM 제출물 자동 점검</h1>
     </div>
     <div class="status-side">
+      <button class="secondary-button server-time-button" type="button" id="openServerTime">
+        <i class="fa-solid fa-clock"></i>
+        서버 시간 설정
+      </button>
       <div class="status-strip">
         <div class="status-item" id="workerState">
           <span class="dot dot-ok"></span>
@@ -337,6 +341,40 @@
     </div>
   </section>
 </main>
+
+<div class="modal-backdrop note-modal-backdrop" id="serverTimeModal" hidden>
+  <section class="modal-panel server-time-panel" role="dialog" aria-modal="true" aria-labelledby="serverTimeTitle">
+    <div class="modal-header">
+      <div>
+        <p class="eyebrow">서버 관리</p>
+        <h2 id="serverTimeTitle">서버 시간 설정</h2>
+      </div>
+      <button class="icon-button" type="button" id="closeServerTimeModal" aria-label="닫기">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+    <div class="modal-body server-time-body">
+      <dl class="server-time-summary">
+        <div><dt>현재 서버 시간</dt><dd id="serverTimeCurrent">-</dd></div>
+        <div><dt>상태</dt><dd id="serverTimeState">-</dd></div>
+        <div id="serverTimeOwnerRow" hidden><dt>설정자</dt><dd id="serverTimeOwner">-</dd></div>
+        <div id="serverTimeRemainingRow" hidden><dt>남은 시간</dt><dd id="serverTimeRemaining">-</dd></div>
+      </dl>
+      <p class="server-time-notice" id="serverTimeNotice">과거 날짜와 시간만 설정할 수 있으며 5분 뒤 자동으로 복구됩니다.</p>
+      <div class="server-time-form">
+        <label>이름<input id="serverTimeName" type="text" maxlength="80" autocomplete="name"></label>
+        <label>PIN<input id="serverTimePin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="숫자 4자리"></label>
+        <label id="serverTimeTargetLabel">변경할 날짜·시간<input id="serverTimeTarget" type="datetime-local" step="60"></label>
+      </div>
+      <p class="server-time-error" id="serverTimeError" hidden></p>
+      <div class="modal-actions server-time-actions">
+        <button class="secondary-button" type="button" id="serverTimeRestore" hidden>지금 복구</button>
+        <button class="secondary-button" type="button" id="serverTimeReset" hidden>시간 재설정</button>
+        <button class="primary-button" type="button" id="serverTimeChange">시간 변경</button>
+      </div>
+    </div>
+  </section>
+</div>
 
 <div class="modal-backdrop" id="detailModal" hidden>
   <section class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="modalTitle">

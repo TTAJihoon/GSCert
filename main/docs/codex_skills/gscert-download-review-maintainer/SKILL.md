@@ -64,5 +64,5 @@ For UI changes, restart the server and verify `/download-review/`.
 - 241 is not a download-review worker target; it should route download-review traffic back to 194.
 - Project/rule data should come from shared PostgreSQL `reference` in normal operation.
 - Manual pass overrides are shared business judgments and should stay in PostgreSQL `reference`, not local `workflow.db`.
-- Test-only start window is currently allowed all day. Restore operation to `20:00-07:00` when live testing ends.
+- The old `20:00-07:00` download-review start window is retired and removed. New jobs queue immediately; do not restore that window.
 - Draft rules are compatibility/test scaffolding; use `--only-real` for current implemented 1~18 rules.

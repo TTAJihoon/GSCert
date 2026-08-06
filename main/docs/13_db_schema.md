@@ -143,7 +143,7 @@ override가 있으면 다음 점검 결과와 관계없이 해당 세부항목�
 |---|---|---|
 | `id` | UUID, PK | |
 | `center_code` | varchar(20), index | 잡 센터 |
-| `status` | varchar(20), index | `scheduled`/`queued`/`running`/`completed`/`failed`/`canceled` |
+| `status` | varchar(20), index | `queued`/`running`/`completed`/`failed`/`canceled`; `scheduled`는 legacy 호환값 |
 | `requested_at`/`queued_at`/`started_at`/`completed_at`/`canceled_at`/`available_after` | datetime | 상태 시각 |
 | `progress_message` | varchar(500) | 진행 메시지 |
 | `requested_project_count`/`completed_project_count`/`failed_project_count` | int | 집계 |
@@ -217,6 +217,14 @@ override가 있으면 다음 점검 결과와 관계없이 해당 세부항목�
 | `result_json` | json | 분석 결과 |
 | `error_message` | text | |
 | `created_at`/`started_at`/`completed_at`/`updated_at` | datetime | |
+
+### 4.7 `server_time_control` — 서버 시간 변경 lease (`ServerTimeControl`)
+
+단일 행(id=1)으로 시간 변경 선점, 작업자/PIN hash, revision, 단조 타이머, agent heartbeat와 복구 상태를 관리한다. 상태는 `idle`/`changing`/`active`/`restoring`/`recovery_failed`다.
+
+### 4.8 `server_time_audit` — 서버 시간 변경 감사 이력 (`ServerTimeAudit`)
+
+이벤트 순번, 작업자 이름, 요청 IP, revision, 관측 OS 시각, 정상 추정 시각과 공개 가능한 처리 메타데이터를 저장한다. PIN과 내부 오류 문자열은 저장하지 않는다.
 
 ---
 

@@ -42,6 +42,7 @@ from main.views.review.ecm_download_review_api import (
     rule_result_artifact as download_review_rule_result_artifact,
     rule_result_manual_pass as download_review_rule_result_manual_pass,
 )
+from main.views.review.server_time_control_api import server_time_action, server_time_status
 
 urlpatterns = [
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
@@ -75,6 +76,8 @@ urlpatterns = [
     path('api/jobs/', download_review_jobs, name='download_review_jobs'),
     path('api/jobs/active/', download_review_active_job, name='download_review_active_job'),
     path('api/jobs/force-stop/', download_review_jobs_force_stop, name='download_review_jobs_force_stop'),
+    path('api/server-time/', server_time_status, name='server_time_status'),
+    path('api/server-time/action/', server_time_action, name='server_time_action'),
     path('api/jobs/<uuid:job_id>/cancel/', download_review_job_cancel, name='download_review_job_cancel'),
     path('api/jobs/<uuid:job_id>/', download_review_job_detail, name='download_review_job_detail'),
     path('api/jobs/<uuid:job_id>/projects/', download_review_job_projects, name='download_review_job_projects'),

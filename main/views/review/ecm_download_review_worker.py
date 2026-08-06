@@ -827,7 +827,7 @@ def _next_startable_job(now):
 
     return (
         DownloadReviewJob.objects
-        .filter(status=DownloadReviewJobStatus.SCHEDULED, available_after__lte=now)
+        .filter(status=DownloadReviewJobStatus.SCHEDULED)
         .filter(center_code__in=allowed_centers)
         .order_by("available_after", "requested_at", "id")
         .first()

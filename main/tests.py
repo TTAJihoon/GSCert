@@ -2,7 +2,7 @@ import json
 import sqlite3
 import tempfile
 import zipfile
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from io import BytesIO, StringIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -28,6 +28,9 @@ from main.models import (
     DownloadReviewRuleStatus,
     ReferenceCenterPl,
     ReferenceProject,
+    ServerTimeAudit,
+    ServerTimeControl,
+    ServerTimeControlStatus,
     SwData,
 )
 from main.views.review.ecm_reference_db import (
@@ -77,6 +80,7 @@ from main.views.review.ecm_download_review_api import (
     rule_result_artifact,
 )
 from main.views.csrf import csrf_failure
+from main.views.review.server_time_control_api import server_time_action, server_time_status
 from main.utils.ecm_reference_sheet import parse_sheet_projects, read_csv_rows, split_company_product
 from gscert_review_core import engine
 from gscert_review_core.result_display import friendly_message
@@ -2334,6 +2338,101 @@ class DownloadReviewManualOverrideTests(TestCase):
         )
 
 
+class ServerTimeControlTests(TestCase):
+    databases = {"default", "workflow"}
+
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def _action(self, payload):
+        request = self.factory.post(
+            "/api/server-time/action/",
+            data=json.dumps(payload),
+            content_type="application/json",
+            REMOTE_ADDR="10.10.20.10",
+        )
+        return server_time_action(request)
+
+    def test_status_creates_idle_singleton(self):
+        response = server_time_status(self.factory.get("/api/server-time/"))
+        data = json.loads(response.content.decode("utf-8"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(data["status"], "idle")
+        self.assertTrue(data["can_set"])
+        self.assertEqual(ServerTimeControl.objects.count(), 1)
+
+    def test_change_is_atomic_and_pin_is_hashed(self):
+        control = ServerTimeControl.objects.create(id=1)
+        payload = {
+            "action": "change",
+            "revision": control.revision,
+            "owner_name": "홍길동",
+            "pin": "1234",
+            "target_time": "2020-01-02T03:04",
+        }
+        first = self._action(payload)
+        second = self._action(payload)
+        control.refresh_from_db()
+
+        self.assertEqual(first.status_code, 202)
+        self.assertEqual(second.status_code, 409)
+        self.assertEqual(control.status, ServerTimeControlStatus.CHANGING)
+        self.assertNotEqual(control.pin_hash, "1234")
+        self.assertEqual(control.requested_ip, "10.10.20.10")
+        self.assertTrue(ServerTimeAudit.objects.filter(event_code="change_requested").exists())
+
+    def test_future_time_is_rejected(self):
+        control = ServerTimeControl.objects.create(id=1)
+        future = (timezone.localtime() + timedelta(days=1)).strftime("%Y-%m-%dT%H:%M")
+        response = self._action({
+            "action": "change",
+            "revision": control.revision,
+            "owner_name": "홍길동",
+            "pin": "1234",
+            "target_time": future,
+        })
+
+        self.assertEqual(response.status_code, 400)
+        control.refresh_from_db()
+        self.assertEqual(control.status, ServerTimeControlStatus.IDLE)
+
+    def test_dry_run_agent_changes_and_owner_restores(self):
+        control = ServerTimeControl.objects.create(id=1)
+        change = self._action({
+            "action": "change",
+            "revision": control.revision,
+            "owner_name": "홍길동",
+            "pin": "1234",
+            "target_time": "2020-01-02T03:04",
+        })
+        self.assertEqual(change.status_code, 202)
+        call_command("run_server_time_agent", "--once", "--dry-run", stdout=StringIO())
+        control.refresh_from_db()
+        self.assertEqual(control.status, ServerTimeControlStatus.ACTIVE)
+
+        denied = self._action({
+            "action": "restore",
+            "revision": control.revision,
+            "owner_name": "홍길동",
+            "pin": "9999",
+        })
+        self.assertEqual(denied.status_code, 403)
+        control.refresh_from_db()
+
+        accepted = self._action({
+            "action": "restore",
+            "revision": control.revision,
+            "owner_name": "홍길동",
+            "pin": "1234",
+        })
+        self.assertEqual(accepted.status_code, 202)
+        call_command("run_server_time_agent", "--once", "--dry-run", stdout=StringIO())
+        control.refresh_from_db()
+        self.assertEqual(control.status, ServerTimeControlStatus.IDLE)
+        self.assertEqual(control.pin_hash, "")
+
+
 @override_settings(DOWNLOAD_REVIEW_DEFAULT_CENTER="bundang")
 class DownloadReviewJobsApiTests(TestCase):
     databases = {"default", "workflow", "reference"}
@@ -2399,7 +2498,7 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertTrue(data["success"])
         self.assertEqual(data["requested_project_count"], 1)
-        self.assertIn(data["status"], {"scheduled", "queued"})
+        self.assertEqual(data["status"], "queued")
         self.assertEqual(DownloadReviewJob.objects.count(), 1)
         self.assertEqual(DownloadReviewProject.objects.count(), 1)
 
@@ -2500,13 +2599,9 @@ class DownloadReviewJobsApiTests(TestCase):
 
         self.assertEqual(active_response.status_code, 200)
         self.assertEqual(active_data["active_job"]["id"], created["job_id"])
-        if active_data["active_job"]["status"] == "scheduled":
-            self.assertFalse(active_data["polling"]["should_poll"])
-            self.assertIsNone(active_data["polling"]["recommended_interval_ms"])
-            self.assertIsNotNone(active_data["polling"]["wake_at"])
-        else:
-            self.assertTrue(active_data["polling"]["should_poll"])
-            self.assertEqual(active_data["polling"]["recommended_interval_ms"], 3000)
+        self.assertEqual(active_data["active_job"]["status"], "queued")
+        self.assertTrue(active_data["polling"]["should_poll"])
+        self.assertEqual(active_data["polling"]["recommended_interval_ms"], 3000)
         self.assertEqual(detail_response.status_code, 200)
         self.assertEqual(detail_data["job"]["selected_project_numbers"], ["TTA-26-00010"])
 

@@ -34,21 +34,23 @@
 - `11_artifact_source_boundary.md`
 - `04_download_review_operations_manual.md`
 
-### 2. download-review 시간 제한 복구 시점
+### 2. 서버 시간 임시 변경 사전 진단
 
-현재 테스트 편의를 위해 작업 가능 시간이 `00:00-24:00`으로 열려 있다.
+확정된 것:
 
-결정할 것:
+- 기존 download-review `20:00-07:00` 작업 시작 제한은 복구하지 않고 폐기한다.
+- 194 물리 서버(Windows Server 2022 Standard)의 시간대를 고정하고 과거 날짜·시각만 최대 5분간 허용한다.
+- 작업자 이름과 숫자 4자리 PIN으로 현재 lease의 조기 복구와 재설정을 제어한다.
 
-- 실서버 ECM HTTP 검증과 샘플 zip 확인이 끝난 직후 `20:00-07:00`으로 되돌릴지.
+확인할 것:
 
-권장:
+- 194 서버의 AD 도메인 가입 상태와 Windows Time 원본/정책.
+- 정상 시간 복구에 사용할 사내 시간 원본.
+- PostgreSQL SSL 연결 여부와 SMB 공유 인증에 대한 시간 변경 영향.
 
-- 라이브 검증이 끝나면 즉시 운영 시간으로 복구한다.
+관련 문서:
 
-관련 마커:
-
-- `TODO(TEST_ONLY_DOWNLOAD_REVIEW_TIME_WINDOW)`
+- `15_server_time_control_design.md`
 
 ### 3. 샘플 zip의 남은 실패 처리 방식
 
@@ -88,5 +90,5 @@
 
 1. 센터별 `verify_ecm_http --download` 실측.
 2. 샘플 zip 1~18번 전체 통과 재확인.
-3. 운영 시간 제한 `20:00-07:00` 복구.
+3. 194 서버에서 `15_server_time_control_design.md`의 최소 사전 진단 수행.
 4. 문서 archive 구조가 충분한지 한 번 더 확인.

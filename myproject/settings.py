@@ -117,7 +117,13 @@ WORKFLOW_MODEL_NAMES = {
     'downloadreviewruleresult',
     'downloadreviewlog',
     'downloadreviewlock',
+    'servertimecontrol',
+    'servertimeaudit',
 }
+
+SERVER_TIME_LEASE_SECONDS = 300
+SERVER_TIME_NTP_HOST = os.environ.get('SERVER_TIME_NTP_HOST', 'time.windows.com')
+SERVER_TIME_VERIFY_TOLERANCE_SECONDS = 10
 
 # 유사제품 자동 입력은 UI에서 파일 개수를 제한하지 않는다. 이 값은 브라우저 사용
 # 제한이 아니라 비정상 multipart 요청으로부터 서버를 보호하는 숨은 안전 한도다.
@@ -213,12 +219,6 @@ DOWNLOAD_REVIEW_CENTER_ROUTES_BY_HOST = {
         'yeongnam': f'http://{MAIN_SERVER_IP}/download-review/',
     },
 }
-DOWNLOAD_REVIEW_TIME_ZONE = 'Asia/Seoul'
-# TODO(TEST_ONLY_DOWNLOAD_REVIEW_TIME_WINDOW):
-# 라이브 검증 중에는 0~24 전체 시간 허용. 테스트 완료 즉시 START_HOUR=20, END_HOUR=7로 되돌린다.
-DOWNLOAD_REVIEW_IGNORE_TIME_WINDOW = False
-DOWNLOAD_REVIEW_START_HOUR = 0
-DOWNLOAD_REVIEW_END_HOUR = 24
 DOWNLOAD_REVIEW_ACTIVE_JOB_LIMIT = 5
 DOWNLOAD_REVIEW_MAX_PROJECTS_PER_JOB = 100
 DOWNLOAD_REVIEW_NAV_HOME_BY_HOST = {

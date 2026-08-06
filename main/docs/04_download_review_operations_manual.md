@@ -21,7 +21,7 @@
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-현재 테스트 편의를 위해 download-review 시간 제한은 `00:00-24:00`으로 열어둔 상태다. 운영 기준은 `20:00-07:00`이며, 관련 마커는 `TODO(TEST_ONLY_DOWNLOAD_REVIEW_TIME_WINDOW)`다.
+기존 download-review `20:00-07:00` 작업 시작 제한은 폐기되어 코드와 설정에서 제거됐다. 새 작업은 항상 즉시 `queued` 상태가 되며, 기존 `scheduled` 작업은 migration에서 `queued`로 전환한다. 서버 시간 임시 변경 기능은 `15_server_time_control_design.md`를 본다.
 
 ## worker 실행
 
@@ -175,4 +175,32 @@ PostgreSQL `reference` DB는 운영 공유 DB이므로 직접 수정 전에 dump
 1. 센터별 `verify_ecm_http --download` 실측을 완료한다.
 2. 194 서버 worker가 `--source=ecm-http`로 세 센터 작업을 처리하는지 확인한다.
 3. 샘플 zip 또는 실제 정상 산출물로 1~18번 전체 PASS 여부를 확인한다.
-4. 테스트가 끝나면 download-review 시간 제한을 `20:00-07:00`으로 되돌린다.
+4. 서버 시간 변경 기능은 dry-run 검증 후 194 서버에서 NTP 복구를 포함한 live 검증을 수행한다.
+
+## 서버 시간 제어 서비스
+
+코드 반영 후 workflow migration을 실행한다.
+
+```powershell
+.\.venv\Scripts\python.exe manage.py migrate --database=workflow --settings=myproject.settings
+```
+
+관리자 PowerShell에서 Windows 서비스를 설치한다. 기존 서비스 갱신 시에만 `-Replace`를 붙인다.
+
+```powershell
+.\setup\install_server_time_service.ps1
+.\setup\install_server_time_service.ps1 -Replace
+```
+
+설치 확인:
+
+```powershell
+Get-Service GSCertTimeControl | Select-Object Name, Status, StartType
+sc.exe qfailure GSCertTimeControl
+```
+
+실제 시간 변경 없이 agent 흐름만 확인할 때는 다음 명령을 사용한다.
+
+```powershell
+.\.venv\Scripts\python.exe manage.py run_server_time_agent --dry-run --settings=myproject.settings
+```

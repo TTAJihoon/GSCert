@@ -4,12 +4,10 @@ import re
 import time
 import zipfile
 from dataclasses import dataclass
-from datetime import timedelta, timezone as datetime_timezone
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
 from urllib.parse import quote
-from zoneinfo import ZoneInfo
 
 from django.conf import settings
 from django.db import transaction
@@ -1126,42 +1124,11 @@ def parse_project_numbers(payload):
 
 def build_job_schedule(now=None):
     current = now or timezone.now()
-    local_tz = ZoneInfo(getattr(settings, "DOWNLOAD_REVIEW_TIME_ZONE", "Asia/Seoul"))
-    local_now = current.astimezone(local_tz)
-
-    if is_start_window(local_now):
-        return JobSchedule(
-            status=DownloadReviewJobStatus.QUEUED,
-            available_after=current,
-            queued_at=current,
-        )
-
-    next_start_local = local_now.replace(
-        hour=getattr(settings, "DOWNLOAD_REVIEW_START_HOUR", 20),
-        minute=0,
-        second=0,
-        microsecond=0,
-    )
-    if local_now.hour >= getattr(settings, "DOWNLOAD_REVIEW_START_HOUR", 20):
-        next_start_local = next_start_local + timedelta(days=1)
-
     return JobSchedule(
-        status=DownloadReviewJobStatus.SCHEDULED,
-        available_after=next_start_local.astimezone(datetime_timezone.utc),
-        queued_at=None,
+        status=DownloadReviewJobStatus.QUEUED,
+        available_after=current,
+        queued_at=current,
     )
-
-
-def is_start_window(local_time):
-    if getattr(settings, "DOWNLOAD_REVIEW_IGNORE_TIME_WINDOW", False):
-        return True
-
-    start_hour = getattr(settings, "DOWNLOAD_REVIEW_START_HOUR", 20)
-    end_hour = getattr(settings, "DOWNLOAD_REVIEW_END_HOUR", 7)
-    hour = local_time.hour
-    if start_hour > end_hour:
-        return hour >= start_hour or hour < end_hour
-    return start_hour <= hour < end_hour
 
 
 def job_status_label(status):

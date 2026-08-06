@@ -13,6 +13,7 @@
 | 다른 PC에서 바로 이어받기 | `00_next_step.md` | `04_download_review_operations_manual.md` |
 | 전체 문서 지도를 확인하기 | `readme.md` | 이 문서 |
 | 남은 결정 사항 확인 | `02_open_decisions.md` | `00_next_step.md` |
+| 서버 시간 임시 변경 기능을 설계/점검하기 | `15_server_time_control_design.md` | `04_download_review_operations_manual.md` |
 | 최근 완료된 변경 확인 | `14_completed_download_review_changes.md` | `00_next_step.md` |
 | 점검규칙을 수정하기 | `09_rule_db_edit_quick_guide.md` | `03_inspection_rule_manual.md`, `08_rulebase_shared_architecture.md` |
 | 점검 결과 기대값/실제값/메시지 표시를 수정하기 | `05_developer_change_manual.md` | `gscert_review_core/result_display.py`, `03_inspection_rule_manual.md` |
@@ -29,6 +30,7 @@
 - `00_next_step.md`: 현재 브랜치, 최신 구조, 바로 다음 작업.
 - `02_open_decisions.md`: 아직 확정하거나 실측해야 할 결정 항목.
 - `14_completed_download_review_changes.md`: 최근 완료된 UI/DB/규칙 변경의 이력성 요약.
+- `15_server_time_control_design.md`: 194 서버 시간 임시 변경, 동시성, PIN, 자동 복구와 사전 진단 기준.
 - `01_manual_index.md`: 지금 보고 있는 문서.
 - `readme.md`: `main/docs` 폴더의 짧은 안내.
 

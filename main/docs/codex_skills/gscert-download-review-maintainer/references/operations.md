@@ -34,20 +34,9 @@ Live run is available through `run_download_worker --live`, but live ECM/agent a
 
 ## Time Window
 
-Current test setting may allow starts all day. Operation should return to:
+The old `20:00-07:00` download-review start window is retired and removed. New jobs queue immediately and migration converts legacy scheduled jobs to queued. Do not restore the old window.
 
-```text
-DOWNLOAD_REVIEW_START_HOUR = 20
-DOWNLOAD_REVIEW_END_HOUR = 7
-```
-
-Look for:
-
-```text
-TODO(TEST_ONLY_DOWNLOAD_REVIEW_TIME_WINDOW)
-```
-
-New jobs may start from `20:00` through `06:59`; jobs already running continue after `07:00`.
+Use `main/docs/15_server_time_control_design.md` as the current server-time-control reference.
 
 ## ECM Automation Notes
 
