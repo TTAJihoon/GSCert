@@ -4,8 +4,8 @@
 {% block title %}ECM 제출물 자동 점검{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=37">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=37" defer></script>
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=39">
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=39" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -16,7 +16,7 @@
       <h1>ECM 제출물 자동 점검</h1>
     </div>
     <div class="status-side">
-      <button class="secondary-button server-time-button" type="button" id="openServerTime">
+      <button class="secondary-button compact-action server-time-button" type="button" id="openServerTime">
         <i class="fa-solid fa-clock"></i>
         서버 시간 설정
       </button>
@@ -349,9 +349,24 @@
         <p class="eyebrow">서버 관리</p>
         <h2 id="serverTimeTitle">서버 시간 설정</h2>
       </div>
-      <button class="icon-button" type="button" id="closeServerTimeModal" aria-label="닫기">
-        <i class="fa-solid fa-xmark"></i>
-      </button>
+      <div class="modal-header-actions server-time-header-actions">
+        <div class="server-time-help">
+          <button class="icon-button server-time-help-button" type="button" aria-label="서버 시간 설정 도움말" aria-describedby="serverTimeHelpTooltip">
+            <i class="fa-solid fa-question"></i>
+          </button>
+          <div class="server-time-help-tooltip" id="serverTimeHelpTooltip" role="tooltip">
+            <ul>
+              <li>현재 서버 시간입니다.</li>
+              <li>이름과 비밀번호를 입력하면 3분 동안 시간이 수정됩니다.</li>
+              <li>3분이 지나기 전에 비밀번호를 입력하여 시간 원상복구 및 재수정할 수 있습니다.</li>
+              <li>누군가 먼저 시간을 수정했다면 기다려주세요.</li>
+            </ul>
+          </div>
+        </div>
+        <button class="icon-button" type="button" id="closeServerTimeModal" aria-label="닫기">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
     </div>
     <div class="modal-body server-time-body">
       <dl class="server-time-summary">
@@ -360,7 +375,7 @@
         <div id="serverTimeOwnerRow" hidden><dt>설정자</dt><dd id="serverTimeOwner">-</dd></div>
         <div id="serverTimeRemainingRow" hidden><dt>남은 시간</dt><dd id="serverTimeRemaining">-</dd></div>
       </dl>
-      <p class="server-time-notice" id="serverTimeNotice">과거 날짜와 시간만 설정할 수 있으며 5분 뒤 자동으로 복구됩니다.</p>
+      <p class="server-time-notice" id="serverTimeNotice">과거 날짜와 시간만 설정할 수 있으며 3분 뒤 자동으로 복구됩니다.</p>
       <div class="server-time-form">
         <label>이름<input id="serverTimeName" type="text" maxlength="80" autocomplete="name"></label>
         <label>PIN<input id="serverTimePin" type="password" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" autocomplete="off" placeholder="숫자 4자리"></label>
@@ -368,7 +383,10 @@
       </div>
       <p class="server-time-error" id="serverTimeError" hidden></p>
       <div class="modal-actions server-time-actions">
-        <button class="secondary-button" type="button" id="serverTimeRestore" hidden>지금 복구</button>
+        <button class="secondary-button compact-action" type="button" id="serverTimeRestore" disabled>
+          <i class="fa-solid fa-arrow-rotate-left"></i>
+          시간 원상복구
+        </button>
         <button class="secondary-button" type="button" id="serverTimeReset" hidden>시간 재설정</button>
         <button class="primary-button" type="button" id="serverTimeChange">시간 변경</button>
       </div>

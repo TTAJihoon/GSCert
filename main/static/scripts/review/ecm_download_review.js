@@ -2990,14 +2990,16 @@ function renderServerTime() {
   const busy = !idle && !ownerControl;
   qs("serverTimeChange").hidden = !idle;
   qs("serverTimeReset").hidden = !ownerControl;
-  qs("serverTimeRestore").hidden = !ownerControl;
   qs("serverTimeTargetLabel").hidden = busy;
   qs("serverTimeName").disabled = busy;
   qs("serverTimePin").disabled = busy;
   qs("serverTimeTarget").disabled = busy;
   qs("serverTimeChange").disabled = !data.agent_online;
   qs("serverTimeReset").disabled = !data.agent_online;
-  qs("serverTimeRestore").disabled = !data.agent_online;
+  qs("serverTimeRestore").disabled = !ownerControl || !data.agent_online;
+  qs("serverTimeRestore").title = ownerControl
+    ? "현재 설정자의 이름과 비밀번호를 입력하면 즉시 원상복구합니다."
+    : "변경 중인 서버 시간이 있을 때 사용할 수 있습니다.";
   qs("serverTimeTarget").max = koreaDateTimeInputValue(data.normal_time_estimate);
 
   if (!data.agent_online) {
@@ -3007,7 +3009,7 @@ function renderServerTime() {
   } else if (ownerControl) {
     qs("serverTimeNotice").textContent = "표시된 설정자와 동일한 이름 및 PIN으로 조기 복구하거나 과거 시간으로 재설정할 수 있습니다.";
   } else {
-    qs("serverTimeNotice").textContent = "과거 날짜와 시간만 설정할 수 있으며 5분 뒤 자동으로 복구됩니다.";
+    qs("serverTimeNotice").textContent = "과거 날짜와 시간만 설정할 수 있으며 3분 뒤 자동으로 복구됩니다.";
   }
 }
 
@@ -3018,6 +3020,13 @@ async function refreshServerTime({ silent = false } = {}) {
     if (!silent) qs("serverTimeError").hidden = true;
   } catch (error) {
     if (!silent) {
+      state.serverTime = null;
+      qs("serverTimeCurrent").textContent = "확인 실패";
+      qs("serverTimeState").textContent = "서버 연결 확인 필요";
+      qs("serverTimeOwnerRow").hidden = true;
+      qs("serverTimeRemainingRow").hidden = true;
+      qs("serverTimeChange").disabled = true;
+      qs("serverTimeRestore").disabled = true;
       qs("serverTimeError").textContent = error.message;
       qs("serverTimeError").hidden = false;
     }
@@ -3027,6 +3036,8 @@ async function refreshServerTime({ silent = false } = {}) {
 async function openServerTimeModal() {
   qs("serverTimeModal").hidden = false;
   qs("serverTimeError").hidden = true;
+  qs("serverTimeCurrent").textContent = "불러오는 중...";
+  qs("serverTimeState").textContent = "확인 중";
   await refreshServerTime();
   if (serverTimePollingTimer) clearInterval(serverTimePollingTimer);
   serverTimePollingTimer = setInterval(() => refreshServerTime({ silent: true }), 1000);

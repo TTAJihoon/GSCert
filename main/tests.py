@@ -2410,6 +2410,11 @@ class ServerTimeControlTests(TestCase):
         call_command("run_server_time_agent", "--once", "--dry-run", stdout=StringIO())
         control.refresh_from_db()
         self.assertEqual(control.status, ServerTimeControlStatus.ACTIVE)
+        active_status = json.loads(
+            server_time_status(self.factory.get("/api/server-time/")).content.decode("utf-8")
+        )
+        self.assertLessEqual(active_status["remaining_seconds"], 180)
+        self.assertGreater(active_status["remaining_seconds"], 175)
 
         denied = self._action({
             "action": "restore",
@@ -4578,6 +4583,42 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(reference_rows["TTA-26-00011"]["시험성적서(PDF)"], "X")
         self.assertEqual(reference_rows["TTA-26-00012"]["점검결과"], "")
         self.assertEqual(reference_rows["TTA-26-00012"]["계약서"], "")
+
+    def test_worker_keeps_queued_job_waiting_until_server_time_is_restored(self):
+        job = DownloadReviewJob.objects.create(
+            center_code="bundang",
+            status=DownloadReviewJobStatus.QUEUED,
+            requested_project_count=0,
+            selected_projects_json=[],
+            progress_message="대기열 등록 완료",
+        )
+        control = ServerTimeControl.objects.create(id=1)
+
+        for status in (
+            ServerTimeControlStatus.CHANGING,
+            ServerTimeControlStatus.ACTIVE,
+            ServerTimeControlStatus.RESTORING,
+            ServerTimeControlStatus.RECOVERY_FAILED,
+        ):
+            with self.subTest(status=status):
+                control.status = status
+                control.save(update_fields=["status", "updated_at"])
+                result = run_worker_once(dry_run=True)
+                job.refresh_from_db()
+
+                self.assertFalse(result.processed)
+                self.assertEqual(result.status, "waiting")
+                self.assertIn("대기열", result.message)
+                self.assertEqual(job.status, DownloadReviewJobStatus.QUEUED)
+                self.assertIsNone(job.started_at)
+
+        control.status = ServerTimeControlStatus.IDLE
+        control.save(update_fields=["status", "updated_at"])
+        result = run_worker_once(dry_run=True)
+        job.refresh_from_db()
+
+        self.assertTrue(result.processed)
+        self.assertEqual(job.status, DownloadReviewJobStatus.COMPLETED)
 
     def test_write_back_rejects_non_review_columns(self):
         with self.assertRaises(ReferenceQueryError):

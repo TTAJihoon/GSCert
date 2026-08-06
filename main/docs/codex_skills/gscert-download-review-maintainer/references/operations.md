@@ -34,7 +34,7 @@ Live run is available through `run_download_worker --live`, but live ECM/agent a
 
 ## Time Window
 
-The old `20:00-07:00` download-review start window is retired and removed. New jobs queue immediately and migration converts legacy scheduled jobs to queued. Do not restore the old window.
+The old `20:00-07:00` download-review start window is retired and removed. New jobs queue immediately and migration converts legacy scheduled jobs to queued. While temporary server time is active, the worker leaves jobs queued and starts them only after verified time restoration. Do not restore the old window.
 
 Use `main/docs/15_server_time_control_design.md` as the current server-time-control reference.
 

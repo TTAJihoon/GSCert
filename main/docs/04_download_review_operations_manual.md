@@ -21,7 +21,7 @@
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-기존 download-review `20:00-07:00` 작업 시작 제한은 폐기되어 코드와 설정에서 제거됐다. 새 작업은 항상 즉시 `queued` 상태가 되며, 기존 `scheduled` 작업은 migration에서 `queued`로 전환한다. 서버 시간 임시 변경 기능은 `15_server_time_control_design.md`를 본다.
+기존 download-review `20:00-07:00` 작업 시작 제한은 폐기되어 코드와 설정에서 제거됐다. 새 작업은 항상 즉시 `queued` 상태가 되며, 기존 `scheduled` 작업은 migration에서 `queued`로 전환한다. 서버 시간이 임시 변경된 동안에는 워커가 새 작업을 claim하지 않고 정상 시각 복구가 검증될 때까지 `queued` 상태로 유지한다. 서버 시간 임시 변경 기능은 `15_server_time_control_design.md`를 본다.
 
 ## worker 실행
 

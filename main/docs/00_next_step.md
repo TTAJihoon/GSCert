@@ -13,7 +13,7 @@
 - 점검 규칙 1~18번은 실제 규칙으로 구현되어 있으며, 운영 반영은 `seed_download_review_rules --only-real --enable --update-existing` 기준으로 한다.
 - Windows 로컬 앱 배포 ZIP은 `GET /api/local-review/app/download/`에서 `C:\Claude_GSCert\local_review_app\dist\GSCertLocalReviewDashboard` 폴더를 스트리밍한다.
 - 기존 download-review `20:00-07:00` 작업 시작 제한은 제거됐다. 새 작업은 즉시 queued가 되고 legacy scheduled 작업은 migration에서 queued로 전환한다.
-- 서버 시간 임시 변경 UI/API/lease와 관리자 권한 Windows 서비스가 구현됐다. 확정 설계와 194 반영 절차는 `15_server_time_control_design.md`와 `04_download_review_operations_manual.md`를 기준으로 한다.
+- 서버 시간 임시 변경 UI/API/3분 lease와 관리자 권한 Windows 서비스가 구현됐다. 임시 시간 동안 접수된 점검 작업은 `queued` 상태로 유지하고 정상 시각 복구 후 시작한다. 확정 설계와 194 반영 절차는 `15_server_time_control_design.md`와 `04_download_review_operations_manual.md`를 기준으로 한다.
 
 ## 최신 완료 요약
 
@@ -51,7 +51,7 @@ GitHub 최신 코드를 서버에 받은 뒤 DB와 서비스를 다음 순서로
 
 1. 운영 ECM 프로젝트 1건으로 세부항목 단위 수동 적합 처리 저장, 보라색 정상 배지, 재점검 재적용을 브라우저에서 확인한다.
 2. 같은 프로젝트에서 전체 산출물 다운로드 스트리밍, `수정 내용` 팝업, 파일명 개정 버전 dedup을 확인한다.
-3. 194 서버에 workflow migration과 `GSCertTimeControl` 서비스를 반영한 뒤, 대표 과거 시각으로 W32Time 중지·5분 자동복구·SMB 접근을 live 검증한다.
+3. 194 서버에 workflow migration과 `GSCertTimeControl` 서비스를 반영한 뒤, 대표 과거 시각으로 W32Time 중지·3분 자동복구·점검 작업 대기·SMB 접근을 live 검증한다.
 
 ## 기본 검증 명령
 

@@ -83,7 +83,7 @@ class Command(BaseCommand):
                 self._stop_w32time()
             self._set_system_time(control.target_time.astimezone(datetime_timezone.utc))
             current_uptime = uptime_ms()
-            lease_ms = int(getattr(settings, "SERVER_TIME_LEASE_SECONDS", 300) * 1000)
+            lease_ms = int(getattr(settings, "SERVER_TIME_LEASE_SECONDS", 180) * 1000)
             ServerTimeControl.objects.filter(
                 id=1,
                 status=ServerTimeControlStatus.CHANGING,

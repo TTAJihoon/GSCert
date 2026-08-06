@@ -25,6 +25,8 @@ from main.models import (
     DownloadReviewProjectStatus,
     DownloadReviewRuleResult,
     DownloadReviewRuleStatus,
+    ServerTimeControl,
+    ServerTimeControlStatus,
 )
 from main.views.review.ecm_reference_db import ARTIFACT_REVIEW_COLUMNS, write_project_review_result
 from main.views.review.ecm_download_review_inspection import (
@@ -90,11 +92,15 @@ class WorkerRunResult:
 
 
 def run_worker_once(*, dry_run=False, sleep_seconds=0, headless=True, source_name=None):
+    if _server_time_blocks_new_jobs():
+        return _server_time_wait_result()
     if not dry_run:
         return _run_live_worker(headless=headless, source_name=source_name)
 
     claim = claim_next_job()
     if claim is None:
+        if _server_time_blocks_new_jobs():
+            return _server_time_wait_result()
         return WorkerRunResult(
             processed=False,
             status="idle",
@@ -150,6 +156,8 @@ def _run_live_worker(*, headless=True, source_name=None):
     """실제 자동화(기본 ECM, source_name 으로 변경 가능)를 사용하는 worker 실행."""
     claim = claim_next_job()
     if claim is None:
+        if _server_time_blocks_new_jobs():
+            return _server_time_wait_result()
         return WorkerRunResult(
             processed=False,
             status="idle",
@@ -682,6 +690,16 @@ def claim_next_job(now=None):
     owner = _worker_owner()
 
     with transaction.atomic(using=workflow_alias):
+        time_control = (
+            ServerTimeControl.objects.using(workflow_alias)
+            .select_for_update()
+            .only("status")
+            .filter(id=1)
+            .first()
+        )
+        if time_control is not None and time_control.status != ServerTimeControlStatus.IDLE:
+            return None
+
         lock, _ = DownloadReviewLock.objects.select_for_update().get_or_create(id=1)
         if lock.locked:
             return None
@@ -724,6 +742,25 @@ def claim_next_job(now=None):
             message="download-review worker가 작업을 시작했습니다.",
         )
         return job
+
+
+def _server_time_blocks_new_jobs():
+    workflow_alias = getattr(settings, "WORKFLOW_DATABASE_ALIAS", "workflow")
+    status = (
+        ServerTimeControl.objects.using(workflow_alias)
+        .filter(id=1)
+        .values_list("status", flat=True)
+        .first()
+    )
+    return status is not None and status != ServerTimeControlStatus.IDLE
+
+
+def _server_time_wait_result():
+    return WorkerRunResult(
+        processed=False,
+        status="waiting",
+        message="서버 시간 원상복구를 기다리는 중입니다. 작업은 대기열에 유지됩니다.",
+    )
 
 
 def run_dry_run_job(job, *, sleep_seconds=0):

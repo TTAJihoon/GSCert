@@ -1341,6 +1341,90 @@
 .server-time-button {
   flex: 0 0 auto;
   white-space: nowrap;
+  min-height: 42px;
+  padding: 0 15px;
+  border-color: #bfdbfe;
+  background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
+  color: #1d4ed8;
+  box-shadow: 0 3px 10px rgba(37, 99, 235, .09);
+}
+
+.server-time-button:hover:not(:disabled) {
+  border-color: #93c5fd;
+  background: #e8f0ff;
+  color: #1e40af;
+  box-shadow: 0 5px 14px rgba(37, 99, 235, .14);
+}
+
+.server-time-button i {
+  color: var(--review-primary);
+}
+
+.server-time-header-actions {
+  position: relative;
+  flex-wrap: nowrap;
+}
+
+.server-time-help {
+  position: relative;
+}
+
+.server-time-help-button {
+  width: 34px;
+  min-height: 34px;
+  border-radius: 999px;
+  color: var(--review-primary);
+}
+
+.server-time-help-button i {
+  font-size: 12px;
+}
+
+.server-time-help-tooltip {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(390px, calc(100vw - 64px));
+  padding: 13px 15px;
+  border: 1px solid #bfdbfe;
+  border-radius: 9px;
+  background: #eff6ff;
+  color: #1e3a5f;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, .18);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.6;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity .15s ease, transform .15s ease, visibility .15s ease;
+  pointer-events: none;
+}
+
+.server-time-help-tooltip::before {
+  content: "";
+  position: absolute;
+  top: -6px;
+  right: 11px;
+  width: 10px;
+  height: 10px;
+  border-top: 1px solid #bfdbfe;
+  border-left: 1px solid #bfdbfe;
+  background: #eff6ff;
+  transform: rotate(45deg);
+}
+
+.server-time-help-tooltip ul {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.server-time-help:hover .server-time-help-tooltip,
+.server-time-help:focus-within .server-time-help-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
 }
 
 .server-time-panel {
@@ -1426,6 +1510,13 @@
   color: var(--review-danger);
   font-size: 13px;
   font-weight: 800;
+}
+
+.server-time-actions .secondary-button:disabled {
+  cursor: not-allowed;
+  border-color: var(--review-line);
+  background: #f3f4f6;
+  color: #98a2b3;
 }
 
 .note-modal-body {
