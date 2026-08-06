@@ -34,6 +34,12 @@ Resolve-Env 'GSCERT_LLM_MODELS' 'google:gemma-4-26b-a4b-it,google:gemini-3.5-fla
 Resolve-Env 'GSCERT_LLM_DEFAULT' 'google:gemma-4-26b-a4b-it'
 Resolve-Env 'OPENAI_REASONING_EFFORT' 'low'
 
+# 194 의 공인 도메인(전산팀이 gsai.tta.or.kr -> 210.96.71.194 A레코드 등록 완료).
+# 설정하면 메인 앱과 상담(consultation) 앱을 IP 대신/함께 이 도메인으로 서비스한다
+# (센터 라우팅 포함 — myproject/settings.py 의 SERVER_DOMAIN 참고).
+# nginx 쪽도 이 값을 읽는다: setup/Update-NginxConf.ps1.
+$env:SERVER_DOMAIN = "gsai.tta.or.kr"
+
 # ── 필수 비밀값 누락 시 경고 ──
 foreach ($required in @('REFERENCE_PG_PASSWORD', 'GEMINI_API_KEY')) {
     if (-not [Environment]::GetEnvironmentVariable($required, 'Process')) {
