@@ -1338,28 +1338,6 @@
   min-height: min(320px, calc(100vh - 48px));
 }
 
-.server-time-button {
-  flex: 0 0 auto;
-  white-space: nowrap;
-  min-height: 42px;
-  padding: 0 15px;
-  border-color: #bfdbfe;
-  background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
-  color: #1d4ed8;
-  box-shadow: 0 3px 10px rgba(37, 99, 235, .09);
-}
-
-.server-time-button:hover:not(:disabled) {
-  border-color: #93c5fd;
-  background: #e8f0ff;
-  color: #1e40af;
-  box-shadow: 0 5px 14px rgba(37, 99, 235, .14);
-}
-
-.server-time-button i {
-  color: var(--review-primary);
-}
-
 .server-time-header-actions {
   position: relative;
   flex-wrap: nowrap;

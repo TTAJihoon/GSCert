@@ -3318,6 +3318,7 @@ function syncCenterTabs() {
   document.querySelectorAll("[data-center-tab]").forEach((button) => {
     button.classList.toggle("active", button.dataset.centerTab === state.center);
   });
+  qs("openServerTime").hidden = state.center !== "sangam" && state.center !== "yeongnam";
 }
 
 async function init() {
