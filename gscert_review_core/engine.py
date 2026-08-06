@@ -1246,6 +1246,68 @@ def _version_numbers_equal(left, right):
     return left_segments == right_segments
 
 
+def _test_plan_product_name_candidates(context):
+    """등록 제품명에서 시험계획서 '소프트웨어 명'에 허용할 국문/영문 후보를 만든다."""
+    candidates = []
+
+    def add(value):
+        text = _normalize_spaces(value)
+        if re.search(r"(?:국문명|영문명)\s*[:：]", text):
+            for match in re.finditer(
+                r"(?:국문명|영문명)\s*[:：]\s*(.*?)(?=(?:국문명|영문명)\s*[:：]|$)",
+                text,
+            ):
+                add(match.group(1))
+            return
+
+        product = _strip_product_name_label(text)
+        product = _strip_product_candidate_version(product, getattr(context, "version", ""))
+        product = _normalize_spaces(_strip_product_name_label(product))
+        if not product or _looks_like_version_label(product):
+            return
+        if product not in candidates:
+            candidates.append(product)
+
+    add(context.product)
+    add(getattr(context, "product_alt", ""))
+
+    raw = str(getattr(context, "product_raw", "") or "")
+    for segment in re.split(r"[\r\n/／|]+", raw):
+        add(segment)
+
+    for candidate in list(candidates):
+        for inner in re.findall(r"[\(\[\{（［｛]([^()\[\]{}（）［］｛｝]+)[\)\]\}）］｝]", candidate):
+            add(inner)
+        add(re.sub(r"\s*[\(\[\{（［｛][^()\[\]{}（）［］｛｝]+[\)\]\}）］｝]\s*", " ", candidate))
+
+    return candidates or ([context.product] if context.product else [])
+
+
+def _strip_product_name_label(value):
+    text = _normalize_spaces(value)
+    return re.sub(
+        r"^(?:국문명|영문명|소프트웨어\s*명|제품명(?:\s*및\s*버전)?)\s*[:：]?\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
+
+
+def _strip_product_candidate_version(value, expected_version):
+    text = _normalize_spaces(value)
+    if not text or not expected_version:
+        return text
+
+    product, version = _split_product_and_version(text)
+    if version and _version_matches(expected_version, version):
+        return product
+    return text
+
+
+def _looks_like_version_label(value):
+    return bool(re.fullmatch(r"(?i)(?:버전|version|ver)\s*[:：]?", _normalize_spaces(value)))
+
+
 def _test_plan_product_checks(table, config, context):
     product_label = str(config.get("product_name_label") or "소프트웨어 명")
     version_label = str(config.get("version_label") or "버전")
@@ -1254,9 +1316,7 @@ def _test_plan_product_checks(table, config, context):
     version_actual = _find_next_cell_by_label(table, version_label)
     application_actual = _find_next_cell_by_label(table, application_label)
     product_message = config.get("product_message") or "제품정보가 틀림"
-    # 인증획득목록 제품명은 '국문명 버전(영문명 버전)' 형식으로 병기되는 경우가 있어,
-    # 시험계획서에 국문명 또는 영문명 중 하나만 적혀 있어도 모두 정상으로 인정한다.
-    product_candidates = [name for name in (context.product, context.product_alt) if name]
+    product_candidates = _test_plan_product_name_candidates(context)
     product_actual_normalized = _normalize_spaces(product_actual)
     product_name_passed = any(product_actual_normalized == candidate for candidate in product_candidates)
     product_expected_display = " 또는 ".join(product_candidates) if product_candidates else context.product

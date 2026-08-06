@@ -831,6 +831,48 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
         self.assertIn("테스트제품", product_check["expected"])
         self.assertIn("TestProduct", product_check["expected"])
 
+    def test_test_plan_product_name_accepts_english_candidate_from_slash_value(self):
+        context = engine.build_context(
+            project_number="TTA-26-00010",
+            product_name="천리안2B호 자료분석 플랫폼 / GK2B Data Analysis Platform v1.0",
+        )
+        checks = engine._test_plan_product_checks(
+            [
+                ["소프트웨어 명", "GK2B Data Analysis Platform"],
+                ["버전", "v1"],
+                ["시험신청번호", "TTA-26-00010"],
+            ],
+            {},
+            context,
+        )
+        product_check = next(check for check in checks if check["name"] == "product_name")
+        version_check = next(check for check in checks if check["name"] == "product_version")
+
+        self.assertTrue(product_check["passed"], product_check)
+        self.assertTrue(version_check["passed"], version_check)
+        self.assertIn("천리안2B호 자료분석 플랫폼", product_check["expected"])
+        self.assertIn("GK2B Data Analysis Platform", product_check["expected"])
+
+    def test_test_plan_product_name_accepts_english_candidate_from_labeled_lines(self):
+        context = engine.build_context(
+            project_number="TTA-26-00010",
+            product_name="국문명: 천리안2B호 자료분석 플랫폼\n영문명: GK2B Data Analysis Platform v1.0",
+        )
+        checks = engine._test_plan_product_checks(
+            [
+                ["소프트웨어 명", "GK2B Data Analysis Platform"],
+                ["버전", "v1.0"],
+                ["시험신청번호", "TTA-26-00010"],
+            ],
+            {},
+            context,
+        )
+        product_check = next(check for check in checks if check["name"] == "product_name")
+
+        self.assertTrue(product_check["passed"], product_check)
+        self.assertIn("천리안2B호 자료분석 플랫폼", product_check["expected"])
+        self.assertIn("GK2B Data Analysis Platform", product_check["expected"])
+
     def test_version_matches_accepts_word_versions_case_insensitively(self):
         self.assertTrue(engine._version_matches("Enterprise", "enterprise"))
         self.assertTrue(engine._version_matches("v1", "1"))
@@ -1735,6 +1777,32 @@ class DownloadReviewChangeNoteApiTests(TestCase):
         self.assertEqual(note_response.status_code, 200)
         self.assertEqual(note_data["job"]["id"], str(job.id))
         self.assertIn("기능리스트 v1.1 추가", note_data["change_note"]["content"])
+
+    def test_job_project_change_note_endpoint_returns_txt_with_change_keyword(self):
+        job, project = self._make_project()
+        project_dir = Path(self.temp_dir.name) / "downloads" / "TTA-26-00010"
+        project_dir.mkdir(parents=True)
+        (project_dir / "추가 수정 사항.TXT").write_text("성적서 문구 수정", encoding="utf-8")
+        project.download_dir = str(project_dir)
+        project.save(update_fields=["download_dir", "updated_at"])
+        self._add_rule_result(project)
+
+        results_response = job_project_results(
+            self.factory.get(f"/api/job-projects/{project.id}/results/"),
+            project.id,
+        )
+        results_data = json.loads(results_response.content.decode("utf-8"))
+        note_response = job_project_change_note(
+            self.factory.get(f"/api/job-projects/{project.id}/change-note/"),
+            project.id,
+        )
+        note_data = json.loads(note_response.content.decode("utf-8"))
+
+        self.assertEqual(results_response.status_code, 200)
+        self.assertTrue(results_data["project"]["change_note"]["available"])
+        self.assertEqual(results_data["project"]["change_note"]["file_name"], "추가 수정 사항.TXT")
+        self.assertEqual(note_response.status_code, 200)
+        self.assertIn("성적서 문구 수정", note_data["change_note"]["content"])
 
     def test_job_project_change_note_endpoint_uses_log_fallback_after_cleanup(self):
         job, project = self._make_project()

@@ -1626,7 +1626,7 @@ function setModalChangeNote(project, note) {
   if (!project?.id || !available) {
     state.modalChangeNoteProject = null;
     button.disabled = true;
-    button.title = "ECM에서 수정 내용.txt 파일이 발견되면 활성화됩니다.";
+    button.title = "ECM에서 파일명에 '수정'이 포함된 txt 파일이 발견되면 활성화됩니다.";
     button.innerHTML = `<i class="fa-solid fa-file-lines"></i> 수정 내용`;
     return;
   }
@@ -1634,7 +1634,7 @@ function setModalChangeNote(project, note) {
   state.modalChangeNoteProject = {
     id: project.id,
     number: project.number || "",
-    fileName: note.file_name || "수정 내용.txt"
+    fileName: note.file_name || "수정 관련 txt 파일"
   };
   button.disabled = false;
   button.title = `${state.modalChangeNoteProject.fileName} 내용을 확인합니다.`;
@@ -1642,8 +1642,8 @@ function setModalChangeNote(project, note) {
 }
 
 function openChangeNotePopup(note, project) {
-  const title = `${project?.number || ""} ${note.file_name || "수정 내용.txt"}`.trim();
-  qs("changeNoteTitle").textContent = title || "수정 내용.txt";
+  const title = `${project?.number || ""} ${note.file_name || "수정 관련 txt 파일"}`.trim();
+  qs("changeNoteTitle").textContent = title || "수정 관련 txt 파일";
   qs("changeNoteContent").textContent = note.content || "(내용 없음)";
   qs("changeNoteModal").hidden = false;
 }

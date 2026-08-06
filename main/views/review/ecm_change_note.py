@@ -10,7 +10,8 @@ from main.models import DownloadReviewLog, DownloadReviewLogLevel
 
 CHANGE_NOTE_EVENT_CODE = "change_note_detected"
 CHANGE_NOTE_MAX_BYTES = 256 * 1024
-_CHANGE_NOTE_NORMALIZED_NAME = "수정내용.txt"
+_CHANGE_NOTE_KEYWORD = "수정"
+_CHANGE_NOTE_EXTENSION = ".txt"
 
 
 def change_note_summary(project):
@@ -134,7 +135,7 @@ def _find_change_note_file_info(files):
 def _is_change_note_name(name):
     normalized = unicodedata.normalize("NFKC", str(name or "")).casefold()
     normalized = re.sub(r"\s+", "", normalized)
-    return normalized == _CHANGE_NOTE_NORMALIZED_NAME
+    return normalized.endswith(_CHANGE_NOTE_EXTENSION) and _CHANGE_NOTE_KEYWORD in normalized
 
 
 def _payload_from_path(path, project, *, include_content, file_name="", modified_at=None):
