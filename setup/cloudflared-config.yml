@@ -1,0 +1,29 @@
+# Cloudflare Tunnel ingress 설정 템플릿 — 194 서버용.
+# 실제 파일이 아니라 참고용 템플릿이다. 아래 절차대로 값을 채운 뒤
+# %USERPROFILE%\.cloudflared\config.yml 로 저장한다.
+#
+# 사전 조건: gsai.tta.or.kr 이 Cloudflare 계정에 zone 으로 등록되어 있고,
+#           전산팀이 tta.or.kr 존에 그 zone 의 네임서버로 NS 위임을 완료한 상태여야
+#           4)번 DNS 라우팅 명령이 성공한다. (docs/CONSULTATION_PROXY_SETUP.md 참고)
+#
+# 절차:
+#   1) cloudflared tunnel login                        (브라우저에서 Cloudflare 계정 인증)
+#   2) cloudflared tunnel create gscert-194             (Tunnel 생성 → <TUNNEL_ID>, 자격증명 json 자동 생성)
+#   3) 아래 __TUNNEL_ID__ / __TUNNEL_CRED_FILE__ 를 2)에서 나온 값으로 치환
+#   4) cloudflared tunnel route dns gscert-194 gsai.tta.or.kr   (DNS 위임 완료 후 실행)
+#   5) cloudflared tunnel run gscert-194                 (테스트 실행 — 정상이면 서비스로 등록)
+#
+# nginx 가 자체서명 인증서(gscert.crt)를 쓰는 동안은 originRequest.noTLSVerify: true 가 필요하다.
+# 추후 Cloudflare Origin CA 등 신뢰된 인증서로 교체하면 이 옵션은 지워도 된다.
+# main 앱과 consultation 앱 모두 194 nginx(443) 뒤에 있으므로 ingress 는 이 한 줄로 충분하다
+# (경로 분기는 이미 nginx 의 location / vs location /consultation/ 이 처리한다).
+
+tunnel: __TUNNEL_ID__
+credentials-file: __TUNNEL_CRED_FILE__
+
+ingress:
+  - hostname: gsai.tta.or.kr
+    service: https://localhost:443
+    originRequest:
+      noTLSVerify: true
+  - service: http_status:404

@@ -1,3 +1,9 @@
+> ⚠️ **참고(2026-08)**: 이 문서는 초기 검토 초안이다. 실제 구현은 `/similar/` 가 아니라
+> `/consultation/` 경로의 리버스 프록시(방식 A)로 진행됐고, 접속 도메인도 `nip.io` 를 거쳐
+> 정식 도메인 `gsai.tta.or.kr` 로 전환됐다. 최신 상태는
+> [CONSULTATION_PROXY_SETUP.md](CONSULTATION_PROXY_SETUP.md) 와
+> [CONSULTATION_DOMAIN_CUTOVER_FOR_8787_TEAM.md](CONSULTATION_DOMAIN_CUTOVER_FOR_8787_TEAM.md) 를 참고.
+
 # 8787 앱을 `https://210.96.71.194/similar/` 아래에 임베드하기 — 8787 개발팀 전달 문서
 
 > 목적: 8787 포트 앱(`https://210.96.71.67.nip.io:8787/`, Google 계정 로그인 사용)의

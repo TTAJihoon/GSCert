@@ -31,7 +31,9 @@ function Get-ServerIP {
 }
 
 $serverIP     = if ($env:MAIN_SERVER_IP) { $env:MAIN_SERVER_IP } else { Get-ServerIP }
-$serverDomain = "$serverIP.nip.io"    # 구글 OAuth 등 도메인 필수 용도(IP 불가). nip.io 무료 와일드카드 DNS.
+# 구글 OAuth 등 도메인 필수 용도(IP 불가). SERVER_DOMAIN 환경변수(예: gsai.tta.or.kr)가 있으면
+# 그 값을 쓰고, 없으면 기존처럼 nip.io 무료 와일드카드 DNS로 폴백한다.
+$serverDomain = if ($env:SERVER_DOMAIN) { $env:SERVER_DOMAIN } else { "$serverIP.nip.io" }
 $staticRoot   = ($RootDir -replace '\\', '/') + '/staticfiles'
 
 $conf = Get-Content $NginxTemplate -Raw -Encoding UTF8

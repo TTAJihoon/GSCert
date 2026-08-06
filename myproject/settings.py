@@ -162,12 +162,20 @@ MAIN_SERVER_IP = os.environ.get('MAIN_SERVER_IP', '210.96.71.194')
 SUB_SERVER_IP = os.environ.get('SUB_SERVER_IP', '210.96.71.241')
 FILE_SHARE_HOST = os.environ.get('FILE_SHARE_HOST', '210.96.71.99')
 
+# 194 의 공인 도메인(Cloudflare Tunnel 등으로 서비스). 설정하면 메인 앱을 MAIN_SERVER_IP 와
+# 동일하게 이 도메인으로도 서비스한다 — 아래 CSRF_TRUSTED_ORIGINS 와 DOWNLOAD_REVIEW_*_BY_HOST
+# 매핑에 자동으로 별칭 등록된다(코드 하단 참조). 예: gsai.tta.or.kr
+SERVER_DOMAIN = os.environ.get('SERVER_DOMAIN', '')
+
 # HTTPS(nginx TLS) 도입에 따른 CSRF 신뢰 출처. Django 4+ 는 POST 시 Origin/Referer 를
 # 이 목록과 대조하므로, 서버 IP 의 http/https 를 모두 등록해야 https 화면의 POST(이력 검색,
 # 다운로드 검토 등)가 403 나지 않는다. (ALLOWED_HOSTS='*' 여도 CSRF 는 별도로 필요)
+_csrf_hosts = {MAIN_SERVER_IP, SUB_SERVER_IP, '127.0.0.1', 'localhost'}
+if SERVER_DOMAIN:
+    _csrf_hosts.add(SERVER_DOMAIN)
 CSRF_TRUSTED_ORIGINS = [
     f'{scheme}://{host}'
-    for host in {MAIN_SERVER_IP, SUB_SERVER_IP, '127.0.0.1', 'localhost'}
+    for host in _csrf_hosts
     for scheme in ('https', 'http')
 ]
 CSRF_FAILURE_VIEW = 'main.views.csrf.csrf_failure'
@@ -217,6 +225,17 @@ DOWNLOAD_REVIEW_NAV_HOME_BY_HOST = {
     MAIN_SERVER_IP: '',                          # 메인(분당)이 웹 네비게이션 홈
     SUB_SERVER_IP: f'http://{MAIN_SERVER_IP}',   # 서브(상암/영남)는 메인으로 리다이렉트
 }
+
+# SERVER_DOMAIN(예: gsai.tta.or.kr)이 설정되어 있으면, 그 도메인으로 들어온 요청도
+# MAIN_SERVER_IP 와 동일하게 처리되도록 위 네 매핑에 별칭 키를 추가한다.
+# (Cloudflare Tunnel 등으로 메인 앱을 도메인으로도 서비스할 때 필요 — 그렇지 않으면
+#  request.get_host() 가 도메인일 때 위 매핑이 전부 miss 나서 센터 라우팅/네비홈이 깨진다.)
+if SERVER_DOMAIN:
+    DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_HOST[SERVER_DOMAIN] = DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_HOST[MAIN_SERVER_IP]
+    DOWNLOAD_REVIEW_ALLOWED_CENTERS_BY_HOST[SERVER_DOMAIN] = DOWNLOAD_REVIEW_ALLOWED_CENTERS_BY_HOST[MAIN_SERVER_IP]
+    DOWNLOAD_REVIEW_CENTER_ROUTES_BY_HOST[SERVER_DOMAIN] = DOWNLOAD_REVIEW_CENTER_ROUTES_BY_HOST[MAIN_SERVER_IP]
+    DOWNLOAD_REVIEW_NAV_HOME_BY_HOST[SERVER_DOMAIN] = DOWNLOAD_REVIEW_NAV_HOME_BY_HOST[MAIN_SERVER_IP]
+
 # 점검규칙은 주 서버 PostgreSQL(reference)에 단일 저장되어 두 서버가 공유한다.
 # 서브 서버는 REFERENCE_PG_HOST 가 주 서버를 가리키므로 동일 규칙을 직접 읽는다.
 # (과거의 HTTP 번들 동기화 방식은 제거됨.)
