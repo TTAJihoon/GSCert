@@ -877,6 +877,23 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
         self.assertIn("천리안2B호 자료분석 플랫폼", product_check["expected"])
         self.assertIn("GK2B Data Analysis Platform", product_check["expected"])
 
+    def test_test_plan_product_name_candidates_do_not_leak_unclosed_parenthesis(self):
+        # 실제 사례(TTA-26-00531): product_raw가 '국문명 버전(영문명 버전)'처럼 끝에
+        # 괄호가 붙어 있으면, 슬래시/파이프 분리기가 이를 하나의 문자열로 보고
+        # _split_product_and_version에 그대로 넘겨 마지막 공백 기준으로 잘못 잘라
+        # 닫는 괄호가 없는 반쪼가리 후보('...플랫폼 v1.0 (DAVA FMS-Platform')가
+        # 생겼었다. 국문명/영문명 두 개만 깨끗하게 후보에 남아야 한다.
+        context = engine.build_context(
+            project_number="TTA-26-00531",
+            product_name="다바 에프엠에스 플랫폼 v1.0\n(DAVA FMS-Platform v1.0)",
+        )
+        candidates = engine._test_plan_product_name_candidates(context)
+
+        self.assertEqual(candidates, ["다바 에프엠에스 플랫폼", "DAVA FMS-Platform"])
+        for candidate in candidates:
+            self.assertNotIn("(", candidate)
+            self.assertNotIn(")", candidate)
+
     def test_version_matches_accepts_word_versions_case_insensitively(self):
         self.assertTrue(engine._version_matches("Enterprise", "enterprise"))
         self.assertTrue(engine._version_matches("v1", "1"))

@@ -1272,8 +1272,16 @@ def _test_plan_product_name_candidates(context):
     add(getattr(context, "product_alt", ""))
 
     raw = str(getattr(context, "product_raw", "") or "")
-    for segment in re.split(r"[\r\n/／|]+", raw):
-        add(segment)
+    # '국문명 버전(영문명 버전)'처럼 끝에 괄호가 붙은 원본을 그대로 슬래시/파이프
+    # 분리기에 넘기면, 괄호를 인식하지 못하는 _split_product_and_version이 마지막
+    # 공백을 기준으로 잘못 잘라 괄호가 반만 남은 값을 후보로 넣는다(예: '...
+    # 플랫폼 v1.0 (DAVA FMS-Platform'처럼 닫는 괄호가 사라짐). 슬래시/파이프
+    # 분리 전에 괄호로 먼저 안팎을 나눠 이 문제를 막는다.
+    raw_paren_match = re.match(r"^(.*?)\s*[\(（]([^()（）]+)[\)）]\s*$", _normalize_spaces(raw))
+    raw_segments = raw_paren_match.groups() if raw_paren_match else (raw,)
+    for outer_segment in raw_segments:
+        for segment in re.split(r"[\r\n/／|]+", outer_segment):
+            add(segment)
 
     for candidate in list(candidates):
         for inner in re.findall(r"[\(\[\{（［｛]([^()\[\]{}（）［］｛｝]+)[\)\]\}）］｝]", candidate):
