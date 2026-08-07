@@ -707,6 +707,65 @@ class SyncNewCertifiedProjectsCommandTests(TestCase):
         return Path(temp.name)
 
 
+class BackfillReferenceProjectNamesCommandTests(TestCase):
+    """구버전 동기화가 남긴 전처리된 company/product를 SwData 원본으로 복구하는 명령어 테스트."""
+
+    databases = {"reference"}
+
+    def setUp(self):
+        SwData.objects.using("reference").create(
+            serial_number=1, test_number="TTA-26-00531", company="주식회사 다인정보기술",
+            product="다바 에프엠에스 플랫폼 v1.0\n(DAVA FMS-Platform v1.0)",
+            test_lab="우수진",
+        )
+        SwData.objects.using("reference").create(
+            serial_number=2, test_number="TTA-26-00099", company="정상회사", product="정상제품",
+            test_lab="박지훈",
+        )
+
+    def test_dry_run_reports_diff_without_saving(self):
+        ReferenceProject.objects.using("reference").create(
+            project_number="TTA-26-00531",
+            center_code="unknown",
+            company="다인정보기술",
+            product="다바 에프엠에스 플랫폼",
+        )
+        out = StringIO()
+
+        call_command("backfill_reference_project_names", stdout=out)
+
+        project = ReferenceProject.objects.using("reference").get(project_number="TTA-26-00531")
+        self.assertEqual(project.product, "다바 에프엠에스 플랫폼")  # dry-run이므로 변경 없음
+        self.assertIn("dry-run", out.getvalue())
+        self.assertIn("TTA-26-00531", out.getvalue())
+
+    def test_apply_restores_swdata_values_and_leaves_matching_rows_untouched(self):
+        ReferenceProject.objects.using("reference").create(
+            project_number="TTA-26-00531",
+            center_code="unknown",
+            company="다인정보기술",
+            product="다바 에프엠에스 플랫폼",
+            review_result="X",
+        )
+        ReferenceProject.objects.using("reference").create(
+            project_number="TTA-26-00099",
+            center_code="unknown",
+            company="정상회사",
+            product="정상제품",
+        )
+
+        call_command("backfill_reference_project_names", "--apply", stdout=StringIO())
+
+        fixed = ReferenceProject.objects.using("reference").get(project_number="TTA-26-00531")
+        self.assertEqual(fixed.company, "주식회사 다인정보기술")
+        self.assertEqual(fixed.product, "다바 에프엠에스 플랫폼 v1.0\n(DAVA FMS-Platform v1.0)")
+        self.assertEqual(fixed.review_result, "X")  # 점검 결과는 보존됨
+
+        unchanged = ReferenceProject.objects.using("reference").get(project_number="TTA-26-00099")
+        self.assertEqual(unchanged.company, "정상회사")
+        self.assertEqual(unchanged.product, "정상제품")
+
+
 class DownloadVerifyTests(SimpleTestCase):
     def test_zero_byte_file_is_warning_not_failure(self):
         # 0바이트 파일은 다운로드 확인에서 실패시키지 않고 경고로만 남긴다.
