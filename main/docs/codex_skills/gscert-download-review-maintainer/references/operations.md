@@ -86,7 +86,6 @@ For production after pulling code that touches reference tables:
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py migrate --database=reference --settings=myproject.settings
-.\.venv\Scripts\python.exe manage.py migrate_manual_overrides_to_reference --settings=myproject.settings
 ```
 
 For browser verification, reload `/download-review/` and check the changed interaction directly.

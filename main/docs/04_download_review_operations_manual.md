@@ -85,12 +85,6 @@ dry-run으로 작업 상태 전이와 규칙 실행 경로를 먼저 확인한�
 .\.venv\Scripts\python.exe manage.py migrate --database=reference --settings=myproject.settings
 ```
 
-수동 적합 메모를 workflow SQLite에 임시 저장했던 서버라면 한 번만 이관 명령을 실행한다.
-
-```powershell
-.\.venv\Scripts\python.exe manage.py migrate_manual_overrides_to_reference --settings=myproject.settings
-```
-
 Django 서버 재시작 후 `/download-review/`에서 수동 적합 처리와 결과 재조회가 동작하는지 확인한다. 워커는 이미 실행 중인 작업이 새 로직으로 재점검해야 할 때 재시작한다.
 
 ## 기준 프로젝트 동기화

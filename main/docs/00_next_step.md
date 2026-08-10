@@ -42,7 +42,6 @@ GitHub 최신 코드를 서버에 받은 뒤 DB와 서비스를 다음 순서로
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py migrate --database=reference --settings=myproject.settings
-.\.venv\Scripts\python.exe manage.py migrate_manual_overrides_to_reference --settings=myproject.settings
 ```
 
 수동 적합 처리 API나 화면 변경을 확인하려면 Django 서버 재시작이 필요하다. 워커는 이미 실행 중인 작업이 새 규칙/override 재적용 로직을 즉시 써야 할 때 재시작한다.

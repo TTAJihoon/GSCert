@@ -455,12 +455,6 @@ GitHub에서 최신 코드를 pull한 뒤 PostgreSQL `reference` DB migration을
 .\.venv\Scripts\python.exe manage.py migrate --database=reference --settings=myproject.settings
 ```
 
-수동 적합 메모를 workflow SQLite에 임시 저장했던 서버라면 한 번만 이관 명령을 실행한다.
-
-```powershell
-.\.venv\Scripts\python.exe manage.py migrate_manual_overrides_to_reference --settings=myproject.settings
-```
-
 그 다음 Django 서버를 재시작한다. 워커는 이미 실행 중인 작업이 새 코드로 재점검하거나 수동 적합 재적용을 즉시 해야 하는 경우 재시작한다.
 
 새 서버를 구축하는 경우에는 다음이 별도 배포 절차다.
