@@ -1060,6 +1060,28 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
 
         self.assertEqual([file_info.path for file_info in selected], ["new/TTA-26-00010 기능리스트 v1.1.xlsx"])
 
+    def test_artifact_revision_selection_prefers_latest_modified_when_neither_has_version(self):
+        # 실제 사례: 같은 이름의 파일이 파일명에 버전 표시 없이 서로 다른 위치에
+        # 중복 제출된 경우, 버전으로는 우열을 가릴 수 없으므로 수정 날짜가 더
+        # 최신인 파일 하나만 남긴다(둘 다 남기면 exact_count가 '2개 이상'으로
+        # 잘못 부적합 처리한다).
+        older = engine.FileInfo(
+            name="TTA-26-00010 계약서.pdf",
+            path="old/TTA-26-00010 계약서.pdf",
+            extension=".pdf",
+            modified_at=datetime(2026, 5, 1, 9, 0, 0),
+        )
+        newer = engine.FileInfo(
+            name="TTA-26-00010 계약서.pdf",
+            path="new/TTA-26-00010 계약서.pdf",
+            extension=".pdf",
+            modified_at=datetime(2026, 5, 2, 9, 0, 0),
+        )
+
+        selected = engine._latest_revision_files([older, newer])
+
+        self.assertEqual([file_info.path for file_info in selected], ["new/TTA-26-00010 계약서.pdf"])
+
     def test_folder_fallback_search_disabled_by_default_leaves_misplaced_file_unmatched(self):
         # 실제 사례: 유일한 파일(v1.0)이 폴더 구조를 안 지키고 단독으로 올라온 경우.
         # 플래그가 없으면 지금까지의 동작(폴더 못 찾음 → 빈 결과)을 그대로 유지한다.

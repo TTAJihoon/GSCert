@@ -4860,7 +4860,18 @@ def _latest_revision_files(files):
             if _artifact_revision_info(file_info)
         ]
         if not versioned:
-            selected_keys.update(_file_identity_key(file_info) for index, file_info in group)
+            # 같은 산출물(동일 identity)인데 파일명에 버전이 전혀 없으면(예: 같은
+            # 파일이 위치만 다르게 중복 제출된 경우), 수정 날짜가 더 최신인 파일
+            # 하나만 대상으로 남긴다. 여러 개를 그대로 두면 exact_count 검사가
+            # '2개 이상'으로 잘못 부적합 처리한다.
+            _best_index, best_file_info = max(
+                group,
+                key=lambda item: (
+                    _artifact_revision_modified_value(item[1]),
+                    str(item[1].path or item[1].name),
+                ),
+            )
+            selected_keys.add(_file_identity_key(best_file_info))
             continue
 
         latest_by_major = {}
