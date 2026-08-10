@@ -1105,8 +1105,11 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
         self.assertEqual([file_info.name for file_info in selected], ["TTA-26-00010 기능리스트 v1.0.xlsx"])
         self.assertTrue(selected_folder)
 
-    def test_folder_fallback_search_all_does_not_override_precise_folder_match(self):
-        # 폴더 안에서 이미 찾았다면 폴백은 타지 않고 기존 정밀 매칭 결과를 그대로 쓴다.
+    def test_folder_fallback_search_all_still_reports_precise_folder_label_when_found(self):
+        # 폴더 위치는 참고 정보(화면 표시용)일 뿐 필수 조건이 아니다. 정밀 매칭으로
+        # 폴더를 찾았으면 그 폴더를 표시하지만, 실제 매칭 대상은 항상 전체 제출물로
+        # 넓힌다(파일명 키워드 필터링은 상위 평가 함수가 그대로 하므로 무관한
+        # 파일이 최종 결과에 잘못 포함되지는 않는다).
         rule = SimpleNamespace(
             config_json={
                 "folder_keyword_chain": ["시험", "계획"],
@@ -1132,9 +1135,38 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
 
         self.assertEqual(selected_folder, "4.시험/가.계획")
         self.assertEqual(
-            [file_info.name for file_info in selected],
-            ["TTA-26-00010 기능리스트 v1.0.xlsx"],
+            {file_info.name for file_info in selected},
+            {"TTA-26-00010 기능리스트 v1.0.xlsx", "다른제품 무관파일.xlsx"},
         )
+
+    def test_folder_fallback_search_all_matches_file_uploaded_at_submission_root(self):
+        # 실제 사례: 계약서가 '2.계약' 폴더가 아니라 제출물 루트에 수정내용.txt와
+        # 함께 올라온 경우에도, 폴더 구조 대신 파일명/내용만으로 적합 처리해야 한다.
+        rule = SimpleNamespace(
+            config_json={
+                "folder_keyword_chain": ["계약"],
+                "folder_fallback_search_all": True,
+            },
+            target_file_pattern="",
+            target_file_type="pdf",
+        )
+        verify_result = SimpleNamespace(files=[
+            engine.FileInfo(
+                name="TTA-26-00010 계약서.pdf",
+                path="TTA-26-00010 계약서.pdf",
+                extension=".pdf",
+            ),
+            engine.FileInfo(
+                name="수정내용.txt",
+                path="수정내용.txt",
+                extension=".txt",
+            ),
+        ])
+
+        selected, selected_folder = engine._files_in_configured_folder(rule, verify_result)
+
+        self.assertEqual([file_info.name for file_info in selected], ["TTA-26-00010 계약서.pdf"])
+        self.assertTrue(selected_folder)
 
     def test_artifact_revision_parser_does_not_treat_trailing_date_as_revision(self):
         file_info = engine.FileInfo(
