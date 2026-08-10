@@ -2,10 +2,17 @@
 
 ## 목적과 범위
 
-`/download-review/`에서 194 서버의 날짜와 시간을 임시로 과거 시각으로 변경하고, 3분 뒤 정상 시각으로 복구한다.
+`/download-review/`에서 실제 시각 변경 대상 서버(상암·영남 ECM 원문 시스템, `210.96.71.85`)의 날짜와 시간을
+임시로 과거 시각으로 변경하고, 3분 뒤 정상 시각으로 복구한다.
 
-- 대상은 물리 서버 한 대(`210.96.71.194`)다.
-- 운영체제는 Windows Server 2022 Standard다.
+- 웹 UI/lease 상태(revision)/3분 타이머/PIN 인증은 194(`210.96.71.194`, GSCert 앱 서버)가 관리한다.
+- 실제 OS 시각 변경·W32Time 제어·NTP 재동기화는 85(`210.96.71.85`)에서 일어난다. 194는 이 작업을
+  WinRM(`pywinrm`, NTLM 인증)으로 85에 원격 실행한다 — 194 자신의 시각은 바뀌지 않는다.
+- 85 접속 계정(`gsai`)은 85의 로컬 Administrators 그룹 멤버이며, 워크그룹 환경의 UAC 원격 토큰
+  필터링을 끄기 위해 85에 `LocalAccountTokenFilterPolicy=1`을 설정했다(KB951016).
+- 자격증명은 194의 Machine 환경변수(`SERVER_TIME_REMOTE_USER`/`SERVER_TIME_REMOTE_PASSWORD`)로만
+  주입한다(`ECM_USERNAME`/`ECM_PASSWORD`와 동일한 패턴) — 코드/DB에는 절대 저장하지 않는다.
+- 운영체제는 두 서버 모두 Windows Server 2022 Standard다.
 - 직원 전용 내부망 기능으로 운영하며 별도 로그인/권한 검사는 두지 않는다.
 - 시간대는 `Korea Standard Time`(`Asia/Seoul`, UTC+09:00)으로 고정한다.
 - 미래 시각은 허용하지 않는다. 이 판정은 이미 변경된 OS 시각이 아니라 정상 시간 원본에서 계산한 현재 시각을 기준으로 한다.
@@ -158,9 +165,14 @@ sc.exe qc GSCertTimeControl
 - `GET /api/server-time/`: 서버 시각, lease 상태, revision, 설정자, 남은 시간 조회.
 - `POST /api/server-time/action/`: 최초 변경, 같은 이름/PIN 재설정, 조기 복구 요청.
 - workflow DB의 `server_time_control`, `server_time_audit`: 원자적 lease와 감사 이력.
-- `run_server_time_agent`: W32Time 중지, Windows 시스템 시각 변경, 단조 3분 타이머, NTP 복구·검증.
-- `GSCertTimeControl` Windows 서비스와 설치 스크립트: 자동 시작과 실패 시 재시작.
+- `run_server_time_agent`: 단조 3분 타이머·lease 상태는 194에서 관리하고, W32Time 중지/시작, 시스템
+  시각 변경, `w32tm /resync`는 WinRM으로 85에 원격 실행한다. NTP 조회(정상 기준시각)는 194에서
+  직접 하고, 복구 검증은 85 자신의 시각(`Get-Date` 원격 조회)을 그 NTP 값과 비교한다.
+- `GSCertTimeControl` Windows 서비스와 설치 스크립트: 194에서 자동 시작과 실패 시 재시작(85에는
+  아무 서비스도 설치하지 않음, WinRM만 켜져 있으면 됨).
 - `/download-review/`의 서버 시간 설정 팝업: 이름, 4자리 PIN, 과거 분 단위 시각, 설정자·남은 시간 표시.
 - 기존 download-review 시간 제한은 제거했고 새 작업은 즉시 queued 처리한다. 단, 서버 시간이 정상 상태가 아니면 워커가 claim하지 않고 원상복구까지 대기열에 유지한다.
 
-개발 PC에서는 dry-run으로 설정/충돌/PIN 거부/조기 복구와 UI를 검증했다. 실제 OS 시간 변경과 재부팅 복구는 194 서버에서만 검증한다.
+개발 PC에서는 dry-run으로 설정/충돌/PIN 거부/조기 복구와 UI를 검증했다. WinRM 연결(인증, 85 시각
+조회, W32Time 상태 조회)은 194→85 실제 통신으로 확인했다. 실제 OS 시간 변경·자동 복구·재부팅 복구는
+아직 85에서 실행해보지 않았다 — 85는 실사용 ECM 시스템이라 실제 시각 변경 테스트는 별도 확인 후 진행한다.

@@ -32,6 +32,10 @@ function Show-Menu {
     $wrkStat = if ($workerOk) { "[실행중]" } else { "[중지됨]" }
     $ngxStat = if ($nginxOk)  { "[실행중]" } else { "[중지됨]" }
 
+    $ccSvc  = Get-Service -Name 'GSCertTimeControl' -ErrorAction SilentlyContinue
+    $ccStat = if (-not $ccSvc) { "[미설치]" } elseif ($ccSvc.Status -eq 'Running') { "[실행중]" } else { "[중지됨]" }
+    $ccColor = if (-not $ccSvc) { "DarkGray" } elseif ($ccSvc.Status -eq 'Running') { "Green" } else { "DarkGray" }
+
     $nginxModeFile = Join-Path $ScriptDir "run\nginx_mode.txt"
     $ngxModeLabel  = ""
     if ($nginxOk -and (Test-Path $nginxModeFile)) {
@@ -64,6 +68,7 @@ function Show-Menu {
     Write-Host "  W.    weekly 동기화 - ECM xlsx → PostgreSQL reference DB 적재 + 신규 건 점검대상 프로젝트 반영$venvWarn"
     Write-Host "  f.    FAISS 임베딩  - reference DB 신규 데이터 증분 임베딩$venvWarn"
     Write-Host "  D.    점검규칙 관리 - 반영(seed) / 규칙·세부항목 on-off$venvWarn"
+    Write-Host "  CC.   서버시간 에이전트 - GSCertTimeControl 서비스 시작/종료/상태조회  $ccStat" -ForegroundColor $ccColor
     Write-Host "  B.    로컬 검토 앱   - 빌드 / 빌드 없이 실행 선택"
     Write-Host "  LLM.  LLM 모델 관리 - 사용 가능 모델 조회 / 현재 모델 전환"
     Write-Host "  git.  Git 관리      - 원격 pull / 로컬 커밋·push"
@@ -457,6 +462,89 @@ while ($true) {
             } else {
                 Write-Host "[취소] 1 또는 2를 선택해 주세요." -ForegroundColor Yellow
             }
+        }
+        'CC' {
+            Write-Host ""
+            Write-Host "=== 서버시간 에이전트 (GSCertTimeControl) ===" -ForegroundColor Cyan
+            Write-Host "  ECM 자동 점검 페이지의 '서버 시간 설정' 기능이 실제로 OS 시간을 바꾸고 복구하는 privileged 서비스입니다." -ForegroundColor Gray
+            $prevEAP = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+            $ccSvc = Get-Service -Name 'GSCertTimeControl' -ErrorAction SilentlyContinue
+            if (-not $ccSvc) {
+                Write-Host "  상태: [미설치]" -ForegroundColor Yellow
+                Write-Host ""
+                Write-Host "  1) 설치 - Windows 서비스로 설치 후 자동 시작 (관리자 권한 필요)"
+                Write-Host "  0) 취소"
+                $sel = Read-Host "선택"
+                if ($sel -eq '1') {
+                    & (Join-Path $ScriptDir "setup\install_server_time_service.ps1")
+                    if ($LASTEXITCODE -eq 0 -or $?) {
+                        Write-Host "[OK] 설치·시작 완료." -ForegroundColor Green
+                    } else {
+                        Write-Host "[ERROR] 설치 실패. 관리자 권한으로 다시 실행해보세요." -ForegroundColor Red
+                    }
+                } else {
+                    Write-Host "취소했습니다." -ForegroundColor Yellow
+                }
+            } else {
+                $stColor = if ($ccSvc.Status -eq 'Running') { 'Green' } else { 'DarkGray' }
+                Write-Host "  상태: $($ccSvc.Status)  (시작유형: $($ccSvc.StartType))" -ForegroundColor $stColor
+                Write-Host ""
+                Write-Host "  1) 시작"
+                Write-Host "  2) 종료"
+                Write-Host "  3) 재시작"
+                Write-Host "  4) 재설치/갱신 (-Replace, 관리자 권한 필요)"
+                Write-Host "  0) 취소"
+                $sel = Read-Host "선택"
+                switch ($sel) {
+                    '1' {
+                        if ($ccSvc.Status -eq 'Running') {
+                            Write-Host "이미 실행 중입니다." -ForegroundColor Yellow
+                        } else {
+                            try {
+                                Start-Service -Name 'GSCertTimeControl' -ErrorAction Stop
+                                Write-Host "[OK] 시작했습니다." -ForegroundColor Green
+                            } catch {
+                                Write-Host "[ERROR] 시작 실패: $($_.Exception.Message)" -ForegroundColor Red
+                            }
+                        }
+                    }
+                    '2' {
+                        if ($ccSvc.Status -ne 'Running') {
+                            Write-Host "이미 중지 상태입니다." -ForegroundColor Yellow
+                        } else {
+                            try {
+                                Stop-Service -Name 'GSCertTimeControl' -ErrorAction Stop
+                                Write-Host "[OK] 중지했습니다." -ForegroundColor Green
+                            } catch {
+                                Write-Host "[ERROR] 중지 실패: $($_.Exception.Message)" -ForegroundColor Red
+                            }
+                        }
+                    }
+                    '3' {
+                        try {
+                            Restart-Service -Name 'GSCertTimeControl' -ErrorAction Stop
+                            Write-Host "[OK] 재시작했습니다." -ForegroundColor Green
+                        } catch {
+                            Write-Host "[ERROR] 재시작 실패: $($_.Exception.Message)" -ForegroundColor Red
+                        }
+                    }
+                    '4' {
+                        & (Join-Path $ScriptDir "setup\install_server_time_service.ps1") -Replace
+                        if ($LASTEXITCODE -eq 0 -or $?) {
+                            Write-Host "[OK] 재설치·시작 완료." -ForegroundColor Green
+                        } else {
+                            Write-Host "[ERROR] 재설치 실패. 관리자 권한으로 다시 실행해보세요." -ForegroundColor Red
+                        }
+                    }
+                    default {
+                        Write-Host "취소했습니다." -ForegroundColor Yellow
+                    }
+                }
+                Write-Host ""
+                Get-Service -Name 'GSCertTimeControl' -ErrorAction SilentlyContinue |
+                    Select-Object Name, Status, StartType | Format-Table -AutoSize
+            }
+            $ErrorActionPreference = $prevEAP
         }
         'GIT' {
             Write-Host ""

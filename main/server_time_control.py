@@ -29,7 +29,11 @@ class ServerTimeRequestError(ValueError):
 
 def uptime_ms():
     if hasattr(ctypes, "windll"):
-        return int(ctypes.windll.kernel32.GetTickCount64())
+        # GetTickCount64 반환값은 64비트이지만 ctypes 기본 restype(c_int, 32비트 signed)으로
+        # 읽으면 값이 잘려 음수가 될 수 있어 명시적으로 c_uint64를 지정해야 한다.
+        kernel32 = ctypes.windll.kernel32
+        kernel32.GetTickCount64.restype = ctypes.c_uint64
+        return int(kernel32.GetTickCount64())
     return int(time.monotonic() * 1000)
 
 

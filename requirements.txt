@@ -13,6 +13,7 @@ pytesseract>=0.3.13,<0.4
 Pillow>=11.0,<13.0
 olefile>=0.47,<0.48
 pywin32>=312; sys_platform == "win32"
+pywinrm>=0.4,<0.6
 beautifulsoup4>=4.14,<4.15
 bleach>=6.3,<6.4
 tinycss2>=1.5,<1.6

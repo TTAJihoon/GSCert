@@ -124,6 +124,12 @@ WORKFLOW_MODEL_NAMES = {
 SERVER_TIME_LEASE_SECONDS = 180
 SERVER_TIME_NTP_HOST = os.environ.get('SERVER_TIME_NTP_HOST', 'time.windows.com')
 SERVER_TIME_VERIFY_TOLERANCE_SECONDS = 10
+# 서버 시간 임시 변경의 실제 대상은 194(GSCert 앱 서버)가 아니라 상암·영남 ECM
+# 원문 시스템 서버(85)다. 194는 lease/타이머/웹UI만 관리하고, 실제 OS 시각 변경은
+# WinRM(pywinrm)으로 85에 원격 실행한다. 자격증명은 코드/DB에 절대 저장하지 않음.
+SERVER_TIME_REMOTE_HOST = os.environ.get('SERVER_TIME_REMOTE_HOST', '210.96.71.85')
+SERVER_TIME_REMOTE_USER = os.environ.get('SERVER_TIME_REMOTE_USER', '')
+SERVER_TIME_REMOTE_PASSWORD = os.environ.get('SERVER_TIME_REMOTE_PASSWORD', '')
 
 # 유사제품 자동 입력은 UI에서 파일 개수를 제한하지 않는다. 이 값은 브라우저 사용
 # 제한이 아니라 비정상 multipart 요청으로부터 서버를 보호하는 숨은 안전 한도다.

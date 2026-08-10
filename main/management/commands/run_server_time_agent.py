@@ -1,6 +1,5 @@
 import socket
 import struct
-import subprocess
 import time
 from datetime import datetime, timezone as datetime_timezone
 
@@ -107,9 +106,9 @@ class Command(BaseCommand):
             self._start_w32time()
             self._resync_w32time()
             verified_ntp = self._query_ntp()
-            os_now = datetime.now(datetime_timezone.utc)
+            remote_now = self._remote_now()
             tolerance = int(getattr(settings, "SERVER_TIME_VERIFY_TOLERANCE_SECONDS", 10))
-            if abs((os_now - verified_ntp).total_seconds()) > tolerance:
+            if abs((remote_now - verified_ntp).total_seconds()) > tolerance:
                 raise RuntimeError("정상 시간 원본과의 오차가 허용 범위를 벗어났습니다.")
             record_audit(control, event_code, normal_estimate=verified_ntp, detail={"ntp_host": self._ntp_host()})
             ServerTimeControl.objects.filter(id=1).update(
@@ -164,92 +163,82 @@ class Command(BaseCommand):
         fraction = words[11] / 2**32
         return datetime.fromtimestamp(seconds + fraction, tz=datetime_timezone.utc)
 
+    def _remote_session(self):
+        import winrm
+
+        host = getattr(settings, "SERVER_TIME_REMOTE_HOST", "")
+        user = getattr(settings, "SERVER_TIME_REMOTE_USER", "")
+        password = getattr(settings, "SERVER_TIME_REMOTE_PASSWORD", "")
+        if not host or not user or not password:
+            raise RuntimeError("원격 서버(85) 접속 정보(SERVER_TIME_REMOTE_*)가 설정되지 않았습니다.")
+        # 실제 시간 변경은 아주 드물게(대부분 유휴 상태) 일어나므로 세션을 캐시해
+        # 재사용하면 그 사이 연결이 끊겨 있다가 재사용 시점에 실패하는 경우가 있다.
+        # 호출마다 새로 연결해 안정성을 우선한다.
+        return winrm.Session(host, auth=(user, password), transport="ntlm")
+
+    def _remote_ps(self, script):
+        if self.dry_run:
+            return ""
+        result = self._remote_session().run_ps(script)
+        if result.status_code != 0:
+            stderr = result.std_err.decode(errors="replace")
+            raise RuntimeError(f"원격(85) 명령 실행 실패: {stderr[:300]}")
+        return result.std_out.decode(errors="replace")
+
+    def _remote_now(self):
+        if self.dry_run:
+            return datetime.now(datetime_timezone.utc)
+        output = self._remote_ps("(Get-Date).ToUniversalTime().ToString('o')")
+        return datetime.fromisoformat(output.strip())
+
     def _set_system_time(self, value):
         if self.dry_run:
             return
-        import win32api
-
+        # 85는 로컬 시간대(KST)로 시각을 받으므로 UTC 목표값을 그대로 넘기고
+        # .NET의 ToLocalTime()이 85 자신의 시간대 설정을 기준으로 변환하게 한다.
         utc_value = value.astimezone(datetime_timezone.utc)
-        win32api.SetSystemTime(
-            utc_value.year,
-            utc_value.month,
-            0,
-            utc_value.day,
-            utc_value.hour,
-            utc_value.minute,
-            utc_value.second,
-            utc_value.microsecond // 1000,
+        script = (
+            "$dt = [DateTime]::SpecifyKind([DateTime]::new("
+            f"{utc_value.year},{utc_value.month},{utc_value.day},"
+            f"{utc_value.hour},{utc_value.minute},{utc_value.second},{utc_value.microsecond // 1000}"
+            "), [DateTimeKind]::Utc); "
+            "Set-Date -Date $dt.ToLocalTime() | Out-Null"
         )
+        self._remote_ps(script)
 
     def _w32time_running(self):
         if self.dry_run:
             return True
-        import win32service
-
-        manager = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_CONNECT)
-        service = win32service.OpenService(manager, "W32Time", win32service.SERVICE_QUERY_STATUS)
-        try:
-            return win32service.QueryServiceStatus(service)[1] == win32service.SERVICE_RUNNING
-        finally:
-            win32service.CloseServiceHandle(service)
-            win32service.CloseServiceHandle(manager)
+        output = self._remote_ps("(Get-Service -Name W32Time).Status")
+        return output.strip() == "Running"
 
     def _stop_w32time(self):
         if self.dry_run:
             return
-        import win32service
-
-        manager = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_CONNECT)
-        service = win32service.OpenService(
-            manager,
-            "W32Time",
-            win32service.SERVICE_STOP | win32service.SERVICE_QUERY_STATUS,
+        self._remote_ps(
+            "Stop-Service -Name W32Time -Force; "
+            "$sw = [Diagnostics.Stopwatch]::StartNew(); "
+            "while ((Get-Service -Name W32Time).Status -ne 'Stopped' -and $sw.Elapsed.TotalSeconds -lt 15) "
+            "{ Start-Sleep -Milliseconds 200 }; "
+            "if ((Get-Service -Name W32Time).Status -ne 'Stopped') { throw 'W32Time stop timeout' }"
         )
-        try:
-            win32service.ControlService(service, win32service.SERVICE_CONTROL_STOP)
-            self._wait_service(service, win32service.SERVICE_STOPPED)
-        finally:
-            win32service.CloseServiceHandle(service)
-            win32service.CloseServiceHandle(manager)
 
     def _start_w32time(self):
         if self.dry_run:
             return
-        import win32service
-
-        manager = win32service.OpenSCManager(None, None, win32service.SC_MANAGER_CONNECT)
-        service = win32service.OpenService(
-            manager,
-            "W32Time",
-            win32service.SERVICE_START | win32service.SERVICE_QUERY_STATUS,
+        self._remote_ps(
+            "if ((Get-Service -Name W32Time).Status -ne 'Running') { Start-Service -Name W32Time }; "
+            "$sw = [Diagnostics.Stopwatch]::StartNew(); "
+            "while ((Get-Service -Name W32Time).Status -ne 'Running' -and $sw.Elapsed.TotalSeconds -lt 15) "
+            "{ Start-Sleep -Milliseconds 200 }; "
+            "if ((Get-Service -Name W32Time).Status -ne 'Running') { throw 'W32Time start timeout' }"
         )
-        try:
-            status = win32service.QueryServiceStatus(service)[1]
-            if status != win32service.SERVICE_RUNNING:
-                win32service.StartService(service, None)
-                self._wait_service(service, win32service.SERVICE_RUNNING)
-        finally:
-            win32service.CloseServiceHandle(service)
-            win32service.CloseServiceHandle(manager)
-
-    def _wait_service(self, service, wanted, timeout=15):
-        import win32service
-
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if win32service.QueryServiceStatus(service)[1] == wanted:
-                return
-            time.sleep(0.2)
-        raise RuntimeError("Windows Time 서비스 상태 변경이 제한 시간을 초과했습니다.")
 
     def _resync_w32time(self):
         if self.dry_run:
             return
-        completed = subprocess.run(
-            ["w32tm.exe", "/resync", "/force"],
-            capture_output=True,
-            timeout=15,
-            check=False,
+        self._remote_ps(
+            "$p = Start-Process -FilePath w32tm.exe -ArgumentList '/resync','/force' "
+            "-NoNewWindow -Wait -PassThru; "
+            "if ($p.ExitCode -ne 0) { throw \"w32tm resync failed with exit code $($p.ExitCode)\" }"
         )
-        if completed.returncode != 0:
-            raise RuntimeError("Windows Time 강제 동기화에 실패했습니다.")
