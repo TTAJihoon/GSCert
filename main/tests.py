@@ -5247,6 +5247,26 @@ class WorkerDownloadDirCleanupTests(TestCase):
                 self.assertFalse(target.exists())
                 self.assertTrue(other.exists())
 
+    def test_partial_download_failure_logs_warning_without_failing_project(self):
+        from main.views.review.ecm_download_review_worker import _record_partial_download_failures
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
+                job, project = self._make_project(base)
+
+                _record_partial_download_failures(
+                    job, project, ["[6.시험] TTA-26-01042 반입반출 확인서.hwpx: IncompleteRead(...)"],
+                )
+
+                log = DownloadReviewLog.objects.get(
+                    job_project=project, event_code="download_partial_failure"
+                )
+                self.assertEqual(log.level, DownloadReviewLogLevel.WARNING)
+                self.assertIn("반입반출 확인서.hwpx", log.detail_json["failed_files"][0])
+                # 프로젝트 상태 자체는 이 함수가 건드리지 않는다(계속 진행 책임은 호출부).
+                project.refresh_from_db()
+                self.assertEqual(project.status, DownloadReviewProjectStatus.RUNNING)
+
 
 class ArtifactSourceSeamTests(SimpleTestCase):
     """산출물 source 추상화: ECM 없이도 다른 source 를 끼워 동작함을 검증.
@@ -5445,14 +5465,18 @@ class HttpEcmArtifactSourceTests(SimpleTestCase):
             self.assertIn(([], 1), progressed)
             self.assertIn((["계약"], 1), progressed)
 
-    def test_integrity_failure_fails_project_after_retry(self):
+    def test_integrity_failure_skips_file_but_project_still_succeeds(self):
+        # 파일 하나가 재시도까지 다 실패해도 프로젝트 전체를 막지 않고, 그 파일만
+        # 누락된 채로 나머지 파일은 정상적으로 받아 점검이 진행되어야 한다. 누락된
+        # 파일이 필요한 규칙은 '파일을 찾지 못함'으로 자연스럽게 부적합 처리된다.
         from main.views.review.artifact_source import HttpEcmArtifactSource
 
         tree = {"P": {"folders": [], "files": [
             {"fileName": "계약서.pdf", "storageFileID": "f1", "fileSize": 10},
+            {"fileName": "합의서.pdf", "storageFileID": "f2", "fileSize": 8},
         ]}}
-        # 매직바이트가 %PDF 가 아니고 크기도 다름 → 검증 실패.
-        blobs = {"f1": b"garbage"}
+        # f1은 매직바이트가 %PDF 가 아니고 크기도 다름 → 검증 실패. f2는 정상.
+        blobs = {"f1": b"garbage", "f2": b"%PDF-1.4"}
         client = _FakeEcmClient(project_oid="P", tree=tree, blobs=blobs)
         source = HttpEcmArtifactSource(client_factory=lambda center: client)
 
@@ -5460,16 +5484,21 @@ class HttpEcmArtifactSourceTests(SimpleTestCase):
             with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
                 result, _ = self._fetch(source, self._project())
 
-            self.assertFalse(result.success)
-            self.assertEqual(result.error_step, "무결성 검증")
-            # 1회 재다운로드까지 시도한다.
-            self.assertEqual(len(client.download_calls), 2)
+            self.assertTrue(result.success, result.error_message)
+            self.assertEqual(len(result.failed_files), 1)
+            self.assertIn("계약서.pdf", result.failed_files[0])
+            dst = Path(base) / "GS-A-23-0336"
+            self.assertFalse((dst / "계약서.pdf").exists())
+            self.assertTrue((dst / "합의서.pdf").exists())
+            # f1은 1회 재다운로드까지 시도한다.
+            self.assertEqual(client.download_calls.count("f1"), 2)
 
-    def test_connection_error_during_download_retries_then_reports_file_name(self):
+    def test_connection_error_during_download_retries_then_skips_file(self):
         # 실제 사례(TTA-26-01042): 전송 중 연결이 끊기는 IncompleteRead 등은
         # verify_downloaded_bytes에 도달하지 못하고 download_bytes 자체가 예외를
         # 던진다. 이 경우도 크기 불일치와 동일하게 1회 재시도하고, 계속 실패하면
-        # 어떤 파일이 문제인지 알 수 있도록 파일명을 포함해 보고해야 한다.
+        # 그 파일만 누락시킨 채 프로젝트는 성공으로 진행되며 실패 사유에 파일명이
+        # 포함되어야 한다.
         from main.views.review.artifact_source import HttpEcmArtifactSource
 
         tree = {"P": {"folders": [], "files": [
@@ -5485,10 +5514,10 @@ class HttpEcmArtifactSourceTests(SimpleTestCase):
             with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
                 result, _ = self._fetch(source, self._project())
 
-            self.assertFalse(result.success)
-            self.assertEqual(result.error_step, "다운로드")
-            self.assertIn("결함리포트.xlsx", result.error_message)
-            self.assertIn("IncompleteRead", result.error_message)
+            self.assertTrue(result.success, result.error_message)
+            self.assertEqual(len(result.failed_files), 1)
+            self.assertIn("결함리포트.xlsx", result.failed_files[0])
+            self.assertIn("IncompleteRead", result.failed_files[0])
             # 1회 재다운로드까지 시도한다.
             self.assertEqual(len(client.download_calls), 2)
 

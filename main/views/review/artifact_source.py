@@ -18,7 +18,7 @@ import asyncio
 import re
 import shutil
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Protocol
 
@@ -44,6 +44,11 @@ class FetchResult:
     downloaded_folder_count: int = 0
     error_step: str = ""
     error_message: str = ""
+    # 개별 파일이 재시도까지 다 소진하고도 다운로드에 실패한 경우, 프로젝트
+    # 전체를 실패시키지 않고 그 파일만 누락시킨 채 계속 진행한다. 어떤 파일이
+    # 빠졌는지는 여기 남겨서 로그로 남긴다 — 해당 파일이 필요한 점검 규칙은
+    # '파일을 찾지 못함'으로 자연스럽게 부적합 처리된다.
+    failed_files: list[str] = field(default_factory=list)
 
 
 class ArtifactSource(Protocol):
@@ -200,7 +205,7 @@ class HttpEcmArtifactSource:
                 error_message=f"시험번호 {project.project_number} 에 해당하는 ECM 폴더를 찾지 못했습니다.",
             )
 
-        state = {"folder_count": 0}
+        state = {"folder_count": 0, "failed_files": []}
 
         try:
             await self._walk(
@@ -215,14 +220,6 @@ class HttpEcmArtifactSource:
             )
         except JobCanceledError:
             raise
-        except _FetchFailed as exc:
-            return FetchResult(
-                success=False,
-                download_dir=str(download_dir),
-                downloaded_folder_count=state["folder_count"],
-                error_step=exc.step,
-                error_message=exc.message,
-            )
         except Exception as exc:
             return FetchResult(
                 success=False,
@@ -236,6 +233,7 @@ class HttpEcmArtifactSource:
             success=True,
             download_dir=str(download_dir),
             downloaded_folder_count=state["folder_count"],
+            failed_files=state["failed_files"],
         )
 
     async def _walk(
@@ -267,7 +265,10 @@ class HttpEcmArtifactSource:
             for meta in files:
                 if await is_canceled():
                     raise JobCanceledError()
-                await self._download_one(client, meta, target_dir)
+                failure = await self._download_one(client, meta, target_dir)
+                if failure:
+                    folder_label = " > ".join(relative_path) or "(루트)"
+                    state["failed_files"].append(f"[{folder_label}] {failure}")
             state["folder_count"] += 1
 
         for child in folders:
@@ -285,7 +286,12 @@ class HttpEcmArtifactSource:
                 state=state,
             )
 
-    async def _download_one(self, client, meta, target_dir: Path) -> None:
+    async def _download_one(self, client, meta, target_dir: Path) -> str:
+        """파일 하나를 받아 저장한다. 실패 사유 문자열을 반환하며, 빈 문자열이면
+        성공이다. 재시도까지 다 소진해도 실패하면 예외를 던지는 대신 실패 사유를
+        반환해, 파일 하나의 다운로드 실패가 프로젝트 전체 점검을 막지 않고 그
+        파일만 누락된 채로 나머지가 진행되도록 한다(누락된 파일이 필요한 규칙은
+        '파일을 찾지 못함'으로 자연스럽게 부적합 처리된다)."""
         file_name = unicodedata.normalize("NFC", str(meta.get("fileName") or ""))
         expected_size = int(meta.get("fileSize") or 0)
         safe_name = re.sub(r'[\\/:*?"<>|]', " ", file_name)
@@ -294,47 +300,34 @@ class HttpEcmArtifactSource:
         # 다운로드 + 무결성 검증. 실패 시 1회 재다운로드(결정 8).
         # 전송 중 연결이 끊기는 경우(예: IncompleteRead)는 무결성 검증 단계에
         # 도달하지 못하고 download_bytes 자체가 예외를 던지므로, 이 경우도
-        # 크기 불일치와 동일하게 재시도 대상으로 취급한다. 어느 쪽이든 실패
-        # 메시지에 파일명을 포함해 어떤 파일이 문제인지 알 수 있게 한다.
+        # 크기 불일치와 동일하게 재시도 대상으로 취급한다.
         last_reason = ""
-        last_step = "무결성 검증"
         for _attempt in range(2):
             try:
                 data = await asyncio.to_thread(client.download_bytes, meta)
             except JobCanceledError:
                 raise
             except Exception as exc:
-                last_step = "다운로드"
                 last_reason = str(exc)
                 continue
-            last_step = "무결성 검증"
             last_reason = verify_downloaded_bytes(data, file_name, expected_size)
             if not last_reason:
                 await asyncio.to_thread(self._write_bytes, dest, data)
-                return
+                return ""
             legacy_ext = legacy_office_extension(data, file_name)
             if legacy_ext:
                 # ECM에 신형 확장자로 등록된 구형 OLE 문서: 실패 대신 실제 포맷
                 # (구형 확장자)으로 저장해 점검 엔진이 정상 처리하도록 한다.
                 fixed_dest = dest.with_suffix("." + legacy_ext)
                 await asyncio.to_thread(self._write_bytes, fixed_dest, data)
-                return
-        raise _FetchFailed(last_step, f"{file_name}: {last_reason}")
+                return ""
+        return f"{file_name}: {last_reason}"
 
     @staticmethod
     def _write_bytes(dest: Path, data: bytes) -> None:
         tmp = dest.with_name(dest.name + ".part")
         tmp.write_bytes(data)
         tmp.replace(dest)
-
-
-class _FetchFailed(Exception):
-    """_walk 내부에서 발생한 복구 불가 실패를 fetch 로 전달하는 내부 신호."""
-
-    def __init__(self, step: str, message: str):
-        super().__init__(message)
-        self.step = step
-        self.message = message
 
 
 class LocalFolderArtifactSource:

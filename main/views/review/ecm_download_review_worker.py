@@ -295,6 +295,11 @@ async def _run_live_job(job, *, headless=True, source_name=None):
                         verify_result.file_count,
                         file_summary,
                     )
+                    if ecm_result.failed_files:
+                        await _run_sync(
+                            _record_partial_download_failures,
+                            job, project, ecm_result.failed_files,
+                        )
                     await _run_sync(record_change_note_if_present, job, project, verify_result)
                     await _run_sync(
                         _mark_project,
@@ -451,6 +456,24 @@ def _record_download_verified(job, project, download_dir, file_count, file_summa
         event_code="download_verified",
         message=f"{project.project_number} 다운로드 확인 완료: {file_count}개 파일",
         detail_json=file_summary,
+    )
+
+
+def _record_partial_download_failures(job, project, failed_files):
+    """재시도까지 다 소진하고도 다운로드에 실패한 파일이 있으면 경고 로그로
+    남긴다. 프로젝트는 실패 처리하지 않고 계속 진행하며(다른 파일은 정상
+    다운로드됨), 누락된 파일이 필요한 규칙은 점검 단계에서 '파일을 찾지
+    못함'으로 자연스럽게 부적합 처리된다."""
+    DownloadReviewLog.objects.create(
+        job=job,
+        job_project=project,
+        level=DownloadReviewLogLevel.WARNING,
+        event_code="download_partial_failure",
+        message=(
+            f"{project.project_number} 일부 파일 다운로드 실패({len(failed_files)}건, "
+            "해당 파일 없이 나머지로 점검을 계속합니다)"
+        ),
+        detail_json={"failed_files": failed_files},
     )
 
 
