@@ -99,6 +99,7 @@ class RuleContext:
     derived_variables: dict[str, object]
     center: str = ""
     product_alt: str = ""
+    company_alt: str = ""
 
 
 @dataclass(frozen=True)
@@ -4240,14 +4241,20 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
         "message": config.get("signature_message") or "서명란 이름 확인 필요",
     })
 
-    # 2) 회사명
+    # 2) 회사명 — 등록 회사명이 '국문명\n영문명'으로 병기된 경우 둘 중 하나만
+    # 적혀 있어도 인정한다(제품명과 동일한 이유).
     table_rows = [row for table in tables for row in table]
     company_value = _find_next_cell_by_label(table_rows, str(config.get("company_label") or "회사(기관)명"))
-    raw_detail["company_check"] = {"expected": context.company, "actual": company_value}
+    company_candidates = [name for name in (context.company, context.company_alt) if name]
+    company_expected_display = " 또는 ".join(company_candidates) if company_candidates else context.company
+    company_passed = any(
+        _same_excel_text(company_value, candidate) for candidate in company_candidates
+    )
+    raw_detail["company_check"] = {"expected": company_expected_display, "actual": company_value}
     sub_checks.append({
-        "expected": f"[회사명] {context.company}",
+        "expected": f"[회사명] {company_expected_display}",
         "actual": company_value or "회사명 값 없음",
-        "passed": _same_excel_text(company_value, context.company),
+        "passed": company_passed,
         "message": config.get("company_message") or "1. 신청 회사 현황 표 값 확인 필요",
     })
 
@@ -6482,13 +6489,19 @@ def _normalize_spaces(value):
     return re.sub(r"\s+", " ", text.replace("\u00a0", " ")).strip()
 
 
-def _first_line(value):
-    text = str(value or "")
-    for separator in ("\r\n", "\n", "\r"):
-        if separator in text:
-            text = text.split(separator, 1)[0]
-            break
-    return text.strip()
+def _split_dual_company_name(company_name):
+    """등록 회사명이 '국문명\\n영문명'처럼 줄바꿈으로 병기된 경우 국문명/영문명을
+    분리한다. 제품명과 달리 회사명 병기에는 버전이나 괄호가 없고 그냥 줄이 나뉘어
+    있을 뿐이다(예: '주식회사 다인정보기술\\nDain Information & Communication
+    Technology Inc.'). 산출물에는 국문명 또는 영문명 중 하나만 적힐 수 있어 둘 다
+    기준값으로 인정해야 한다."""
+    text = str(company_name or "")
+    lines = [line.strip() for line in re.split(r"[\r\n]+", text) if line.strip()]
+    if not lines:
+        return "", ""
+    korean = lines[0]
+    english = lines[1] if len(lines) > 1 else ""
+    return korean, english
 
 
 def _extension_from_file_type(file_type):
@@ -6568,13 +6581,17 @@ def build_context(*, project_number="", product_name="", company="", pl="", wd="
     # 합친 전체 값을 그대로 이중명칭 파서에 넘긴다.
     product_raw = _normalize_spaces(product_name)
     product, product_alt, version = _split_dual_product_name(product_raw)
+    # 회사명도 제품명과 마찬가지로 '국문명\n영문명' 형식으로 병기되는 경우가 있어,
+    # 국문명(company)/영문명(company_alt)을 모두 기준값으로 남긴다.
+    company_name, company_alt = _split_dual_company_name(company)
     return RuleContext(
         project_number=project_number or "",
         product_raw=product_raw,
         product=product,
         product_alt=product_alt,
         version=version,
-        company=_first_line(company),
+        company=company_name,
+        company_alt=company_alt,
         pl=_first_pl_name(pl),
         wd=wd or "",
         start_date=start_date or "",

@@ -786,6 +786,21 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
             with self.subTest(raw=raw):
                 self.assertEqual(engine._split_dual_product_name(raw), expected)
 
+    def test_split_dual_company_name_separates_korean_and_english_lines(self):
+        # 인증획득목록 회사명은 제품명과 달리 버전/괄호 없이 그냥 줄바꿈으로
+        # 국문명/영문명이 병기된다.
+        cases = {
+            "주식회사 다인정보기술\nDain Information & Communication Technology Inc.": (
+                "주식회사 다인정보기술",
+                "Dain Information & Communication Technology Inc.",
+            ),
+            "㈜터빈크루\nTurbineCrew. Co., Ltd.": ("㈜터빈크루", "TurbineCrew. Co., Ltd."),
+            "에이치소프트": ("에이치소프트", ""),
+        }
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                self.assertEqual(engine._split_dual_company_name(raw), expected)
+
     def test_build_context_splits_english_name_when_ecm_product_wraps_to_new_line(self):
         # 실제 사례(TTA-26-00531): 인증획득목록 제품명이 '국문명 v1.0\n(영문명 v1.0)'처럼
         # 줄바꿈으로 국문명/영문명이 나뉘어 있다. build_context가 첫 줄만 쓰면 영문명이
@@ -3641,6 +3656,63 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(result.status, DownloadReviewRuleStatus.PASS)
         self.assertEqual(outcome.artifact_results["시험환경구성도"], "O")
         self.assertEqual(result.raw_detail_json["matched_file_count"], 2)
+
+    def test_quality_report_company_check_accepts_english_name_when_registered_name_has_newline(self):
+        # 등록 회사명이 제품명처럼 '국문명\n영문명'으로 병기된 경우, 품질평가보고서에
+        # 영문명만 적혀 있어도 회사명 세부항목이 적합 처리되어야 한다.
+        project_dir = Path(self.temp_dir.name) / "quality_report_company"
+        project_dir.mkdir(parents=True)
+        zip_path = project_dir / "TTA-26-00010.zip"
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            archive.writestr(
+                "6.시험/인증관련/TTA-26-00010 품질평가보고서.docx",
+                _quality_evaluation_report_docx("TTA-26-00010", company="HSoft Inc."),
+            )
+
+        DownloadReviewRule.objects.create(
+            code="artifact_16",
+            name="품질평가보고서",
+            rule_type="quality_evaluation_report_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=160,
+            config_json={
+                "artifact_column": "품질평가보고서",
+                "folder_keyword_chain": ["인증관련"],
+                "filename_keywords": ["품질평가보고서", "{project_number}"],
+                "extensions": [".docx"],
+                "exact_count": 1,
+                "project_number_count": 6,
+                "primary_signer": "성  명 : 김  성  희",
+                "secondary_signer": "정  성  룡     (서명)",
+                "company_label": "회사(기관)명",
+            },
+        )
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={
+                "project_number": "TTA-26-00010",
+                "company": "에이치소프트\nHSoft Inc.",
+            },
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+
+        run_download_inspection(project, verify_result, {})
+        result = DownloadReviewRuleResult.objects.get(job_project=project, rule_name="품질평가보고서")
+        company_check = next(
+            item for item in result.raw_detail_json["sub_checks"] if item["expected"].startswith("[회사명]")
+        )
+
+        self.assertTrue(company_check["passed"], company_check)
+        self.assertIn("에이치소프트", company_check["expected"])
+        self.assertIn("HSoft Inc.", company_check["expected"])
 
     def test_performance_rawdata_passes_when_folder_has_any_entry(self):
         project_dir = Path(self.temp_dir.name) / "rawdata_performance"
