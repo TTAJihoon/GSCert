@@ -142,7 +142,11 @@ class Command(BaseCommand):
             pending_action="",
             error_message=public_message,
         )
-        record_audit(get_control(), "agent_failed", detail={"error_type": type(exc).__name__})
+        record_audit(
+            get_control(),
+            "agent_failed",
+            detail={"error_type": type(exc).__name__, "error_detail": str(exc)[:300]},
+        )
         try:
             # Windows 서비스로 실행될 때는 콘솔이 없어 sys.stderr가 None이라
             # self.stderr.write()가 AttributeError를 던진다. 이 예외가 잡히지
@@ -161,13 +165,14 @@ class Command(BaseCommand):
         # 실패로 보고된다(85 쪽 실제 작업은 이미 끝났는데 확인만 실패하는 상황 재현됨).
         # 몇 번 재시도해 일시적 손실에 흔들리지 않게 한다.
         last_error = None
-        for attempt in range(3):
+        attempts = 5
+        for attempt in range(attempts):
             try:
                 return self._query_ntp_once()
             except (OSError, RuntimeError) as exc:
                 last_error = exc
-                if attempt < 2:
-                    time.sleep(1)
+                if attempt < attempts - 1:
+                    time.sleep(2)
         raise last_error
 
     def _query_ntp_once(self):
@@ -201,21 +206,25 @@ class Command(BaseCommand):
             return ""
         # 여기서 실행하는 모든 스크립트(시간 설정/서비스 정지·시작/resync)는 몇 번을
         # 반복해도 결과가 같은 멱등 작업이라, 연결 자체가 간헐적으로 실패해도(85 쪽
-        # 작업은 끝났는데 응답만 못 받는 경우 포함) 재시도가 안전하다.
+        # 작업은 끝났는데 응답만 못 받는 경우 포함) 재시도가 안전하다. 특히 85의 OS
+        # 시각을 실제로 몇 주씩 점프시키는 순간(Set-Date 실행 직후)에는 WinRM/원격
+        # PowerShell 호스트 응답이 몇 초간 불안정해지는 경향이 있어 재시도 간격을
+        # 넉넉히 둔다.
         last_error = None
-        for attempt in range(3):
+        attempts = 5
+        for attempt in range(attempts):
             try:
                 result = self._remote_session().run_ps(script)
             except Exception as exc:
                 last_error = exc
-                if attempt < 2:
-                    time.sleep(1)
+                if attempt < attempts - 1:
+                    time.sleep(2)
                 continue
             if result.status_code != 0:
                 stderr = result.std_err.decode(errors="replace")
                 last_error = RuntimeError(f"원격(85) 명령 실행 실패: {stderr[:300]}")
-                if attempt < 2:
-                    time.sleep(1)
+                if attempt < attempts - 1:
+                    time.sleep(2)
                 continue
             return result.std_out.decode(errors="replace")
         raise last_error
