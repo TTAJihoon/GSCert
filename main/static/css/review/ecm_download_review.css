@@ -865,7 +865,40 @@
 }
 
 .project-toolbar-action {
-  font-size: .85em;
+  border: 0;
+  font-size: .68em;
+}
+
+#openServerTime.project-toolbar-action {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+#bulkDownload.project-toolbar-action {
+  background: #dcfce7;
+  color: #166534;
+}
+
+#openPlAssignment.project-toolbar-action {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+#openServerTime.project-toolbar-action:hover:not(:disabled) {
+  background: #bae6fd;
+}
+
+#bulkDownload.project-toolbar-action:hover:not(:disabled) {
+  background: #bbf7d0;
+}
+
+#openPlAssignment.project-toolbar-action:hover:not(:disabled) {
+  background: #e9d5ff;
+}
+
+.project-toolbar-action:active:not(:disabled) {
+  border: 0;
+  box-shadow: inset 0 1px 3px rgba(15, 23, 42, .1);
 }
 
 .icon-button {
