@@ -8,8 +8,9 @@
 - 웹 UI/lease 상태(revision)/3분 타이머/PIN 인증은 194(`210.96.71.194`, GSCert 앱 서버)가 관리한다.
 - 실제 OS 시각 변경·W32Time 제어·NTP 재동기화는 85(`210.96.71.85`)에서 일어난다. 194는 이 작업을
   WinRM(`pywinrm`, NTLM 인증)으로 85에 원격 실행한다 — 194 자신의 시각은 바뀌지 않는다.
-- 85 접속 계정(`gsai`)은 85의 로컬 Administrators 그룹 멤버이며, 워크그룹 환경의 UAC 원격 토큰
-  필터링을 끄기 위해 85에 `LocalAccountTokenFilterPolicy=1`을 설정했다(KB951016).
+- 85 접속 계정은 시각 변경에 필요한 권한을 가진 85의 전용 로컬 계정이다. 워크그룹(비도메인)
+  환경에서 WinRM 원격 접속이 가능하도록 85 쪽에 별도 설정이 되어 있다(상세 설정값은 운영 담당자
+  간 별도 공유, 이 문서에는 남기지 않음).
 - 자격증명은 194의 Machine 환경변수(`SERVER_TIME_REMOTE_USER`/`SERVER_TIME_REMOTE_PASSWORD`)로만
   주입한다(`ECM_USERNAME`/`ECM_PASSWORD`와 동일한 패턴) — 코드/DB에는 절대 저장하지 않는다.
 - 운영체제는 두 서버 모두 Windows Server 2022 Standard다.
