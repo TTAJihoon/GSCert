@@ -864,6 +864,10 @@
   white-space: nowrap;
 }
 
+.project-toolbar-action {
+  font-size: .85em;
+}
+
 .icon-button {
   width: 38px;
   padding: 0;

@@ -204,6 +204,10 @@ DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_HOST = {
     MAIN_SERVER_IP: 'bundang',
     SUB_SERVER_IP: 'bundang',
 }
+DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_CLIENT_IP_NETWORK = {
+    '210.96.0.0/16': 'sangam',
+    '210.104.0.0/16': 'bundang',
+}
 DOWNLOAD_REVIEW_ALLOWED_CENTERS_BY_HOST = {
     MAIN_SERVER_IP: {'bundang', 'sangam', 'yeongnam'},
     SUB_SERVER_IP: {'bundang', 'sangam', 'yeongnam'},

@@ -99,6 +99,10 @@ DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_HOST = {
     "210.96.71.194": "bundang",
     "210.96.71.241": "sangam",
 }
+DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_CLIENT_IP_NETWORK = {
+    "210.96.0.0/16": "sangam",
+    "210.104.0.0/16": "bundang",
+}
 DOWNLOAD_REVIEW_ALLOWED_CENTERS_BY_HOST = {
     "210.96.71.194": {"bundang"},
     "210.96.71.241": {"sangam", "yeongnam"},

@@ -11,7 +11,7 @@ from xml.sax.saxutils import escape
 
 from django.core.management import call_command
 from django.db.utils import DatabaseError, OperationalError, ProgrammingError
-from django.test import RequestFactory, SimpleTestCase, TestCase, override_settings
+from django.test import Client, RequestFactory, SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 
 from main.models import (
@@ -80,6 +80,7 @@ from main.views.review.ecm_download_review_api import (
     rule_result_manual_pass,
     rule_result_artifact,
 )
+from main.views.init import download_review as download_review_page
 from main.views.csrf import csrf_failure
 from main.views.review.server_time_control_api import server_time_action, server_time_status
 from main.utils.ecm_reference_sheet import parse_sheet_projects, read_csv_rows, split_company_product
@@ -1451,6 +1452,78 @@ class DownloadReviewRuleSeedCommandTests(TestCase):
             if check["keyword"] == "보안"
         )
         self.assertTrue(security_check["txt_only_pass"])
+
+
+@override_settings(
+    DOWNLOAD_REVIEW_DEFAULT_CENTER="bundang",
+    DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_HOST={"testserver": "bundang"},
+    DOWNLOAD_REVIEW_ALLOWED_CENTERS_BY_HOST={"testserver": {"sangam", "bundang", "yeongnam"}},
+    DOWNLOAD_REVIEW_CENTER_ROUTES_BY_HOST={"testserver": {"sangam": "", "bundang": "", "yeongnam": ""}},
+    DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_CLIENT_IP_NETWORK={
+        "210.96.0.0/16": "sangam",
+        "210.104.0.0/16": "bundang",
+    },
+)
+class DownloadReviewPageRoutingTests(SimpleTestCase):
+    def setUp(self):
+        self.factory = RequestFactory()
+
+    def test_download_review_defaults_to_sangam_for_210_96_client_ip(self):
+        response = self._get_page(remote_addr="210.96.71.50")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(self._default_center_script("sangam"), response.content.decode("utf-8"))
+
+    def test_download_review_defaults_to_bundang_for_210_104_client_ip(self):
+        response = self._get_page(remote_addr="210.104.181.20")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(self._default_center_script("bundang"), response.content.decode("utf-8"))
+
+    def test_download_review_uses_first_forwarded_ip_for_default_center(self):
+        response = self._get_page(
+            remote_addr="127.0.0.1",
+            HTTP_X_FORWARDED_FOR="210.96.71.50, 10.0.0.1",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(self._default_center_script("sangam"), response.content.decode("utf-8"))
+
+    def test_download_review_uses_real_ip_for_default_center(self):
+        response = self._get_page(remote_addr="127.0.0.1", HTTP_X_REAL_IP="210.104.181.20")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(self._default_center_script("bundang"), response.content.decode("utf-8"))
+
+    def test_download_review_center_query_overrides_client_ip_default(self):
+        response = self._get_page(remote_addr="210.96.71.50", query={"center": "bundang"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(self._default_center_script("bundang"), response.content.decode("utf-8"))
+
+    @override_settings(ROOT_URLCONF="myproject.ui_mock_urls")
+    def test_ui_mock_download_review_url_uses_same_default_center_context(self):
+        response = Client().get(
+            "/download-review/",
+            HTTP_HOST="testserver",
+            HTTP_X_FORWARDED_FOR="210.96.71.50",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(self._default_center_script("sangam"), response.content.decode("utf-8"))
+
+    def _get_page(self, *, remote_addr, query=None, **extra):
+        request = self.factory.get(
+            "/download-review/",
+            query or {},
+            HTTP_HOST="testserver",
+            REMOTE_ADDR=remote_addr,
+            **extra,
+        )
+        return download_review_page(request)
+
+    def _default_center_script(self, center):
+        return f'<script id="downloadReviewDefaultCenter" type="application/json">"{center}"</script>'
 
 
 class DownloadReviewProjectsApiTests(TestCase):

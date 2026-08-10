@@ -5,6 +5,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from main.views.review.ecm_download_review_centers import (
     allowed_centers_for_host,
     center_routes_for_host,
+    default_center_for_client_ip,
     default_center_for_host,
     is_center_allowed_for_host,
     normalize_center_code,
@@ -48,7 +49,9 @@ def test(request):
 @ensure_csrf_cookie
 def download_review(request):
     host = request.get_host()
-    default_center = default_center_for_host(host)
+    default_center = default_center_for_client_ip(_client_ip(request)) or default_center_for_host(host)
+    if not is_center_allowed_for_host(default_center, host):
+        default_center = default_center_for_host(host)
     requested_center = request.GET.get("center")
     if requested_center:
         try:
@@ -68,3 +71,13 @@ def download_review(request):
             "download_review_center_routes": center_routes_for_host(host),
         },
     )
+
+
+def _client_ip(request):
+    forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip()
+    real_ip = request.META.get("HTTP_X_REAL_IP")
+    if real_ip:
+        return real_ip.strip()
+    return request.META.get("REMOTE_ADDR")

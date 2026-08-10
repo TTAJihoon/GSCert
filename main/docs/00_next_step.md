@@ -14,6 +14,7 @@
 - Windows 로컬 앱 배포 ZIP은 `GET /api/local-review/app/download/`에서 `C:\Claude_GSCert\local_review_app\dist\GSCertLocalReviewDashboard` 폴더를 스트리밍한다.
 - 기존 download-review `20:00-07:00` 작업 시작 제한은 제거됐다. 새 작업은 즉시 queued가 되고 legacy scheduled 작업은 migration에서 queued로 전환한다.
 - 서버 시간 임시 변경 UI/API/3분 lease와 관리자 권한 Windows 서비스가 구현됐다. 임시 시간 동안 접수된 점검 작업은 `queued` 상태로 유지하고 정상 시각 복구 후 시작한다. 확정 설계와 194 반영 절차는 `15_server_time_control_design.md`와 `04_download_review_operations_manual.md`를 기준으로 한다.
+- `/download-review/` 최초 진입 시 접속 클라이언트 IP가 `210.96.0.0/16`이면 상암, `210.104.0.0/16`이면 분당 센터 탭을 기본 선택한다. 명시적인 `?center=` 값은 이 기본값보다 우선한다.
 
 ## 최신 완료 요약
 
@@ -36,6 +37,7 @@
 - 작업 조회의 이전/다음 페이지 이동 버튼과 작업 상세 결과의 엑셀 다운로드/결과 필터 버튼 스타일을 정돈했다.
 - 수동 적합으로 전체 점검결과가 `완료`가 된 프로젝트는 프로젝트 목록/상세/작업 상세 결과의 `완료` 배지도 정상 배지 스타일에 보라색 테두리로 표시한다.
 - 프로젝트 선택 탭과 규칙별 점검 결과 팝업에 접이식 도움말을 추가했다.
+- 프로젝트 선택 상단의 `ECM 서버 시간 설정`, `선택 엑셀 다운로드`, `PL 배정 목록` 버튼은 같은 축소 폰트 크기와 명칭 기준을 사용한다.
 
 ## 운영 반영 체크
 

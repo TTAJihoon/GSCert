@@ -1,4 +1,5 @@
 from pathlib import Path
+import ipaddress
 import socket
 from urllib.parse import urlparse
 
@@ -9,6 +10,10 @@ CENTER_SANGAM = "sangam"
 CENTER_BUNDANG = "bundang"
 CENTER_YEONGNAM = "yeongnam"
 DEFAULT_CENTER_CODE = CENTER_SANGAM
+DEFAULT_CENTER_BY_CLIENT_IP_NETWORK = {
+    "210.96.0.0/16": CENTER_SANGAM,
+    "210.104.0.0/16": CENTER_BUNDANG,
+}
 
 _CENTER_DEFINITIONS = {
     CENTER_SANGAM: {
@@ -79,6 +84,26 @@ def default_center_for_host(host=None):
     if host_key and host_key in configured:
         return normalize_center_code(configured[host_key])
     return normalize_center_code(None)
+
+
+def default_center_for_client_ip(client_ip=None):
+    client_address = _ip_address(client_ip)
+    if client_address is None:
+        return ""
+
+    configured = getattr(
+        settings,
+        "DOWNLOAD_REVIEW_DEFAULT_CENTER_BY_CLIENT_IP_NETWORK",
+        DEFAULT_CENTER_BY_CLIENT_IP_NETWORK,
+    )
+    for raw_network, center in configured.items():
+        try:
+            network = ipaddress.ip_network(str(raw_network), strict=False)
+        except ValueError:
+            continue
+        if client_address in network:
+            return normalize_center_code(center)
+    return ""
 
 
 def allowed_centers_for_host(host=None):
@@ -220,6 +245,16 @@ def _host_key(host=None):
     if raw.startswith("[") and "]" in raw:
         return raw[1:raw.index("]")]
     return raw.split(":", 1)[0]
+
+
+def _ip_address(value=None):
+    host_key = _host_key(value)
+    if not host_key:
+        return None
+    try:
+        return ipaddress.ip_address(host_key)
+    except ValueError:
+        return None
 
 
 def _local_host_keys():

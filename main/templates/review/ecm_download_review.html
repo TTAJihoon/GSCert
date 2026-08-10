@@ -4,8 +4,8 @@
 {% block title %}ECM 제출물 자동 점검{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=40">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=40" defer></script>
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=41">
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=41" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -80,13 +80,13 @@
           </div>
           <div class="panel-actions">
             <button
-              class="secondary-button compact-action"
+              class="secondary-button compact-action project-toolbar-action"
               type="button"
               id="openServerTime"
               {% if download_review_default_center != 'sangam' and download_review_default_center != 'yeongnam' %}hidden{% endif %}
             >
               <i class="fa-solid fa-clock"></i>
-              서버 시간 설정
+              ECM 서버 시간 설정
             </button>
             <nav class="center-tabs project-center-tabs" aria-label="프로젝트 센터 선택">
               <button class="center-tab-button{% if download_review_default_center == 'sangam' %} active{% endif %}" type="button" data-center-tab="sangam">
@@ -102,11 +102,11 @@
                 영남
               </button>
             </nav>
-            <button class="secondary-button compact-action" type="button" id="bulkDownload">
+            <button class="secondary-button compact-action project-toolbar-action" type="button" id="bulkDownload">
               <i class="fa-solid fa-file-excel"></i>
               선택 엑셀 다운로드
             </button>
-            <button class="secondary-button compact-action" type="button" id="openPlAssignment">
+            <button class="secondary-button compact-action project-toolbar-action" type="button" id="openPlAssignment">
               <i class="fa-solid fa-people-arrows"></i>
               PL 배정 목록
             </button>
@@ -351,17 +351,17 @@
   <section class="modal-panel server-time-panel" role="dialog" aria-modal="true" aria-labelledby="serverTimeTitle">
     <div class="modal-header">
       <div>
-        <p class="eyebrow">서버 관리</p>
-        <h2 id="serverTimeTitle">서버 시간 설정</h2>
+        <p class="eyebrow">ECM서버 관리</p>
+        <h2 id="serverTimeTitle">ECM 서버 시간 설정</h2>
       </div>
       <div class="modal-header-actions server-time-header-actions">
         <div class="server-time-help">
-          <button class="icon-button server-time-help-button" type="button" aria-label="서버 시간 설정 도움말" aria-describedby="serverTimeHelpTooltip">
+          <button class="icon-button server-time-help-button" type="button" aria-label="ECM 서버 시간 설정 도움말" aria-describedby="serverTimeHelpTooltip">
             <i class="fa-solid fa-question"></i>
           </button>
           <div class="server-time-help-tooltip" id="serverTimeHelpTooltip" role="tooltip">
             <ul>
-              <li>현재 서버 시간입니다.</li>
+              <li>현재 ECM서버 시간입니다.</li>
               <li>이름과 비밀번호를 입력하면 3분 동안 시간이 수정됩니다.</li>
               <li>3분이 지나기 전에 비밀번호를 입력하여 시간 원상복구 및 재수정할 수 있습니다.</li>
               <li>누군가 먼저 시간을 수정했다면 기다려주세요.</li>
@@ -375,7 +375,7 @@
     </div>
     <div class="modal-body server-time-body">
       <dl class="server-time-summary">
-        <div><dt>현재 서버 시간</dt><dd id="serverTimeCurrent">-</dd></div>
+        <div><dt>현재 ECM서버 시간</dt><dd id="serverTimeCurrent">-</dd></div>
         <div><dt>상태</dt><dd id="serverTimeState">-</dd></div>
         <div id="serverTimeOwnerRow" hidden><dt>설정자</dt><dd id="serverTimeOwner">-</dd></div>
         <div id="serverTimeRemainingRow" hidden><dt>남은 시간</dt><dd id="serverTimeRemaining">-</dd></div>

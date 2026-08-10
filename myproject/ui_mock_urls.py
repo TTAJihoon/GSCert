@@ -1,7 +1,7 @@
 from django.shortcuts import redirect, render
 from django.urls import path
-from django.views.decorators.csrf import ensure_csrf_cookie
 
+from main.views.init import download_review
 from main.views.review.ecm_download_review_api import (
     active_job as download_review_active_job,
     job_cancel as download_review_job_cancel,
@@ -24,11 +24,6 @@ from main.views.review.ecm_download_review_api import (
     rule_result_manual_pass as download_review_rule_result_manual_pass,
 )
 from main.views.review.server_time_control_api import server_time_action, server_time_status
-
-
-@ensure_csrf_cookie
-def download_review(request):
-    return render(request, "review/ecm_download_review.html")
 
 
 def consultation(request):

@@ -2999,7 +2999,7 @@ function renderServerTime() {
   qs("serverTimeRestore").disabled = !ownerControl || !data.agent_online;
   qs("serverTimeRestore").title = ownerControl
     ? "현재 설정자의 이름과 비밀번호를 입력하면 즉시 원상복구합니다."
-    : "변경 중인 서버 시간이 있을 때 사용할 수 있습니다.";
+    : "변경 중인 ECM서버 시간이 있을 때 사용할 수 있습니다.";
   qs("serverTimeTarget").max = koreaDateTimeInputValue(data.normal_time_estimate);
 
   if (!data.agent_online) {
@@ -3022,7 +3022,7 @@ async function refreshServerTime({ silent = false } = {}) {
     if (!silent) {
       state.serverTime = null;
       qs("serverTimeCurrent").textContent = "확인 실패";
-      qs("serverTimeState").textContent = "서버 연결 확인 필요";
+      qs("serverTimeState").textContent = "ECM서버 연결 확인 필요";
       qs("serverTimeOwnerRow").hidden = true;
       qs("serverTimeRemainingRow").hidden = true;
       qs("serverTimeChange").disabled = true;
