@@ -38,6 +38,7 @@ from main.views.review.ecm_reference_db import (
     ReferenceDbError,
     ReferenceDbMissing,
     ReferenceQueryError,
+    get_projects_by_numbers,
     write_project_review_result,
 )
 from main.views.review.ecm_download_review_worker import run_worker_once
@@ -1604,6 +1605,46 @@ class DownloadReviewProjectsApiTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(data["error_code"], "invalid_query")
         self.assertIn("이 서버에서 처리하지 않는 센터", data["message"])
+
+    def test_project_list_prefers_swdata_company_product_over_stale_reference_copy(self):
+        # 실제 사례(TTA-26-00531 등): 구버전 동기화 시절에 만들어진 ReferenceProject
+        # 행은 company/product에 영문명이 빠진 전처리된 값이 남아 있는 반면, SwData
+        # (인증획득목록 엑셀 원본)는 항상 최신/원본 그대로다. 화면에는 SwData 값이
+        # 나와야 한다.
+        SwData.objects.using("reference").create(
+            serial_number=1,
+            test_number="TTA-26-00010",
+            company="에이치소프트\nHSoft Inc.",
+            product="시큐어플로우 2.1\n(SecureFlow 2.1)",
+        )
+
+        data = self._get_projects()
+        item = next(row for row in data["items"] if row["project_number"] == "TTA-26-00010")
+
+        self.assertEqual(item["company"], "에이치소프트\nHSoft Inc.")
+        self.assertEqual(item["product"], "시큐어플로우 2.1\n(SecureFlow 2.1)")
+
+    def test_project_list_falls_back_to_reference_copy_when_no_swdata_match(self):
+        # SwData에 매칭되는 행이 없으면(예: 아주 오래된 프로젝트) 기존 ReferenceProject
+        # 값을 그대로 보여준다 — 값이 사라지면 안 된다.
+        data = self._get_projects()
+        item = next(row for row in data["items"] if row["project_number"] == "TTA-26-00009")
+
+        self.assertEqual(item["company"], "우리데이터 주식회사")
+        self.assertEqual(item["product"], "우리데이터클리닝 V1.0")
+
+    def test_get_projects_by_numbers_prefers_swdata_company_product(self):
+        SwData.objects.using("reference").create(
+            serial_number=1,
+            test_number="TTA-26-00010",
+            company="에이치소프트\nHSoft Inc.",
+            product="시큐어플로우 2.1\n(SecureFlow 2.1)",
+        )
+
+        rows = get_projects_by_numbers(["TTA-26-00010"], center_code="sangam")
+
+        self.assertEqual(rows[0]["company"], "에이치소프트\nHSoft Inc.")
+        self.assertEqual(rows[0]["product"], "시큐어플로우 2.1\n(SecureFlow 2.1)")
 
     def _get_projects(self, params=None):
         response = self._request(params or {})

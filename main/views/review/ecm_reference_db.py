@@ -7,7 +7,7 @@ from django.conf import settings
 from django.db import DatabaseError
 from django.utils import timezone
 
-from main.models import ReferenceProject
+from main.models import ReferenceProject, SwData
 from main.utils.cert_date import format_cert_date
 from main.views.review.ecm_download_review_centers import (
     DownloadReviewCenterError,
@@ -277,9 +277,10 @@ def _list_projects_pg(query):
     except DatabaseError as exc:
         raise ReferenceDbError("기준 DB 조회 중 오류가 발생했습니다.") from exc
 
+    sw_by_number = _swdata_by_project_numbers([row.project_number for row in rows])
     return {
         "success": True,
-        "items": [_serialize_pg_project(row) for row in rows],
+        "items": [_serialize_pg_project(row, sw_by_number.get(row.project_number)) for row in rows],
         "pagination": {
             "total": total,
             "limit": query.limit,
@@ -299,7 +300,11 @@ def _get_projects_by_numbers_pg(project_numbers, center_code):
             center_code=center_code,
             project_number__in=project_numbers,
         )
-        rows_by_number = {row.project_number: _serialize_pg_project(row) for row in rows}
+        sw_by_number = _swdata_by_project_numbers(project_numbers)
+        rows_by_number = {
+            row.project_number: _serialize_pg_project(row, sw_by_number.get(row.project_number))
+            for row in rows
+        }
     except DatabaseError as exc:
         raise ReferenceDbError("기준 DB 조회 중 오류가 발생했습니다.") from exc
 
@@ -565,7 +570,25 @@ def _serialize_project(row, columns, center_code):
     }
 
 
-def _serialize_pg_project(project):
+def _swdata_by_project_numbers(project_numbers):
+    """project_number(=SwData.test_number)로 SwData 원본 행을 일괄 조회한다.
+
+    ReferenceProject.company/product는 SwData를 복사해 둔 캐시라서, SwData가
+    나중에 갱신되거나(제품명 정정 등) 예전 구글시트 동기화 시절에 전처리된 값이
+    남아 있으면 서로 어긋난다. 화면/점검에 값을 내려줄 때는 항상 SwData(원본)를
+    우선해 이 어긋남이 보이지 않게 한다.
+    """
+    numbers = [number for number in project_numbers if number]
+    if not numbers:
+        return {}
+    try:
+        rows = SwData.objects.using(_reference_db_alias()).filter(test_number__in=numbers)
+    except DatabaseError:
+        return {}
+    return {row.test_number.strip(): row for row in rows if row.test_number}
+
+
+def _serialize_pg_project(project, sw_row=None):
     review_raw = project.review_result or ""
     review = review_label(review_raw)
     center_code = project.center_code or normalize_center_code(None)
@@ -573,13 +596,15 @@ def _serialize_pg_project(project):
         label = center_label(center_code)
     except DownloadReviewCenterError:
         label = project.center_label or center_code
+    company = (sw_row.company if sw_row and sw_row.company else None) or project.company
+    product = (sw_row.product if sw_row and sw_row.product else None) or project.product
     return {
         "center_code": center_code,
         "center_label": project.center_label or label,
         "project_number": project.project_number,
         "cert_date": format_cert_date(project.cert_date),
-        "company": project.company,
-        "product": project.product,
+        "company": company,
+        "product": product,
         "pl": project.pl,
         "wd": project.wd,
         "request_date": project.request_date,
