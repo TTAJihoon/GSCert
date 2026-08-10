@@ -143,7 +143,13 @@ class Command(BaseCommand):
             error_message=public_message,
         )
         record_audit(get_control(), "agent_failed", detail={"error_type": type(exc).__name__})
-        self.stderr.write(f"{public_message} ({type(exc).__name__})")
+        try:
+            # Windows 서비스로 실행될 때는 콘솔이 없어 sys.stderr가 None이라
+            # self.stderr.write()가 AttributeError를 던진다. 이 예외가 잡히지
+            # 않으면 _tick() 전체가 죽어 서비스 프로세스가 크래시한다.
+            self.stderr.write(f"{public_message} ({type(exc).__name__})")
+        except Exception:
+            pass
 
     def _ntp_host(self):
         return str(getattr(settings, "SERVER_TIME_NTP_HOST", "time.windows.com"))
@@ -151,6 +157,20 @@ class Command(BaseCommand):
     def _query_ntp(self):
         if self.dry_run:
             return datetime.now(datetime_timezone.utc)
+        # UDP는 패킷 손실이 흔하고 재시도가 없으면 단 한 번의 유실로 전체 apply/restore가
+        # 실패로 보고된다(85 쪽 실제 작업은 이미 끝났는데 확인만 실패하는 상황 재현됨).
+        # 몇 번 재시도해 일시적 손실에 흔들리지 않게 한다.
+        last_error = None
+        for attempt in range(3):
+            try:
+                return self._query_ntp_once()
+            except (OSError, RuntimeError) as exc:
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(1)
+        raise last_error
+
+    def _query_ntp_once(self):
         packet = b"\x1b" + 47 * b"\0"
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
             client.settimeout(5)
@@ -179,11 +199,26 @@ class Command(BaseCommand):
     def _remote_ps(self, script):
         if self.dry_run:
             return ""
-        result = self._remote_session().run_ps(script)
-        if result.status_code != 0:
-            stderr = result.std_err.decode(errors="replace")
-            raise RuntimeError(f"원격(85) 명령 실행 실패: {stderr[:300]}")
-        return result.std_out.decode(errors="replace")
+        # 여기서 실행하는 모든 스크립트(시간 설정/서비스 정지·시작/resync)는 몇 번을
+        # 반복해도 결과가 같은 멱등 작업이라, 연결 자체가 간헐적으로 실패해도(85 쪽
+        # 작업은 끝났는데 응답만 못 받는 경우 포함) 재시도가 안전하다.
+        last_error = None
+        for attempt in range(3):
+            try:
+                result = self._remote_session().run_ps(script)
+            except Exception as exc:
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(1)
+                continue
+            if result.status_code != 0:
+                stderr = result.std_err.decode(errors="replace")
+                last_error = RuntimeError(f"원격(85) 명령 실행 실패: {stderr[:300]}")
+                if attempt < 2:
+                    time.sleep(1)
+                continue
+            return result.std_out.decode(errors="replace")
+        raise last_error
 
     def _remote_now(self):
         if self.dry_run:
