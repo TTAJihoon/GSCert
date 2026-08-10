@@ -1452,6 +1452,40 @@ class DownloadReviewProjectsApiTests(TestCase):
         self.assertFalse(data["items"][1]["selectable"])
         self.assertEqual(data["items"][1]["active_state_label"], "완료")
 
+    def test_projects_sort_by_display_cert_date_when_cached_date_is_stale(self):
+        self._seed_reference_projects(
+            "sangam",
+            [
+                dict(
+                    project_number="TTA-26-08003",
+                    cert_date="2026.08.03",
+                    cert_committee_date=date(2026, 6, 1),
+                    company="최신인증기업",
+                    product="Latest Suite",
+                    pl="박지훈",
+                    review_result="",
+                    inspection_date="",
+                ),
+                dict(
+                    project_number="TTA-26-07270",
+                    cert_date="2026.07.27",
+                    cert_committee_date=date(2026, 7, 27),
+                    company="이전인증기업",
+                    product="Previous Suite",
+                    pl="김준호",
+                    review_result="",
+                    inspection_date="",
+                ),
+            ],
+        )
+
+        data = self._get_projects({"limit": "2"})
+
+        self.assertEqual(
+            [item["project_number"] for item in data["items"]],
+            ["TTA-26-08003", "TTA-26-07270"],
+        )
+
     def test_completed_project_marks_review_when_latest_result_has_manual_pass(self):
         job = DownloadReviewJob.objects.create(
             center_code="sangam",

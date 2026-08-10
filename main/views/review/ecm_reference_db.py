@@ -1,6 +1,7 @@
 import sqlite3
 from contextlib import closing
 from dataclasses import dataclass
+from datetime import date
 from pathlib import Path
 
 from django.conf import settings
@@ -8,7 +9,7 @@ from django.db import DatabaseError
 from django.utils import timezone
 
 from main.models import ReferenceProject, SwData
-from main.utils.cert_date import format_cert_date
+from main.utils.cert_date import format_cert_date, parse_cert_date
 from main.views.review.ecm_download_review_centers import (
     DownloadReviewCenterError,
     center_label,
@@ -273,7 +274,7 @@ def _list_projects_pg(query):
             query.filters,
         )
         total = qs.count()
-        rows = list(_apply_pg_order(qs, query.sort)[query.offset : query.offset + query.limit])
+        rows = _pg_project_page(qs, query.sort, query.offset, query.limit)
     except DatabaseError as exc:
         raise ReferenceDbError("기준 DB 조회 중 오류가 발생했습니다.") from exc
 
@@ -381,6 +382,32 @@ def _apply_pg_order(qs, sort):
     if sort == "cert_date_asc":
         return qs.order_by("cert_committee_date", "project_number")
     return qs.order_by("-cert_committee_date", "-project_number")
+
+
+def _pg_project_page(qs, sort, offset, limit):
+    if sort in {"project_number_desc", "project_number_asc"}:
+        return list(_apply_pg_order(qs, sort)[offset : offset + limit])
+
+    rows = list(qs)
+    rows.sort(
+        key=_pg_cert_date_desc_key if sort == "cert_date_desc" else _pg_cert_date_asc_key,
+        reverse=sort == "cert_date_desc",
+    )
+    return rows[offset : offset + limit]
+
+
+def _pg_project_cert_date(project):
+    return parse_cert_date(project.cert_date) or project.cert_committee_date
+
+
+def _pg_cert_date_desc_key(project):
+    parsed = _pg_project_cert_date(project)
+    return (parsed is not None, parsed or date.min, project.project_number)
+
+
+def _pg_cert_date_asc_key(project):
+    parsed = _pg_project_cert_date(project)
+    return (parsed is None, parsed or date.max, project.project_number)
 
 
 def _connect_readonly(db_path):
