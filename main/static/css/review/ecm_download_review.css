@@ -722,8 +722,8 @@
 
 .badge-manual-pass {
   border: 1px solid #c084fc;
-  background: var(--review-manual-soft);
-  color: var(--review-manual);
+  background: var(--review-success-soft);
+  color: var(--review-success);
 }
 
 .status-badge-button {
