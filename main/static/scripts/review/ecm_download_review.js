@@ -455,8 +455,13 @@ function defaultProjectFilters() {
   };
 }
 
+const projectRowsColumnLayout = {
+  fixed: [43, 155, 123, null, null, 168, 101, 101, 74],
+  variableMin: 400,
+  variableRatio: [4, 6]
+};
+
 const tableColumnDefaults = {
-  projectRows: [20, 120, 75, 180, 320, 155, 70, 70, 50],
   progressRows: [64, 145, 180, 220, 105, 260, 90, 105, 280],
   resultRows: [145, 180, 220, 105, 115, 80, 240, 145, 280],
   "규칙별 점검 결과": [60, 170, 76, 210, 230, 230, 250, 130]
@@ -540,9 +545,43 @@ function ensureTableColumnGroup(table, widths) {
   return colgroup;
 }
 
+function projectRowsColumnWidths(table) {
+  const wrap = table.parentElement;
+  const available = wrap?.clientWidth || 0;
+  const fixedTotal = projectRowsColumnLayout.fixed.reduce((sum, width) => sum + (width || 0), 0);
+  const variableAvailable = Math.max(0, available - fixedTotal);
+  const ratioTotal = projectRowsColumnLayout.variableRatio.reduce((sum, ratio) => sum + ratio, 0);
+  const companyWidth = Math.max(
+    projectRowsColumnLayout.variableMin,
+    variableAvailable * projectRowsColumnLayout.variableRatio[0] / ratioTotal
+  );
+  const productWidth = Math.max(
+    projectRowsColumnLayout.variableMin,
+    variableAvailable * projectRowsColumnLayout.variableRatio[1] / ratioTotal
+  );
+  const variableWidths = [companyWidth, productWidth];
+  let variableIndex = 0;
+
+  return projectRowsColumnLayout.fixed.map((width) => {
+    if (width) return width;
+    const nextWidth = variableWidths[variableIndex] || projectRowsColumnLayout.variableMin;
+    variableIndex += 1;
+    return nextWidth;
+  });
+}
+
+function applyProjectRowsColumnLayout(table) {
+  ensureTableColumnGroup(table, projectRowsColumnWidths(table));
+}
+
 // 리사이즈 테이블은 열 너비 합으로 table 너비가 고정되어 컨테이너보다 좁으면
 // 우측에 빈 공간이 생긴다. 컨테이너 폭에 맞게 열 너비를 비례 확대해 빈 공간을 없앤다.
 function fitTableColumns(table) {
+  if (tableResizeKey(table) === "projectRows") {
+    applyProjectRowsColumnLayout(table);
+    return;
+  }
+
   const colgroup = table.querySelector(":scope > colgroup");
   if (!colgroup) return;
   const cols = Array.from(colgroup.children);
@@ -580,6 +619,14 @@ function initResizableTables() {
     const key = tableResizeKey(table) || `table-${tableIndex}`;
     const headers = Array.from(table.querySelectorAll("thead th"));
     if (!headers.length) return;
+
+    if (key === "projectRows") {
+      applyProjectRowsColumnLayout(table);
+      table.classList.add("resizable-table", "project-list-table");
+      table.dataset.resizableReady = "true";
+      table.dataset.resizeKey = key;
+      return;
+    }
 
     const defaults = tableColumnDefaults[key] || headers.map((header) => Math.max(90, Math.round(header.getBoundingClientRect().width || 120)));
     const stored = readStoredColumnWidths(key);

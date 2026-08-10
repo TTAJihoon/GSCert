@@ -595,8 +595,24 @@
   text-overflow: ellipsis;
 }
 
+.project-list-table th,
+.project-list-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-list-table .check-col {
+  width: 43px;
+  padding-right: 0;
+  padding-left: 0;
+}
+
 .resizable-table th {
   overflow: visible;
+}
+
+.project-list-table.resizable-table th {
+  overflow: hidden;
 }
 
 /* '오류' 열(작업 상세 결과·현재 작업 프로젝트 목록의 마지막 열)은 잘리지 않고
