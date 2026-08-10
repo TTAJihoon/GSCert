@@ -5360,11 +5360,12 @@ class _FakeEcmClient:
     트리는 {oid: {"contents": {"folders":[{name,oid}],"files":[meta...]}}} 로 표현.
     """
 
-    def __init__(self, *, project_oid, tree, blobs, project_name="GS-A-23-336(완료)"):
+    def __init__(self, *, project_oid, tree, blobs, project_name="GS-A-23-336(완료)", download_exception=None):
         self._project_oid = project_oid
         self._tree = tree
         self._blobs = blobs
         self._project_name = project_name
+        self._download_exception = download_exception
         self.login_calls = 0
         self.download_calls = []
 
@@ -5381,6 +5382,8 @@ class _FakeEcmClient:
 
     def download_bytes(self, meta):
         self.download_calls.append(meta.get("storageFileID"))
+        if self._download_exception is not None:
+            raise self._download_exception
         return self._blobs[meta["storageFileID"]]
 
 
@@ -5459,6 +5462,33 @@ class HttpEcmArtifactSourceTests(SimpleTestCase):
 
             self.assertFalse(result.success)
             self.assertEqual(result.error_step, "무결성 검증")
+            # 1회 재다운로드까지 시도한다.
+            self.assertEqual(len(client.download_calls), 2)
+
+    def test_connection_error_during_download_retries_then_reports_file_name(self):
+        # 실제 사례(TTA-26-01042): 전송 중 연결이 끊기는 IncompleteRead 등은
+        # verify_downloaded_bytes에 도달하지 못하고 download_bytes 자체가 예외를
+        # 던진다. 이 경우도 크기 불일치와 동일하게 1회 재시도하고, 계속 실패하면
+        # 어떤 파일이 문제인지 알 수 있도록 파일명을 포함해 보고해야 한다.
+        from main.views.review.artifact_source import HttpEcmArtifactSource
+
+        tree = {"P": {"folders": [], "files": [
+            {"fileName": "결함리포트.xlsx", "storageFileID": "f1", "fileSize": 351697},
+        ]}}
+        connection_error = ConnectionError(
+            "Connection broken: IncompleteRead(48190 bytes read, 303507 more expected)"
+        )
+        client = _FakeEcmClient(project_oid="P", tree=tree, blobs={}, download_exception=connection_error)
+        source = HttpEcmArtifactSource(client_factory=lambda center: client)
+
+        with tempfile.TemporaryDirectory() as base:
+            with override_settings(AGENT_DOWNLOAD_BASE_DIR=base):
+                result, _ = self._fetch(source, self._project())
+
+            self.assertFalse(result.success)
+            self.assertEqual(result.error_step, "다운로드")
+            self.assertIn("결함리포트.xlsx", result.error_message)
+            self.assertIn("IncompleteRead", result.error_message)
             # 1회 재다운로드까지 시도한다.
             self.assertEqual(len(client.download_calls), 2)
 

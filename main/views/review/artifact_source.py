@@ -292,9 +292,22 @@ class HttpEcmArtifactSource:
         dest = target_dir / safe_name
 
         # 다운로드 + 무결성 검증. 실패 시 1회 재다운로드(결정 8).
+        # 전송 중 연결이 끊기는 경우(예: IncompleteRead)는 무결성 검증 단계에
+        # 도달하지 못하고 download_bytes 자체가 예외를 던지므로, 이 경우도
+        # 크기 불일치와 동일하게 재시도 대상으로 취급한다. 어느 쪽이든 실패
+        # 메시지에 파일명을 포함해 어떤 파일이 문제인지 알 수 있게 한다.
         last_reason = ""
+        last_step = "무결성 검증"
         for _attempt in range(2):
-            data = await asyncio.to_thread(client.download_bytes, meta)
+            try:
+                data = await asyncio.to_thread(client.download_bytes, meta)
+            except JobCanceledError:
+                raise
+            except Exception as exc:
+                last_step = "다운로드"
+                last_reason = str(exc)
+                continue
+            last_step = "무결성 검증"
             last_reason = verify_downloaded_bytes(data, file_name, expected_size)
             if not last_reason:
                 await asyncio.to_thread(self._write_bytes, dest, data)
@@ -306,7 +319,7 @@ class HttpEcmArtifactSource:
                 fixed_dest = dest.with_suffix("." + legacy_ext)
                 await asyncio.to_thread(self._write_bytes, fixed_dest, data)
                 return
-        raise _FetchFailed("무결성 검증", f"{file_name}: {last_reason}")
+        raise _FetchFailed(last_step, f"{file_name}: {last_reason}")
 
     @staticmethod
     def _write_bytes(dest: Path, data: bytes) -> None:
