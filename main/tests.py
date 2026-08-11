@@ -6320,6 +6320,64 @@ class HistoryCertDatePeriodFilterTests(SimpleTestCase):
         self.assertNotIn("2026.12.31", content)
 
 
+@override_settings(SERVER_DOMAIN="gsai.tta.or.kr")
+class CanonicalHostAndMainPageTests(SimpleTestCase):
+    def test_ipv4_access_redirects_to_canonical_domain_with_path_and_query(self):
+        response = self.client.get(
+            "/similar/?keyword=document",
+            HTTP_HOST="210.96.71.194:8000",
+        )
+
+        self.assertEqual(response.status_code, 308)
+        self.assertEqual(
+            response["Location"],
+            "https://gsai.tta.or.kr/similar/?keyword=document",
+        )
+
+    def test_ipv6_access_also_redirects_to_canonical_domain(self):
+        response = self.client.get("/history/", HTTP_HOST="[::1]:8000")
+
+        self.assertEqual(response.status_code, 308)
+        self.assertEqual(response["Location"], "https://gsai.tta.or.kr/history/")
+
+    def test_domain_root_uses_history_as_main_and_index_is_deleted(self):
+        root = self.client.get("/", HTTP_HOST="gsai.tta.or.kr")
+
+        self.assertEqual(root.status_code, 302)
+        self.assertEqual(root["Location"], "/history/")
+        self.assertEqual(
+            self.client.get("/history/", HTTP_HOST="gsai.tta.or.kr").status_code,
+            200,
+        )
+        self.assertEqual(
+            self.client.get("/index/", HTTP_HOST="gsai.tta.or.kr").status_code,
+            404,
+        )
+        self.assertFalse(
+            (Path(__file__).resolve().parent / "templates" / "index.html").exists()
+        )
+        self.assertFalse(
+            (Path(__file__).resolve().parent / "static" / "css" / "index.css").exists()
+        )
+
+    def test_nginx_templates_redirect_ip_to_public_domain(self):
+        root = Path(__file__).resolve().parent.parent
+        all_https = (root / "setup" / "nginx.conf").read_text(encoding="utf-8")
+        consultation_only = (
+            root / "setup" / "nginx-consultation-only-https.conf"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("return 308 https://__SERVER_DOMAIN__$request_uri;", all_https)
+        self.assertIn(
+            "if ($host = __SERVER_IP__) { return 308 https://__SERVER_DOMAIN__$request_uri; }",
+            all_https,
+        )
+        self.assertIn(
+            "if ($host = __SERVER_IP__) { return 308 http://__SERVER_DOMAIN__$request_uri; }",
+            consultation_only,
+        )
+
+
 class LlmModelConsoleTests(SimpleTestCase):
     def _environment(self, state_file, *, openai_key="openai-test-key"):
         return {
@@ -6448,7 +6506,7 @@ class LlmModelConsoleTests(SimpleTestCase):
 
     def test_unused_web_server_console_is_removed(self):
         self.assertEqual(self.client.get("/server-console/").status_code, 404)
-        self.assertNotContains(self.client.get("/index/"), "서버 관리<br/>콘솔")
+        self.assertEqual(self.client.get("/index/").status_code, 404)
 
 
 class SharedLlmFeatureRoutingTests(SimpleTestCase):

@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path, include
 from django.views.generic import RedirectView
-from main.views.init import index, similar, security, consultation, prdinfo, checkreport, test, download_review
+from main.views.init import similar, security, consultation, prdinfo, checkreport, test, download_review
 
 from main.views.testing.history import history
 from main.views.testing.history_report import download_report, download_report_document
@@ -46,8 +46,7 @@ from main.views.review.server_time_control_api import server_time_action, server
 
 urlpatterns = [
     path('accounts/login/', auth_views.LoginView.as_view(template_name='registration/login.html'), name='login'),
-    path('index/', index, name='index'),
-    path('', RedirectView.as_view(url='/index/', permanent=False)),
+    path('', RedirectView.as_view(url='/history/', permanent=False)),
     
     path('history/', history, name='history'),
     path('history/report/<str:test_no>/download/', download_report, name='history_report_download'),

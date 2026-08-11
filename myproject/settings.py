@@ -51,6 +51,7 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'main.request_logging.RequestLogMiddleware',
+    'main.canonical_host.CanonicalDomainRedirectMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -174,9 +175,9 @@ MAIN_SERVER_IP = os.environ.get('MAIN_SERVER_IP', '210.96.71.194')
 SUB_SERVER_IP = os.environ.get('SUB_SERVER_IP', '210.96.71.241')
 FILE_SHARE_HOST = os.environ.get('FILE_SHARE_HOST', '210.96.71.99')
 
-# 194 의 공인 도메인(Cloudflare Tunnel 등으로 서비스). 설정하면 메인 앱을 MAIN_SERVER_IP 와
-# 동일하게 이 도메인으로도 서비스한다 — 아래 CSRF_TRUSTED_ORIGINS 와 DOWNLOAD_REVIEW_*_BY_HOST
-# 매핑에 자동으로 별칭 등록된다(코드 하단 참조). 예: gsai.tta.or.kr
+# 194 의 공인 도메인(Cloudflare Tunnel 등으로 서비스). 설정하면 literal IP 요청은
+# CanonicalDomainRedirectMiddleware 에서 이 HTTPS 도메인으로 전환되고, 아래
+# CSRF_TRUSTED_ORIGINS 와 DOWNLOAD_REVIEW_*_BY_HOST 매핑에도 별칭으로 등록된다.
 SERVER_DOMAIN = os.environ.get('SERVER_DOMAIN', '')
 
 # HTTPS(nginx TLS) 도입에 따른 CSRF 신뢰 출처. Django 4+ 는 POST 시 Origin/Referer 를

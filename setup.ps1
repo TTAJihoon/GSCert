@@ -123,7 +123,8 @@ if (-not (Test-Path $EnvFile)) {
         "# 서버 IP — 앱이 호스트 기반 센터 라우팅/규칙 소스/보관 경로 산출에 사용 (IP 하드코딩 금지)",
         "`$env:MAIN_SERVER_IP  = `"$mainIP`"",
         "`$env:SUB_SERVER_IP   = `"$subIP`"",
-        "`$env:FILE_SHARE_HOST = `"$fileShareHost`""
+        "`$env:FILE_SHARE_HOST = `"$fileShareHost`"",
+        "`$env:SERVER_DOMAIN   = `"gsai.tta.or.kr`""
     )
     [System.IO.File]::WriteAllLines($EnvFile, $envLines, [System.Text.Encoding]::UTF8)
     . $EnvFile

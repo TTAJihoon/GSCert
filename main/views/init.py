@@ -18,10 +18,6 @@ def welcome(request):
 def login_test_view(request):
     return render(request, 'registration/login.html')
 
-def index(request):
-    return render(request, 'index.html')
-
-
 def history(request):
     return render(request, 'testing/history.html')
 

@@ -8,7 +8,6 @@
 
 | 파일 | 설명 |
 | --- | --- |
-| `index.css` | 기존 메인 화면 스타일이다. |
 | `header.css` | 공통 헤더 스타일이다. |
 | `review/ecm_download_review.css` | ECM 제출물 자동 검사 mock UI 스타일이다. |
 | `genspark.css` | genspark 화면 관련 스타일이다. |
