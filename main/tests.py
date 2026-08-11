@@ -6556,6 +6556,11 @@ class SimilarSummarySelectionTests(SimpleTestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'id="resultAnalysisMetrics"')
+        content = response.content.decode("utf-8")
+        self.assertLess(
+            content.index('id="resultAnalysisMetrics"'),
+            content.index('id="sortByDateBtn"'),
+        )
         self.assertContains(response, "similar_submit.js?v=15")
         script = (
             Path(__file__).resolve().parent
