@@ -48,9 +48,13 @@ class Command(BaseCommand):
             )
             self._restore(get_control(), event_code="agent_start_recovery")
 
+    def _touch_heartbeat(self):
+        if self.dry_run:
+            return
+        ServerTimeControl.objects.filter(id=1).update(agent_heartbeat_uptime_ms=uptime_ms())
+
     def _tick(self):
-        current_uptime = uptime_ms()
-        ServerTimeControl.objects.filter(id=1).update(agent_heartbeat_uptime_ms=current_uptime)
+        self._touch_heartbeat()
         control = get_control()
         if control.status == ServerTimeControlStatus.CHANGING:
             self._apply_change(control)
@@ -59,7 +63,7 @@ class Command(BaseCommand):
         elif (
             control.status == ServerTimeControlStatus.ACTIVE
             and control.expires_uptime_ms is not None
-            and current_uptime >= control.expires_uptime_ms
+            and uptime_ms() >= control.expires_uptime_ms
         ):
             updated = ServerTimeControl.objects.filter(
                 id=1,
@@ -167,6 +171,10 @@ class Command(BaseCommand):
         last_error = None
         attempts = 5
         for attempt in range(attempts):
+            # 재시도가 몇 번 겹치면 이 호출 하나가 하트비트 허용치(5초)보다 오래
+            # 걸릴 수 있다. 실제로는 서비스가 죽지 않고 재시도 중인데 "에이전트
+            # 꺼짐"으로 잘못 표시되는 걸 막기 위해 매 시도마다 하트비트를 남긴다.
+            self._touch_heartbeat()
             try:
                 return self._query_ntp_once()
             except (OSError, RuntimeError) as exc:
@@ -201,18 +209,20 @@ class Command(BaseCommand):
         # 호출마다 새로 연결해 안정성을 우선한다.
         return winrm.Session(host, auth=(user, password), transport="ntlm")
 
-    def _remote_ps(self, script):
+    def _remote_ps(self, script, attempts=5):
         if self.dry_run:
             return ""
-        # 여기서 실행하는 모든 스크립트(시간 설정/서비스 정지·시작/resync)는 몇 번을
+        # 여기서 실행하는 모든 스크립트(서비스 정지·시작/resync 등)는 몇 번을
         # 반복해도 결과가 같은 멱등 작업이라, 연결 자체가 간헐적으로 실패해도(85 쪽
-        # 작업은 끝났는데 응답만 못 받는 경우 포함) 재시도가 안전하다. 특히 85의 OS
-        # 시각을 실제로 몇 주씩 점프시키는 순간(Set-Date 실행 직후)에는 WinRM/원격
-        # PowerShell 호스트 응답이 몇 초간 불안정해지는 경향이 있어 재시도 간격을
-        # 넉넉히 둔다.
+        # 작업은 끝났는데 응답만 못 받는 경우 포함) 재시도가 안전하다.
+        # 예외: 85 자신의 시각을 바꾸는 Set-Date 요청은 성공해도 그 응답 자체가 항상
+        # HTTP 400으로 깨져서 오므로 _set_system_time에서는 attempts=1로 호출하고
+        # 별도로 결과를 검증한다 — 여기서 재시도해도 매번 같이 400이라 의미가 없다.
         last_error = None
-        attempts = 5
         for attempt in range(attempts):
+            # 재시도가 겹치면 하트비트 허용치(5초)보다 오래 걸릴 수 있어, 실제로는
+            # 살아서 재시도 중인데 "에이전트 꺼짐"으로 잘못 표시되는 걸 막는다.
+            self._touch_heartbeat()
             try:
                 result = self._remote_session().run_ps(script)
             except Exception as exc:
@@ -248,7 +258,16 @@ class Command(BaseCommand):
             "), [DateTimeKind]::Utc); "
             "Set-Date -Date $dt.ToLocalTime() | Out-Null"
         )
-        self._remote_ps(script)
+        try:
+            self._remote_ps(script, attempts=1)
+        except Exception:
+            # 85 자신의 OS 시각이 바뀌는 그 요청은 85 쪽에서 이미 성공해도 응답이
+            # 항상 HTTP 400으로 깨져 온다(실측 확인됨). 응답 실패를 무시하고 실제로
+            # 반영됐는지 별도 조회로 직접 확인한다.
+            pass
+        actual = self._remote_now()
+        if abs((actual - utc_value).total_seconds()) > 5:
+            raise RuntimeError("85의 시각 설정 결과를 확인하지 못했습니다.")
 
     def _w32time_running(self):
         if self.dry_run:

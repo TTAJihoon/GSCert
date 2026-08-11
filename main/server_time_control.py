@@ -56,6 +56,31 @@ def normal_time_estimate(control, *, current_uptime_ms=None):
     )
 
 
+def remote_time_estimate(control, *, current_uptime_ms=None):
+    """ECM 서버(85)가 지금 보고 있을 시각 추정값.
+
+    194 자신은 절대 바뀌지 않으므로 timezone.now()는 항상 194의 실제 시각만
+    보여준다. lease가 active/restoring/recovery_failed인 동안은 85가 target_time
+    에서부터 흘러온 가짜 시각을 표시 중이므로, 적용 시점(단조 uptime 기준)부터
+    지난 시간을 target_time에 더해 85가 지금 보여줄 시각을 추정한다.
+    """
+    current_uptime_ms = current_uptime_ms if current_uptime_ms is not None else uptime_ms()
+    if (
+        control.status not in {
+            ServerTimeControlStatus.ACTIVE,
+            ServerTimeControlStatus.RESTORING,
+            ServerTimeControlStatus.RECOVERY_FAILED,
+        }
+        or control.target_time is None
+        or control.expires_uptime_ms is None
+    ):
+        return timezone.now()
+    lease_ms = int(getattr(settings, "SERVER_TIME_LEASE_SECONDS", 180) * 1000)
+    applied_uptime_ms = control.expires_uptime_ms - lease_ms
+    elapsed_ms = max(0, current_uptime_ms - applied_uptime_ms)
+    return control.target_time + timedelta(milliseconds=elapsed_ms)
+
+
 def public_payload(control=None):
     control = control or get_control()
     current_uptime = uptime_ms()
@@ -75,7 +100,7 @@ def public_payload(control=None):
         "success": True,
         "status": control.status,
         "revision": control.revision,
-        "server_time": timezone.now().isoformat(),
+        "server_time": remote_time_estimate(control, current_uptime_ms=current_uptime).isoformat(),
         "normal_time_estimate": normal_estimate.isoformat() if normal_estimate else None,
         "owner_name": control.owner_name,
         "target_time": control.target_time.isoformat() if control.target_time else None,
