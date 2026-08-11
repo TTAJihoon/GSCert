@@ -570,18 +570,9 @@ function projectRowsColumnWidths(table) {
   });
 }
 
-function applyProjectRowsColumnLayout(table) {
-  ensureTableColumnGroup(table, projectRowsColumnWidths(table));
-}
-
 // 리사이즈 테이블은 열 너비 합으로 table 너비가 고정되어 컨테이너보다 좁으면
 // 우측에 빈 공간이 생긴다. 컨테이너 폭에 맞게 열 너비를 비례 확대해 빈 공간을 없앤다.
 function fitTableColumns(table) {
-  if (tableResizeKey(table) === "projectRows") {
-    applyProjectRowsColumnLayout(table);
-    return;
-  }
-
   const colgroup = table.querySelector(":scope > colgroup");
   if (!colgroup) return;
   const cols = Array.from(colgroup.children);
@@ -620,15 +611,9 @@ function initResizableTables() {
     const headers = Array.from(table.querySelectorAll("thead th"));
     if (!headers.length) return;
 
-    if (key === "projectRows") {
-      applyProjectRowsColumnLayout(table);
-      table.classList.add("resizable-table", "project-list-table");
-      table.dataset.resizableReady = "true";
-      table.dataset.resizeKey = key;
-      return;
-    }
-
-    const defaults = tableColumnDefaults[key] || headers.map((header) => Math.max(90, Math.round(header.getBoundingClientRect().width || 120)));
+    const defaults = key === "projectRows"
+      ? projectRowsColumnWidths(table)
+      : tableColumnDefaults[key] || headers.map((header) => Math.max(90, Math.round(header.getBoundingClientRect().width || 120)));
     const stored = readStoredColumnWidths(key);
     const widths = headers.map((_, index) => stored[index] || defaults[index] || 120);
     const colgroup = ensureTableColumnGroup(table, widths);
