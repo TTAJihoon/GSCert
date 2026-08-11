@@ -45,8 +45,29 @@ function renderNotesButtons(row) {
   `;
 }
 
+function renderAnalysisMetrics(container, coverage) {
+  if (!container) return;
+  if (!coverage) {
+    container.innerHTML = '';
+    container.classList.add('hidden');
+    return;
+  }
+  const metricItems = [
+    ['파싱 문자', coverage.extracted_chars],
+    ['전송 토큰', coverage.llm_input_tokens],
+    ['응답 토큰', coverage.llm_output_tokens]
+  ];
+  container.innerHTML = metricItems.map(([label, value]) => `
+    <div class="analysis-metric">
+      <span>${label}</span>
+      <strong>${Number(value || 0).toLocaleString()}</strong>
+    </div>
+  `).join('');
+  container.classList.remove('hidden');
+}
+
 // /summarize_document/ 검색 응답을 화면 및 sessionStorage 복원에 공통 사용한다.
-function renderSimilarResults(data, summaryContent, resultsContent) {
+function renderSimilarResults(data, summaryContent, resultsContent, resultAnalysisMetrics) {
   const summaries = Array.isArray(data.summary)
     ? data.summary
     : [data.summary].filter(Boolean);
@@ -74,6 +95,8 @@ function renderSimilarResults(data, summaryContent, resultsContent) {
     ? `<div class="search-period-summary">인증일자 ${escapeHtml(period.start)} ~ ${escapeHtml(period.end || '현재')}</div>`
     : '';
   const summaryHtml = `${periodHtml}${summaryBody}${keyFeaturesHtml}${rerankWarning}`;
+
+  renderAnalysisMetrics(resultAnalysisMetrics, data.coverage || null);
 
   const rows = Array.isArray(data.response) ? data.response : [];
   const resultHtml = rows.map(row => {
@@ -157,6 +180,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const resultsHeader = document.getElementById('resultsHeader');
   const inputSummary = document.getElementById('inputSummary');
   const resultsContainer = document.getElementById('resultsContainer');
+  const resultAnalysisMetrics = document.getElementById('resultAnalysisMetrics');
   const selectionStep = document.getElementById('summarySelectionStep');
   const optionList = document.getElementById('summaryOptionList');
   const analysisReport = document.getElementById('analysisReport');
@@ -171,11 +195,17 @@ document.addEventListener('DOMContentLoaded', function () {
   const selectionSearch = document.getElementById('summaryStepSearch');
   let preparedMode = '';
   let preparedKeyFeatures = [];
+  let preparedCoverage = null;
 
   const savedResult = sessionStorage.getItem(SIMILAR_RESULT_STORAGE_KEY);
   if (savedResult) {
     try {
-      renderSimilarResults(JSON.parse(savedResult), summaryContent, resultsContent);
+      renderSimilarResults(
+        JSON.parse(savedResult),
+        summaryContent,
+        resultsContent,
+        resultAnalysisMetrics
+      );
     } catch (error) {
       console.error('저장된 유사 제품 조회 결과 복원 실패:', error);
       sessionStorage.removeItem(SIMILAR_RESULT_STORAGE_KEY);
@@ -256,27 +286,14 @@ document.addEventListener('DOMContentLoaded', function () {
     preparedKeyFeatures = Array.isArray(data.key_features)
       ? data.key_features.filter(Boolean)
       : [];
+    preparedCoverage = preparedMode === 'file' && data.coverage
+      ? data.coverage
+      : null;
     customSummaryInput.value = '';
     updateCustomSummaryCount();
     const fileReports = Array.isArray(data.file_reports) ? data.file_reports : [];
-    const coverage = data.coverage || null;
-    if (preparedMode === 'file' && coverage) {
-      const metricItems = [
-        ['파싱 문자', coverage.extracted_chars],
-        ['전송 토큰', coverage.llm_input_tokens],
-        ['응답 토큰', coverage.llm_output_tokens]
-      ];
-      analysisMetrics.innerHTML = metricItems.map(([label, value]) => `
-        <div class="analysis-metric">
-          <span>${label}</span>
-          <strong>${Number(value || 0).toLocaleString()}</strong>
-        </div>
-      `).join('');
-      analysisMetrics.classList.remove('hidden');
-    } else {
-      analysisMetrics.innerHTML = '';
-      analysisMetrics.classList.add('hidden');
-    }
+    const coverage = preparedCoverage;
+    renderAnalysisMetrics(analysisMetrics, coverage);
     if (preparedMode === 'file' && (fileReports.length || coverage)) {
       const parsedCount = fileReports.filter(item => item.status === 'parsed').length;
       const failedCount = fileReports.length - parsedCount;
@@ -481,7 +498,8 @@ document.addEventListener('DOMContentLoaded', function () {
       formData.append('searchEndDate', searchPeriod.end);
       const data = await postFormData(formData);
       data.key_features = preparedKeyFeatures;
-      renderSimilarResults(data, summaryContent, resultsContent);
+      data.coverage = preparedCoverage;
+      renderSimilarResults(data, summaryContent, resultsContent, resultAnalysisMetrics);
       sessionStorage.setItem(SIMILAR_RESULT_STORAGE_KEY, JSON.stringify(data));
     } catch (error) {
       resultsContent.innerHTML = `<span style="color:red;">에러: ${escapeHtml(error.message)}</span>`;

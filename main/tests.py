@@ -6551,6 +6551,25 @@ class SimilarSummarySelectionTests(SimpleTestCase):
     def setUp(self):
         self.factory = RequestFactory()
 
+    def test_result_page_keeps_document_token_metrics(self):
+        response = self.client.get("/similar/")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'id="resultAnalysisMetrics"')
+        self.assertContains(response, "similar_submit.js?v=15")
+        script = (
+            Path(__file__).resolve().parent
+            / "static"
+            / "scripts"
+            / "testing"
+            / "similar_submit.js"
+        ).read_text(encoding="utf-8")
+        self.assertIn("data.coverage = preparedCoverage", script)
+        self.assertIn(
+            "renderAnalysisMetrics(resultAnalysisMetrics, data.coverage || null)",
+            script,
+        )
+
     @patch("main.views.testing.similar_summary.generate_recommended_summaries")
     def test_manual_prepare_returns_five_recommendations_and_checked_original(
         self,

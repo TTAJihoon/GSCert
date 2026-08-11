@@ -483,6 +483,38 @@ select {
   border-left: 3px solid #3b82f6;
 }
 
+.input-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.input-summary-header .summary-title {
+  margin-bottom: 0;
+}
+
+.result-analysis-metrics {
+  align-self: center;
+}
+
+.result-analysis-metrics .analysis-metric {
+  min-width: 76px;
+  padding: 5px 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+@media (max-width: 900px) {
+  .input-summary-header {
+    flex-direction: column;
+  }
+
+  .result-analysis-metrics {
+    margin-top: 2px;
+  }
+}
+
 .summary-title {
   font-size: 14px;
   color: #64748b;
