@@ -16,7 +16,11 @@ def _self_check() -> int:
     import xlrd.compdoc  # noqa: F401
     from lxml import etree  # noqa: F401
 
+    from gscert_local_review.cert_trust import build_ssl_context, bundled_cert_path
     from gscert_review_core import engine
+
+    if not bundled_cert_path().is_file() or build_ssl_context() is None:
+        return 1
 
     context = engine.build_context(project_number="SELF-CHECK")
     result = engine.evaluate_rules([], context, [])

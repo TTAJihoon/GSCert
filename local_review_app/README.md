@@ -30,7 +30,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe run_dashboard.py
 ```
 
-The default server URL is `http://127.0.0.1:8000`. It can be changed in the app UI.
+The default server URL is `http://127.0.0.1:8000`. It can be changed in the app UI. The production HTTPS server uses the certificate bundled at `certs/gscert.crt` without changing the Windows system trust store.
 
 ## Package
 
@@ -40,4 +40,6 @@ The default server URL is `http://127.0.0.1:8000`. It can be changed in the app 
 
 The executable folder is created under `local_review_app/dist/GSCertLocalReviewDashboard/`.
 
-The packaging script runs `GSCertLocalReviewDashboard.exe --self-check` after the build. This validates that the packaged app can import the shared engine and parser dependencies (`gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`, `openpyxl`) before the folder is distributed.
+The packaging script runs `GSCertLocalReviewDashboard.exe --self-check` after the build. This validates that the packaged app can load the bundled HTTPS certificate and import the shared engine and parser dependencies (`gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`, `openpyxl`) before the folder is distributed.
+
+When the server's self-signed certificate is replaced, copy the public certificate to `certs/gscert.crt` and rebuild the complete distribution folder. Do not distribute only the `.exe`; the certificate is stored under the packaged `_internal/certs/` directory.

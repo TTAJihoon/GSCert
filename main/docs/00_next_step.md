@@ -20,6 +20,7 @@
 
 완료된 변경의 상세 목록은 `14_completed_download_review_changes.md`를 본다. 현재 운영자가 바로 알아야 할 완료 항목은 다음과 같다.
 
+- Windows 로컬 앱의 HTTPS 번들 인증서를 현재 `gsai.tta.or.kr` 자체 서명 인증서로 교체했다. 패키징 self-check는 인증서 파일과 SSL context까지 확인하며, Tcl/Tk가 없는 빌드 환경에서는 splash만 생략한다.
 - 수동 적합 처리 메모는 `inspection_manual_override` 테이블에 저장하며, 이 테이블은 PostgreSQL `reference` DB 소속이다.
 - 수동 적합 결과는 다음 재점검에서도 센터/프로젝트번호/규칙코드/세부항목 키 기준으로 재적용되고, UI에서는 정상 배지 스타일에 보라색 테두리와 메모로 표시된다. 기존 규칙 단위 override(`sub_check_key=""`)는 호환용으로 규칙 전체에 적용된다.
 - 단, 재점검에서 자동 규칙 자체가 적합을 내면 저장된 수동 적합 메모는 보존하되 결과에는 적용하지 않는다. 이 경우 UI는 보라색 테두리 없이 일반 초록색 정상 배지를 표시한다.
@@ -52,9 +53,10 @@ GitHub 최신 코드를 서버에 받은 뒤 DB와 서비스를 다음 순서로
 
 ## 바로 다음 작업
 
-1. 운영 ECM 프로젝트 1건으로 세부항목 단위 수동 적합 처리 저장, 보라색 테두리 정상 배지, 재점검 재적용을 브라우저에서 확인한다.
-2. 같은 프로젝트에서 전체 산출물 다운로드 스트리밍, `수정 내용` 팝업, 파일명 개정 버전 dedup을 확인한다.
-3. 194 서버에 workflow migration과 `GSCertTimeControl` 서비스를 반영한 뒤, 대표 과거 시각으로 W32Time 중지·3분 자동복구·점검 작업 대기·SMB 접근을 live 검증한다.
+1. 194 서버에서 새 로컬 앱 배포 폴더를 다시 빌드해 `C:\Claude_GSCert\local_review_app\dist\GSCertLocalReviewDashboard` 전체를 교체하고 HTTPS 연결을 확인한다.
+2. 운영 ECM 프로젝트 1건으로 세부항목 단위 수동 적합 처리 저장, 보라색 테두리 정상 배지, 재점검 재적용을 브라우저에서 확인한다.
+3. 같은 프로젝트에서 전체 산출물 다운로드 스트리밍, `수정 내용` 팝업, 파일명 개정 버전 dedup을 확인한다.
+4. 194 서버에 workflow migration과 `GSCertTimeControl` 서비스를 반영한 뒤, 대표 과거 시각으로 W32Time 중지·3분 자동복구·점검 작업 대기·SMB 접근을 live 검증한다.
 
 ## 기본 검증 명령
 

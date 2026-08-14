@@ -250,7 +250,7 @@ local_review_app/dist/GSCertLocalReviewDashboard/GSCertLocalReviewDashboard.exe
 local_review_app\dist\GSCertLocalReviewDashboard\GSCertLocalReviewDashboard.exe --self-check
 ```
 
-이 검사는 GUI를 띄우지 않고 `gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`, `openpyxl` import와 최소 공용 엔진 호출이 가능한지 확인한다. 이 단계가 실패하면 배포 폴더를 전달하지 말고 패키징 의존성을 먼저 수정한다.
+이 검사는 GUI를 띄우지 않고 번들 HTTPS 인증서 로드, `gscert_review_core`, `lxml`, `xlrd`, `PyMuPDF`, `openpyxl` import와 최소 공용 엔진 호출이 가능한지 확인한다. 이 단계가 실패하면 배포 폴더를 전달하지 말고 인증서 및 패키징 의존성을 먼저 수정한다.
 
 다른 PC에 배포할 때는 `GSCertLocalReviewDashboard.exe` 파일 하나만 복사하지 말고 아래 폴더 전체를 복사한다.
 
@@ -295,6 +295,8 @@ TTA-26-00727_test/
 - 앱의 서버 URL이 맞는지 확인한다.
 - 서버 방화벽에서 API 포트가 열려 있는지 확인한다.
 - 외부 서버 테스트라면 PC에서 해당 서버 주소로 접속 가능한지 확인한다.
+
+`CERTIFICATE_VERIFY_FAILED`와 `self-signed certificate`가 함께 표시되면 서버 인증서와 앱 번들 인증서가 다른 상태다. 서버의 공개 인증서를 `local_review_app/certs/gscert.crt`로 교체한 뒤 패키징 스크립트를 다시 실행하고, 새 `dist/GSCertLocalReviewDashboard/` 폴더 전체를 재배포한다. 인증서 검증을 끄거나 사용자 PC의 Windows 신뢰 저장소를 변경하지 않는다.
 
 ### 프로젝트 기준정보 조회가 실패하는 경우
 

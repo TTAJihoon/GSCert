@@ -16,7 +16,7 @@
 #>
 param(
     [string]$ServerIp = "210.96.71.194",
-    [string]$ServerDomain = "210.96.71.194.nip.io",   # Google OAuth 등 도메인 필수 용도(IP 불가). nip.io 무료 와일드카드 DNS.
+    [string]$ServerDomain = "gsai.tta.or.kr",   # 운영 HTTPS/OAuth에 사용하는 정식 도메인.
     [string]$NginxConfDir = "C:\nginx-1.29.8\conf"
 )
 $ErrorActionPreference = "Stop"
