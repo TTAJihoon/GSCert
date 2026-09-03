@@ -9,7 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
 
-<link rel="stylesheet" href="{% static 'css/testing/history.css' %}?v=5"/>
+<link rel="stylesheet" href="{% static 'css/testing/history.css' %}?v=6"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
 <script src="{% static 'scripts/testing/history_set_date.js' %}" defer></script>
 <script src="{% static 'scripts/testing/history_Listener.js' %}?v=4" defer></script>
@@ -108,11 +108,6 @@
   </button>
 
   <div class="main-content">
-    <div class="hidden" id="loadingIndicator" style="text-align:center; margin-top:20px;">
-      <i class="fas fa-spinner fa-spin" style="font-size:24px; color:#3498db;"></i>
-      <span id="loadingText" style="margin-left:10px; font-size:18px;">순차적으로 시험성적서 다운로드가 가능한 ECM 페이지가 열립니다. 잠시만 기다려 주세요...</BR>
-                                                      오류 발생 시, 다시 요청해주세요.</span>
-    </div>
     {% if response %}
     <div class="result-box">
       <p>{{ response|linebreaksbr }}</p>
@@ -159,6 +154,13 @@
     </div>
 
     <div class="table-container">
+      <div class="hidden" id="loadingIndicator">
+        <div class="loading-indicator-box">
+          <i class="fas fa-spinner fa-spin"></i>
+          <span id="loadingText">순차적으로 시험성적서 다운로드가 가능한 ECM 페이지가 열립니다. 잠시만 기다려 주세요...<br>
+            오류 발생 시, 다시 요청해주세요.</span>
+        </div>
+      </div>
       <div class="scrollable-table-wrapper">
         <table class="results-table">
           <colgroup>
@@ -276,6 +278,13 @@
       <div class="history-filter-chip-row" id="historyFilterChips" aria-live="polite"></div>
     </div>
     <div class="table-container">
+      <div class="hidden" id="loadingIndicator">
+        <div class="loading-indicator-box">
+          <i class="fas fa-spinner fa-spin"></i>
+          <span id="loadingText">순차적으로 시험성적서 다운로드가 가능한 ECM 페이지가 열립니다. 잠시만 기다려 주세요...<br>
+            오류 발생 시, 다시 요청해주세요.</span>
+        </div>
+      </div>
       <div class="scrollable-table-wrapper">
         <table class="results-table">
           <colgroup>

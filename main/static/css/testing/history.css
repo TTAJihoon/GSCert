@@ -113,8 +113,7 @@ body {
   background: white;
 }
 
-/* 로딩/헤더/테이블 박스가 main-content 폭을 넘지 않도록 */
-#loadingIndicator,
+/* 헤더/테이블 박스가 main-content 폭을 넘지 않도록 */
 .content-header,
 .history-filter-panel,
 .table-container {
@@ -365,11 +364,51 @@ body {
 
 /* ── 테이블 컨테이너: 남은 공간을 차지하며, 넘치면 스크롤 생성 ── */
 .table-container {
+  position: relative;    /* #loadingIndicator 오버레이의 기준점 */
   flex: 1;               /* main-content에서 남은 높이 모두 */
   min-height: 0;         /* 내부 스크롤 가능 */
   overflow: auto;        /* 가로/세로 스크롤 담당 */
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
   background: white;
+}
+
+/* ── 문서/ECM 다운로드 진행 표시: 표 위쪽에 별도로 나타나 표를 밀어내지 않고,
+   표 영역(.table-container) 자체를 반투명 회색으로 덮는 오버레이로 표시한다.
+   .table-container 가 스크롤 컨테이너라도 absolute 자식은 그 padding box(=현재
+   보이는 영역)에 고정되므로, 표를 스크롤한 상태에서도 항상 보이는 부분을 덮는다. */
+#loadingIndicator {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(100, 116, 139, 0.45);
+}
+
+#loadingIndicator.hidden {
+  display: none;
+}
+
+.loading-indicator-box {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: 480px;
+  padding: 18px 24px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  font-size: 15px;
+  line-height: 1.5;
+  color: #1f2937;
+  text-align: left;
+}
+
+.loading-indicator-box i.fa-spinner {
+  font-size: 24px;
+  color: #3498db;
+  flex-shrink: 0;
 }
 
 /* 내부 래퍼: 페이지 너비를 채우되, 다른 컬럼 합산보다 좁아지지 않도록 최소폭 유지 */
