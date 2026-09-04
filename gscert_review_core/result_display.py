@@ -146,7 +146,6 @@ def friendly_expected(value: str) -> str:
         text,
         flags=re.S,
     )
-    text = text.replace("{시작일} ~ {종료일} 기준정보", "기준정보의 시험 시작일~종료일 범위")
     text = text.replace("rawdata 폴더 구조 충족", "RawData 폴더 구조가 기준에 맞게 구성")
     text = text.replace("단일 시트", "시트 1개")
     text = text.replace("파싱 가능", "파일을 열어 내용을 읽을 수 있어야 함")
@@ -158,7 +157,6 @@ def friendly_actual(value: str) -> str:
     replacements = {
         "일치 파일 없음": "조건에 맞는 파일을 찾지 못했습니다.",
         "정상": "기준을 충족했습니다.",
-        "{결함차수} 없음": "시험성적서에서 결함 차수를 확인하지 못했습니다.",
         "날짜 없음": "문서에서 필요한 날짜를 찾지 못했습니다.",
     }
     return replacements.get(text, text or "-")

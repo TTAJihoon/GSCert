@@ -24,6 +24,7 @@ from gscert_review_core.result_display import DisplayResultRow, build_display_ro
 
 from .app import (
     APP_QSS,
+    _app_icon,
     C_BG,
     C_DANGER,
     C_DANGER_SOFT,
@@ -124,17 +125,7 @@ class DashboardWindow(MainWindow):
         self.server_url.setMinimumWidth(230)
         server_col.addWidget(self.server_url)
 
-        token_col = QVBoxLayout()
-        token_col.setSpacing(3)
-        token_col.addWidget(_muted("API 토큰(선택)"))
-        self.api_token = QLineEdit()
-        self.api_token.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_token.setPlaceholderText("서버가 요구할 때만")
-        self.api_token.setFixedWidth(150)
-        token_col.addWidget(self.api_token)
-
         layout.addLayout(server_col)
-        layout.addLayout(token_col)
 
         health_btn = QPushButton("연결 확인")
         health_btn.setMinimumWidth(92)
@@ -578,6 +569,7 @@ class DashboardWindow(MainWindow):
 def main() -> int:
     app = QApplication([])
     app.setStyleSheet(APP_QSS)
+    app.setWindowIcon(_app_icon())
     window = DashboardWindow()
     window.show()
     try:

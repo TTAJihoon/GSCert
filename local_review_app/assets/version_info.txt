@@ -1,0 +1,38 @@
+# PyInstaller --version-file 용 Windows 버전 리소스.
+#
+# 여기서 지정한 FileDescription/ProductName이 탐색기 속성 창, 그리고 무엇보다
+# 작업표시줄에 고정했을 때 마우스오버 툴팁/타일 이름으로 표시된다(따로 지정하지
+# 않으면 Windows는 exe 파일명 그대로를 보여준다 — 실제로 "GSCertLocalReviewDashboard"
+# 로 보이던 이유). exe 파일명 자체(GSCertLocalReviewDashboard.exe)는 자동 업데이트
+# 로직(update_manager.py)이 그대로 참조하므로 바꾸지 않는다.
+VSVersionInfo(
+  ffi=FixedFileInfo(
+    filevers=(1, 0, 0, 0),
+    prodvers=(1, 0, 0, 0),
+    mask=0x3f,
+    flags=0x0,
+    OS=0x40004,
+    fileType=0x1,
+    subtype=0x0,
+    date=(0, 0),
+  ),
+  kids=[
+    StringFileInfo(
+      [
+        StringTable(
+          u'000004b0',
+          [
+            StringStruct(u'CompanyName', u'TTA'),
+            StringStruct(u'FileDescription', u'ECM 점검 프로그램'),
+            StringStruct(u'FileVersion', u'1.0.0.0'),
+            StringStruct(u'InternalName', u'GSCertLocalReviewDashboard'),
+            StringStruct(u'OriginalFilename', u'GSCertLocalReviewDashboard.exe'),
+            StringStruct(u'ProductName', u'ECM 점검 프로그램'),
+            StringStruct(u'ProductVersion', u'1.0.0.0'),
+          ],
+        )
+      ]
+    ),
+    VarFileInfo([VarStruct(u'Translation', [0, 1200])]),
+  ],
+)

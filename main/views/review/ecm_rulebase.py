@@ -1,5 +1,8 @@
 import hashlib
 import json
+from pathlib import Path
+
+from django.conf import settings
 
 from main.models import DownloadReviewRule
 
@@ -21,7 +24,32 @@ def get_rulebase_manifest_payload():
         "checksum": f"sha256:{checksum}",
         "rule_count": len(rules),
         "published_at": _latest_updated_at(rules),
+        "app_version": _local_review_app_version(),
     }
+
+
+def _local_review_app_version():
+    """빌드된 로컬 앱(dist 폴더)에 찍혀 있는 버전 문자열. 없으면 빈 문자열.
+
+    다운로드 zip과 같은 폴더(main/views/review/ecm_download_review_api.py 의
+    _local_review_package_dir와 동일 경로)를 봐서, 배포된 exe가 실제로 어떤
+    버전인지 그대로 알려준다 — 별도로 버전을 관리/입력할 필요가 없다.
+    """
+    configured = getattr(settings, "LOCAL_REVIEW_APP_PACKAGE_DIR", None)
+    package_dir = (
+        Path(configured).expanduser().resolve()
+        if configured
+        else Path(r"C:\Claude_GSCert\local_review_app\dist\GSCertLocalReviewDashboard").resolve()
+    )
+    # PyInstaller(onedir)는 --add-data 로 넣은 파일을 exe 옆이 아니라 _internal/ 밑에
+    # 둔다(클라이언트의 resource_path() 가 sys._MEIPASS 로 찾는 것과 같은 위치).
+    for version_path in (package_dir / "_internal" / "APP_VERSION", package_dir / "APP_VERSION"):
+        if version_path.is_file():
+            try:
+                return version_path.read_text(encoding="utf-8").strip()
+            except OSError:
+                return ""
+    return ""
 
 
 def get_rulebase_bundle_payload(version=None):

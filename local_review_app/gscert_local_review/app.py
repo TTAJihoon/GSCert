@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QDate, QThread, QSettings, QTimer, Signal
-from PySide6.QtGui import QColor, QFont
+from PySide6.QtGui import QColor, QFont, QIcon
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -25,6 +26,7 @@ from PySide6.QtWidgets import (
     QPlainTextEdit,
     QProgressBar,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -33,6 +35,7 @@ from PySide6.QtWidgets import (
 )
 
 from .api_client import ApiClientError, GSCertApiClient, ProjectMetadata, ReferenceItem
+from . import metadata_cache
 from .local_runner import (
     ENGINE_VERSION,
     ERROR,
@@ -48,7 +51,12 @@ from .rule_cache import RuleCacheSummary, load_rule_bundle, load_rule_cache, sav
 from .scanner import FolderScan, scan_folder
 
 
-DEFAULT_SERVER_URL = "http://127.0.0.1:8000"
+DEFAULT_SERVER_URL = "https://gsai.tta.or.kr"
+
+# 오프라인이 길어져 로컬 규칙 캐시가 이 기간(일) 이상 서버와 동기화되지 못했으면
+# 하단 상태바에 경고를 띄운다 — 낡은 규칙으로 계속 점검하면서도 사용자가 눈치채지
+# 못하는 상황을 막기 위함.
+RULE_CACHE_STALE_DAYS = 14
 
 # ── Design tokens (Codex Light: 쿨 뉴트럴 + 부드러운 블루 액센트) ─────────────
 C_BG           = "#f6f8fb"
@@ -703,6 +711,170 @@ class ReviewWorker(QThread):
         self.done.emit(summary)
 
 
+def _help_chip(label: str) -> str:
+    return (
+        f"<span style='background-color:{C_PRIMARY_SOFT}; color:{C_PRIMARY};"
+        " padding:1px 7px; border-radius:5px; font-weight:700;'>"
+        f"{label}</span>"
+    )
+
+
+def _help_body(text: str) -> str:
+    """본문 안의 {버튼명} 표기를 강조 칩으로 바꿔, 어떤 버튼을 눌러야 하는지 한눈에 보이게 한다."""
+    return re.sub(r"\{([^}]+)\}", lambda m: _help_chip(m.group(1)), text)
+
+
+class HelpDialog(QDialog):
+    """상단 '도움말' 버튼: 앱 디자인 톤(카드 + 포인트 컬러)에 맞춘 사용법 안내.
+
+    기본 QMessageBox 는 순회색 텍스트뿐이라 단조로워서, 다른 다이얼로그와 같은
+    카드/색 포인트 스타일로 직접 그린다.
+    """
+
+    SECTIONS = [
+        ("서버 연결 확인", None, "서버 URL을 입력하고 {연결 확인}을 누르면 서버 상태를 바로 확인합니다."),
+        (
+            "자동 버전 확인",
+            "별도 조작 불필요",
+            "앱을 켤 때마다 서버와 버전을 자동 비교합니다. 점검 규칙이 최신이 아니면 조용히 새"
+            " 규칙을 내려받고, 앱 자체의 새 버전이 있으면 업데이트 여부를 물어봅니다.",
+        ),
+        (
+            "점검 대상 폴더 지정",
+            None,
+            "{폴더 선택}으로 프로젝트 폴더를 고르면: 폴더명에서 프로젝트 번호 자동 인식 → 파일"
+            " 자동 스캔({파일 스캔}으로 재실행도 가능) → GS 기준정보 자동 조회까지 한 번에"
+            " 진행됩니다. 폴더 안 파일 목록은 좌측 하단 표(파일명·확장자·크기)에서 확인합니다.",
+        ),
+        (
+            "GS 프로젝트 정보",
+            None,
+            "{GS 정보 확인}: 입력된 프로젝트 번호로 서버에서 기준정보(회사명·제품명·PL·WD·인증일·"
+            "시험기간)를 다시 조회<br>"
+            "{GS 검색}: 프로젝트 번호를 모를 때 인증 이력에서 검색해 선택<br>"
+            "{직접 입력}: 서버 조회가 안 되거나(인증 전 등) 정보가 틀렸을 때 수동 입력<br>"
+            "온라인으로 한 번 조회에 성공한 프로젝트는 로컬에 저장되어, 이후 오프라인으로"
+            " 같은 프로젝트를 열면 자동으로 채워집니다(직접 입력한 값은 저장되지 않습니다).",
+        ),
+        (
+            "점검 실행",
+            None,
+            "폴더 스캔과 기준정보가 준비되면 {점검 실행}으로 규칙 검사를 시작합니다. 진행 상태는"
+            " 좌측 상태 표시(대기/스캔 중/점검 중 등)로 확인할 수 있습니다.",
+        ),
+        (
+            "점검 결과 확인",
+            None,
+            "상단 요약 카드(전체/적합/부적합/미지원/오류)를 클릭하면 해당 결과만 필터링됩니다.<br>"
+            "결과 테이블 행을 클릭하면 우측 \"선택한 항목 상세\"에 예상 값·실제 값·메시지가"
+            " 표시됩니다.<br>"
+            "행을 {더블클릭}하면 엔진이 어떤 근거로 판정했는지 상세 팝업을 볼 수 있습니다.<br>"
+            "표 컬럼 너비는 경계선을 드래그해 조절할 수 있습니다.",
+        ),
+        (
+            "상태 확인",
+            None,
+            "좌측 \"대기/규칙 v...\" 뱃지와 하단 상태 표시줄에서 현재 서버 주소·규칙 버전·앱"
+            " 버전을 항상 확인할 수 있습니다. 규칙이 오래 동기화되지 못했으면(14일 이상)"
+            " 하단 상태 표시줄에 경고가 표시됩니다.",
+        ),
+    ]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("도움말 — 사용법")
+        self.setMinimumSize(560, 640)
+        self.setStyleSheet(f"QDialog {{ background-color: {C_BG}; }}")
+
+        outer = QVBoxLayout(self)
+        outer.setContentsMargins(24, 22, 24, 20)
+        outer.setSpacing(16)
+
+        title = QLabel("GSCert Local Review 사용법")
+        title.setStyleSheet(f"color: {C_TEXT}; font-size: 18px; font-weight: 800;")
+        outer.addWidget(title)
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setStyleSheet("background: transparent;")
+
+        content = QWidget()
+        content.setStyleSheet("background: transparent;")
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 4, 0)
+        content_layout.setSpacing(10)
+
+        for index, (title_text, tag_text, body_text) in enumerate(self.SECTIONS, start=1):
+            content_layout.addWidget(self._build_card(index, title_text, tag_text, body_text))
+
+        content_layout.addStretch()
+        scroll.setWidget(content)
+        outer.addWidget(scroll, stretch=1)
+
+        footer = QLabel(
+            "점검 자체는 인터넷 연결 없이 로컬에서 수행되며, 규칙은 서버에서 중앙 관리됩니다."
+        )
+        footer.setWordWrap(True)
+        footer.setStyleSheet(f"color: {C_MUTED}; font-size: 11px; font-style: italic;")
+        outer.addWidget(footer)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch()
+        ok_btn = QPushButton("OK")
+        ok_btn.setObjectName("primaryBtn")
+        ok_btn.setMinimumWidth(96)
+        ok_btn.clicked.connect(self.accept)
+        button_row.addWidget(ok_btn)
+        outer.addLayout(button_row)
+
+    @staticmethod
+    def _build_card(index: int, title_text: str, tag_text: str | None, body_text: str) -> QFrame:
+        card = QFrame()
+        card.setStyleSheet(
+            f"QFrame {{ background-color: {C_SURFACE}; border: 1px solid {C_LINE};"
+            f" border-left: 3px solid {C_PRIMARY}; border-radius: 8px; }}"
+            "QLabel { background: transparent; border: none; }"
+        )
+        layout = QVBoxLayout(card)
+        layout.setContentsMargins(16, 12, 16, 13)
+        layout.setSpacing(6)
+
+        header = QHBoxLayout()
+        header.setSpacing(8)
+        badge = QLabel(str(index))
+        badge.setFixedSize(24, 24)
+        badge.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        badge.setStyleSheet(
+            f"background-color: {C_PRIMARY}; color: #ffffff; border-radius: 12px;"
+            " font-size: 12px; font-weight: 800;"
+        )
+        header.addWidget(badge)
+
+        heading = QLabel(title_text)
+        heading.setStyleSheet(f"color: {C_TEXT}; font-size: 14px; font-weight: 800;")
+        header.addWidget(heading)
+
+        if tag_text:
+            tag = QLabel(tag_text)
+            tag.setStyleSheet(
+                f"background-color: {C_SUCCESS_SOFT}; color: {C_SUCCESS};"
+                " border-radius: 5px; padding: 1px 8px; font-size: 10px; font-weight: 700;"
+            )
+            header.addWidget(tag)
+
+        header.addStretch()
+        layout.addLayout(header)
+
+        body = QLabel(_help_body(body_text))
+        body.setTextFormat(Qt.TextFormat.RichText)
+        body.setWordWrap(True)
+        body.setStyleSheet(f"color: {C_TEXT}; font-size: 12px; line-height: 150%;")
+        layout.addWidget(body)
+
+        return card
+
+
 # ── Main window ───────────────────────────────────────────────────────────────
 
 class MainWindow(QMainWindow):
@@ -745,18 +917,41 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(300, self._check_version_on_startup)
 
     def _refresh_status_perm(self):
-        """상태바 우측에 서버 URL·규칙 버전을 상시 표시한다."""
+        """상태바 우측에 서버 URL·규칙 버전·앱(프로그램) 버전을 상시 표시한다.
+
+        규칙 캐시가 오래 동기화되지 못했으면(RULE_CACHE_STALE_DAYS 이상) 경고를 덧붙인다
+        — 서버 연결이 끊긴 채로 낡은 규칙으로 계속 점검하는 걸 눈치채지 못하는 상황 방지.
+        """
+        from . import update_manager
+
         server = (self.server_url.text().strip() or DEFAULT_SERVER_URL)
         ver = self.rule_cache.rulebase_version or "규칙 없음"
-        self._status_perm.setText(f"서버 {server}   ·   규칙 {ver}")
+        app_version = update_manager.bundled_app_version() or "알 수 없음"
+        text = f"서버 {server}   ·   규칙 {ver}   ·   앱 v{app_version}"
+
+        stale_days = self._rule_cache_age_days()
+        is_stale = stale_days is not None and stale_days >= RULE_CACHE_STALE_DAYS
+        if is_stale:
+            text += f"   ·   ⚠ 규칙 동기화 {stale_days}일 전 — 서버 연결 후 갱신 필요"
+
+        self._status_perm.setText(text)
+        self._status_perm.setStyleSheet(f"color: {C_WARNING}; font-weight: 700;" if is_stale else "")
+
+    def _rule_cache_age_days(self) -> int | None:
+        """로컬 규칙 캐시가 마지막으로 저장된 지 며칠 지났는지. 캐시가 없으면 None."""
+        saved_at = self.rule_cache.saved_at
+        if not saved_at:
+            return None
+        try:
+            saved = datetime.fromisoformat(saved_at)
+        except ValueError:
+            return None
+        return max((datetime.now() - saved).days, 0)
 
     def _restore_settings(self):
         saved_url = self._settings.value("server_url", "")
         if saved_url:
             self.server_url.setText(str(saved_url))
-        saved_token = self._settings.value("api_token", "")
-        if saved_token:
-            self.api_token.setText(str(saved_token))
         saved_project_number = self._settings.value("project_number", "")
         if saved_project_number:
             self.project_number.setText(str(saved_project_number))
@@ -772,7 +967,6 @@ class MainWindow(QMainWindow):
 
     def _save_settings(self):
         self._settings.setValue("server_url", self.server_url.text().strip())
-        self._settings.setValue("api_token", self.api_token.text().strip())
         self._settings.setValue("project_number", self.project_number.text().strip())
         if self.selected_folder is not None:
             self._settings.setValue("last_folder", str(self.selected_folder))
@@ -782,17 +976,16 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def _check_version_on_startup(self):
-        """시작 시 서버 규칙 버전을 확인하고, 다르면(최초 실행으로 규칙이 아예 없는
-        경우 포함) 사용자 클릭 없이 바로 동기화한다. 대시보드 화면에는 이 자동 확인을
-        대신할 '버전 확인' 버튼이 없으므로, 여기서 자동으로 끝내지 않으면 최초 실행 시
-        규칙이 하나도 없는 채로 점검을 시도해 진행이 막힌다.
+        """시작 시 서버 규칙/앱 버전을 확인한다. 별도의 수동 확인 버튼은 없고
+        앱을 켤 때마다 항상 이 메서드만 실행된다 — 업데이트가 필요 없으면 아무것도
+        표시하지 않고 조용히 넘어가고, 규칙 버전이 다르면(최초 실행으로 규칙이
+        아예 없는 경우 포함) 사용자 클릭 없이 바로 동기화한다.
         """
         had_cache = bool(self.rule_cache.rulebase_version)
         try:
             manifest = GSCertApiClient(
                 self.server_url.text().strip() or DEFAULT_SERVER_URL,
                 timeout_seconds=5,
-                token=self.api_token.text().strip(),
             ).rule_manifest()
         except Exception:
             if not had_cache:
@@ -805,6 +998,12 @@ class MainWindow(QMainWindow):
                     "'서버 연결 확인'으로 연결 상태를 먼저 점검해 주세요.",
                 )
             return  # 캐시가 있으면 오프라인/서버 오류 시 조용히 캐시로 계속
+
+        # 규칙 버전과 무관하게, 앱 자체(exe)의 새 버전이 있으면 먼저 물어본다.
+        # "예"를 누르면 이 함수는 앱을 재시작하며 끝나므로 아래 규칙 동기화로
+        # 넘어가지 않는다(어차피 새 앱이 켜지면서 다시 확인한다).
+        if self._maybe_offer_app_update(manifest):
+            return
 
         server_ver = str(manifest.get("rulebase_version") or "")
         cached_ver = self.rule_cache.rulebase_version or ""
@@ -845,6 +1044,51 @@ class MainWindow(QMainWindow):
             return
 
         self._set_action_status(f"규칙 v{self.rule_cache.rulebase_version} 로 갱신됨", C_SUCCESS)
+
+    def _maybe_offer_app_update(self, manifest: dict) -> bool:
+        """서버 규칙 매니페스트에 실린 app_version 이 지금 실행 중인 앱과 다르면
+        업데이트 여부를 물어보고, 동의하면 내려받아 적용한 뒤 앱을 재시작한다.
+
+        반환값 True 는 "앱이 곧 재시작(또는 이미 종료 절차 진행 중)"을 의미한다 —
+        호출부는 이 경우 이어지는 규칙 동기화 등을 더 진행하지 않고 그냥 끝내야 한다.
+        """
+        from . import update_manager
+
+        if not update_manager.is_frozen():
+            return False  # 개발 모드(소스 실행)에서는 자동 업데이트를 시도하지 않는다.
+
+        server_version = str(manifest.get("app_version") or "").strip()
+        current_version = update_manager.bundled_app_version()
+        if not server_version or server_version == current_version:
+            return False
+
+        answer = QMessageBox.question(
+            self,
+            "앱 업데이트",
+            "버전이 업데이트되었습니다. 업데이트하시겠습니까?",
+            QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Ok,
+        )
+        if answer != QMessageBox.StandardButton.Ok:
+            return False  # 이번 실행만 건너뛴다 — 다음 실행 시 다시 확인한다.
+
+        self._set_action_status("앱 업데이트 다운로드 중", C_PRIMARY)
+        QApplication.processEvents()
+        try:
+            new_root = update_manager.download_and_stage_update(self._client())
+        except (update_manager.UpdateError, ApiClientError) as exc:
+            self._set_action_status("앱 업데이트 실패", C_DANGER)
+            QMessageBox.warning(
+                self,
+                "앱 업데이트 실패",
+                f"새 버전을 받지 못했습니다:\n{exc}\n\n"
+                "다음 실행 시 다시 시도하거나, 웹에서 직접 다운로드해 주세요.",
+            )
+            return False
+
+        self._save_settings()
+        update_manager.launch_update_and_exit(new_root)
+        return True  # 위 호출은 항상 프로세스를 끝내므로(os._exit) 실제로는 도달하지 않는다.
 
     # ── Header ────────────────────────────────────────────────────────────────
 
@@ -890,15 +1134,6 @@ class MainWindow(QMainWindow):
         # 센터 구분 제거: 센터는 ECM 에이전트(서버) 분리용이었고, 3개 센터의 산출물
         # 구조는 동일하다. 로컬 점검은 폴더/파일 구조만 보므로 센터 선택이 필요 없다.
 
-        token_col = QVBoxLayout()
-        token_col.setSpacing(3)
-        token_col.addWidget(_muted("API 토큰(선택)"))
-        self.api_token = QLineEdit()
-        self.api_token.setEchoMode(QLineEdit.EchoMode.Password)
-        self.api_token.setPlaceholderText("서버가 요구할 때만")
-        self.api_token.setFixedWidth(140)
-        token_col.addWidget(self.api_token)
-
         btn_col = QVBoxLayout()
         btn_col.setSpacing(3)
         btn_col.addWidget(QLabel(" "))  # spacer to align with labels above
@@ -918,7 +1153,6 @@ class MainWindow(QMainWindow):
         help_col.addWidget(help_btn)
 
         right.addLayout(url_col)
-        right.addLayout(token_col)
         right.addLayout(btn_col)
         right.addLayout(help_col)
 
@@ -970,12 +1204,7 @@ class MainWindow(QMainWindow):
         self.rulebase_status.setStyleSheet(
             f"color: {C_TEXT}; font-size: 12px; background: transparent; border: none;"
         )
-        manifest_btn = QPushButton("버전 확인")
-        manifest_btn.setMinimumWidth(84)
-        manifest_btn.clicked.connect(self.check_rule_manifest)
-
         row.addWidget(self.rulebase_status)
-        row.addWidget(manifest_btn)
 
         vbox.addWidget(cap)
         vbox.addLayout(row)
@@ -1245,69 +1474,6 @@ class MainWindow(QMainWindow):
             return
         QMessageBox.information(self, "연결 확인", f"서버 연결 정상\n{payload.get('server_time', '')}")
 
-    def check_rule_manifest(self):
-        """서버와 로컬 규칙 버전을 확인하고, 다르면 자동으로 동기화(업데이트)한다.
-
-        - 버전이 같으면 조회만 하고 '업데이트가 필요 없습니다.' 안내.
-        - 버전이 다르면 서버에서 규칙 번들을 내려받아 동기화 후 '업데이트가 완료 되었습니다.' 안내.
-        """
-        try:
-            manifest = self._client().rule_manifest()
-        except ApiClientError as exc:
-            self._show_error(str(exc))
-            return
-        cached = self.rule_cache.rulebase_version or ""
-        server = manifest.get("rulebase_version") or ""
-
-        version_lines = [
-            f"서버 규칙 버전: {server or '(없음)'}",
-            f"로컬 규칙 버전: {cached or '(없음)'}",
-            f"규칙 개수: {manifest.get('rule_count', 0)}",
-            f"필요 엔진 버전: {manifest.get('engine_min_version', '')}",
-        ]
-
-        # 버전이 같으면 업데이트 불필요 → 조회만 한다.
-        if cached and server and cached == server:
-            QMessageBox.information(
-                self,
-                "규칙 버전 확인",
-                "\n".join([*version_lines, "", "업데이트가 필요 없습니다."]),
-            )
-            return
-
-        # 버전이 다르면(또는 로컬 규칙 없음) 서버와 동기화한다.
-        try:
-            bundle = self._client().rule_bundle()
-            self.rule_cache = save_rule_cache(bundle)
-        except ApiClientError as exc:
-            self._show_error(str(exc))
-            return
-        except OSError as exc:
-            self._show_error(f"규칙 캐시 저장에 실패했습니다: {exc}")
-            return
-        self.rulebase_status.setText(self._rule_cache_text(self.rule_cache))
-        required_engine = str(bundle.get("engine_min_version") or "")
-        if not engine_supports(required_engine):
-            QMessageBox.warning(
-                self,
-                "앱 업데이트 필요",
-                f"규칙을 내려받았지만, 이 규칙셋은 엔진 v{required_engine} 이상이 필요합니다.\n"
-                f"현재 앱 엔진은 v{ENGINE_VERSION} 이라 점검이 차단됩니다.\n"
-                "최신 GSCertLocalReview 로 업데이트(재설치)하세요.",
-            )
-            return
-        QMessageBox.information(
-            self,
-            "규칙 버전 확인",
-            "\n".join([
-                f"서버 규칙 버전: {server or '(없음)'}",
-                f"로컬 규칙 버전: {self.rule_cache.rulebase_version}",
-                f"규칙 수: {self.rule_cache.rule_count}",
-                "",
-                "업데이트가 완료 되었습니다.",
-            ]),
-        )
-
     def choose_folder(self):
         folder_name = QFileDialog.getExistingDirectory(self, "점검 대상 폴더 선택")
         if not folder_name:
@@ -1334,7 +1500,18 @@ class MainWindow(QMainWindow):
             # 센터 미지정 → 서버가 전체 센터에서 프로젝트번호로 조회한다.
             metadata = self._client().project_metadata(project_number)
         except ApiClientError as exc:
-            # 오프라인/서버 오류: 점검은 메타데이터가 필수이므로 직접 입력을 제안한다.
+            # 오프라인/서버 오류: 이 프로젝트를 이전에 온라인으로 조회해 캐시해둔 적이
+            # 있으면(직접 입력은 캐시 대상이 아님) 그 값을 자동으로 재사용한다.
+            cached = metadata_cache.load_cached_metadata(project_number)
+            if cached is not None:
+                cached_metadata, cached_at = cached
+                completed = self._complete_metadata_from_reference(cached_metadata, project_number)
+                self._set_metadata(completed)
+                self._save_settings()
+                age_text = metadata_cache.format_cache_age(cached_at)
+                self._set_action_status(f"기준정보 캐시 사용 ({age_text})", C_WARNING)
+                return
+            # 캐시도 없으면(이 프로젝트를 온라인으로 한 번도 조회한 적 없음) 직접 입력을 제안한다.
             answer = QMessageBox.question(
                 self,
                 "기준정보 조회 실패",
@@ -1347,6 +1524,7 @@ class MainWindow(QMainWindow):
         metadata = self._complete_metadata_from_reference(metadata, project_number)
         self._set_metadata(metadata)
         self._save_settings()
+        metadata_cache.save_metadata(metadata)
 
     def enter_metadata_manually(self):
         project_number = self.project_number.text().strip()
@@ -1579,7 +1757,7 @@ class MainWindow(QMainWindow):
         rule_bundle = load_rule_bundle()
         if not rule_bundle:
             self._set_action_status("규칙 업데이트 필요", C_WARNING)
-            self._show_error("먼저 Rulebase에서 '버전 확인'을 눌러 규칙을 내려받으세요.")
+            self._show_error("아직 점검 규칙을 받지 못했습니다. 서버 연결을 확인한 뒤 앱을 다시 실행하세요.")
             return
         # 규칙셋이 요구하는 엔진 버전보다 이 앱의 엔진이 낡았으면 오작동하므로 막는다.
         required_engine = str(rule_bundle.get("engine_min_version") or "")
@@ -1670,12 +1848,10 @@ class MainWindow(QMainWindow):
                 f"color: {C_TEXT}; font-size: 12px;"
                 " background: transparent; border: none;"
             )
+            metadata_cache.save_metadata(self.current_metadata)
 
     def _client(self) -> GSCertApiClient:
-        return GSCertApiClient(
-            self.server_url.text().strip() or DEFAULT_SERVER_URL,
-            token=self.api_token.text().strip(),
-        )
+        return GSCertApiClient(self.server_url.text().strip() or DEFAULT_SERVER_URL)
 
     def _has_metadata(self) -> bool:
         """점검에 필요한 최소 기준정보가 채워졌는지. 컨텍스트 의존 규칙(날짜 등)을 위해
@@ -1928,44 +2104,21 @@ class MainWindow(QMainWindow):
 
     def _show_help(self):
         """상단 '도움말' 버튼: 간단한 사용법을 안내한다."""
-        box = QMessageBox(self)
-        box.setWindowTitle("도움말 — 사용법")
-        box.setIcon(QMessageBox.Icon.Information)
-        box.setTextFormat(Qt.TextFormat.RichText)
-        box.setText("<b>GSCert Local Review 사용법</b>")
-        box.setInformativeText(
-            "<ol style='margin-left:-18px; line-height:1.6;'>"
-            "<li><span style='font-size:15px;'><b>서버 연결 확인</b></span><br>"
-            "> 상단에 서버 URL을 입력하고 <b>연결 확인</b>을 누릅니다.</li>"
-            "<br>"
-            "<li><span style='font-size:15px;'><b>점검 규칙 확인</b></span><br>"
-            "> <b>버전 확인</b>으로 서버와 규칙 버전을 비교합니다.<br>"
-            "버전이 다르면 자동으로 최신 규칙을 내려받아 동기화합니다.</li>"
-            "<br>"
-            "<li><span style='font-size:15px;'><b>점검 폴더 선택</b></span><br>"
-            "> <b>폴더 선택</b>으로 점검할 프로젝트 폴더를 지정합니다.<br>"
-            "폴더를 지정하면 자동으로 파일들을 스캔 후 프로젝트 정보를 조회합니다.</li>"
-            "<br>"
-            "<li><span style='font-size:15px;'><b>프로젝트 정보 조회</b></span><br>"
-            "> <b>기준정보 조회</b>로 프로젝트 정보를 수동 조회 요청할 수 있습니다.<br>"
-            "인증위가 완료되지 않은 경우, <b>직접 입력</b>으로 수동 입력해야 합니다.</li>"
-            "<br>"
-            "<li><span style='font-size:15px;'><b>파일 스캔</b></span><br>"
-            "> <b>파일 스캔</b>으로 폴더 안 파일 목록을 확인합니다.</li>"
-            "<br>"
-            "<li><span style='font-size:15px;'><b>점검 실행</b></span><br>"
-            "> <b>점검 실행</b>을 누르면 규칙 검사가 수행되고, <b>점검 결과</b> 표에 적합/부적합/미지원/오류가 표시됩니다.</li>"
-            "</ol>"
-            "<p style='color:#6b7683;'>점검은 인터넷 없이 로컬에서 수행되며, 규칙은 서버"
-            " PostgreSQL에서 관리됩니다.</p>"
-        )
-        box.setStandardButtons(QMessageBox.StandardButton.Ok)
-        box.exec()
+        HelpDialog(self).exec()
+
+
+def _app_icon() -> QIcon:
+    """작업 표시줄/창 아이콘(GS 인증 1등급 로고). 없으면 빈 QIcon(Qt 기본 아이콘)."""
+    from .cert_trust import resource_path
+
+    icon_path = resource_path("assets", "app_icon.ico")
+    return QIcon(str(icon_path)) if icon_path.is_file() else QIcon()
 
 
 def main() -> int:
     app = QApplication([])
     app.setStyleSheet(APP_QSS)
+    app.setWindowIcon(_app_icon())
     window = MainWindow()
     window.show()
     try:

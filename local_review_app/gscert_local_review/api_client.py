@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import shutil
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode
@@ -112,6 +114,28 @@ class GSCertApiClient:
         query = urlencode({"version": version}) if version else ""
         suffix = f"?{query}" if query else ""
         return self._get_json(f"/api/local-review/rules/bundle/{suffix}")
+
+    def download_app_package(self, dest_path: Path) -> None:
+        """로컬 앱 자체 업데이트용 zip 패키지를 dest_path 에 내려받는다."""
+        url = f"{self.base_url}/api/local-review/app/download/"
+        headers = {}
+        if self.token:
+            headers["X-Local-Review-Token"] = self.token
+        request = Request(url, headers=headers)
+        try:
+            # 앱 패키지는 규칙 번들보다 훨씬 커서(수십 MB) 넉넉한 타임아웃을 쓴다.
+            with urlopen(request, timeout=max(self.timeout_seconds, 300), context=self._ssl_context) as response:
+                dest_path.parent.mkdir(parents=True, exist_ok=True)
+                with open(dest_path, "wb") as file_obj:
+                    shutil.copyfileobj(response, file_obj)
+        except HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            message = _message_from_error_body(detail) or exc.reason
+            raise ApiClientError(f"API error {exc.code}: {message}") from exc
+        except URLError as exc:
+            raise ApiClientError(f"Cannot connect to server: {exc.reason}") from exc
+        except TimeoutError as exc:
+            raise ApiClientError("Server request timed out.") from exc
 
     def _get_json(self, path: str) -> dict[str, Any]:
         url = f"{self.base_url}{path}"

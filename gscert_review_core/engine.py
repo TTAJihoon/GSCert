@@ -1170,8 +1170,8 @@ def _test_plan_first_table_checks(table, config, context):
         {
             "name": "first_table_start_date",
             "passed": _same_date_text(_table_cell(table, 1, 2), context.start_date),
-            "expected": f"1행 2열 = {context.start_date}",
-            "actual": _table_cell(table, 1, 2) or "값 없음",
+            "expected": f"1행 2열 = {_format_checkable_date(context.start_date)}",
+            "actual": _format_checkable_date(_table_cell(table, 1, 2)) if _table_cell(table, 1, 2) else "값 없음",
             "message": config.get("date_message") or "시험계획서 날짜가 잘못 작성됨",
         },
         {
@@ -1470,7 +1470,7 @@ def _test_plan_schedule_check(table, config, context):
         and total is not None
         and abs(total - wd) < 1e-6
     )
-    expected_total = str(wd) if wd is not None else "{WD}"
+    expected_total = str(wd) if wd is not None else (str(context.wd).strip() or "(WD 확인 불가)")
     actual_text = ", ".join(actual_value_items) or "WD 값 없음"
     if total is not None:
         actual_text = f"{actual_text} (합계 {total:g})"
@@ -1748,11 +1748,11 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
     date_label = str(config.get("date_label") or "작성일")
     date_cell = _find_labeled_date_range_cell(sheet.rows, date_label, context.start_date, context.end_date)
     raw_detail["date_check"] = {
-        "expected": f"{date_label} {context.start_date} ~ {context.end_date}",
+        "expected": f"{date_label} {_format_checkable_date_range(context.start_date, context.end_date)}",
         "matched_cell": date_cell or {},
     }
     sub_checks.append({
-        "expected": f"[작성일] {date_label} {context.start_date} ~ {context.end_date}",
+        "expected": f"[작성일] {date_label} {_format_checkable_date_range(context.start_date, context.end_date)}",
         "actual": (date_cell.get("value") if date_cell else "일치 작성일 없음"),
         "passed": bool(date_cell),
         "message": config.get("date_message") or "작성일이 잘못 작성됨",
@@ -1781,7 +1781,7 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
         residual_actual_parts.append("상세 테스트 결과 열 없음")
     residual_actual_parts.append(f"F {len(failed_rows)}개")
     sub_checks.append({
-        "expected": f"[잔여결함] {result_header} F 개수 = {residual_expected if residual_expected is not None else '{잔여결함수}'}",
+        "expected": f"[잔여결함] {result_header} F 개수 = {residual_expected if residual_expected is not None else (_context_variable(context, '잔여결함수') or '(확인 불가)')}",
         "actual": " / ".join(residual_actual_parts),
         "passed": bool(residual_expected is not None and result_header_cell and len(failed_rows) == residual_expected),
         "message": config.get("residual_message") or "잔여 결함이 작성되지 않음",
@@ -1871,11 +1871,11 @@ def _test_case_expected_sub_check_templates(config, context):
             "message": config.get("author_message") or "Author/reviewer check could not run",
         },
         {
-            "expected": f"[date] {date_label} {context.start_date} ~ {context.end_date}",
+            "expected": f"[date] {date_label} {_format_checkable_date_range(context.start_date, context.end_date)}",
             "message": config.get("date_message") or "Date check could not run",
         },
         {
-            "expected": f"[residual defect] {result_header} F count = {residual_expected if residual_expected is not None else '{residual_defects}'}",
+            "expected": f"[residual defect] {result_header} F count = {residual_expected if residual_expected is not None else (_context_variable(context, '잔여결함수') or '(unavailable)')}",
             "message": config.get("residual_message") or "Residual defect check could not run",
         },
     ])
@@ -2041,8 +2041,8 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
             rule=rule,
             sequence=sequence,
             status=DownloadReviewRuleStatus.FAIL,
-            expected="{시작일} ~ {종료일} 기준정보",
-            actual=f"{context.start_date or '(없음)'} ~ {context.end_date or '(없음)'}",
+            expected=f"이미지 수정일자 {_format_checkable_date_range(context.start_date, context.end_date)}",
+            actual=f"{_format_checkable_date(context.start_date)} ~ {_format_checkable_date(context.end_date)}",
             message=config.get("date_message") or "제품 스크린샷 생성일이 시험기간과 다름",
             raw_detail={**raw_detail, "selected_parent": "/".join(selected_parent or ())},
         )
@@ -2076,7 +2076,7 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
         rule=rule,
         sequence=sequence,
         status=status,
-        expected=f"이미지 수정일자 {context.start_date} ~ {context.end_date}",
+        expected=f"이미지 수정일자 {_format_checkable_date_range(context.start_date, context.end_date)}",
         actual="범위 밖 파일 없음" if not out_of_range else failure_message,
         message=(
             config.get("pass_message")
@@ -2368,8 +2368,8 @@ def _evaluate_defect_report_check(rule, sequence, project, context, verify_resul
             matched,
             project,
             raw_detail,
-            expected="13번 시험성적서 또는 결함리포트 시트 구성에서 {결함차수} 산출",
-            actual="{결함차수} 없음",
+            expected="13번 시험성적서 또는 결함리포트 시트 구성에서 결함차수 산출 가능",
+            actual=_context_variable(context, "결함차수") or "결함차수 산출 불가",
             message=config.get("count_mismatch_message") or "시험성적서의 결함 차수와 결함리포트 개수가 다름",
         )
 
@@ -2788,9 +2788,10 @@ def _check_defect_report_dates(workbook_by_version, context, defect_round_count)
             title_expected = f"{label} 표지 제목 '{sheet_name}' 포함"
             title_actual = _normalize_spaces(_sheet_top_rows_all_text(sheet)) or "표지 제목 문구 없음"
             sub_checks.append({"expected": title_expected, "actual": title_actual, "passed": header_found})
-            # 형식이 달라도 값으로 비교되도록, 기대/실제 날짜를 정규화 형식(YYYY.MM.DD.)으로 나란히 표시한다.
-            expected_display = _format_dot_date(expected_date) or (expected_date or "(기준없음)")
-            actual_display = _format_dot_date(report_date) or (report_date or "문구없음")
+            # 형식이 달라도 값으로 바로 대조할 수 있도록, 기대/실제 날짜를 'YY/MM/DD,요일'
+            # 형식으로 나란히 표시한다(예: 26/05/14,목).
+            expected_display = _format_checkable_date(expected_date) if expected_date else "(기준없음)"
+            actual_display = _format_checkable_date(report_date) if report_date else "문구없음"
             sub_expected = f"{label} 기대 보고일자 {expected_display}"
             sub_actual = f"{label} 실제 보고일자 {actual_display}"
             expected_parts.append(sub_expected)
@@ -4286,8 +4287,11 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
         "actual_end": period[1],
     }
     sub_checks.append({
-        "expected": f"[제품시험평가] {context.start_date} ~ {context.end_date}",
-        "actual": f"{period[0] or '시작일 없음'} ~ {period[1] or '종료일 없음'}",
+        "expected": f"[제품시험평가] {_format_checkable_date_range(context.start_date, context.end_date)}",
+        "actual": (
+            f"{_format_checkable_date(period[0])} ~ {_format_checkable_date(period[1])}"
+            if (period[0] or period[1]) else "시작일/종료일 없음"
+        ),
         "passed": bool(_same_date_text(period[0], context.start_date) and _same_date_text(period[1], context.end_date)),
         "message": config.get("period_message") or "시험기간이 잘못 작성됨",
     })
@@ -4406,8 +4410,10 @@ def _quality_report_table_check(table, context):
     if not isinstance(expected_values, list):
         return {
             "passed": False,
-            "expected": "16번 품질검사표 산출 변수 {품질부특성측정값}",
-            "actual": "{품질부특성측정값} 없음",
+            "expected": "16번 품질검사표에서 품질부특성측정값 목록 산출 가능",
+            "actual": (
+                str(expected_values) if expected_values not in (None, "") else "품질부특성측정값 산출 불가"
+            ),
             "actual_values": [],
         }
     if not table:
@@ -5121,6 +5127,29 @@ def _format_dot_date(value):
         return text
     year, month, day = match.groups()
     return f"{_full_year(year):04d}.{int(month):02d}.{int(day):02d}."
+
+
+_WEEKDAY_KO = ["월", "화", "수", "목", "금", "토", "일"]
+
+
+def _format_checkable_date(value):
+    """날짜를 'YY/MM/DD,요일' 형식으로 사람이 바로 확인할 수 있게 표시한다(예: 26/05/14,목).
+
+    화면에 '{시작일}' 같은 미해석 플레이스홀더나 '기준정보의 시험 시작일~종료일 범위' 같은
+    설명문 대신, 실제 값을 바로 대조할 수 있는 형태로 보여주기 위한 표시 전용 포맷터다
+    (비교 로직에 쓰는 원본 문자열/파싱 결과는 건드리지 않는다). 파싱할 수 없으면 원본
+    문자열을, 그마저 비어 있으면 '(없음)'을 반환한다.
+    """
+    date_value = _parse_date(value)
+    if not date_value:
+        text = str(value or "").strip()
+        return text or "(없음)"
+    weekday = _WEEKDAY_KO[date_value.weekday()]
+    return f"{date_value.year % 100:02d}/{date_value.month:02d}/{date_value.day:02d},{weekday}"
+
+
+def _format_checkable_date_range(start_value, end_value):
+    return f"{_format_checkable_date(start_value)} ~ {_format_checkable_date(end_value)}"
 
 
 def _resolved_keywords(keywords, context):

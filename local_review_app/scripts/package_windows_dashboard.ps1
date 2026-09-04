@@ -33,7 +33,16 @@ function Invoke-ExeCheck {
 }
 
 $SplashImage = Join-Path $Root "assets\splash.png"
+$AppIcon = Join-Path $Root "assets\app_icon.ico"
+$WinVersionInfoFile = Join-Path $Root "assets\version_info.txt"
 $ServerCert = Join-Path $Root "certs\gscert.crt"
+$VersionFile = Join-Path $Root "APP_VERSION"
+
+# 빌드마다 새 버전 문자열을 찍는다(자동 업데이트가 "새 버전 있음"을 판단하는 기준).
+# 사람이 기억해서 올릴 필요 없이, 빌드 시각을 그대로 버전으로 쓴다.
+$AppVersion = Get-Date -Format "yyyy.MM.dd.HHmmss"
+Set-Content -Path $VersionFile -Value $AppVersion -NoNewline -Encoding ascii
+Write-Host "App version: $AppVersion"
 
 Invoke-Native $Python -m pip install -r requirements.txt
 $PyInstallerArguments = @(
@@ -42,6 +51,8 @@ $PyInstallerArguments = @(
     "--noconfirm",
     "--windowed",
     "--clean",
+    "--icon", $AppIcon,
+    "--version-file", $WinVersionInfoFile,
     "--paths", $RepoRoot,
     "--collect-submodules", "gscert_review_core",
     "--hidden-import", "fitz",
@@ -68,6 +79,8 @@ else {
 
 $PyInstallerArguments += @(
     "--add-data", "${ServerCert}:certs",
+    "--add-data", "${VersionFile}:.",
+    "--add-data", "${AppIcon}:assets",
     "--distpath", "dist",
     "--workpath", "build",
     "--specpath", "build",
