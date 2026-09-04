@@ -46,6 +46,10 @@ MAX_PDF_PAGES_PER_FILE = 500
 MAX_SLIDES_PER_FILE = 500
 MAX_EXCEL_CELLS_PER_FILE = 200_000
 OCR_TEXT_THRESHOLD = 40
+# Tesseract's default page segmentation (3) routes mixed Korean/Latin blocks to the
+# wrong script and drops most Hangul.  Mode 4 (single column, variable sizes) reads
+# scanned report pages reliably.
+OCR_PAGE_SEGMENTATION_MODE = 4
 MAX_ARCHIVE_ENTRIES = 20_000
 MAX_ARCHIVE_EXPANDED_BYTES = 1024 * 1024 * 1024
 MAX_ARCHIVE_COMPRESSION_RATIO = 200
@@ -169,14 +173,20 @@ def _ocr_pdf_page(page) -> str | None:
             / "GSCert"
             / "tessdata"
         )
-        ocr_config = (
-            f'--tessdata-dir "{local_tessdata}"'
-            if (local_tessdata / "kor.traineddata").exists()
-            else ""
-        )
+        if (local_tessdata / "kor.traineddata").exists():
+            # pytesseract splits ``config`` with ``shlex.split(posix=False)``, which
+            # keeps the quote characters inside the token, so a quoted
+            # ``--tessdata-dir`` path reaches Tesseract with the quotes attached and
+            # every language fails to load.  Hand the directory over through the
+            # environment instead, which also survives paths containing spaces.
+            os.environ["TESSDATA_PREFIX"] = str(local_tessdata)
         pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
         image = Image.frombytes("RGB", (pixmap.width, pixmap.height), pixmap.samples)
-        return pytesseract.image_to_string(image, lang="kor+eng", config=ocr_config)
+        return pytesseract.image_to_string(
+            image,
+            lang="kor+eng",
+            config=f"--psm {OCR_PAGE_SEGMENTATION_MODE}",
+        )
     except (pytesseract.TesseractNotFoundError, pytesseract.TesseractError):
         return None
 

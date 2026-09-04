@@ -890,13 +890,15 @@ def main():
     rows = extract_a_to_n_rows_after_serial(downloaded, start_serial=last_serial, sheet_name="인증획득제품리스트")
     logging.info("추출된 행 수(A~N + Y/Z, 정규화 전): %d", len(rows))
 
+    normalized_row_count = 0
     if rows:
         kolas_cert_numbers = read_kolas_cert_numbers(downloaded)
         logging.info("'%s' 시트에서 KOLAS 인증번호 %d건 확인", OTHER_INFO_SHEET_NAME, len(kolas_cert_numbers))
         rows = append_kolas_column(rows, kolas_cert_numbers)
 
         rows2 = normalize_rows(rows)
-        logging.info("정규화 후 행 수(A~N + O/P/Q): %d", len(rows2))
+        normalized_row_count = len(rows2)
+        logging.info("정규화 후 행 수(A~N + O/P/Q): %d", normalized_row_count)
 
         if rows2:
             append_rows_to_master_xlsx(CFG.master_xlsx, rows2, ensure_cols=True)
@@ -917,11 +919,19 @@ def main():
         logging.exception("신규 점검대상 프로젝트 반영 실패(SwData 적재 자체는 완료됨)")
 
     logging.info("DONE")
+    return normalized_row_count
 
 
 if __name__ == "__main__":
+    # 종료 코드로 후속 자동화(스케줄러)에 결과를 전달한다.
+    #   0 = 정상 종료, 정규화 후 신규 행 없음
+    #   2 = 정상 종료, 정규화 후 신규 행 있음(A~N + O/P/Q > 0)
+    #   1 = 처리 중 예외 발생
     try:
-        main()
+        normalized_row_count = main()
     except Exception:
         logging.exception("UNHANDLED ERROR")
+        sys.exit(1)
+    else:
+        sys.exit(2 if normalized_row_count else 0)
         raise

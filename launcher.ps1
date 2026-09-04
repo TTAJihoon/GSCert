@@ -300,8 +300,9 @@ while ($true) {
                 }
                 Remove-Item Env:\GSCERT_WEEKLY_SOURCE_XLSX -ErrorAction SilentlyContinue
                 & $VenvPython (Join-Path $ScriptDir "main\utils\weekly.py")
+                $weeklyOk = ($LASTEXITCODE -ne 1)
                 Remove-Item Env:\GSCERT_WEEKLY_TARGET_DATE -ErrorAction SilentlyContinue
-                if ($?) { Sync-ReferenceDataFile }
+                if ($weeklyOk) { Sync-ReferenceDataFile }
             } elseif ($mode -eq '2') {
                 $xlsxPath = Read-Host "폴더 또는 파일 경로 입력 (폴더 지정 시 인증획득제품 최신 파일 자동 선택)"
                 $xlsxPath = $xlsxPath.Trim('"').Trim("'")
@@ -312,8 +313,9 @@ while ($true) {
                     Remove-Item Env:\GSCERT_WEEKLY_TARGET_DATE -ErrorAction SilentlyContinue
                     Write-Host "  파일: $xlsxPath" -ForegroundColor Cyan
                     & $VenvPython (Join-Path $ScriptDir "main\utils\weekly.py")
+                    $weeklyOk = ($LASTEXITCODE -ne 1)
                     Remove-Item Env:\GSCERT_WEEKLY_SOURCE_XLSX -ErrorAction SilentlyContinue
-                    if ($?) { Sync-ReferenceDataFile }
+                    if ($weeklyOk) { Sync-ReferenceDataFile }
                 }
             } else {
                 Write-Host "올바른 번호를 입력해 주세요." -ForegroundColor Red

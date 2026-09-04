@@ -31,8 +31,9 @@ Thumbs.db
 main/data/*
 !main/data/README.md
 !main/data/prdinfo.xlsx
-!main/data/reference.xlsx
 !main/data/security.xlsx
+# reference.xlsx: weekly 동기화가 매일 갱신하는 로컬 산출물 — 더 이상 git 추적하지 않음
+main/data/reference.xlsx
 !main/data/ecmlist.db
 !main/data/ecmlist2.db
 main/data/workflow.db

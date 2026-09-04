@@ -3008,7 +3008,9 @@ function renderServerTime() {
     restoring: "정상 시간 복구 중",
     recovery_failed: "복구 확인 실패"
   };
-  qs("serverTimeCurrent").textContent = formatServerDateTime(data.server_time);
+  qs("serverTimeCurrent").textContent = data.server_time
+    ? formatServerDateTime(data.server_time)
+    : "적용 중...";
   qs("serverTimeState").textContent = labels[data.status] || data.status;
   qs("serverTimeOwnerRow").hidden = !data.owner_name;
   qs("serverTimeOwner").textContent = data.owner_name || "-";
@@ -3084,26 +3086,50 @@ function closeServerTimeModal() {
   qs("serverTimePin").value = "";
 }
 
+async function submitServerTimeRequest(action, revision, ownerName, pin, targetTime) {
+  state.serverTime = await requestJson(apiEndpoints.serverTimeAction, {
+    method: "POST",
+    body: JSON.stringify({
+      action,
+      revision,
+      owner_name: ownerName,
+      pin,
+      target_time: action === "restore" ? null : targetTime
+    })
+  });
+  qs("serverTimePin").value = "";
+}
+
 async function submitServerTimeAction(action) {
   const data = state.serverTime;
   if (!data) return;
   const button = action === "change" ? qs("serverTimeChange") : action === "reset" ? qs("serverTimeReset") : qs("serverTimeRestore");
   button.disabled = true;
   qs("serverTimeError").hidden = true;
+  const ownerName = qs("serverTimeName").value;
+  const pin = qs("serverTimePin").value;
+  const targetTime = qs("serverTimeTarget").value;
   try {
-    state.serverTime = await requestJson(apiEndpoints.serverTimeAction, {
-      method: "POST",
-      body: JSON.stringify({
-        action,
-        revision: data.revision,
-        owner_name: qs("serverTimeName").value,
-        pin: qs("serverTimePin").value,
-        target_time: action === "restore" ? null : qs("serverTimeTarget").value
-      })
-    });
-    qs("serverTimePin").value = "";
+    await submitServerTimeRequest(action, data.revision, ownerName, pin, targetTime);
     renderServerTime();
   } catch (error) {
+    if (action === "reset" && error.payload?.error_code === "stale_revision") {
+      // 재설정을 누르는 순간 3분 lease가 자연 만료되어 자동 복구가 먼저 반영되면
+      // "다른 사용자가 먼저 상태를 변경했습니다" 오류가 뜬다. 실제로는 아무도
+      // 끼어든 게 아니라 자동 복구와 타이밍이 겹친 것뿐이고, idle로 돌아왔다면
+      // 사용자가 원한 건 그냥 "새 시간으로 설정"이므로 같은 값으로 한 번 더
+      // 시도해 매끄럽게 이어준다.
+      await refreshServerTime({ silent: true });
+      if (state.serverTime?.status === "idle") {
+        try {
+          await submitServerTimeRequest("change", state.serverTime.revision, ownerName, pin, targetTime);
+          renderServerTime();
+          return;
+        } catch (retryError) {
+          error = retryError;
+        }
+      }
+    }
     qs("serverTimeError").textContent = error.message;
     qs("serverTimeError").hidden = false;
     await refreshServerTime({ silent: true });

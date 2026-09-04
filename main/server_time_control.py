@@ -57,14 +57,23 @@ def normal_time_estimate(control, *, current_uptime_ms=None):
 
 
 def remote_time_estimate(control, *, current_uptime_ms=None):
-    """ECM 서버(85)가 지금 보고 있을 시각 추정값.
+    """ECM 서버(85)가 지금 보고 있을 시각 추정값. None이면 "확정할 수 없음"(적용 중)을 뜻한다.
 
     194 자신은 절대 바뀌지 않으므로 timezone.now()는 항상 194의 실제 시각만
     보여준다. lease가 active/restoring/recovery_failed인 동안은 85가 target_time
     에서부터 흘러온 가짜 시각을 표시 중이므로, 적용 시점(단조 uptime 기준)부터
     지난 시간을 target_time에 더해 85가 지금 보여줄 시각을 추정한다.
+
+    changing 상태(최초 변경 또는 active 중 재설정으로 진입)는 애매하다 — 재설정이면
+    target_time은 이미 새 값으로 바뀌었는데 expires_uptime_ms는 아직 이전 lease의
+    값이라 그대로 계산하면 새 목표와 옛 기준시각이 뒤섞여 틀린 값이 나온다. 그렇다고
+    무작정 194의 실제 시각을 보여주면, active 상태에서 재설정을 누른 짧은 순간
+    "복귀됐다"고 착각하게 만든다(실제로 report된 버그). 그래서 changing 동안은
+    아예 None을 돌려주고, 화면에서는 "적용 중" 같은 중립 표시로 넘긴다.
     """
     current_uptime_ms = current_uptime_ms if current_uptime_ms is not None else uptime_ms()
+    if control.status == ServerTimeControlStatus.CHANGING:
+        return None
     if (
         control.status not in {
             ServerTimeControlStatus.ACTIVE,
@@ -100,7 +109,11 @@ def public_payload(control=None):
         "success": True,
         "status": control.status,
         "revision": control.revision,
-        "server_time": remote_time_estimate(control, current_uptime_ms=current_uptime).isoformat(),
+        "server_time": (
+            estimate.isoformat()
+            if (estimate := remote_time_estimate(control, current_uptime_ms=current_uptime)) is not None
+            else None
+        ),
         "normal_time_estimate": normal_estimate.isoformat() if normal_estimate else None,
         "owner_name": control.owner_name,
         "target_time": control.target_time.isoformat() if control.target_time else None,

@@ -1,0 +1,180 @@
+# DMZ PC 전용 nginx 설정 (리버스 프록시 전용) — Linux
+#
+# 배경/전체 설계: docs/DMZ_EXTERNAL_ACCESS.md
+#
+# 이 PC 에는 애플리케이션·DB·공유폴더·자격증명을 두지 않는다.
+# 침해되더라도 공격자가 얻는 것은 이 설정 파일뿐이어야 한다.
+#
+# 도메인은 사내와 동일한 gsai.tta.or.kr 이다 (split-horizon DNS).
+#   공개 DNS: gsai.tta.or.kr → 이 DMZ PC 의 공인 IP
+#   사내 DNS: gsai.tta.or.kr → 210.96.71.194 (직결, DMZ 를 거치지 않음)
+# 도메인이 같으므로 Host 헤더를 재작성할 필요가 없다 — 그대로 통과시킨다.
+# 따라서 Django 의 CSRF_TRUSTED_ORIGINS·센터 라우팅 BY_HOST 에 추가 작업이 없다.
+#
+# 치환할 값:
+#   __INTERNAL_IP__   내부 앱서버 IP (예: 210.96.71.194)
+#
+# 경계에 WAF/IPS 가 적용되어 있으므로(B-3) 여기서는 최소한의 차단만 둔다.
+
+worker_processes  auto;
+
+events {
+    worker_connections  1024;
+}
+
+http {
+    include       /etc/nginx/mime.types;
+    default_type  application/octet-stream;
+
+    sendfile           on;
+    keepalive_timeout  300;
+    server_tokens      off;
+
+    # 외부 공개 한도 (C-4). 사내 194 는 200m 유지.
+    client_max_body_size 50m;
+
+    log_format dmz '$remote_addr - $host "$request" $status $body_bytes_sent '
+                   '"$http_user_agent" upstream=$upstream_status rt=$request_time';
+    access_log /var/log/nginx/dmz_access.log dmz;
+
+    # 로그인 무차별 시도 완화. fail2ban 이 이 로그를 보고 IP 를 차단한다.
+    limit_req_zone $binary_remote_addr zone=login:10m   rate=10r/m;
+    limit_req_zone $binary_remote_addr zone=general:10m rate=30r/s;
+    limit_req_zone $binary_remote_addr zone=llm:10m     rate=6r/m;    # C-3
+    limit_req_zone $binary_remote_addr zone=bulk:10m    rate=10r/m;   # C-5
+    limit_conn_zone $binary_remote_addr zone=perip:10m;
+
+    # ── 업스트림 공통 설정 ────────────────────────────────────────────────
+    # 별도 파일로 두고 include 한다: /etc/nginx/snippets/proxy_to_app.conf
+    #
+    #   proxy_pass https://__INTERNAL_IP__;
+    #
+    #   # Host 그대로 통과 (사내와 같은 도메인이므로 재작성 불필요)
+    #   proxy_set_header Host $host;
+    #
+    #   # X-Forwarded-For 는 append 가 아니라 "덮어쓰기".
+    #   # Django 의 _client_ip() 가 첫 번째 값을 신뢰하므로 append 하면
+    #   # 외부 사용자가 사내 IP 를 위조해 감사 로그와 판정 기록을 오염시킬 수 있다.
+    #   # 194 쪽은 set_real_ip_from <이 DMZ IP> 로 이 값을 신뢰한다.
+    #   proxy_set_header X-Forwarded-For   $remote_addr;
+    #   proxy_set_header X-Real-IP         $remote_addr;
+    #   proxy_set_header X-Forwarded-Proto https;
+    #
+    #   # 업스트림(194)은 자체서명이지만 검증을 유지한다.
+    #   # gscert.crt 는 194 의 C:\nginx-1.29.8\conf\gscert.crt 를 복사한 것.
+    #   proxy_ssl_name                gsai.tta.or.kr;
+    #   proxy_ssl_server_name         on;
+    #   proxy_ssl_trusted_certificate /etc/nginx/ssl/gscert.crt;
+    #   proxy_ssl_verify              on;
+    #   proxy_ssl_verify_depth        2;
+    #
+    #   proxy_connect_timeout 600s;
+    #   proxy_send_timeout    600s;
+    #   proxy_read_timeout    600s;
+
+    # HTTP → HTTPS (B-4). 리다이렉트만 하고 앱으로 넘기지 않는다.
+    server {
+        listen 80;
+        server_name gsai.tta.or.kr;
+        return 308 https://gsai.tta.or.kr$request_uri;
+    }
+
+    # 정의되지 않은 Host / IP 직접 접속은 응답하지 않는다 (스캐너 차단).
+    server {
+        listen 443 ssl default_server;
+        server_name _;
+        ssl_certificate     /etc/letsencrypt/live/gsai.tta.or.kr/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/gsai.tta.or.kr/privkey.pem;
+        return 444;
+    }
+
+    server {
+        listen 443 ssl;
+        http2 on;
+        server_name gsai.tta.or.kr;
+
+        # Let's Encrypt DNS-01 (D-2). 자동 갱신 실패 알림은 필수 — 놓치면 90일 후 서비스 정지.
+        ssl_certificate     /etc/letsencrypt/live/gsai.tta.or.kr/fullchain.pem;
+        ssl_certificate_key /etc/letsencrypt/live/gsai.tta.or.kr/privkey.pem;
+        ssl_protocols       TLSv1.2 TLSv1.3;
+        ssl_session_cache   shared:SSL:10m;
+        ssl_session_timeout 10m;
+
+        add_header Strict-Transport-Security "max-age=31536000" always;
+        add_header X-Content-Type-Options    nosniff            always;
+        add_header X-Frame-Options           SAMEORIGIN         always;
+        add_header Referrer-Policy           strict-origin-when-cross-origin always;
+
+        limit_conn perip 20;
+        limit_req  zone=general burst=60 nodelay;
+
+        # ── 외부에 열지 않는 경로 ──────────────────────────────────────────
+
+        # Django admin (A-6): 점검규칙 편집과 임의 계정 비밀번호 변경이 가능하다.
+        # 사내 직결(사내 DNS → 194)에서만 접근한다.
+        location ^~ /admin/ { return 404; }
+
+        # 로컬 점검 Windows 앱 전용 API (C-1): 사내 전용.
+        # 브라우저 세션이 없어 전역 로그인 미들웨어의 예외 경로이므로 여기서 막는다.
+        location ^~ /api/local-review/ { return 404; }
+
+        # 상담 앱 (8787, D-6): 194 nginx 가 Django 를 거치지 않고 직접 프록시하므로
+        # 우리 로그인·hd 검증·감사 로그가 적용되지 않는다 → 외부 차단.
+        # 사내는 사내 DNS 로 194 직결이라 영향 없음.
+        # 추후 8787 팀과 협의해 개방하려면 이 블록만 제거한다.
+        location ^~ /consultation/ { return 404; }
+
+        # ── 인증 경로 ─────────────────────────────────────────────────────
+        # GET(로그인 화면)은 허용, POST(비밀번호 제출)는 차단한다.
+        # 구글 로그인 전용이므로(A-4) 외부에서 비밀번호로 들어올 경로를 없앤다.
+        # 비상용 superuser 는 사내 직결로만 비밀번호 로그인한다.
+        location = /accounts/login/ {
+            limit_req zone=login burst=5 nodelay;
+            if ($request_method = POST) { return 404; }
+            include /etc/nginx/snippets/proxy_to_app.conf;
+        }
+
+        # 구글 OAuth 콜백 등 (E1 구현 시 실제 경로에 맞춘다)
+        location ^~ /oauth/ {
+            limit_req zone=login burst=10 nodelay;
+            include /etc/nginx/snippets/proxy_to_app.conf;
+        }
+
+        # ── 한도를 두는 경로 ──────────────────────────────────────────────
+
+        # LLM 엔드포인트 (C-3): 계정 탈취 시 과금 폭주를 막는다.
+        location ^~ /security/gpt/          { limit_req zone=llm  burst=3 nodelay; include /etc/nginx/snippets/proxy_to_app.conf; }
+        location = /summarize_document/     { limit_req zone=llm  burst=3 nodelay; include /etc/nginx/snippets/proxy_to_app.conf; }
+
+        # 대량 다운로드 (C-5): 계정 하나로 전체 산출물을 벌크로 빼가는 것을 완화한다.
+        location = /api/projects/bulk-download/ { limit_req zone=bulk burst=2 nodelay; include /etc/nginx/snippets/proxy_to_app.conf; }
+
+        # ── WebSocket ─────────────────────────────────────────────────────
+        # HTTP 미들웨어가 적용되지 않는 경로다. consumer 쪽 인증 검사(E3)가 선행되어야 한다.
+        location /ws/ {
+            proxy_pass https://__INTERNAL_IP__;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade    $http_upgrade;
+            proxy_set_header Connection "upgrade";
+            proxy_set_header Host       $host;
+
+            proxy_set_header X-Forwarded-For   $remote_addr;
+            proxy_set_header X-Real-IP         $remote_addr;
+            proxy_set_header X-Forwarded-Proto https;
+
+            proxy_ssl_name                gsai.tta.or.kr;
+            proxy_ssl_server_name         on;
+            proxy_ssl_trusted_certificate /etc/nginx/ssl/gscert.crt;
+            proxy_ssl_verify              on;
+            proxy_ssl_verify_depth        2;
+            proxy_read_timeout            600s;
+        }
+
+        # ── 나머지 전부 ───────────────────────────────────────────────────
+        # /api/server-time/* 도 여기로 들어간다 (C-2: 로그인한 전원 사용 가능).
+        # 차단하지 않는 대신 호출 발생 시 알림을 보낸다 (모니터링 2단계).
+        location / {
+            include /etc/nginx/snippets/proxy_to_app.conf;
+        }
+    }
+}
