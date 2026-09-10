@@ -527,6 +527,8 @@ class ManualMetadataDialog(QDialog):
         ("start_date", "시험 시작일", True),
         ("end_date", "시험 종료일", True),
         ("cert_date", "인증일자", False),
+        ("request_date", "신청일", False),
+        ("contract_date", "계약일", False),
     ]
 
     def __init__(
@@ -750,9 +752,11 @@ class HelpDialog(QDialog):
             "GS 프로젝트 정보",
             None,
             "{GS 정보 확인}: 입력된 프로젝트 번호로 서버에서 기준정보(회사명·제품명·PL·WD·인증일·"
-            "시험기간)를 다시 조회<br>"
+            "신청일·계약일·시험기간)를 다시 조회<br>"
             "{GS 검색}: 프로젝트 번호를 모를 때 인증 이력에서 검색해 선택<br>"
-            "{직접 입력}: 서버 조회가 안 되거나(인증 전 등) 정보가 틀렸을 때 수동 입력<br>"
+            "{직접 입력}: 서버 조회가 안 되거나(인증 전 등) 정보가 틀렸을 때 수동 입력. 이때"
+            " 서버가 구글시트에서 한 번 더 자동 조회해 값이 있으면 입력창에 미리 채워줍니다"
+            "(서버 연결 필요)<br>"
             "온라인으로 한 번 조회에 성공한 프로젝트는 로컬에 저장되어, 이후 오프라인으로"
             " 같은 프로젝트를 열면 자동으로 채워집니다(직접 입력한 값은 저장되지 않습니다).",
         ),
@@ -1534,6 +1538,7 @@ class MainWindow(QMainWindow):
                 self._set_metadata(completed)
                 self._save_settings()
         prefill = self._agreement_prefill()
+        prefill.update(self._google_sheet_prefill(project_number))
         dialog = ManualMetadataDialog(
             project_number, initial=self.current_metadata, prefill=prefill, parent=self
         )
@@ -1686,6 +1691,19 @@ class MainWindow(QMainWindow):
         if product:
             prefill["product_name"] = product
         return prefill
+
+    def _google_sheet_prefill(self, project_number: str) -> dict:
+        """reference DB/reference.xlsx에서 못 찾은 프로젝트를 서버가 구글시트에서 한 번 더
+        조회하도록 요청해, 직접 입력 창의 초기값으로 제공한다. 서버 연결이 필요하며,
+        실패(오프라인 등)하면 조용히 건너뛴다 — 다른 값이 없으면 결국 수동 입력하면 된다."""
+        project_number = (project_number or "").strip()
+        if not project_number:
+            return {}
+        try:
+            result = self._client().google_sheet_lookup(project_number)
+        except ApiClientError:
+            return {}
+        return result or {}
 
     def scan_files(self):
         if self._scan_worker is not None:

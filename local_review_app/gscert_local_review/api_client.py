@@ -110,6 +110,15 @@ class GSCertApiClient:
         payload = self._get_json(f"/api/reference/search/?{query}")
         return [ReferenceItem.from_dict(item) for item in (payload.get("items") or [])]
 
+    def google_sheet_lookup(self, project_number: str) -> dict[str, Any] | None:
+        """reference DB/reference.xlsx에 없는 프로젝트를 서버가 구글시트에서 한 번 더
+        조회하도록 요청한다. 서버가 구글시트를 조회하므로 서버 연결이 필요하다."""
+        query = urlencode({"project_number": project_number.strip()})
+        payload = self._get_json(f"/api/reference/google-sheet-lookup/?{query}")
+        if not payload.get("found"):
+            return None
+        return payload.get("project") or {}
+
     def rule_bundle(self, version: str = "") -> dict[str, Any]:
         query = urlencode({"version": version}) if version else ""
         suffix = f"?{query}" if query else ""

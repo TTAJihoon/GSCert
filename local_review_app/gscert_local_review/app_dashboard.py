@@ -252,6 +252,8 @@ class DashboardWindow(MainWindow):
 
         self.period = _muted("시험기간 —")
         layout.addWidget(self.period)
+        self.request_contract_period = _muted("신청일 — · 계약일 —")
+        layout.addWidget(self.request_contract_period)
 
         badges = QHBoxLayout()
         badges.setSpacing(8)
@@ -448,10 +450,14 @@ class DashboardWindow(MainWindow):
         metadata = self.current_metadata
         if metadata is None:
             self.period.setText("시험기간 —")
+            self.request_contract_period.setText("신청일 — · 계약일 —")
             return
         start = metadata.start_date or "—"
         end = metadata.end_date or "—"
         self.period.setText(f"시험기간 {start} - {end}")
+        request_date = metadata.request_date or "—"
+        contract_date = metadata.contract_date or "—"
+        self.request_contract_period.setText(f"신청일 {request_date} · 계약일 {contract_date}")
 
     def _set_file_rows(self, scan):
         super()._set_file_rows(scan)

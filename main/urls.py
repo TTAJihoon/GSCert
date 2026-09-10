@@ -15,7 +15,7 @@ from main.views.certy.prdinfo_download import download_filled_prdinfo
 from main.views.certy.prdinfo_db import lookup_cert_info
 
 from main.views.review.checkreport import parse_view
-from main.views.reference_search import reference_search
+from main.views.reference_search import reference_search, reference_google_sheet_lookup
 
 from main.views.review.ecm_download_review_api import (
     active_job as download_review_active_job,
@@ -95,5 +95,6 @@ urlpatterns = [
     path('api/local-review/rules/manifest/', local_review_rules_manifest, name='local_review_rules_manifest'),
     path('api/local-review/rules/bundle/', local_review_rules_bundle, name='local_review_rules_bundle'),
     path('api/reference/search/', reference_search, name='reference_search'),
+    path('api/reference/google-sheet-lookup/', reference_google_sheet_lookup, name='reference_google_sheet_lookup'),
 
 ]
