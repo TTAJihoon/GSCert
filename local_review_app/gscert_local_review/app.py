@@ -752,11 +752,12 @@ class HelpDialog(QDialog):
             "GS 프로젝트 정보",
             None,
             "{GS 정보 확인}: 입력된 프로젝트 번호로 서버에서 기준정보(회사명·제품명·PL·WD·인증일·"
-            "신청일·계약일·시험기간)를 다시 조회<br>"
+            "신청일·계약일·시험기간)를 다시 조회. 서버 DB에 없으면 서버가 구글시트에서 한 번"
+            " 더 자동 조회하며, 여기서 찾으면 물어보지 않고 바로 채웁니다(서버 연결 필요)<br>"
             "{GS 검색}: 프로젝트 번호를 모를 때 인증 이력에서 검색해 선택<br>"
-            "{직접 입력}: 서버 조회가 안 되거나(인증 전 등) 정보가 틀렸을 때 수동 입력. 이때"
-            " 서버가 구글시트에서 한 번 더 자동 조회해 값이 있으면 입력창에 미리 채워줍니다"
-            "(서버 연결 필요)<br>"
+            "{직접 입력}: 서버·구글시트 모두에서 못 찾았거나(인증 전 등) 정보가 틀렸을 때"
+            " 수동 입력. 이때도 서버가 구글시트를 한 번 더 조회해 값이 있으면 입력창에 미리"
+            " 채워줍니다<br>"
             "온라인으로 한 번 조회에 성공한 프로젝트는 로컬에 저장되어, 이후 오프라인으로"
             " 같은 프로젝트를 열면 자동으로 채워집니다(직접 입력한 값은 저장되지 않습니다).",
         ),
@@ -1515,11 +1516,34 @@ class MainWindow(QMainWindow):
                 age_text = metadata_cache.format_cache_age(cached_at)
                 self._set_action_status(f"기준정보 캐시 사용 ({age_text})", C_WARNING)
                 return
-            # 캐시도 없으면(이 프로젝트를 온라인으로 한 번도 조회한 적 없음) 직접 입력을 제안한다.
+            # 캐시도 없으면(이 프로젝트를 온라인으로 한 번도 조회한 적 없음) 서버가
+            # 구글시트에서 한 번 더 조회하도록 요청한다 — reference DB/reference.xlsx에
+            # 없는 신규 프로젝트를 위한 마지막 온라인 경로. 여기서 찾으면 직접 입력을
+            # 물어보지 않고 바로 채운다.
+            sheet_result = self._google_sheet_prefill(project_number)
+            if sheet_result:
+                metadata = ProjectMetadata(
+                    project_number=project_number,
+                    company_name=sheet_result.get("company_name", ""),
+                    product_name=sheet_result.get("product_name", ""),
+                    pl_name=sheet_result.get("pl_name", ""),
+                    wd_name=sheet_result.get("wd_name", ""),
+                    request_date=sheet_result.get("request_date", ""),
+                    contract_date=sheet_result.get("contract_date", ""),
+                    start_date=sheet_result.get("start_date", ""),
+                    end_date=sheet_result.get("end_date", ""),
+                )
+                metadata = self._complete_metadata_from_reference(metadata, project_number)
+                self._set_metadata(metadata)
+                self._save_settings()
+                metadata_cache.save_metadata(metadata)
+                self._set_action_status("구글시트에서 기준정보 조회됨", C_SUCCESS)
+                return
+            # 구글시트에도 없으면 직접 입력을 제안한다.
             answer = QMessageBox.question(
                 self,
                 "기준정보 조회 실패",
-                f"서버에서 기준정보를 가져오지 못했습니다.\n{exc}\n\n직접 입력하시겠습니까?",
+                "해당 프로젝트 정보를 서버에서 찾지 못했습니다.\n직접 입력하시겠습니까?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
             )
             if answer == QMessageBox.StandardButton.Yes:
