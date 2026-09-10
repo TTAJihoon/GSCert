@@ -2,6 +2,20 @@
 document.addEventListener('DOMContentLoaded', function () {
     const form = document.getElementById('queryForm');
     const clearButton = document.getElementById('clearSearchBtn');
+    const dateFilterType = document.getElementById('date_filter_type');
+    const dateFilterButtons = Array.from(document.querySelectorAll('.date-filter-toggle'));
+
+    dateFilterButtons.forEach(function(button) {
+        button.addEventListener('click', function() {
+            const selectedType = button.dataset.dateFilterType;
+            if (dateFilterType) dateFilterType.value = selectedType;
+            dateFilterButtons.forEach(function(candidate) {
+                const isActive = candidate === button;
+                candidate.classList.toggle('active', isActive);
+                candidate.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+            });
+        });
+    });
 
     if (clearButton) {
         clearButton.addEventListener('click', function() {
@@ -27,8 +41,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const product = document.getElementById('product').value.trim();
         const tester = document.getElementById('tester').value.trim();
         const comment = document.getElementById('comment').value.trim();
+        const startDate = document.getElementById('start_date').value.trim();
+        const endDate = document.getElementById('end_date').value.trim();
 
-        if (!gsnum && !project && !company && !product && !tester && !comment) {
+        if (!gsnum && !project && !company && !product && !tester && !comment && !startDate && !endDate) {
             e.preventDefault();
             alert('검색 조건을 입력해주세요');
             return false;

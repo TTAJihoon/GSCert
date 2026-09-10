@@ -11,8 +11,8 @@
 
 <link rel="stylesheet" href="{% static 'css/testing/history.css' %}?v=6"/>
 <link rel="stylesheet" href="{% static 'css/helpbtn.css' %}"/>
-<script src="{% static 'scripts/testing/history_set_date.js' %}" defer></script>
-<script src="{% static 'scripts/testing/history_Listener.js' %}?v=4" defer></script>
+<script src="{% static 'scripts/testing/history_set_date.js' %}?v=2" defer></script>
+<script src="{% static 'scripts/testing/history_Listener.js' %}?v=5" defer></script>
 <script src="{% static 'scripts/testing/history_resizable_columns.js' %}?v=2" defer></script>
 <script src="{% static 'scripts/testing/history_document.js' %}" defer></script>
 <script src="{% static 'scripts/testing/history_notes_popover.js' %}?v=2" defer></script>
@@ -66,7 +66,17 @@
         </div>
 
         <div class="form-group" id="date-group">
-          <label class="form-label">기간</label>
+          <div class="date-filter-heading">
+            <label class="form-label" for="start_date">기간</label>
+            <div class="date-filter-toggle-group" role="group" aria-label="기간 검색 기준">
+              <button type="button" class="date-filter-toggle{% if date_filter_type != 'cert' %} active{% endif %}"
+                data-date-filter-type="test" aria-pressed="{% if date_filter_type == 'cert' %}false{% else %}true{% endif %}">시험일자</button>
+              <button type="button" class="date-filter-toggle{% if date_filter_type == 'cert' %} active{% endif %}"
+                data-date-filter-type="cert" aria-pressed="{% if date_filter_type == 'cert' %}true{% else %}false{% endif %}">인증일자</button>
+            </div>
+          </div>
+          <input type="hidden" name="date_filter_type" id="date_filter_type"
+            value="{% if date_filter_type == 'cert' %}cert{% else %}test{% endif %}">
           <input type="date" class="form-input" name="start_date" id="start_date"
             value="{% if start_date %}{{ start_date }}{% else %}2023-01-01{% endif %}"
             style="margin-bottom: 5px;">
@@ -79,14 +89,6 @@
             <button type="button" class="shortcut-btn" onclick="setYearsAgo(7)">7년</button>
             <button type="button" class="shortcut-btn" id="ten-years-btn" onclick="setYearsAgo(10)">10년</button>
           </div>
-        </div>
-
-        <div class="form-group" id="cert-date-group">
-          <label class="form-label">인증일자 기간</label>
-          <input type="date" class="form-input" name="cert_date_start" id="cert_date_start"
-            value="{{ cert_date_start }}" style="margin-bottom: 5px;">
-          <input type="date" class="form-input" name="cert_date_end" id="cert_date_end"
-            value="{{ cert_date_end }}">
         </div>
 
         <div class="form-group" id="comment-group">

@@ -6319,6 +6319,50 @@ class HistoryCertDatePeriodFilterTests(SimpleTestCase):
         self.assertIn("2026.06.08", content)
         self.assertNotIn("2026.12.31", content)
 
+    @patch("main.views.testing.history.GS_history")
+    def test_cert_date_toggle_uses_shared_period_only_for_certification_date(self, gs_history):
+        from main.views.testing.history import history
+
+        gs_history.return_value = self._rows()
+        request = self.factory.post("/history/", {
+            "date_filter_type": "cert",
+            "start_date": "2026-02-01",
+            "end_date": "2026-11-30",
+        })
+
+        response = history(request)
+
+        self.assertEqual(response.status_code, 200)
+        gs_history.assert_called_once_with("", "", "", "", "", "", "", "", "")
+        content = response.content.decode("utf-8")
+        self.assertIn('name="date_filter_type" id="date_filter_type"\n            value="cert"', content)
+        self.assertNotIn("2026.01.05", content)
+        self.assertIn("2026.06.08", content)
+        self.assertNotIn("2026.12.31", content)
+
+    @patch("main.views.testing.history.GS_history")
+    def test_test_date_toggle_passes_shared_period_to_history_query(self, gs_history):
+        from main.views.testing.history import history
+
+        gs_history.return_value = self._rows()
+        request = self.factory.post("/history/", {
+            "date_filter_type": "test",
+            "start_date": "2026-02-01",
+            "end_date": "2026-11-30",
+        })
+
+        response = history(request)
+
+        self.assertEqual(response.status_code, 200)
+        gs_history.assert_called_once_with(
+            "", "", "", "", "", "", "", "2026-02-01", "2026-11-30"
+        )
+        content = response.content.decode("utf-8")
+        self.assertIn('data-date-filter-type="test" aria-pressed="true"', content)
+        self.assertIn("2026.01.05", content)
+        self.assertIn("2026.06.08", content)
+        self.assertIn("2026.12.31", content)
+
 
 @override_settings(SERVER_DOMAIN="gsai.tta.or.kr")
 class CanonicalHostAndMainPageTests(SimpleTestCase):

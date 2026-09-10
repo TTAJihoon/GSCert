@@ -1,5 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
-  document.getElementById('ten-years-btn').click();
+  const startDateInput = document.getElementById('start_date');
+  const endDateInput = document.getElementById('end_date');
+  if (startDateInput && endDateInput && (!startDateInput.value || !endDateInput.value)) {
+    setYearsAgo(10);
+  }
 });
 
 function setYearsAgo(years) {

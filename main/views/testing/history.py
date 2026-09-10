@@ -133,8 +133,27 @@ def history(request):
         tester = request.POST.get('tester', '')
         startDate = request.POST.get('start_date', '')
         endDate = request.POST.get('end_date', '')
-        certDateStart = request.POST.get('cert_date_start', '')
-        certDateEnd = request.POST.get('cert_date_end', '')
+        legacyCertDateStart = request.POST.get('cert_date_start', '')
+        legacyCertDateEnd = request.POST.get('cert_date_end', '')
+        dateFilterType = request.POST.get('date_filter_type', '').strip().lower()
+        if dateFilterType not in {'test', 'cert'}:
+            # 이전 화면/클라이언트가 인증일자 전용 필드로 요청한 경우도 계속 지원한다.
+            dateFilterType = 'cert' if legacyCertDateStart or legacyCertDateEnd else 'test'
+
+        if dateFilterType == 'cert':
+            certDateStart = startDate or legacyCertDateStart
+            certDateEnd = endDate or legacyCertDateEnd
+            testDateStart = ''
+            testDateEnd = ''
+            visibleStartDate = certDateStart
+            visibleEndDate = certDateEnd
+        else:
+            certDateStart = ''
+            certDateEnd = ''
+            testDateStart = startDate
+            testDateEnd = endDate
+            visibleStartDate = startDate
+            visibleEndDate = endDate
         comment = request.POST.get('comment', '')
         search_terms = _search_terms(
             comment=comment,
@@ -142,8 +161,8 @@ def history(request):
             product=product,
             sw_type=sw_type,
             tester=tester,
-            start_date=startDate,
-            end_date=endDate,
+            start_date=testDateStart,
+            end_date=testDateEnd,
             cert_date_start=certDateStart,
             cert_date_end=certDateEnd,
             gsnum=gsnum,
@@ -162,14 +181,25 @@ def history(request):
             'product': product,
             'sw_type': sw_type,
             'tester': tester,
-            'start_date': startDate,
-            'end_date': endDate,
+            'start_date': visibleStartDate,
+            'end_date': visibleEndDate,
+            'date_filter_type': dateFilterType,
             'cert_date_start': certDateStart,
             'cert_date_end': certDateEnd,
             'comment': comment,
         }
 
-        tables = GS_history(gsnum, project, company, product, sw_type, tester, comment, startDate, endDate)
+        tables = GS_history(
+            gsnum,
+            project,
+            company,
+            product,
+            sw_type,
+            tester,
+            comment,
+            testDateStart,
+            testDateEnd,
+        )
         tables = _filter_by_cert_date_range(tables, certDateStart, certDateEnd)
         set_request_log_context(request, result_count=len(tables))
 

@@ -11,8 +11,11 @@ body {
 
 .main-content {
   width: 339px;
+  min-width: 339px;
+  min-height: 0;
   position: relative;
   padding: 25px;
+  overflow: auto;
   transition: width 0.25s ease, padding 0.25s ease;
 }
 
@@ -51,7 +54,9 @@ body {
 /* 접힌 상태: main-content 를 얇은 탭만 남기고 접는다 */
 .app-container.sidebar-collapsed .main-content {
   width: 21px;
+  min-width: 21px;
   padding: 0;
+  overflow: hidden;
 }
 
 .app-container.sidebar-collapsed .sidebar-container,

@@ -57,11 +57,12 @@ body {
 /* 사이드바: 고정 폭 300px, 세로 꽉 채움 */
 .sidebar {
   flex: 0 0 300px;       /* 고정 300px */
+  min-width: 300px;
   height: 100%;
   background: var(--tta-gray);
   border-right: 1px solid var(--tta-border);
   padding: 20px;
-  overflow: hidden;
+  overflow: auto;
   transition: flex-basis 0.25s ease, opacity 0.2s ease, padding 0.25s ease;
 }
 
@@ -179,6 +180,55 @@ body {
   font-weight: bold;
   color: #333;
 }
+
+.date-filter-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.date-filter-heading .form-label {
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.date-filter-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 유사 시험 조회의 날짜순/유사도순 버튼과 같은 상태 표현을 사용한다. */
+.date-filter-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 9px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: #fff;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.date-filter-toggle:hover {
+  border-color: #93c5fd;
+  background: #eff6ff;
+  color: #64748b;
+}
+
+.date-filter-toggle.active {
+  border-color: #60a5fa;
+  background: #dbeafe;
+  color: #1e40af;
+}
+
 .form-input {
   width: 100%;
   padding: 8px 12px;
