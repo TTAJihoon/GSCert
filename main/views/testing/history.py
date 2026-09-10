@@ -1,7 +1,6 @@
 import re
 from datetime import date
 
-from django.db.models import Q
 from django.shortcuts import render
 
 from main.models import SwData
@@ -104,6 +103,60 @@ def _parse_iso_date(value):
         return date.fromisoformat(text)
     except ValueError:
         return None
+
+
+_TEST_DATE_PATTERN = re.compile(
+    r"^(?P<year>\d{4})\s*(?P<separator>[-./])\s*(?P<month>\d{1,2})"
+    r"\s*(?P=separator)\s*(?P<day>\d{1,2})\.?$"
+)
+
+
+def _parse_test_date(value):
+    """시험기간 셀 하나를 엄격하게 실제 날짜로 변환한다.
+
+    reference DB의 정상 표기인 yyyy-mm-dd, yyyy.mm.dd, yyyy/mm/dd와 끝 마침표는
+    허용하되, 빈 값·설명 문구·기간 문자열·존재하지 않는 날짜는 None으로 본다.
+    """
+    text = str(value or "").strip()
+    match = _TEST_DATE_PATTERN.fullmatch(text)
+    if not match:
+        return None
+    try:
+        return date(
+            int(match.group("year")),
+            int(match.group("month")),
+            int(match.group("day")),
+        )
+    except ValueError:
+        return None
+
+
+def _filter_by_test_date_range(rows, start_date, end_date):
+    """유효한 시험 시작·종료일이 검색 범위 안에 모두 들어오는 행만 반환한다."""
+    raw_start = str(start_date or "").strip()
+    raw_end = str(end_date or "").strip()
+    if not raw_start and not raw_end:
+        return rows
+
+    search_start = _parse_iso_date(raw_start)
+    search_end = _parse_iso_date(raw_end)
+    if (raw_start and not search_start) or (raw_end and not search_end):
+        return []
+    if search_start and search_end and search_start > search_end:
+        return []
+
+    filtered = []
+    for row in rows:
+        row_start = _parse_test_date(row.get("start_date"))
+        row_end = _parse_test_date(row.get("end_date"))
+        if not row_start or not row_end or row_start > row_end:
+            continue
+        if search_start and row_start < search_start:
+            continue
+        if search_end and row_end > search_end:
+            continue
+        filtered.append(row)
+    return filtered
 
 
 def _filter_by_cert_date_range(tables, cert_date_start, cert_date_end):
@@ -251,16 +304,9 @@ def GS_history(gsnum='', project='', company='', product='', sw_type='', tester=
         qs = qs.filter(test_lab__icontains=tester)
     if comment.strip():
         qs = qs.filter(product_desc__icontains=comment)
-    # 날짜 범위 필터는 값이 있는 행에만 적용한다. sw_data 의 start_date/end_date 는
-    # 비어 있는 행이 많은데(예: 최근 등록분), 폼이 기본 날짜를 항상 채워 제출하므로
-    # 단순 __gte/__lte 로 걸면 '날짜가 빈 행'이 전부 제외돼 검색 결과가 사라진다.
-    # → 빈 날짜(미기재) 행은 날짜 조건으로 배제하지 않는다.
-    if startDate.strip():
-        qs = qs.filter(Q(start_date__gte=startDate) | Q(start_date=""))
-    if endDate.strip():
-        qs = qs.filter(Q(end_date__lte=endDate) | Q(end_date=""))
+    rows = _filter_by_test_date_range(qs.values(), startDate, endDate)
 
     return [
         {_FIELD_TO_KR[k]: v for k, v in obj.items() if k in _FIELD_TO_KR}
-        for obj in qs.values()
+        for obj in rows
     ]

@@ -6364,6 +6364,54 @@ class HistoryCertDatePeriodFilterTests(SimpleTestCase):
         self.assertIn("2026.12.31", content)
 
 
+class HistoryTestDatePeriodFilterTests(SimpleTestCase):
+    """시험일자 검색에서 공백·비정상 기간을 제외하는지 검증한다."""
+
+    def test_only_valid_complete_periods_inside_range_are_included(self):
+        from main.views.testing.history import _filter_by_test_date_range
+
+        rows = [
+            {"serial_number": 1, "start_date": "2026-03-01", "end_date": "2026-03-31"},
+            {"serial_number": 2, "start_date": "2026.4.1.", "end_date": "2026/4/30"},
+            {"serial_number": 3, "start_date": "", "end_date": ""},
+            {"serial_number": 4, "start_date": "미정", "end_date": "2026-05-31"},
+            {"serial_number": 5, "start_date": "2026-02-30", "end_date": "2026-03-31"},
+            {"serial_number": 6, "start_date": "2026-06-30", "end_date": "2026-06-01"},
+            {"serial_number": 7, "start_date": "2026-03-01 ~ 2026-03-31", "end_date": "2026-03-31"},
+            {"serial_number": 8, "start_date": "2025-12-31", "end_date": "2026-01-10"},
+            {"serial_number": 9, "start_date": "2026-12-20", "end_date": "2027-01-10"},
+            {"serial_number": 10, "start_date": "2026-07-01", "end_date": ""},
+            {"serial_number": 11, "start_date": "", "end_date": "2026-07-31"},
+            {"serial_number": 12, "start_date": "2026-08.01", "end_date": "2026-08-31"},
+        ]
+
+        filtered = _filter_by_test_date_range(rows, "2026-01-01", "2026-12-31")
+
+        self.assertEqual([row["serial_number"] for row in filtered], [1, 2])
+
+    def test_invalid_search_boundary_returns_no_rows(self):
+        from main.views.testing.history import _filter_by_test_date_range
+
+        rows = [{"serial_number": 1, "start_date": "2026-03-01", "end_date": "2026-03-31"}]
+
+        self.assertEqual(_filter_by_test_date_range(rows, "invalid", "2026-12-31"), [])
+        self.assertEqual(_filter_by_test_date_range(rows, "2026-12-31", "2026-01-01"), [])
+
+    @patch("main.views.testing.history.SwData.objects.using")
+    def test_gs_history_applies_strict_period_filter(self, using):
+        from main.views.testing.history import GS_history
+
+        using.return_value.values.return_value = [
+            {"serial_number": 1, "start_date": "2026-03-01", "end_date": "2026-03-31"},
+            {"serial_number": 2, "start_date": "", "end_date": ""},
+            {"serial_number": 3, "start_date": "날짜 확인 필요", "end_date": "2026-03-31"},
+        ]
+
+        rows = GS_history(startDate="2026-01-01", endDate="2026-12-31")
+
+        self.assertEqual([row["일련번호"] for row in rows], [1])
+
+
 @override_settings(SERVER_DOMAIN="gsai.tta.or.kr")
 class CanonicalHostAndMainPageTests(SimpleTestCase):
     def test_ipv4_access_redirects_to_canonical_domain_with_path_and_query(self):
