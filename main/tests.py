@@ -4269,6 +4269,102 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(result.message, "시험성적서의 결함 차수와 결함리포트 개수가 다름")
         self.assertEqual(result.actual, "결함리포트 Excel 파일 2개")
 
+    def _run_test_report_footer_check(self, *, mentions_kolas, footer_text):
+        project_dir = Path(self.temp_dir.name) / f"report_footer_{footer_text.replace('(', '').replace(')', '')}"
+        project_dir.mkdir(parents=True)
+        zip_path = project_dir / "TTA-26-00010.zip"
+        paragraphs = ["한국인정기구(KOLAS) 공인시험기관"] if mentions_kolas else ["시험 결과 보고서"]
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            archive.writestr(
+                "6.시험/나.종료/TTA-26-00010 시험성적서.docx",
+                _docx_bytes(
+                    header="TTA-26-00010",
+                    footer=footer_text,
+                    paragraphs=paragraphs,
+                    tables=[[["결함리포트 송부 1차: 2026.05.10 2차: 2026.05.20"]]],
+                ),
+            )
+            archive.writestr(
+                "6.시험/나.종료/TTA-26-00010 시험성적서.pdf",
+                _pdf_bytes(["TTA-26-00010 시험성적서"]),
+            )
+
+        DownloadReviewRule.objects.create(
+            code="artifact_13",
+            name="시험성적서(PDF)",
+            rule_type="test_report_document_check",
+            target_file_type="any",
+            enabled=True,
+            sort_order=95,
+            config_json={
+                "artifact_column": "시험성적서(PDF)",
+                "folder_keyword_chain": ["시험", "종료"],
+                "filename_keywords": ["시험성적서", "{project_number}"],
+                "required_files": [
+                    {"extensions": [".docx"], "exact_count": 1},
+                    {"extensions": [".pdf"], "exact_count": 1},
+                ],
+                "spec_marker": "<세부사양>",
+                "pdf_artifact_label": "시험성적서 1페이지",
+                "footer_form_number": "TPG-1016-5(02)",
+                "kolas_footer_keyword": "한국인정기구",
+                "kolas_footer_form_number": "TPG-1016-1(02)",
+            },
+        )
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={"project_number": "TTA-26-00010"},
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+        artifact_dir = Path(self.temp_dir.name) / "artifacts"
+
+        with self.settings(DOWNLOAD_REVIEW_ARTIFACT_DIR=artifact_dir):
+            run_download_inspection(project, verify_result, {})
+
+        return DownloadReviewRuleResult.objects.get(job_project=project, rule_name="시험성적서(PDF)")
+
+    def test_test_report_footer_uses_kolas_form_when_한국인정기구_mentioned(self):
+        # 실제 요청사항: 시험성적서 텍스트에 '한국인정기구'가 있으면 바닥글
+        # 서식번호가 TPG-1016-1(02)이어야 한다.
+        result = self._run_test_report_footer_check(mentions_kolas=True, footer_text="TPG-1016-1(02)")
+
+        footer_check = next(
+            item for item in result.raw_detail_json["sub_checks"] if item["expected"].startswith("바닥글에")
+        )
+        self.assertTrue(footer_check["passed"], footer_check)
+        self.assertIn("TPG-1016-1(02)", footer_check["expected"])
+        self.assertTrue(result.raw_detail_json["kolas_keyword_detected"])
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS)
+
+    def test_test_report_footer_rejects_default_form_when_한국인정기구_mentioned(self):
+        # '한국인정기구'가 있는데 예전 기본 서식번호(TPG-1016-5(02))만 있으면 부적합.
+        result = self._run_test_report_footer_check(mentions_kolas=True, footer_text="TPG-1016-5(02)")
+
+        footer_check = next(
+            item for item in result.raw_detail_json["sub_checks"] if item["expected"].startswith("바닥글에")
+        )
+        self.assertFalse(footer_check["passed"], footer_check)
+        self.assertEqual(result.status, DownloadReviewRuleStatus.FAIL)
+
+    def test_test_report_footer_uses_default_form_when_한국인정기구_not_mentioned(self):
+        # '한국인정기구' 언급이 없으면 기존과 동일하게 TPG-1016-5(02)를 기대한다.
+        result = self._run_test_report_footer_check(mentions_kolas=False, footer_text="TPG-1016-5(02)")
+
+        footer_check = next(
+            item for item in result.raw_detail_json["sub_checks"] if item["expected"].startswith("바닥글에")
+        )
+        self.assertTrue(footer_check["passed"], footer_check)
+        self.assertNotIn("TPG-1016-1(02)", footer_check["expected"])
+        self.assertFalse(result.raw_detail_json["kolas_keyword_detected"])
+        self.assertEqual(result.status, DownloadReviewRuleStatus.PASS)
+
     def test_defect_report_dates_accept_split_title_and_report_date_cells(self):
         project_dir = Path(self.temp_dir.name) / "downloads"
         project_dir.mkdir(parents=True)

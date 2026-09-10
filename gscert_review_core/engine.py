@@ -2217,6 +2217,7 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
     docx_file = word_files[0]
     pdf_file = pdf_files[0]
     try:
+        report_text = _docx_all_text(docx_file)
         rounds = _docx_defect_report_round_dates(docx_file)
         spec_table = _docx_first_table_after_text(docx_file, config.get("spec_marker") or "<세부사양>")
         # 마커 기반 탐색(_docx_first_table_after_text)은 안 쓴다: '4.4 시험일정'은
@@ -2265,7 +2266,15 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
     })
     header_text = _docx_header_text(docx_file)
     footer_text = _docx_footer_text(docx_file)
-    footer_form = _resolve_rule_value(str(config.get("footer_form_number") or ""), context)
+    # 시험성적서 본문(머리글/바닥글 포함)에 '한국인정기구'(KOLAS)가 언급되어 있으면
+    # 서식번호가 TPG-1016-1(02)로, 없으면 기본값 TPG-1016-5(02)로 달라진다.
+    kolas_keyword = str(config.get("kolas_footer_keyword") or "한국인정기구")
+    is_kolas_report = bool(kolas_keyword) and kolas_keyword in report_text
+    footer_form_number = (
+        config.get("kolas_footer_form_number") if is_kolas_report else config.get("footer_form_number")
+    ) or ""
+    footer_form = _resolve_rule_value(str(footer_form_number), context)
+    raw_detail["kolas_keyword_detected"] = is_kolas_report
     sub_checks = []
     # 1) 결함리포트 송부 표 차수별 보고일자
     # 이 항목은 차수별 보고일자를 변수로 뽑아 결함리포트 규칙(artifact_10)에
@@ -2287,10 +2296,12 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
         "passed": bool(context.project_number and context.project_number in header_text),
         "message": config.get("header_message") or "머리글에 프로젝트번호가 잘못 작성됨",
     })
-    # 3) 바닥글에 서식번호 (공백 제거 후 비교)
+    # 3) 바닥글에 서식번호 (공백 제거 후 비교). '한국인정기구' 언급 여부로
+    # 기대하는 서식번호 자체가 달라진다(위에서 이미 반영됨).
     if footer_form:
+        kolas_note = f"'{kolas_keyword}' 언급됨 → " if is_kolas_report else ""
         sub_checks.append({
-            "expected": f"바닥글에 {footer_form} 포함",
+            "expected": f"바닥글에 {kolas_note}{footer_form} 포함",
             "actual": footer_text or "바닥글 없음",
             "passed": _normalize_no_space(footer_form) in _normalize_no_space(footer_text),
             "message": config.get("footer_message") or "바닥글에 서식번호가 잘못 작성됨",

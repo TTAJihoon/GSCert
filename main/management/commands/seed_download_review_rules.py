@@ -674,6 +674,8 @@ def _actual_rule_spec(index, column_name):
                 "round_date_message": "결함리포트 송부 정보 확인 불가",
                 "header_message": "머리글에 프로젝트번호가 잘못 작성됨",
                 "footer_form_number": "TPG-1016-5(02)",
+                "kolas_footer_keyword": "한국인정기구",
+                "kolas_footer_form_number": "TPG-1016-1(02)",
                 "footer_message": "바닥글에 서식번호가 잘못 작성됨",
                 "pass_message": "시험성적서를 확인했습니다.",
             },
