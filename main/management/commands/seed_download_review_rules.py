@@ -823,6 +823,11 @@ def _rule_sort_order(index, column_name):
         return 95
     if column_name == "시험계획서(PDF)":
         return 96
+    # 최초/최종형상RawData(이미지 수정일자 범위 검사)는 시험성적서 '6. 시험기간'에서
+    # 수집한 날짜 리스트를 기준값으로 쓰므로, 시험성적서(95) 평가가 끝난 뒤에
+    # 실행되어야 한다. 원래 순번(8번, index*10=80)보다 뒤로 옮긴다.
+    if column_name == "최초/최종형상RawData":
+        return 97
     if column_name == "테스트케이스":
         return 105
     if column_name == "품질검사표":

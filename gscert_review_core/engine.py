@@ -1166,11 +1166,20 @@ def _resolve_manager_expected(config, context):
 
 def _test_plan_first_table_checks(table, config, context):
     manager_expected = _resolve_manager_expected(config, context)
+    # 시험성적서 '6. 시험기간'에서 수집한 날짜가 있으면 그 중 가장 빠른 날짜를
+    # 시작일 기대값으로 쓴다(시험 중단/재개로 날짜가 여러 개일 수 있어도 계획서
+    # 표지는 항상 최초 시작일만 적으므로). 못 구했을 때만 SwData 값으로 대체한다.
+    report_period_dates = _context_variable(context, "시험성적서_시험기간")
+    expected_start_date = (
+        min(report_period_dates)
+        if isinstance(report_period_dates, list) and report_period_dates
+        else context.start_date
+    )
     return [
         {
             "name": "first_table_start_date",
-            "passed": _same_date_text(_table_cell(table, 1, 2), context.start_date),
-            "expected": f"1행 2열 = {_format_checkable_date(context.start_date)}",
+            "passed": _same_date_text(_table_cell(table, 1, 2), expected_start_date),
+            "expected": f"1행 2열 = {_format_checkable_date(expected_start_date)}",
             "actual": _format_checkable_date(_table_cell(table, 1, 2)) if _table_cell(table, 1, 2) else "값 없음",
             "message": config.get("date_message") or "시험계획서 날짜가 잘못 작성됨",
         },
@@ -1745,14 +1754,21 @@ def _evaluate_test_case_check(rule, sequence, project, context, verify_result):
     })
 
     # 4) 작성일 — 공백 제거 후, 작성일 라벨과 시작일~종료일 날짜가 맞는지 확인(형식 무관)
+    # 시험성적서 '6. 시험기간'에서 수집한 날짜가 있으면 가장 빠른/늦은 날짜를
+    # 시작일~종료일로 쓴다(못 구했을 때만 SwData 값으로 대체).
     date_label = str(config.get("date_label") or "작성일")
-    date_cell = _find_labeled_date_range_cell(sheet.rows, date_label, context.start_date, context.end_date)
+    report_period_dates = _context_variable(context, "시험성적서_시험기간")
+    if isinstance(report_period_dates, list) and len(report_period_dates) >= 2:
+        expected_start_date, expected_end_date = min(report_period_dates), max(report_period_dates)
+    else:
+        expected_start_date, expected_end_date = context.start_date, context.end_date
+    date_cell = _find_labeled_date_range_cell(sheet.rows, date_label, expected_start_date, expected_end_date)
     raw_detail["date_check"] = {
-        "expected": f"{date_label} {_format_checkable_date_range(context.start_date, context.end_date)}",
+        "expected": f"{date_label} {_format_checkable_date_range(expected_start_date, expected_end_date)}",
         "matched_cell": date_cell or {},
     }
     sub_checks.append({
-        "expected": f"[작성일] {date_label} {_format_checkable_date_range(context.start_date, context.end_date)}",
+        "expected": f"[작성일] {date_label} {_format_checkable_date_range(expected_start_date, expected_end_date)}",
         "actual": (date_cell.get("value") if date_cell else "일치 작성일 없음"),
         "passed": bool(date_cell),
         "message": config.get("date_message") or "작성일이 잘못 작성됨",
@@ -1907,10 +1923,20 @@ def _complete_expected_sub_checks(existing, templates, *, actual, message):
 
 
 def _test_case_failed_result_rows(sheet, *, start_row, column):
+    """'상세 테스트 결과' 열에서 F로 판정된 행을 찾는다.
+
+    이 열의 머리글 자체가 'F인 경우 결함 요약'을 요구하므로, 실패 셀은 보통
+    'F\\n부정확한 안내메시지 제공됨'처럼 F 다음 줄에 결함 요약이 붙는다. 셀 값은
+    이미 _excel_cell_text에서 개행이 공백으로 정규화된 뒤 여기로 들어오므로
+    (sheet.rows는 이미 문자열화된 값), 'F 부정확한...'처럼 첫 단어만 F이고
+    뒤에 설명이 이어지는 형태가 된다. 셀 전체가 정확히 'F'인 경우만 인정하면
+    이런 실제 셀을 놓치므로, 첫 단어만 떼어 F인지로 판정한다.
+    """
     failed_rows = []
     for row in range(start_row, len(sheet.rows) + 1):
-        value = _sheet_cell(sheet, row, column)
-        if _normalize_no_space(value).upper() == "F":
+        value = str(_sheet_cell(sheet, row, column) or "").strip()
+        first_word = value.split(" ", 1)[0] if value else ""
+        if first_word.upper() == "F":
             failed_rows.append(row)
     return failed_rows
 
@@ -2034,15 +2060,23 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
             raw_detail=raw_detail,
         )
 
-    start_dt = _date_range_start(context.start_date)
-    end_dt = _date_range_end(context.end_date)
+    # 시험성적서 '6. 시험기간'에서 수집한 날짜가 있으면 가장 빠른 날짜~가장 늦은
+    # 날짜 사이 전체를 유효 범위로 본다(시험 중단/재개로 그 사이에 공백이 생겨도
+    # 재개 후 이미지까지 정상 범위로 인정하기 위함). 못 구했을 때만 SwData 값을 쓴다.
+    report_period_dates = _context_variable(context, "시험성적서_시험기간")
+    if isinstance(report_period_dates, list) and len(report_period_dates) >= 2:
+        range_start_date, range_end_date = min(report_period_dates), max(report_period_dates)
+    else:
+        range_start_date, range_end_date = context.start_date, context.end_date
+    start_dt = _date_range_start(range_start_date)
+    end_dt = _date_range_end(range_end_date)
     if not (start_dt and end_dt):
         return RuleEvaluation(
             rule=rule,
             sequence=sequence,
             status=DownloadReviewRuleStatus.FAIL,
-            expected=f"이미지 수정일자 {_format_checkable_date_range(context.start_date, context.end_date)}",
-            actual=f"{_format_checkable_date(context.start_date)} ~ {_format_checkable_date(context.end_date)}",
+            expected=f"이미지 수정일자 {_format_checkable_date_range(range_start_date, range_end_date)}",
+            actual=f"{_format_checkable_date(range_start_date)} ~ {_format_checkable_date(range_end_date)}",
             message=config.get("date_message") or "제품 스크린샷 생성일이 시험기간과 다름",
             raw_detail={**raw_detail, "selected_parent": "/".join(selected_parent or ())},
         )
@@ -2060,7 +2094,7 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
     raw_detail.update({
         "selected_parent": "/".join(selected_parent or ()),
         "selected_candidate_folders": selected_folders,
-        "date_range": {"start": context.start_date, "end": context.end_date},
+        "date_range": {"start": range_start_date, "end": range_end_date},
         "out_of_range_date_counts": _image_modified_date_counts(out_of_range),
         "out_of_range_files": [
             {
@@ -2071,12 +2105,12 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
         ],
     })
     status = DownloadReviewRuleStatus.PASS if not out_of_range else DownloadReviewRuleStatus.FAIL
-    failure_message = _image_out_of_range_message(context, out_of_range)
+    failure_message = _image_out_of_range_message(range_start_date, range_end_date, out_of_range)
     return RuleEvaluation(
         rule=rule,
         sequence=sequence,
         status=status,
-        expected=f"이미지 수정일자 {_format_checkable_date_range(context.start_date, context.end_date)}",
+        expected=f"이미지 수정일자 {_format_checkable_date_range(range_start_date, range_end_date)}",
         actual="범위 밖 파일 없음" if not out_of_range else failure_message,
         message=(
             config.get("pass_message")
@@ -2089,11 +2123,11 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
     )
 
 
-def _image_out_of_range_message(context, out_of_range):
+def _image_out_of_range_message(start_date, end_date, out_of_range):
     date_counts = _image_modified_date_counts(out_of_range)
     date_text = _join_korean_or(list(date_counts))
     return (
-        f"시험기간은 {context.start_date}~{context.end_date}인데 "
+        f"시험기간은 {start_date}~{end_date}인데 "
         f"수정일자가 {date_text}인 이미지가 {len(out_of_range)}개 존재함"
     )
 
@@ -2229,6 +2263,14 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
         report_schedule_values, _ = _schedule_column_values(
             report_schedule_table, config.get("report_schedule_header") or "소요일수",
         )
+        # '6. 시험기간 :'과 '7. 시험방법' 사이 텍스트에서 날짜를 전부 모은다.
+        # 시험 중단/재개 이력이 있으면 '(최초) ... (1차) ... ~ ...'처럼 날짜가
+        # 3개 이상 적히므로, 이 값을 품질평가보고서/시험계획서/테스트케이스/
+        # 점검표/이미지 rawdata 등 시험기간을 참조하는 다른 규칙의 기준값으로
+        # 그대로 공유한다.
+        period_start_label = str(config.get("test_period_start_label") or "6. 시험기간")
+        period_end_label = str(config.get("test_period_end_label") or "7. 시험방법")
+        report_period_dates = _extract_labeled_date_list(report_text, period_start_label, period_end_label)
         artifact = _store_pdf_first_page_artifact(
             project,
             rule,
@@ -2260,8 +2302,12 @@ def _evaluate_test_report_document_check(rule, sequence, project, context, verif
             # 시험계획서 2.2 시험일정 WD 열과 직접 대조하기 위한 값(4.4 시험일정의
             # '소요일수' 열). 계획서 쪽에서 값이 있으면 이걸 기준으로 비교한다.
             "시험성적서_시험일정": report_schedule_values,
+            # '6. 시험기간'에서 수집한 날짜 리스트(순서 그대로). 품질평가보고서/
+            # 시험계획서/테스트케이스/점검표/이미지 rawdata 규칙이 참조한다.
+            "시험성적서_시험기간": report_period_dates,
         },
         "spec_table": spec_table or [],
+        "test_period_dates": report_period_dates,
         "artifacts": [artifact],
     })
     header_text = _docx_header_text(docx_file)
@@ -3609,10 +3655,19 @@ def _check_checklist_cover(sheet, context, config):
             "message": config.get("cover_title_message") or "표지 제목이 잘못 작성됨",
         }
 
-    period = f"{context.start_date} ~ {context.end_date}"
     # 표지 날짜는 yyyy-mm-dd, yyyy.mm.dd. 등 형식이 섞일 수 있으므로 날짜를
-    # 정규화해 {시작일}/{종료일}과 같은 날짜인지로 비교한다. (다른 날짜 검사와 일관)
-    date_cell = _find_cell_with_date_range(sheet.rows, context.start_date, context.end_date)
+    # 정규화해 비교한다. (다른 날짜 검사와 일관)
+    # 시험성적서 '6. 시험기간'에서 수집한 날짜가 있으면(시험 중단/재개로 3개
+    # 이상일 수 있음) 품질평가보고서와 마찬가지로 전체 날짜가 순서까지 정확히
+    # 같은 셀을 찾는다. 못 구했을 때만 시작~종료 2개 포함 여부로 대체 확인한다.
+    report_period_dates = _context_variable(context, "시험성적서_시험기간")
+    has_report_period = isinstance(report_period_dates, list) and len(report_period_dates) >= 2
+    if has_report_period:
+        period = ", ".join(report_period_dates)
+        date_cell = _find_cell_with_exact_date_list(sheet.rows, report_period_dates)
+    else:
+        period = f"{context.start_date} ~ {context.end_date}"
+        date_cell = _find_cell_with_date_range(sheet.rows, context.start_date, context.end_date)
     if not date_cell:
         return {
             "passed": False,
@@ -4289,21 +4344,35 @@ def _evaluate_quality_evaluation_report_check(rule, sequence, project, context, 
             "message": message,
         })
 
-    # 4) 제품시험평가 기간
-    period = _extract_labeled_korean_period(text, "제품시험평가")
+    # 4) 제품시험평가 기간 — 시험성적서 '6. 시험기간'에서 수집한 날짜 전체(순서
+    # 포함)와 정확히 일치해야 한다. 시험 중단/재개 이력이 있으면 '(최초)...
+    # (1차)... ~ ...'처럼 날짜가 3개 이상 적힐 수 있어, 시작~종료 2개만 보던
+    # 예전 방식 대신 시험성적서 쪽 날짜 리스트를 그대로 기준값으로 쓴다.
+    report_period_dates = _context_variable(context, "시험성적서_시험기간")
+    has_report_period = isinstance(report_period_dates, list) and len(report_period_dates) >= 2
+    period_end_label = str(config.get("period_end_label") or "품질인증심의위원회")
+    if has_report_period:
+        expected_dates = report_period_dates
+        actual_dates = _extract_labeled_date_list(text, "제품시험평가", period_end_label)
+        period_passed = actual_dates == expected_dates
+        expected_display = ", ".join(expected_dates)
+    else:
+        # 시험성적서 쪽 날짜를 못 구했을 때만(파싱 실패 등) SwData 시작일/종료일로 대체 검증한다.
+        period = _extract_labeled_korean_period(text, "제품시험평가")
+        actual_dates = [value for value in period if value]
+        expected_dates = [context.start_date, context.end_date]
+        period_passed = bool(
+            _same_date_text(period[0], context.start_date) and _same_date_text(period[1], context.end_date)
+        )
+        expected_display = _format_checkable_date_range(context.start_date, context.end_date)
     raw_detail["period_check"] = {
-        "expected_start": context.start_date,
-        "expected_end": context.end_date,
-        "actual_start": period[0],
-        "actual_end": period[1],
+        "expected_dates": expected_dates,
+        "actual_dates": actual_dates,
     }
     sub_checks.append({
-        "expected": f"[제품시험평가] {_format_checkable_date_range(context.start_date, context.end_date)}",
-        "actual": (
-            f"{_format_checkable_date(period[0])} ~ {_format_checkable_date(period[1])}"
-            if (period[0] or period[1]) else "시작일/종료일 없음"
-        ),
-        "passed": bool(_same_date_text(period[0], context.start_date) and _same_date_text(period[1], context.end_date)),
+        "expected": f"[제품시험평가] {expected_display}",
+        "actual": ", ".join(actual_dates) if actual_dates else "시작일/종료일 없음",
+        "passed": period_passed,
         "message": config.get("period_message") or "시험기간이 잘못 작성됨",
     })
 
@@ -4405,6 +4474,35 @@ def _extract_labeled_korean_period(text, label):
         f"{_full_year(sy):04d}.{int(sm):02d}.{int(sd):02d}.",
         f"{_full_year(ey):04d}.{int(em):02d}.{int(ed):02d}.",
     )
+
+
+def _extract_text_segment(text, start_label, end_label):
+    """start_label 다음부터 end_label 전까지의 텍스트를 잘라낸다.
+
+    end_label이 없거나 start_label 뒤에서 찾지 못하면 문서 끝까지를 반환한다.
+    """
+    text = str(text or "")
+    start_index = text.find(start_label)
+    if start_index == -1:
+        return ""
+    segment_start = start_index + len(start_label)
+    end_index = text.find(end_label, segment_start) if end_label else -1
+    return text[segment_start:end_index] if end_index != -1 else text[segment_start:]
+
+
+def _extract_date_list(text):
+    matches = re.findall(_FLEX_DATE_PATTERN, str(text or ""))
+    return [f"{_full_year(y):04d}.{int(m):02d}.{int(d):02d}." for y, m, d in matches]
+
+
+def _extract_labeled_date_list(text, start_label, end_label):
+    """start_label ~ end_label 구간에서 날짜를 전부 순서대로 뽑는다.
+
+    시험기간이 '(최초) 2026.6.5 (1차) 2026.7.21 ~ 2026.8.14'처럼 시험 중단/재개
+    이력까지 포함해 날짜가 3개 이상 적히는 경우가 있어, 정확히 2개(시작~종료)만
+    찾는 _extract_labeled_korean_period 대신 구간 내 날짜를 findall로 모두 모은다.
+    """
+    return _extract_date_list(_extract_text_segment(text, start_label, end_label))
 
 
 def _docx_last_table_with_first_cell(tables, keyword):
@@ -5892,6 +5990,25 @@ def _find_cell_with_date_range(rows, start_date, end_date):
         for col_index, value in enumerate(row, start=1):
             found = [_format_dot_date(token) for token in re.findall(date_pattern, str(value or ""))]
             if start_norm in found and end_norm in found:
+                return {"row": row_index, "column": col_index, "value": value}
+    return None
+
+
+def _find_cell_with_exact_date_list(rows, date_list):
+    """셀 안의 날짜를 전부 findall로 추출해 date_list와 순서까지 정확히 일치하는 셀을 찾는다.
+
+    품질평가보고서 '제품시험평가'처럼 시험 중단/재개로 날짜가 3개 이상 적힐 수
+    있는 경우, 시작~종료 2개 포함 여부만 보는 _find_cell_with_date_range 대신
+    전체 날짜 순서가 date_list와 정확히 같은지로 검사한다.
+    """
+    normalized_target = [_format_dot_date(token) for token in (date_list or [])]
+    if not normalized_target:
+        return None
+    date_pattern = r"\d{2,4}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?\.?"
+    for row_index, row in enumerate(rows, start=1):
+        for col_index, value in enumerate(row, start=1):
+            found = [_format_dot_date(token) for token in re.findall(date_pattern, str(value or ""))]
+            if found == normalized_target:
                 return {"row": row_index, "column": col_index, "value": value}
     return None
 

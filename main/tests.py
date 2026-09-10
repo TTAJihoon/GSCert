@@ -346,9 +346,11 @@ def _test_case_xlsx(
     return _xlsx_bytes(rows=rows, footer=footer)
 
 
-def _test_plan_docx(project_number, *, product="테스트제품", version="v1.0", pl="김준호", wd="10"):
+def _test_plan_docx(
+    project_number, *, product="테스트제품", version="v1.0", pl="김준호", wd="10", start_date="2026.05.01.",
+):
     first_table = [
-        ["시험시작일", "2026.05.01."],
+        ["시험시작일", start_date],
         ["비고", ""],
         ["담당자", "김진영"],
         ["시험PL", pl],
@@ -470,7 +472,9 @@ def _quality_inspection_table_xlsx(project_number, *, score_overrides=None, foot
     return buffer.getvalue()
 
 
-def _quality_evaluation_report_docx(project_number, *, company="에이치소프트"):
+def _quality_evaluation_report_docx(
+    project_number, *, company="에이치소프트", period_text="제품시험평가 : 2026년 5월 1일 ~ 2026년 5월 31일",
+):
     quality_values = [
         *[f"quality-{index}" for index in range(4, 27)],
         *[f"quality-{index}" for index in range(28, 34)],
@@ -493,7 +497,7 @@ def _quality_evaluation_report_docx(project_number, *, company="에이치소프�
         "정  성  룡     (서명)",
         "신청일자 : 2026년 5월 2일",
         "계약일자 : 2026년 5월 3일",
-        "제품시험평가 : 2026년 5월 1일 ~ 2026년 5월 31일",
+        period_text,
         "품질인증심의위원회 : 2026년 6월 1일",
         "<품질특성별 세부 평가결과>",
     ]
@@ -995,6 +999,22 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
         self.assertEqual(sub_checks[-1]["sub_check_key"], "sub-8")
         self.assertTrue(sub_checks[-1]["blocked_by_prerequisite"])
         self.assertNotIn("_expected_sub_check_templates", evaluation.raw_detail)
+
+    def test_test_case_failed_result_rows_counts_f_cell_with_defect_summary_text(self):
+        # 실제 테스트케이스 서식은 '상세 테스트 결과' 열 머리글 자체가 'F인 경우
+        # 결함 요약'을 요구하므로, 실패 셀은 'F 부정확한 안내메시지 제공됨'처럼
+        # F 뒤에 결함 요약이 이어진다(셀 안 개행은 읽는 과정에서 공백으로 정규화
+        # 됨). 셀 전체가 정확히 'F'인 경우만 인정하면 이런 실제 셀을 놓쳐 잔여
+        # 결함수가 실제보다 적게(0개) 집계되는 버그가 있었다.
+        sheet = SimpleNamespace(rows=[
+            ["TC ID", "상세 테스트 결과"],
+            ["TC-001", "F 부정확한 안내메시지 제공됨"],
+            ["TC-002", "P"],
+        ])
+
+        failed_rows = engine._test_case_failed_result_rows(sheet, start_row=2, column=2)
+
+        self.assertEqual(failed_rows, [2])
 
     def test_artifact_revision_selection_uses_latest_minor_across_folders(self):
         rule = SimpleNamespace(
@@ -3370,7 +3390,11 @@ class DownloadReviewJobsApiTests(TestCase):
                 _docx_bytes(
                     header="TTA-26-00010",
                     footer="TPG-1016-5(02)",
-                    paragraphs=["<세부사양>"],
+                    paragraphs=[
+                        "6. 시험기간 : 2026.05.01 ~ 2026.05.31",
+                        "7. 시험방법 : ISO/IEC 25023",
+                        "<세부사양>",
+                    ],
                     tables=[
                         [["항목", "값"], ["OS", "Windows"]],
                         [["결함리포트 송부 1차: 2026.05.10 2차: 2026.05.20"]],
@@ -3501,6 +3525,10 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertEqual(report_result.raw_detail_json["variables"]["1차"], "2026.05.10.")
         self.assertEqual(report_result.raw_detail_json["variables"]["2차"], "2026.05.20.")
         self.assertEqual(report_result.raw_detail_json["variables"]["시험성적서_세부사양표"], [["항목", "값"], ["OS", "Windows"]])
+        self.assertEqual(
+            report_result.raw_detail_json["variables"]["시험성적서_시험기간"],
+            ["2026.05.01.", "2026.05.31."],
+        )
         self.assertEqual(get_rule_output_variables(project)["결함차수"], 2)
         self.assertTrue(
             any(
@@ -3615,6 +3643,142 @@ class DownloadReviewJobsApiTests(TestCase):
         )
         self.assertEqual(agreement_payload["artifacts"][0]["label"], "합의서 1페이지")
         self.assertEqual(feature_payload["artifacts"][0]["id"], "feature_list_area")
+
+    def test_test_report_period_with_pause_and_resume_propagates_to_related_rules(self):
+        # 시험이 중단(최초 접속) 후 재개된 프로젝트는 시험성적서 '6. 시험기간'에
+        # 날짜가 3개(최초/재개/종료) 적힌다(TTA-26-01093 실제 사례). 이 값이
+        # 품질평가보고서/시험계획서/테스트케이스/점검표/이미지 rawdata 등
+        # 시험기간을 참조하는 다른 규칙에도 그대로 전파되는지 확인한다.
+        project_dir = Path(self.temp_dir.name) / "test_period_pause_resume"
+        project_dir.mkdir(parents=True)
+        zip_path = project_dir / "TTA-26-00010.zip"
+        with zipfile.ZipFile(zip_path, "w") as archive:
+            archive.writestr(
+                "6.시험/나.종료/TTA-26-00010 시험성적서.docx",
+                _docx_bytes(
+                    header="TTA-26-00010",
+                    footer="TPG-1016-5(02)",
+                    paragraphs=[
+                        "6. 시험기간 : (최초) 2026.06.05 (1차) 2026.07.21 ~ 2026.08.14",
+                        "7. 시험방법 : ISO/IEC 25023",
+                        "<세부사양>",
+                    ],
+                    tables=[[["항목", "값"], ["OS", "Windows"]]],
+                ),
+            )
+            archive.writestr(
+                "6.시험/나.종료/TTA-26-00010 시험성적서.pdf",
+                _pdf_bytes(["TTA-26-00010 시험성적서"]),
+            )
+            archive.writestr(
+                "4.시험/가.계획/TTA-26-00010 시험계획서.docx",
+                _test_plan_docx("TTA-26-00010", pl="김준호", wd="10", start_date="2026.06.05."),
+            )
+            archive.writestr(
+                "4.시험/가.계획/TTA-26-00010 시험계획서.pdf",
+                _pdf_bytes(["TTA-26-00010 시험계획서"]),
+            )
+            for folder_name, date_time in (
+                ("최초형상", (2026, 6, 5, 9, 0, 0)),
+                ("최종형상", (2026, 8, 14, 18, 0, 0)),
+            ):
+                for index in range(5):
+                    info = zipfile.ZipInfo(
+                        f"3.설계/제품스크린샷/{folder_name}/image-{index}.png",
+                        date_time=date_time,
+                    )
+                    archive.writestr(info, b"image")
+            archive.writestr(
+                "3.설계/TTA-26-00010 테스트케이스.xlsx",
+                _test_case_xlsx(
+                    "TTA-26-00010", pl="김준호",
+                    start_date="2026.06.05.", end_date="2026.08.14.",
+                    residual_count=1, footer="TTA",
+                ),
+            )
+            archive.writestr(
+                "3.설계/TTA-26-00010 점검표.xlsx",
+                _inspection_checklist_xlsx(
+                    "TTA-26-00010", pl="김준호", wd="10", high="3", before="7",
+                    start_date="(최초) 2026.06.05 (1차) 2026.07.21", end_date="2026.08.14",
+                ),
+            )
+            archive.writestr(
+                "3.설계/TTA-26-00010 점검표.pdf",
+                _pdf_bytes(["TTA-26-00010 점검표"]),
+            )
+            archive.writestr(
+                "6.시험/인증관련/TTA-26-00010 품질평가보고서.docx",
+                _quality_evaluation_report_docx(
+                    "TTA-26-00010",
+                    period_text="제품시험평가 : (최초) 2026년 6월 5일 (1차) 2026년 7월 21일 ~ 2026년 8월 14일",
+                ),
+            )
+
+        call_command("seed_download_review_rules", "--only-real", "--enable", stdout=StringIO())
+        job = DownloadReviewJob.objects.create(
+            status=DownloadReviewJobStatus.RUNNING,
+            requested_project_count=1,
+            selected_projects_json=["TTA-26-00010"],
+        )
+        project = DownloadReviewProject.objects.create(
+            job=job,
+            project_number="TTA-26-00010",
+            download_dir=str(project_dir),
+            ecm_row_json={
+                "project_number": "TTA-26-00010",
+                "company": "에이치소프트",
+                "product": "테스트제품 v1.0",
+                "pl": "김준호",
+                "wd": "10",
+            },
+        )
+        verify_result = verify_downloaded_files(str(project_dir), "TTA-26-00010")
+
+        run_download_inspection(project, verify_result, {})
+        results = {
+            result.rule_name: result
+            for result in DownloadReviewRuleResult.objects.filter(job_project=project)
+        }
+
+        report_result = results["시험성적서(PDF)"]
+        self.assertEqual(
+            report_result.raw_detail_json["variables"]["시험성적서_시험기간"],
+            ["2026.06.05.", "2026.07.21.", "2026.08.14."],
+        )
+
+        plan_result = results["시험계획서(PDF)"]
+        start_date_check = next(
+            check for check in plan_result.raw_detail_json["checks"]
+            if check["name"] == "first_table_start_date"
+        )
+        self.assertTrue(start_date_check["passed"], start_date_check)
+
+        image_result = results["최초/최종형상RawData"]
+        self.assertEqual(image_result.status, DownloadReviewRuleStatus.PASS, image_result.message)
+
+        test_case_result = results["테스트케이스"]
+        self.assertTrue(
+            test_case_result.raw_detail_json["date_check"]["matched_cell"],
+            test_case_result.raw_detail_json["date_check"],
+        )
+
+        checklist_result = results["점검표(PDF)"]
+        self.assertTrue(
+            checklist_result.raw_detail_json["cover_check"]["passed"],
+            checklist_result.raw_detail_json["cover_check"],
+        )
+
+        quality_result = results["품질평가보고서"]
+        period_check = next(
+            item for item in quality_result.raw_detail_json["sub_checks"]
+            if item["expected"].startswith("[제품시험평가]")
+        )
+        self.assertTrue(period_check["passed"], period_check)
+        self.assertEqual(
+            quality_result.raw_detail_json["period_check"]["expected_dates"],
+            ["2026.06.05.", "2026.07.21.", "2026.08.14."],
+        )
 
     def test_cleanup_stale_project_history_keeps_only_latest_per_project(self):
         """같은 프로젝트번호를 재점검하면 이전 job_project 의 산출물 폴더·DB 행(결과/로그)만
