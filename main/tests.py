@@ -6371,23 +6371,22 @@ class HistoryTestDatePeriodFilterTests(SimpleTestCase):
         from main.views.testing.history import _filter_by_test_date_range
 
         rows = [
-            {"serial_number": 1, "start_date": "2026-03-01", "end_date": "2026-03-31"},
-            {"serial_number": 2, "start_date": "2026.4.1.", "end_date": "2026/4/30"},
-            {"serial_number": 3, "start_date": "", "end_date": ""},
-            {"serial_number": 4, "start_date": "미정", "end_date": "2026-05-31"},
-            {"serial_number": 5, "start_date": "2026-02-30", "end_date": "2026-03-31"},
-            {"serial_number": 6, "start_date": "2026-06-30", "end_date": "2026-06-01"},
-            {"serial_number": 7, "start_date": "2026-03-01 ~ 2026-03-31", "end_date": "2026-03-31"},
-            {"serial_number": 8, "start_date": "2025-12-31", "end_date": "2026-01-10"},
-            {"serial_number": 9, "start_date": "2026-12-20", "end_date": "2027-01-10"},
-            {"serial_number": 10, "start_date": "2026-07-01", "end_date": ""},
-            {"serial_number": 11, "start_date": "", "end_date": "2026-07-31"},
-            {"serial_number": 12, "start_date": "2026-08.01", "end_date": "2026-08-31"},
+            {"serial_number": 5055, "start_date": "2026-01-01", "end_date": "2026-01-10"},
+            {"serial_number": 5767, "start_date": "", "end_date": ""},
+            {"serial_number": 6000, "start_date": "2025-03-01", "end_date": "2025-03-31"},
+            {"serial_number": 6566, "start_date": "미정", "end_date": "2026-05-31"},
+            {"serial_number": 6674, "start_date": "2026-02-30", "end_date": "2026-03-31"},
+            {"serial_number": 7000, "start_date": "2027-03-01", "end_date": "2027-03-31"},
+            {"serial_number": 8000, "start_date": "2026.12.1.", "end_date": "2026/12/31"},
+            {"serial_number": 8001, "start_date": "", "end_date": ""},
         ]
 
         filtered = _filter_by_test_date_range(rows, "2026-01-01", "2026-12-31")
 
-        self.assertEqual([row["serial_number"] for row in filtered], [1, 2])
+        self.assertEqual(
+            {row["serial_number"] for row in filtered},
+            {5055, 5767, 6566, 6674, 8000},
+        )
 
     def test_invalid_search_boundary_returns_no_rows(self):
         from main.views.testing.history import _filter_by_test_date_range
@@ -6410,6 +6409,22 @@ class HistoryTestDatePeriodFilterTests(SimpleTestCase):
         rows = GS_history(startDate="2026-01-01", endDate="2026-12-31")
 
         self.assertEqual([row["일련번호"] for row in rows], [1])
+
+    @patch("main.views.testing.history.GS_history")
+    def test_history_results_are_sorted_by_serial_number_descending(self, gs_history):
+        from main.views.testing.history import history
+
+        gs_history.return_value = [
+            {"일련번호": 5055, "시험번호": "TTA-26-05055", "인증일자": "2026.01.01"},
+            {"일련번호": 8000, "시험번호": "TTA-26-08000", "인증일자": "2026.12.31"},
+            {"일련번호": 6566, "시험번호": "TTA-26-06566", "인증일자": "-"},
+        ]
+        request = RequestFactory().post("/history/", {"date_filter_type": "cert"})
+
+        content = history(request).content.decode("utf-8")
+
+        self.assertLess(content.index("TTA-26-08000"), content.index("TTA-26-06566"))
+        self.assertLess(content.index("TTA-26-06566"), content.index("TTA-26-05055"))
 
 
 @override_settings(SERVER_DOMAIN="gsai.tta.or.kr")

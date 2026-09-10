@@ -8,17 +8,13 @@ from main.request_logging import set_request_log_context
 from main.utils.cert_date import format_cert_date, parse_cert_date
 
 
-def _cert_date_sort_key(row):
-    """인증일자를 실제 날짜 순으로 정렬하기 위한 키.
-
-    sw_data.cert_date 는 '2026.6.8' 처럼 0-패딩 없는 텍스트라, 문자열 정렬 시
-    '2026.6.8' 이 '2026.6.29' 보다 크게(최신으로) 잡힌다. 숫자(연,월,일)를 뽑아
-    튜플로 비교해 올바른 날짜 순서를 만든다. (파싱 불가 시 맨 뒤로)
-    """
-    nums = re.findall(r"\d+", str(row.get("인증일자") or ""))
-    if len(nums) >= 3:
-        return (int(nums[0]), int(nums[1]), int(nums[2]))
-    return (0, 0, 0)
+def _serial_number_sort_key(row):
+    """한글/영문 키의 serial_number를 정수 정렬 키로 변환한다."""
+    value = row.get("일련번호", row.get("serial_number"))
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return -1
 
 _FIELD_TO_KR = {
     'serial_number': '일련번호',
@@ -132,7 +128,11 @@ def _parse_test_date(value):
 
 
 def _filter_by_test_date_range(rows, start_date, end_date):
-    """유효한 시험 시작·종료일이 검색 범위 안에 모두 들어오는 행만 반환한다."""
+    """시험일자 범위와 그 결과의 serial_number 구간에 해당하는 행을 반환한다.
+
+    정상 날짜 행은 시험기간이 검색 범위 안에 모두 포함될 때만 조회한다. 이후 정상
+    검색 결과의 최소·최대 serial_number 사이에 있는 비정상 날짜 행도 함께 포함한다.
+    """
     raw_start = str(start_date or "").strip()
     raw_end = str(end_date or "").strip()
     if not raw_start and not raw_end:
@@ -145,18 +145,36 @@ def _filter_by_test_date_range(rows, start_date, end_date):
     if search_start and search_end and search_start > search_end:
         return []
 
-    filtered = []
+    matched_rows = []
+    invalid_date_rows = []
     for row in rows:
         row_start = _parse_test_date(row.get("start_date"))
         row_end = _parse_test_date(row.get("end_date"))
         if not row_start or not row_end or row_start > row_end:
+            invalid_date_rows.append(row)
             continue
         if search_start and row_start < search_start:
             continue
         if search_end and row_end > search_end:
             continue
-        filtered.append(row)
-    return filtered
+        matched_rows.append(row)
+
+    matched_serials = []
+    for row in matched_rows:
+        serial_number = _serial_number_sort_key(row)
+        if serial_number >= 0:
+            matched_serials.append(serial_number)
+    if not matched_serials:
+        return matched_rows
+
+    first_serial = min(matched_serials)
+    last_serial = max(matched_serials)
+    matched_rows.extend(
+        row
+        for row in invalid_date_rows
+        if first_serial <= _serial_number_sort_key(row) <= last_serial
+    )
+    return matched_rows
 
 
 def _filter_by_cert_date_range(tables, cert_date_start, cert_date_end):
@@ -269,9 +287,7 @@ def history(request):
             clean_table['특이사항_버튼'] = _build_notes_buttons(table)
             clean_tables.append(clean_table)
 
-        # 인증일자 내림차순(최신순) 정렬 — 예전의 단순 역순([::-1])은 DB 기본 순서에
-        # 의존해 최신(예: 6.29)이 목록 맨 아래로 밀리는 문제가 있었다.
-        clean_tables.sort(key=_cert_date_sort_key, reverse=True)
+        clean_tables.sort(key=_serial_number_sort_key, reverse=True)
         context['response_tables'] = clean_tables
 
         return render(request, 'testing/history.html', context)
