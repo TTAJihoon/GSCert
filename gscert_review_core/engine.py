@@ -1926,17 +1926,14 @@ def _test_case_failed_result_rows(sheet, *, start_row, column):
     """'상세 테스트 결과' 열에서 F로 판정된 행을 찾는다.
 
     이 열의 머리글 자체가 'F인 경우 결함 요약'을 요구하므로, 실패 셀은 보통
-    'F\\n부정확한 안내메시지 제공됨'처럼 F 다음 줄에 결함 요약이 붙는다. 셀 값은
-    이미 _excel_cell_text에서 개행이 공백으로 정규화된 뒤 여기로 들어오므로
-    (sheet.rows는 이미 문자열화된 값), 'F 부정확한...'처럼 첫 단어만 F이고
-    뒤에 설명이 이어지는 형태가 된다. 셀 전체가 정확히 'F'인 경우만 인정하면
-    이런 실제 셀을 놓치므로, 첫 단어만 떼어 F인지로 판정한다.
+    'F 부정확한 안내메시지 제공됨'처럼 F 뒤에 결함 요약이 붙는다. 셀 전체가
+    정확히 'F'인 경우만 인정하면 이런 실제 셀을 놓치므로, 셀 값에 'F'가
+    포함되어 있는지로 판정한다.
     """
     failed_rows = []
     for row in range(start_row, len(sheet.rows) + 1):
-        value = str(_sheet_cell(sheet, row, column) or "").strip()
-        first_word = value.split(" ", 1)[0] if value else ""
-        if first_word.upper() == "F":
+        value = str(_sheet_cell(sheet, row, column) or "")
+        if "F" in value.upper():
             failed_rows.append(row)
     return failed_rows
 

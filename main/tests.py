@@ -1002,19 +1002,21 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
 
     def test_test_case_failed_result_rows_counts_f_cell_with_defect_summary_text(self):
         # 실제 테스트케이스 서식은 '상세 테스트 결과' 열 머리글 자체가 'F인 경우
-        # 결함 요약'을 요구하므로, 실패 셀은 'F 부정확한 안내메시지 제공됨'처럼
-        # F 뒤에 결함 요약이 이어진다(셀 안 개행은 읽는 과정에서 공백으로 정규화
-        # 됨). 셀 전체가 정확히 'F'인 경우만 인정하면 이런 실제 셀을 놓쳐 잔여
-        # 결함수가 실제보다 적게(0개) 집계되는 버그가 있었다.
+        # 결함 요약'을 요구하므로, 실패 셀은 'F 부정확한 안내메시지 제공됨'이나
+        # '결과: F(사용성 결함)'처럼 F가 셀의 다른 위치에 결함 요약과 함께 적힐
+        # 수 있다. 셀 전체가 정확히 'F'이거나 F로 시작하는 경우만 인정하면 이런
+        # 실제 셀을 놓쳐 잔여결함수가 실제보다 적게 집계되는 버그가 있었으므로,
+        # 셀 값에 F가 포함되어 있는지로 판정한다.
         sheet = SimpleNamespace(rows=[
             ["TC ID", "상세 테스트 결과"],
             ["TC-001", "F 부정확한 안내메시지 제공됨"],
-            ["TC-002", "P"],
+            ["TC-002", "결과: F(사용성 결함)"],
+            ["TC-003", "P"],
         ])
 
         failed_rows = engine._test_case_failed_result_rows(sheet, start_row=2, column=2)
 
-        self.assertEqual(failed_rows, [2])
+        self.assertEqual(failed_rows, [2, 3])
 
     def test_artifact_revision_selection_uses_latest_minor_across_folders(self):
         rule = SimpleNamespace(
