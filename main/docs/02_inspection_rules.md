@@ -829,7 +829,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 품질부특성 측정값 비교 결과, 총 비교 개수, 불일치 개수
 - 산출물 결과 키: `품질평가보고서`
 - 구현 메모:
-  - `{신청일}`은 `reference_project.request_date`, `{계약일}`은 `reference_project.contract_date`에서 가져온다. `{인증위}`는 `reference_project.cert_date`에서 가져오는데, 이 칼럼은 동기화 경로에 따라 SwData(엑셀)의 인증서 발급일 또는 Google Sheet의 인증위원회 개최일이 섞여 들어갈 수 있다 — "기대값 출처 분류" 절 참고.
+  - `{신청일}`은 `reference_project.request_date`, `{계약일}`은 `reference_project.contract_date`에서 가져온다. `{인증위}`는 `reference_project.cert_date`에서 가져오는데, 이 칼럼은 동기화 경로에 따라 SwData(엑셀)의 인증서 발급일 또는 Google Sheet의 인증위원회 개최일이 섞여 들어갈 수 있다 — 자세한 내용은 `04_data_and_api.md`의 `reference_project` 절과 `08_artifact_autofill.md`의 "남은 미해결 항목" 참고.
   - `{품질부특성측정값}`은 15번 품질검사표 규칙 산출값과 연결한다.
   - `김성희`, `정성룡`은 향후 변경 가능성이 있으면 규칙 JSON expected 값으로 둔다.
   - 15번 품질검사표 실제 규칙의 `sort_order`는 145로 고정되어, 16번 품질평가보고서의 기본 `sort_order=150`보다 먼저 실행된다.
