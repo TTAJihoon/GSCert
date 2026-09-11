@@ -3655,13 +3655,12 @@ def _check_checklist_cover(sheet, context, config):
     # 표지 날짜는 yyyy-mm-dd, yyyy.mm.dd. 등 형식이 섞일 수 있으므로 날짜를
     # 정규화해 비교한다. (다른 날짜 검사와 일관)
     # 기대값에 맞는 셀을 찾는 대신, 표지 시트에서 날짜가 실제로 적힌 셀을 먼저
-    # 찾아 그 셀의 날짜를 실제값으로 가져온 뒤 기대값과 비교한다 — 그래야 값이
-    # 다를 때도 표지에 실제로 뭐가 적혀 있었는지 보여줄 수 있다. 표지는
-    # '2026-06-05 ~ 2026-06-05 \n2026-07-21 ~ 2026-08-14'처럼 구간별로 나눠
-    # 적으면서 같은 날짜가 두 번(1일짜리 구간의 시작=종료) 나타날 수 있고,
-    # 시험성적서 쪽은 같은 시험기간을 '(최초) ... (1차) ... ~ ...' 식 흐르는
-    # 문장으로 적어 날짜가 한 번씩만 나오므로, 순서 대신 중복 제거한 날짜
-    # 집합이 같은지로 비교한다.
+    # 찾아 그 셀의 날짜를 실제값으로 가져온 뒤 기대값과 순서대로 비교한다 —
+    # 그래야 값이 다를 때도 표지에 실제로 뭐가 적혀 있었는지 보여줄 수 있다.
+    # {시험성적서_시험기간}도 이 셀과 같은 기준(_extract_date_pair_list)으로
+    # 하루짜리 구간을 시작=종료 두 번으로 펴서 만들어지므로(예: '(최초)
+    # 6.5 (1차) 7.21~8.14' -> [6.5, 6.5, 7.21, 8.14]), 중복을 제거하지 않고
+    # 순서 그대로 비교한다.
     report_period_dates = _context_variable(context, "시험성적서_시험기간")
     if isinstance(report_period_dates, list) and len(report_period_dates) >= 2:
         expected_dates = report_period_dates
@@ -3672,9 +3671,7 @@ def _check_checklist_cover(sheet, context, config):
 
     date_cell = _find_cell_with_any_date(sheet.rows)
     actual_dates = date_cell["dates"] if date_cell else []
-    date_passed = bool(actual_dates) and sorted(set(actual_dates)) == sorted(
-        {value for value in expected_dates if value}
-    )
+    date_passed = bool(actual_dates) and actual_dates == [value for value in expected_dates if value]
     if not date_passed:
         return {
             "passed": False,
@@ -4497,19 +4494,49 @@ def _extract_text_segment(text, start_label, end_label):
     return text[segment_start:end_index] if end_index != -1 else text[segment_start:]
 
 
-def _extract_date_list(text):
-    matches = re.findall(_FLEX_DATE_PATTERN, str(text or ""))
-    return [f"{_full_year(y):04d}.{int(m):02d}.{int(d):02d}." for y, m, d in matches]
+def _extract_date_pair_list(text):
+    """텍스트에서 '날짜' 또는 '날짜~날짜' 구간을 순서대로 찾아 (시작, 종료) 쌍을 모두 편다.
+
+    '(최초) 2026.6.5 (1차) 2026.7.21 ~ 2026.8.14'처럼 하루짜리 구간은 종료일 없이
+    시작일만 적히고, 점검표 표지처럼 '2026-06-05 ~ 2026-06-05'로 시작~종료를 모두
+    적는 서식도 있다. 두 서식을 같은 기준으로 비교할 수 있도록, 종료일이 없는
+    단독 날짜는 시작=종료로 취급해 두 번(시작, 종료) 반환한다. 예:
+    '(최초) 6.5 (1차) 7.21~8.14' -> ['6.5', '6.5', '7.21', '8.14'].
+
+    두 날짜 사이 '~'만 있으면 구간으로 묶는다(둘 사이 간격은 보지 않는다) —
+    Word 문서는 날짜가 DOCPROPERTY 필드로 들어가 있어, 실제 텍스트로 뽑으면
+    '~'와 다음 날짜 사이에 'DOCPROPERTY _종료일2_ \\* MERGEFORMAT' 같은 필드
+    코드 텍스트가 그대로 끼어 있다. '~' 바로 뒤에 다음 날짜가 온다고 가정하면
+    이런 문서에서 구간을 하나도 못 찾는다.
+    """
+    text = str(text or "")
+    matches = list(re.finditer(_FLEX_DATE_PATTERN, text))
+    dates = []
+    index = 0
+    while index < len(matches):
+        match = matches[index]
+        start = f"{_full_year(match.group(1)):04d}.{int(match.group(2)):02d}.{int(match.group(3)):02d}."
+        next_match = matches[index + 1] if index + 1 < len(matches) else None
+        if next_match and "~" in text[match.end():next_match.start()]:
+            end = f"{_full_year(next_match.group(1)):04d}.{int(next_match.group(2)):02d}.{int(next_match.group(3)):02d}."
+            dates.append(start)
+            dates.append(end)
+            index += 2
+        else:
+            dates.append(start)
+            dates.append(start)
+            index += 1
+    return dates
 
 
 def _extract_labeled_date_list(text, start_label, end_label):
-    """start_label ~ end_label 구간에서 날짜를 전부 순서대로 뽑는다.
+    """start_label ~ end_label 구간에서 날짜를 (시작, 종료) 쌍으로 순서대로 뽑는다.
 
     시험기간이 '(최초) 2026.6.5 (1차) 2026.7.21 ~ 2026.8.14'처럼 시험 중단/재개
     이력까지 포함해 날짜가 3개 이상 적히는 경우가 있어, 정확히 2개(시작~종료)만
-    찾는 _extract_labeled_korean_period 대신 구간 내 날짜를 findall로 모두 모은다.
+    찾는 _extract_labeled_korean_period 대신 구간 내 날짜/구간을 모두 모은다.
     """
-    return _extract_date_list(_extract_text_segment(text, start_label, end_label))
+    return _extract_date_pair_list(_extract_text_segment(text, start_label, end_label))
 
 
 def _docx_last_table_with_first_cell(tables, keyword):
@@ -5984,24 +6011,20 @@ def _find_cell_containing(rows, text):
 
 
 def _find_cell_with_any_date(rows):
-    """날짜가 하나라도 적힌 첫 번째 셀을 찾아 그 셀의 날짜 목록(중복 제거, 순서 유지)을 반환한다.
+    """날짜가 하나라도 적힌 첫 번째 셀을 찾아 그 셀의 날짜를 (시작, 종료) 쌍으로 편 목록을 반환한다.
 
     기대값과 일치하는 셀을 찾는 대신, 표지에서 날짜가 실제로 적힌 셀을 먼저
     찾아 그 값을 실제값으로 가져오기 위한 용도다. '2026-06-05 ~ 2026-06-05
-    \\n2026-07-21 ~ 2026-08-14'처럼 구간별로 나눠 적히면서 같은 날짜가 두 번
-    (1일짜리 구간의 시작=종료) 나타날 수 있어 중복은 제거한다.
+    \\n2026-07-21 ~ 2026-08-14'처럼 하루짜리 구간도 시작~종료를 모두 적는
+    서식과, 시험성적서처럼 하루짜리 구간은 날짜 하나만 적는 서식을 같은
+    기준으로 비교할 수 있도록 _extract_date_pair_list와 동일하게 판다(중복
+    제거하지 않음).
     """
-    date_pattern = r"\d{2,4}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?\.?"
     for row_index, row in enumerate(rows, start=1):
         for col_index, value in enumerate(row, start=1):
-            found = [_format_dot_date(token) for token in re.findall(date_pattern, str(value or ""))]
-            if found:
-                return {
-                    "row": row_index,
-                    "column": col_index,
-                    "value": value,
-                    "dates": list(dict.fromkeys(found)),
-                }
+            dates = _extract_date_pair_list(str(value or ""))
+            if dates:
+                return {"row": row_index, "column": col_index, "value": value, "dates": dates}
     return None
 
 

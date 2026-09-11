@@ -1020,11 +1020,12 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
 
     def test_checklist_cover_date_check_uses_actual_cell_dates_not_expected_match(self):
         # 실제 점검표 표지는 시험 중단/재개 이력이 있으면 '2026-06-05 ~
-        # 2026-06-05 \n2026-07-21 ~ 2026-08-14'처럼 구간별로 나눠 적으면서
-        # 1일짜리 구간의 시작=종료 날짜가 중복으로 나타난다(TTA-26-01093 실제
-        # 사례). 기대값과 일치하는 셀을 찾는 대신 날짜가 적힌 셀을 먼저 찾아
-        # 그 날짜(중복 제거)를 실제값으로 가져오고, 시험성적서 쪽 3개 날짜
-        # 목록과 집합이 같으면(순서/중복 무관) 적합으로 판정해야 한다.
+        # 2026-06-05 \n2026-07-21 ~ 2026-08-14'처럼 구간별로 나눠 적어, 1일짜리
+        # 구간은 시작=종료가 그대로 반복된다(TTA-26-01093 실제 사례). 시험성적서
+        # 쪽 '(최초) 6.5 (1차) 7.21~8.14' 같은 문장형 표기도 하루짜리 구간을
+        # 같은 방식(시작=종료 두 번)으로 펴서 [6.5, 6.5, 7.21, 8.14]가 되므로,
+        # 기대값과 일치하는 셀을 찾는 대신 날짜가 적힌 셀을 먼저 찾아 그 날짜를
+        # (중복 제거 없이) 실제값으로 가져오고 순서 그대로 비교해야 한다.
         sheet = SimpleNamespace(rows=[
             ["『TTA-26-00010』 점검표"],
             ["2026-06-05 ~ 2026-06-05 \n2026-07-21 ~ 2026-08-14"],
@@ -1035,7 +1036,9 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
             project_number="TTA-26-00010", product_raw="", product="", version="", company="",
             pl="최유정", wd="10", start_date="2026.07.21.", end_date="2026.08.14.", year="2026",
             request_date="", contract_date="", certification_committee_date="",
-            derived_variables={"시험성적서_시험기간": ["2026.06.05.", "2026.07.21.", "2026.08.14."]},
+            derived_variables={
+                "시험성적서_시험기간": ["2026.06.05.", "2026.06.05.", "2026.07.21.", "2026.08.14."],
+            },
             center="sangam",
         )
 
@@ -1044,7 +1047,7 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
         self.assertTrue(result["passed"], result)
         self.assertEqual(
             result["date_cell"]["dates"],
-            ["2026.06.05.", "2026.07.21.", "2026.08.14."],
+            ["2026.06.05.", "2026.06.05.", "2026.07.21.", "2026.08.14."],
         )
 
     def test_artifact_revision_selection_uses_latest_minor_across_folders(self):
@@ -3775,7 +3778,7 @@ class DownloadReviewJobsApiTests(TestCase):
         report_result = results["시험성적서(PDF)"]
         self.assertEqual(
             report_result.raw_detail_json["variables"]["시험성적서_시험기간"],
-            ["2026.06.05.", "2026.07.21.", "2026.08.14."],
+            ["2026.06.05.", "2026.06.05.", "2026.07.21.", "2026.08.14."],
         )
 
         plan_result = results["시험계획서(PDF)"]
@@ -3808,7 +3811,7 @@ class DownloadReviewJobsApiTests(TestCase):
         self.assertTrue(period_check["passed"], period_check)
         self.assertEqual(
             quality_result.raw_detail_json["period_check"]["expected_dates"],
-            ["2026.06.05.", "2026.07.21.", "2026.08.14."],
+            ["2026.06.05.", "2026.06.05.", "2026.07.21.", "2026.08.14."],
         )
 
     def test_cleanup_stale_project_history_keeps_only_latest_per_project(self):
