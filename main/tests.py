@@ -1018,6 +1018,35 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
 
         self.assertEqual(failed_rows, [2, 3])
 
+    def test_checklist_cover_date_check_uses_actual_cell_dates_not_expected_match(self):
+        # 실제 점검표 표지는 시험 중단/재개 이력이 있으면 '2026-06-05 ~
+        # 2026-06-05 \n2026-07-21 ~ 2026-08-14'처럼 구간별로 나눠 적으면서
+        # 1일짜리 구간의 시작=종료 날짜가 중복으로 나타난다(TTA-26-01093 실제
+        # 사례). 기대값과 일치하는 셀을 찾는 대신 날짜가 적힌 셀을 먼저 찾아
+        # 그 날짜(중복 제거)를 실제값으로 가져오고, 시험성적서 쪽 3개 날짜
+        # 목록과 집합이 같으면(순서/중복 무관) 적합으로 판정해야 한다.
+        sheet = SimpleNamespace(rows=[
+            ["『TTA-26-00010』 점검표"],
+            ["2026-06-05 ~ 2026-06-05 \n2026-07-21 ~ 2026-08-14"],
+            ["검토자 : 기술책임자 김진영 (인)"],
+            ["작성자 :                최유정 (인)"],
+        ])
+        context = engine.RuleContext(
+            project_number="TTA-26-00010", product_raw="", product="", version="", company="",
+            pl="최유정", wd="10", start_date="2026.07.21.", end_date="2026.08.14.", year="2026",
+            request_date="", contract_date="", certification_committee_date="",
+            derived_variables={"시험성적서_시험기간": ["2026.06.05.", "2026.07.21.", "2026.08.14."]},
+            center="sangam",
+        )
+
+        result = engine._check_checklist_cover(sheet, context, {})
+
+        self.assertTrue(result["passed"], result)
+        self.assertEqual(
+            result["date_cell"]["dates"],
+            ["2026.06.05.", "2026.07.21.", "2026.08.14."],
+        )
+
     def test_artifact_revision_selection_uses_latest_minor_across_folders(self):
         rule = SimpleNamespace(
             config_json={"folder_keyword_chain": ["시험", "계획"]},

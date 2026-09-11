@@ -3654,22 +3654,32 @@ def _check_checklist_cover(sheet, context, config):
 
     # 표지 날짜는 yyyy-mm-dd, yyyy.mm.dd. 등 형식이 섞일 수 있으므로 날짜를
     # 정규화해 비교한다. (다른 날짜 검사와 일관)
-    # 시험성적서 '6. 시험기간'에서 수집한 날짜가 있으면(시험 중단/재개로 3개
-    # 이상일 수 있음) 품질평가보고서와 마찬가지로 전체 날짜가 순서까지 정확히
-    # 같은 셀을 찾는다. 못 구했을 때만 시작~종료 2개 포함 여부로 대체 확인한다.
+    # 기대값에 맞는 셀을 찾는 대신, 표지 시트에서 날짜가 실제로 적힌 셀을 먼저
+    # 찾아 그 셀의 날짜를 실제값으로 가져온 뒤 기대값과 비교한다 — 그래야 값이
+    # 다를 때도 표지에 실제로 뭐가 적혀 있었는지 보여줄 수 있다. 표지는
+    # '2026-06-05 ~ 2026-06-05 \n2026-07-21 ~ 2026-08-14'처럼 구간별로 나눠
+    # 적으면서 같은 날짜가 두 번(1일짜리 구간의 시작=종료) 나타날 수 있고,
+    # 시험성적서 쪽은 같은 시험기간을 '(최초) ... (1차) ... ~ ...' 식 흐르는
+    # 문장으로 적어 날짜가 한 번씩만 나오므로, 순서 대신 중복 제거한 날짜
+    # 집합이 같은지로 비교한다.
     report_period_dates = _context_variable(context, "시험성적서_시험기간")
-    has_report_period = isinstance(report_period_dates, list) and len(report_period_dates) >= 2
-    if has_report_period:
-        period = ", ".join(report_period_dates)
-        date_cell = _find_cell_with_exact_date_list(sheet.rows, report_period_dates)
+    if isinstance(report_period_dates, list) and len(report_period_dates) >= 2:
+        expected_dates = report_period_dates
+        period = ", ".join(expected_dates)
     else:
+        expected_dates = [context.start_date, context.end_date]
         period = f"{context.start_date} ~ {context.end_date}"
-        date_cell = _find_cell_with_date_range(sheet.rows, context.start_date, context.end_date)
-    if not date_cell:
+
+    date_cell = _find_cell_with_any_date(sheet.rows)
+    actual_dates = date_cell["dates"] if date_cell else []
+    date_passed = bool(actual_dates) and sorted(set(actual_dates)) == sorted(
+        {value for value in expected_dates if value}
+    )
+    if not date_passed:
         return {
             "passed": False,
             "expected": period,
-            "actual": "일치 셀 없음",
+            "actual": ", ".join(actual_dates) if actual_dates else "날짜가 적힌 셀 없음",
             "message": config.get("cover_date_message") or "표지 날짜가 잘못 작성됨",
         }
 
@@ -5973,40 +5983,25 @@ def _find_cell_containing(rows, text):
     return None
 
 
-def _find_cell_with_date_range(rows, start_date, end_date):
-    """`{시작일} ~ {종료일}` 기간이 적힌 셀을 날짜 정규화 기준으로 찾는다.
+def _find_cell_with_any_date(rows):
+    """날짜가 하나라도 적힌 첫 번째 셀을 찾아 그 셀의 날짜 목록(중복 제거, 순서 유지)을 반환한다.
 
-    셀 안 날짜 구분자(`.`/`-`/`/`/`년월일`)가 달라도 같은 날짜면 인정한다.
+    기대값과 일치하는 셀을 찾는 대신, 표지에서 날짜가 실제로 적힌 셀을 먼저
+    찾아 그 값을 실제값으로 가져오기 위한 용도다. '2026-06-05 ~ 2026-06-05
+    \\n2026-07-21 ~ 2026-08-14'처럼 구간별로 나눠 적히면서 같은 날짜가 두 번
+    (1일짜리 구간의 시작=종료) 나타날 수 있어 중복은 제거한다.
     """
-    start_norm = _format_dot_date(start_date)
-    end_norm = _format_dot_date(end_date)
-    if not (start_norm and end_norm):
-        return None
-    date_pattern = r"\d{4}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?\.?"
-    for row_index, row in enumerate(rows, start=1):
-        for col_index, value in enumerate(row, start=1):
-            found = [_format_dot_date(token) for token in re.findall(date_pattern, str(value or ""))]
-            if start_norm in found and end_norm in found:
-                return {"row": row_index, "column": col_index, "value": value}
-    return None
-
-
-def _find_cell_with_exact_date_list(rows, date_list):
-    """셀 안의 날짜를 전부 findall로 추출해 date_list와 순서까지 정확히 일치하는 셀을 찾는다.
-
-    품질평가보고서 '제품시험평가'처럼 시험 중단/재개로 날짜가 3개 이상 적힐 수
-    있는 경우, 시작~종료 2개 포함 여부만 보는 _find_cell_with_date_range 대신
-    전체 날짜 순서가 date_list와 정확히 같은지로 검사한다.
-    """
-    normalized_target = [_format_dot_date(token) for token in (date_list or [])]
-    if not normalized_target:
-        return None
     date_pattern = r"\d{2,4}\s*[.\-/년]\s*\d{1,2}\s*[.\-/월]\s*\d{1,2}\s*일?\.?"
     for row_index, row in enumerate(rows, start=1):
         for col_index, value in enumerate(row, start=1):
             found = [_format_dot_date(token) for token in re.findall(date_pattern, str(value or ""))]
-            if found == normalized_target:
-                return {"row": row_index, "column": col_index, "value": value}
+            if found:
+                return {
+                    "row": row_index,
+                    "column": col_index,
+                    "value": value,
+                    "dates": list(dict.fromkeys(found)),
+                }
     return None
 
 
