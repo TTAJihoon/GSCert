@@ -5,10 +5,15 @@
 
 ## 1. 왜 있나
 
-산출물 다운로드가 현재 ECM(Playwright + Windows Agent)에 강결합돼 있다. 추후 저장소가
-ECM 이 아닐 수 있으므로, "산출물을 받아오는 부분"만 떼어 새 구현으로 갈아끼울 수 있게
-**`ArtifactSource` 경계**를 두었다. 이 경계는 테스트 주입 지점과 동일해서, 로컬 source 가
-곧 ECM 없는 fake-live 테스트 더블이 된다.
+산출물 다운로드는 ECM 구현에 강하게 묶이기 쉬운 부분이다. 추후 저장소가 ECM 이 아닐 수
+있으므로, "산출물을 받아오는 부분"만 떼어 새 구현으로 갈아끼울 수 있게 **`ArtifactSource`
+경계**를 두었다. 이 경계는 테스트 주입 지점과 동일해서, 로컬 source 가 곧 ECM 없는
+fake-live 테스트 더블이 된다.
+
+현재 구현체는 `ecm-http`(서버측 HTTP 직접 호출)와 `local`(폴더 복사) 두 개뿐이다. 과거의
+Playwright + Windows Agent source 는 코드에서 제거됐다 — 도입 배경은 `archive/ADR/2026-07-http-ecm-source.md`
+에 남아 있고, 그 ADR 의 "기존 `ecm`(Playwright)를 폴백으로 유지" 결정은 이후 실제 구현에서
+폐기됐다(아래 §3 참고).
 
 ## 2. 경계 (무엇이 source-specific 인가)
 
@@ -43,11 +48,35 @@ class ArtifactSource(Protocol):
   `open`=lazy 로그인(job 내 센터별 세션 재사용), `fetch`=프로젝트 폴더 탐색→재귀 순회→
   `AGENT_DOWNLOAD_BASE_DIR/<NFC 프로젝트번호>/<NFC 상대경로>/` 에 다운로드(NFC + 무결성 검증).
   Playwright/pywinauto/에이전트 락 **불필요**. HTTP 클라이언트는 `ecm_http_client.DestinyECM`.
-  설계·결정: `12_http_ecm_source_decisions.md`.
+  설계·결정: `archive/ADR/2026-07-http-ecm-source.md`.
 - `LocalFolderArtifactSource`(`local`): `source_root/<프로젝트번호>` → 다운로드 폴더로 복사.
   다른 저장소 연결 첫 구현이자 fake-live 더블.
 - `build_artifact_source(name, *, headless, source_root)`: 이름으로 구현체 생성
   (`ecm-http` / `local`). 레거시 Playwright source(`ecm`)는 제거됨 — `ecm` 값은 `ecm-http` 로 별칭 처리.
+  그 외 이름은 `ValueError`.
+
+source 는 **잡 단위로 한 번만 결정되고 실행 중 바뀌지 않는다.** source 간 자동 폴백(HTTP 실패 →
+Playwright/local)은 없다. `fetch` 내부 실패는 `FetchResult(success=False, ...)` 로 돌아오거나,
+파일 단위로는 같은 HTTP 경로로 1회 재시도 후 해당 파일만 누락 처리한다. dry-run(`--live` 없음)은
+source 를 아예 만들지 않는다.
+
+### ECM HTTP 동작 규격 (현재 확정 사항)
+
+도입 당시의 판단 근거와 대안 검토는 `archive/ADR/2026-07-http-ecm-source.md` 에 있다. 아래는 현재
+코드가 지키는 규격만 요약한 것이다.
+
+| 항목 | 현재 규격 |
+|---|---|
+| 자격증명 | 환경변수만 사용. 상암·영남은 같은 서버(`210.96.71.85`)라 `ECM_USERNAME`/`ECM_PASSWORD` 공유, 분당은 `ECM_USERNAME_BUNDANG`/`ECM_PASSWORD_BUNDANG`. 센터→자격증명 해석은 `ecm_download_review_centers.py` |
+| 세션 | 잡 단위 로그인(`open()` 1회, 잡 내 프로젝트 재사용, `close()` 폐기) + 세션 만료 감지 시 1회 자동 재로그인 |
+| root OID | 센터 정의 dict 의 `default_ecm_root_oid`. 분당 `C_ROOT`, 상암 `1PQSYcuFhzv`, 영남 `1EBnGfHdFwe`. `ECM_ROOT_OID_{SANGAM,YEONGNAM,BUNDANG}` 으로 덮어쓸 수 있다 |
+| 프로젝트 매칭 | 문서의 `test_no` 기준(`cert_no` 사용 금지). zero-padding 양쪽 매칭(`GS-A-23-0336` ↔ `GS-A-23-336`). 연도는 `cert_date` 우선, 없으면 `test_no` 의 `-YY-` → `20YY` |
+| 후보 폴더 선택 | 문서 점수제(완료 50 > 종료 45 > 재계약 35 > 계약 25 > 신청 15 > 시험대기 5, 취소 −50, 복사본 −20). 같은 프로젝트 변형 폴더가 연속 배치되는 특성을 이용해 매칭 블록 종료 시 조기 중단 |
+| 디스크 레이아웃 | `AGENT_DOWNLOAD_BASE_DIR/<NFC 프로젝트번호>/<NFC 상대경로>/파일`. 모든 경로·파일명 NFC 정규화. `downloaded_folder_count` 는 파일이 실제 있던 폴더 수 |
+| DRM | 별도 처리 없음. `drmStatus` 무시(GS 산출물에 DRM 미적용) |
+| 무결성 검증 | 파일별 매직바이트(zip/xlsx/docx/pptx=`PK`, PDF=`%PDF`) + API `fileSize` 대조. 실패 시 1회 재다운로드, 그래도 실패하면 그 파일만 누락시키고 프로젝트는 계속 진행(`FetchResult.failed_files`, `download_partial_failure` 경고) |
+| 동시성 | 단일 워커 유지, 동시 요청은 대기열. HTTP source 는 ECM 에이전트 락이 불필요 |
+| 의존성 | `requests` 만 필요. Playwright/pywinauto 는 이 경로에 쓰이지 않는다(`requirements-automation.txt` 의 playwright 는 주간 엑셀 동기화 `main/utils/weekly.py` 와 별도 `playwright_job/` 앱용) |
 
 ## 4. 워커가 쓰는 방식
 
@@ -100,8 +129,8 @@ finally:
 | `ECM_ROOT_OID_{SANGAM,YEONGNAM,BUNDANG}` | 센터 기본값 | ecm-http 트리 탐색 시작 OID 덮어쓰기 |
 | CLI `--source` | (없음) | 이 실행만 source 덮어쓰기. settings 보다 우선 |
 
-- 운영(ECM, Playwright): `python manage.py run_download_worker --live`
-- **HTTP 직접연동(ECM, requests)**: `python manage.py run_download_worker --live --source=ecm-http`
+- 운영: `python manage.py run_download_worker --live` (`--source` 생략 시 settings 기본값 `ecm-http`)
+- **HTTP 직접연동(ECM, requests) 명시 지정**: `python manage.py run_download_worker --live --source=ecm-http`
   (자격증명 환경변수 필요. 실서버 사전 검증: `python manage.py verify_ecm_http --center <센터> --test-no <시험번호> [--download]`)
 - **fake-live(ECM 없이 전체 흐름)**:
   `LOCAL_ARTIFACT_SOURCE_ROOT=<폴더> python manage.py run_download_worker --once --live --source=local`

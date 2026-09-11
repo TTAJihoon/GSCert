@@ -117,7 +117,7 @@ Copy-Item -Recurse -Force `
 용도:
 
 - `/download-review/` UI/API/worker/DB 구조를 이어서 수정할 때
-- `main/docs/00_next_step.md` 중심으로 handoff를 갱신할 때
+- `main/docs/00_README.md` 중심으로 handoff를 갱신할 때
 - 센터 분기, active job 전역 기준, `ecmlist*.db`/`workflow.db` 분리를 다시 확인할 때
 - 실제 규칙 작성 전후로 draft 규칙 운영 정책을 확인할 때
 

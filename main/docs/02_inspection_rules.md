@@ -12,12 +12,14 @@
 
 | 항목 | 위치 |
 | --- | --- |
-| 규칙 원본 문서 | `main/docs/03_inspection_rule_manual.md` |
+| 규칙 원본 문서 | `main/docs/02_inspection_rules.md` |
 | 과거 산출물 점검 설계 | `main/docs/archive/2026-07-doc-cleanup/05_zip_inspection.md` |
-| DB 구조 | `main/docs/13_db_schema.md` |
+| DB 구조 | `main/docs/04_data_and_api.md` |
 | 규칙 seed 명령 | `main/management/commands/seed_download_review_rules.py` |
 | 점검 엔진 | `main/views/review/ecm_download_review_inspection.py` |
 | 결과 write-back | `main/views/review/ecm_reference_db.py` |
+| 기준정보 동기화(주간, SwData 우선) | `main/management/commands/sync_new_certified_projects.py` |
+| 기준정보 동기화(수동, Google Sheet 전체) | `main/management/commands/sync_reference_projects_from_sheet.py` |
 | Codex skill 요약 | `main/docs/codex_skills/gscert-download-review-maintainer/references/rules.md` |
 
 ## 규칙 상태
@@ -47,17 +49,17 @@
 | --- | --- | --- |
 | `{project_number}` | 프로젝트 번호 | `DownloadReviewProject.project_number` |
 | `{프로젝트번호}` | 프로젝트 번호 | `DownloadReviewProject.project_number` |
-| `{product}` | 버전 값을 제거한 제품명 | `ecm_row_json["제품명"]` 또는 `ecm_row_json["product"]` |
-| `{제품명}` | 버전 값을 제거한 제품명 | `ecm_row_json["제품명"]` 또는 `ecm_row_json["product"]` |
-| `{company}` | 회사명 | `ecm_row_json["회사명"]` 또는 `ecm_row_json["company"]` |
-| `{회사명}` | 회사명 | `ecm_row_json["회사명"]` 또는 `ecm_row_json["company"]` |
-| `{버전}` | 제품명 끝부분에서 추출한 버전 | 제품명 파생값 |
-| `{pl}` | 시험PL | `ecm_row_json["시험PL"]` 또는 `ecm_row_json["pl"]` |
-| `{PL}` | 시험PL | `ecm_row_json["시험PL"]` 또는 `ecm_row_json["pl"]` |
-| `{wd}` | WD | `ecm_row_json["WD"]` 또는 `ecm_row_json["wd"]` |
-| `{WD}` | WD | `ecm_row_json["WD"]` 또는 `ecm_row_json["wd"]` |
-| `{시작일}` | 시험 시작일 | `reference_project.start_date` 또는 API 응답 `project.start_date` |
-| `{종료일}` | 시험 종료일 | `reference_project.expected_end_date` 또는 API 응답 `project.end_date` |
+| `{product}` | 버전 값을 제거한 제품명 | `ecm_row_json["제품명"]` 또는 `ecm_row_json["product"]` — **SwData(인증획득목록 엑셀) 출처** |
+| `{제품명}` | 버전 값을 제거한 제품명 | 위와 동일 — **SwData(인증획득목록 엑셀) 출처** |
+| `{company}` | 회사명 | `ecm_row_json["회사명"]` 또는 `ecm_row_json["company"]` — **SwData(인증획득목록 엑셀) 출처** |
+| `{회사명}` | 회사명 | 위와 동일 — **SwData(인증획득목록 엑셀) 출처** |
+| `{버전}` | 제품명 끝부분에서 추출한 버전 | 제품명 파생값 — `{제품명}`과 같은 SwData 출처 |
+| `{pl}` | 시험PL | `ecm_row_json["시험PL"]` 또는 `ecm_row_json["pl"]` ← `reference_project.pl` — **출처 혼재(아래 주의 참고)** |
+| `{PL}` | 시험PL | 위와 동일 — **출처 혼재** |
+| `{wd}` | WD | `ecm_row_json["WD"]` 또는 `ecm_row_json["wd"]` ← `reference_project.wd` — **출처 혼재** |
+| `{WD}` | WD | 위와 동일 — **출처 혼재** |
+| `{시작일}` | 시험 시작일 | `SwData.start_date`(인증획득목록 엑셀)를 프로젝트번호로 직접 재조회. `reference_project`는 참조하지 않는다 |
+| `{종료일}` | 시험 종료일 | `SwData.end_date`(인증획득목록 엑셀)를 프로젝트번호로 직접 재조회. `reference_project`는 참조하지 않는다 |
 | `{연도}` | 프로젝트 연도 | `{프로젝트번호}`의 `TTA-YY-xxxxx`에서 `20YY`로 추출 |
 | `{잔여결함수}` | 잔여 결함 개수 | 10번 결함리포트 규칙에서 산출 |
 | `{결함차수}` | 결함 차수 | 8번 시험성적서 규칙에서 산출 |
@@ -67,9 +69,9 @@
 | `{측정항목별점수표}` | 점검표의 측정항목별 점수표 값 목록 | 12번 점검표 규칙에서 산출 |
 | `{시험성적서_시험기간}` | 시험성적서 '6. 시험기간'에서 수집한 날짜 목록(순서 그대로, 하루짜리 구간은 시작=종료 두 번) | 8번 시험성적서 규칙에서 산출 |
 | `{품질부특성측정값}` | 품질검사표의 품질부특성 측정값 목록 | 15번 품질검사표 규칙에서 산출 |
-| `{신청일}` | 신청일 | `reference_project.request_date` |
-| `{계약일}` | 계약일 | `reference_project.contract_date` |
-| `{인증위}` | 품질인증심의위원회 일자 | `reference_project.cert_date` 또는 `cert_committee_date` |
+| `{신청일}` | 신청일 | `ecm_row_json["request_date"]` ← `reference_project.request_date` — **Google Sheet(인증위 시트) 출처** |
+| `{계약일}` | 계약일 | `ecm_row_json["contract_date"]` ← `reference_project.contract_date` — **Google Sheet(인증위 시트) 출처** |
+| `{인증위}` | 품질인증심의위원회 일자 | `ecm_row_json["cert_date"]` ← `reference_project.cert_date` — **출처 혼재(아래 주의 참고)** |
 
 ### 변수 세부 규칙
 
@@ -82,7 +84,7 @@
 - 인증획득목록 제품명이 `국문명 버전(영문명 버전)` 형식으로 국문명/영문명을 병기한 경우, 국문명은 `{제품명}`/`{product}`로, 영문명은 별도로 파싱해 9-5(제품/버전/신청번호) 검사에서 국문명 또는 영문명 둘 중 하나만 적혀 있어도 일치로 인정한다. 병기 형식이 아니면(괄호 없이 단일 명칭만 있는 경우) 영문명 후보는 비어 있고 국문명만 비교한다.
 - 병기 형식은 `국문명 버전(영문명 버전)`처럼 한 줄에 적힐 때도 있고, `국문명 버전\n(영문명 버전)`처럼 국문명과 영문명이 줄바꿈으로 나뉘어 적힐 때도 있다. `{제품명}`은 원본 값의 줄바꿈을 공백으로 합친 뒤 위 규칙으로 파싱하므로 두 형식 모두 영문명이 인식된다.
 - `{회사명}`/`{company}` 원본 값이 `국문명\n영문명`처럼 줄바꿈으로 병기된 경우(예: `㈜이든티앤에스\nEDEN TNS Inc`), 첫 줄은 `{회사명}`/`{company}`로, 둘째 줄은 영문명 후보로 각각 분리한다. 16-4(회사명) 검사는 품질평가보고서의 회사(기관)명 셀이 국문명 또는 영문명 둘 중 하나와만 일치해도 적합으로 인정한다(제품명과 동일한 이유).
-- `{시작일}`과 `{종료일}`은 기준정보 API 또는 `reference_project`에서 기준 행을 찾지 못하거나 값이 비어 있으면 기준정보 없음으로 실패 처리한다.
+- `{시작일}`과 `{종료일}`은 `SwData`(인증획득목록 엑셀, PostgreSQL `reference` DB의 `sw_data` 테이블)에서 프로젝트번호로 기준 행을 찾지 못하거나 값이 비어 있으면 기준정보 없음으로 실패 처리한다. `main/views/review/ecm_download_review_inspection.py`의 `_reference_start_end_dates`/`_reference_dates_from_pg`가 이 조회를 담당하며, `ecm_row_json`이나 `reference_project`의 `start_date`/`expected_end_date`는 이 값 산출에 쓰지 않는다.
 - `{시작일}` 날짜 형식은 `yyyy.mm.dd.`를 기준으로 한다.
 - `{잔여결함수}`는 10번 결함리포트의 마지막 버전 파일 내 `최종결함리포트` 시트에서 산출한다.
 - `{1차}`, `{2차}` 등 차수별 보고일자는 8번 시험성적서의 `결함리포트 송부` 표에서 산출한다.
@@ -92,8 +94,10 @@
 - `{측정항목별점수표}`는 12번 점검표의 `측정항목별 점수표` 시트 D7~D90 값에서 산출한다.
 - `{시험성적서_시험기간}`은 8번 시험성적서의 `6. 시험기간 :`~`7. 시험방법` 구간에서 날짜를 '날짜' 또는 '날짜~날짜' 단위로 순서대로 모은 목록이다. `~`로 묶인 구간은 시작/종료 두 값을, `~` 없이 홀로 적힌 날짜(하루짜리 구간)는 시작=종료로 보고 그 날짜를 두 번 넣는다. 예: `(최초) 2026.6.5 (1차) 2026.7.21 ~ 2026.8.14` → `[6.5, 6.5, 7.21, 8.14]`. 7번 제품 스크린샷/9번 시험계획서/11번 테스트케이스/12번 점검표/16번 품질평가보고서가 `{시작일}`/`{종료일}`(SwData) 대신 이 값을 우선 참조하며, 8번 규칙이 값을 못 구했을 때만 각 규칙이 `{시작일}`/`{종료일}`로 대체한다.
 - `{품질부특성측정값}`은 15번 품질검사표의 E4:E85 실제 값 33개 중 27번째 값을 제외하고 `4~26, 28~33, 1~3` 순서로 재정렬해 산출한다.
-- `{신청일}`과 `{계약일}`은 Google Sheet 적재 결과인 `reference_project.request_date`, `reference_project.contract_date` 값을 사용한다.
-- `{인증위}`는 `reference_project.cert_date` 또는 정규화된 인증위 날짜 값을 사용한다.
+- `{신청일}`과 `{계약일}`은 Google Sheet 적재 결과인 `reference_project.request_date`, `reference_project.contract_date` 값을 사용한다. 두 값은 `sync_new_certified_projects`(주간 자동)와 `sync_reference_projects_from_sheet`(운영자 수동 실행) 어느 경로를 거치든 항상 구글시트(인증위 시트) 값으로만 채워지므로 출처가 안정적이다.
+- `{인증위}`는 `reference_project.cert_date`를 사용하지만, 이 칼럼 하나에 서로 다른 두 값이 섞여 들어갈 수 있다: `sync_new_certified_projects`(주간 자동)는 `SwData.cert_date`(엑셀의 실제 인증서 발급일)를 그대로 복사하고, `sync_reference_projects_from_sheet`(운영자가 수동으로 누르는 "Google Sheets 동기화" 버튼)는 구글시트 인증위 날짜에서 만든 `M/D` 문자열을 넣는다. 두 날짜는 보통 다르며(위원회 개최일이 인증서 발급일보다 이르다), DB에는 마지막에 실행된 동기화 기준 값만 남는다. `reference_project.cert_committee_date`(전용 date 컬럼)가 따로 있지만 엔진은 이 컬럼을 읽지 않는다 — 프로젝트 목록 정렬에만 쓰인다.
+
+> 위 변수 중 어떤 값을 프로그램이 산출물에 자동으로 써넣을 수 있는지(그리고 어떤 값은 실측 데이터라 건드리면 안 되는지)는 `08_artifact_autofill.md`의 "변수 사전"에서 관리한다. 이 문서는 현재 엔진이 실제로 판정하는 기준만 다룬다.
 
 ## 센터별 이름 기준
 
@@ -825,7 +829,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
   - 품질부특성 측정값 비교 결과, 총 비교 개수, 불일치 개수
 - 산출물 결과 키: `품질평가보고서`
 - 구현 메모:
-  - `{신청일}`은 `reference_project.request_date`, `{계약일}`은 `reference_project.contract_date`, `{인증위}`는 `reference_project.cert_date` 또는 `cert_committee_date`에서 가져온다.
+  - `{신청일}`은 `reference_project.request_date`, `{계약일}`은 `reference_project.contract_date`에서 가져온다. `{인증위}`는 `reference_project.cert_date`에서 가져오는데, 이 칼럼은 동기화 경로에 따라 SwData(엑셀)의 인증서 발급일 또는 Google Sheet의 인증위원회 개최일이 섞여 들어갈 수 있다 — "기대값 출처 분류" 절 참고.
   - `{품질부특성측정값}`은 15번 품질검사표 규칙 산출값과 연결한다.
   - `김성희`, `정성룡`은 향후 변경 가능성이 있으면 규칙 JSON expected 값으로 둔다.
   - 15번 품질검사표 실제 규칙의 `sort_order`는 145로 고정되어, 16번 품질평가보고서의 기본 `sort_order=150`보다 먼저 실행된다.
@@ -917,7 +921,7 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
 3. 구현 전 상태는 `정의 확정` 또는 `정의 중`으로 둔다.
 4. 코드와 seed에 반영한 뒤 상태를 `구현됨`으로 변경한다.
 5. 규칙 결과가 `reference_project.artifact_results_json`과 레거시 `ecm_list` 호환 경로에서 어떤 산출물 키로 저장되는지 반드시 적는다.
-6. 다음 PC에서 이어서 작업할 수 있도록 `main/docs/00_next_step.md`에는 바로 다음 작업만 요약한다.
+6. 다음 PC에서 이어서 작업할 수 있도록 `main/docs/00_README.md`에는 바로 다음 작업만 요약한다.
 
 ## 검증 명령
 
@@ -936,5 +940,161 @@ API는 `inspection_result.raw_detail_json.artifacts`에 저장된 상대 경로�
 문서 핵심 항목 확인:
 
 ```powershell
-rg "상태:|기능리스트|시험계획서|Copyright \{연도\} TTA|\{시작일\}|\{버전\}" main/docs/03_inspection_rule_manual.md
+rg "상태:|기능리스트|시험계획서|Copyright \{연도\} TTA|\{시작일\}|\{버전\}" main/docs/02_inspection_rules.md
 ```
+
+## 규칙 DB 수정 실무
+
+점검규칙은 Django 모델 `DownloadReviewRule`로 관리하며 실제 테이블명은 `inspection_rule`이다.
+
+| 구분 | 값 |
+| --- | --- |
+| 운영 DB alias | `reference` |
+| 운영 DB | PostgreSQL `gscert_reference` |
+| 규칙 테이블 | `inspection_rule` |
+| 결과 테이블 | `inspection_result` (`workflow` DB) |
+| seed 코드 | `main/management/commands/seed_download_review_rules.py` |
+| 실행 코드 | `gscert_review_core.engine` |
+| 웹 어댑터 | `main/views/review/ecm_download_review_inspection.py` |
+| Windows 앱 배포 API | `/api/local-review/rules/manifest/`, `/api/local-review/rules/bundle/` |
+
+규칙 정의는 공유 PostgreSQL `reference` DB에 있고, 규칙 실행 결과는 각 서버의 로컬 `workflow.db`에 저장된다. Django는 서로 다른 DB 간 FK를 지원하지 않으므로 결과는 `rule_code`와 `rule_name` 문자열로 규칙을 식별한다. `myproject.ui_mock_settings`를 쓰는 개발/테스트 환경은 로컬 SQLite `workflow.db`에 규칙을 둘 수 있다. DB 구조는 `04_data_and_api.md`를 본다.
+
+### 규칙 저장 형태
+
+| 컬럼 | 실무 의미 | 수정 빈도 |
+| --- | --- | --- |
+| `code` | 규칙 고유 코드. 예: `artifact_01` | 거의 수정 금지 |
+| `name` | 화면에 보이는 규칙명 | 필요 시 수정 |
+| `target_file_pattern` | 대상 파일 매칭 보조 패턴 | 가끔 수정 |
+| `target_file_type` | 대표 파일 유형. 예: `pdf`, `xlsx`, `any` | 가끔 수정 |
+| `rule_type` | 어떤 검사 로직을 쓸지 지정 | 신중히 수정 |
+| `config_json` | 파일명 키워드, 확장자, 개수, 기대값, 메시지 등 실제 조건 | 가장 자주 수정 |
+| `severity` | 보통 `error` | 거의 고정 |
+| `enabled` | 규칙 사용 여부 | 자주 수정 가능 |
+| `version` | 규칙 버전 문자열. 예: `actual-1` | 필요 시 수정 |
+| `sort_order` | 실행/표시 순서 | 필요 시 수정 |
+| `updated_at` | 수정 시 자동 갱신 | 직접 수정하지 않음 |
+
+실제 작업은 대부분 `enabled`, `sort_order`, `config_json` 수정이다.
+
+### config_json 예시
+
+계약서(`artifact_01`) — PDF 1개 존재만 검사한다.
+
+```json
+{
+  "artifact_column": "계약서",
+  "folder_keyword_chain": ["계약"],
+  "filename_keywords": ["계약서", "{project_number}"],
+  "extensions": [".pdf"],
+  "exact_count": 1,
+  "missing_message": "파일이 없습니다.",
+  "pass_message": "계약서 PDF 파일을 확인했습니다."
+}
+```
+
+| 항목 | 의미 |
+| --- | --- |
+| `filename_keywords` | 파일명 또는 경로에 모든 키워드가 포함되어야 함 |
+| `extensions` | 허용 확장자 |
+| `exact_count` / `min_count` | 정확한 개수 / 최소 개수 |
+| `missing_message` | 실패 시 사용자에게 보여줄 메시지 |
+| `pass_message` | 성공 시 저장할 메시지 |
+
+시험환경구성도(`artifact_04`) — PNG 또는 PPTX 중 1개 이상이면 통과한다.
+
+```json
+{
+  "artifact_column": "시험환경구성도",
+  "folder_keyword_chain": ["시험", "계획"],
+  "filename_keywords": ["구성도", "{project_number}"],
+  "extensions": [".png", ".pptx"],
+  "min_count": 1,
+  "missing_message": "파일이 없습니다.",
+  "pass_message": "시험환경구성도 파일을 확인했습니다."
+}
+```
+
+파일명 조건을 완화할 때는 보통 `filename_keywords`만 수정한다. 예를 들어 프로젝트번호 조건을 빼려면 `"filename_keywords": ["구성도"]`로 바꾼다.
+
+합의서(`artifact_02`) — 파일 세트와 문서 내부 값을 함께 검사한다.
+
+```json
+{
+  "artifact_column": "합의서(PDF)",
+  "filename_keywords": ["합의서", "{project_number}"],
+  "required_files": [
+    {"extensions": [".docx", ".docm"], "exact_count": 1},
+    {"extensions": [".pdf"], "exact_count": 1}
+  ],
+  "content_checks": [
+    {
+      "type": "docx_table_next_cell_equals",
+      "extensions": [".docx", ".docm"],
+      "label": "시험신청번호",
+      "expected": "{project_number}",
+      "failure_message": "프로젝트 번호가 맞지 않습니다."
+    }
+  ],
+  "missing_message": "필요한 합의서 파일이 없습니다."
+}
+```
+
+### 권장: seed 코드 수정 후 반영
+
+DB를 직접 고치기보다 `seed_download_review_rules.py`를 수정하고 seed 명령으로 반영하는 방식이 가장 안전하다.
+
+```powershell
+.\.venv\Scripts\python.exe manage.py seed_download_review_rules --only-real --enable --update-existing --dry-run --settings=myproject.ui_mock_settings
+```
+
+dry-run 결과가 맞으면 `--dry-run`을 빼고 실제 반영한다. 이 방식은 Git에 규칙 변경 이력이 남고, 운영/개발 DB를 같은 정의로 다시 만들 수 있으며, `code`/`rule_type`을 실수로 바꾸는 일을 줄인다.
+
+### 긴급: DB 직접 수정
+
+운영에서 즉시 끄거나 메시지만 바꾸는 정도는 DB 직접 수정도 가능하다. 단, 운영 PostgreSQL `reference` DB를 직접 수정하기 전에는 백업/승인을 확인한다.
+
+```sql
+SELECT code, name, rule_type, enabled, version, sort_order, config_json
+FROM inspection_rule
+ORDER BY sort_order, name;
+
+UPDATE inspection_rule
+SET enabled = false
+WHERE code = 'artifact_07';
+```
+
+SQLite 개발 DB에서는 `enabled`가 `0/1`로 보일 수 있고, PostgreSQL에서는 `false/true`로 쓴다.
+
+### 수정 전 확인할 정보
+
+| 확인할 것 | 예시 |
+| --- | --- |
+| 어떤 산출물인가 | 계약서, 합의서, 결함리포트 |
+| 규칙 코드 | `artifact_01` |
+| 파일명 조건 | `["계약서", "{project_number}"]` |
+| 확장자 | `[".pdf"]`, `[".docx", ".docm"]` |
+| 필요한 개수 | `exact_count: 1` 또는 `min_count: 1` |
+| 내부 값 검사 여부 | Word 표, PDF 1페이지, Excel 시트 등 |
+| 실패 메시지 | 사용자가 바로 고칠 수 있는 문장 |
+| 웹/Windows 앱 둘 다 적용 가능한가 | 새 `rule_type`이면 프로그램 업데이트 필요 |
+
+### 반영 후 확인
+
+```powershell
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/local-review/rules/manifest/"
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/api/local-review/rules/bundle/"
+.\.venv\Scripts\python.exe manage.py check --settings=myproject.ui_mock_settings
+.\.venv\Scripts\python.exe manage.py test main.tests --settings=myproject.ui_mock_settings
+```
+
+Windows 앱에서는 규칙 업데이트 후 테스트 폴더를 선택해 점검을 실행해 본다.
+
+### 주의사항
+
+- `code`는 결과 매핑과 이력 식별에 쓰이므로 가급적 바꾸지 않는다.
+- `rule_type`을 바꾸면 실행 코드가 해당 유형을 지원해야 한다.
+- `config_json`은 JSON 문법 오류가 나면 규칙 실행이 실패한다.
+- 기존 `rule_type`에서 키워드/확장자/개수/메시지만 바꾸는 경우는 Windows 앱 재배포 없이 규칙 업데이트로 반영된다.
+- 새 검사 로직이나 새 문서 파서가 필요하면 서버 코드 배포와 Windows 앱 업데이트가 필요하다.

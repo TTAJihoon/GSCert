@@ -1,6 +1,6 @@
 """점검규칙 세부항목(sub_check) 참고용 정적 카탈로그.
 
-`main/docs/03_inspection_rule_manual.md`의 "세부 점검 규칙 ID" 표를 그대로 옮긴
+`main/docs/02_inspection_rules.md`의 "세부 점검 규칙 ID" 표를 그대로 옮긴
 것이다. 실제 점검 결과의 sub_checks는 실행 시점에 동적으로 생성되며(문서 기준
 번호와 항상 1:1로 맞물리지는 않는다 — 예: 10번 결함리포트는 버전 수에 따라
 머리글/바닥글/시트 항목이 회차별로 반복 생성된다), 이 카탈로그는 서버 관리
@@ -9,7 +9,7 @@
 에 저장된 위치 번호(1-based, 해당 규칙의 sub_checks 리스트 내 순번)로 동작한다
 (`gscert_review_core.engine._apply_disabled_sub_checks`).
 
-문서와 코드가 어긋나면 이 파일보다 03_inspection_rule_manual.md와 실제 점검
+문서와 코드가 어긋나면 이 파일보다 02_inspection_rules.md와 실제 점검
 결과 화면을 우선 신뢰할 것.
 """
 

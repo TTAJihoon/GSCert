@@ -1,5 +1,10 @@
 # HTTP 직접연동 ECM Source 도입 — 결정 기록(ADR)
 
+> **보관 문서 안내(2026-09)**: 이 ADR은 당시 판단을 그대로 보존한다. 본문에 나오는 문서명은
+> 그 시점 이름이며, 현재 위치는 다음과 같다. `11_artifact_source_boundary.md` →
+> `../../06_artifact_source_ecm.md`. 현재 코드 기준 규격은 그 문서의 "ECM HTTP 동작 규격" 절을 본다.
+> 특히 "결정 11"의 Playwright 폴백 유지 결정은 이후 구현에서 폐기됐다(레거시 source 제거, `ecm`은 별칭).
+
 Destiny ECM 산출물 다운로드를 **Playwright + 네이티브 클라이언트 + pywinauto 팝업** 방식에서
 **서버측 HTTP 직접 호출(`requests`)** 방식으로 교체하기 위한 결정 추적 문서다.
 

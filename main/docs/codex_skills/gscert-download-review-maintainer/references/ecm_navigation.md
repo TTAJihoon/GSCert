@@ -16,8 +16,8 @@ Primary files to inspect before changing behavior:
 - `main/views/review/ecm_selectors.py`
 - `main/views/review/ecm_agent_popup.py`
 - `main/views/review/ecm_download_review_worker.py`
-- `main/docs/11_artifact_source_boundary.md`
-- `main/docs/12_http_ecm_source_decisions.md`
+- `main/docs/06_artifact_source_ecm.md`
+- `main/docs/archive/ADR/2026-07-http-ecm-source.md`
 - `main/docs/archive/2026-07-doc-cleanup/03_webpage1_automation.md` (legacy selector notes)
 
 ## Known Tree Shape
@@ -122,7 +122,7 @@ DocumentSelectionSpec(
 )
 ```
 
-When changing document selection behavior, add or update tests where possible and update `main/docs/11_artifact_source_boundary.md` or `main/docs/12_http_ecm_source_decisions.md`. If the change is only for the legacy Playwright path, note it in `main/docs/archive/2026-07-doc-cleanup/03_webpage1_automation.md`.
+When changing document selection behavior, add or update tests where possible and update `main/docs/06_artifact_source_ecm.md` or `main/docs/archive/ADR/2026-07-http-ecm-source.md`. If the change is only for the legacy Playwright path, note it in `main/docs/archive/2026-07-doc-cleanup/03_webpage1_automation.md`.
 
 ## Safety Rules
 

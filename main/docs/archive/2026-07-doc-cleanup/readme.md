@@ -10,30 +10,30 @@
 
 | 보관 문서 | 현재 먼저 볼 문서 |
 | --- | --- |
-| `01_automation_flow.md` | `../../00_next_step.md`, `../../04_download_review_operations_manual.md` |
-| `02_database_design.md` | `../../13_db_schema.md` |
-| `03_webpage1_automation.md` | `../../11_artifact_source_boundary.md`, `../../12_http_ecm_source_decisions.md` |
-| `04_agent_download.md` | `../../11_artifact_source_boundary.md`, `../../12_http_ecm_source_decisions.md` |
-| `05_zip_inspection.md` | `../../03_inspection_rule_manual.md` |
-| `06_recovery_and_lock.md` | `../../04_download_review_operations_manual.md` |
+| `01_automation_flow.md` | `../../00_README.md`, `../../01_operations.md` |
+| `02_database_design.md` | `../../04_data_and_api.md` |
+| `03_webpage1_automation.md` | `../../06_artifact_source_ecm.md`, `../ADR/2026-07-http-ecm-source.md` |
+| `04_agent_download.md` | `../../06_artifact_source_ecm.md`, `../ADR/2026-07-http-ecm-source.md` |
+| `05_zip_inspection.md` | `../../02_inspection_rules.md` |
+| `06_recovery_and_lock.md` | `../../01_operations.md` |
 | `07_skill_strategy.md` | `../../codex_skills/README.md` |
-| `08_ui_api_design.md` | `../../05_developer_change_manual.md` |
-| `09_worker_process_design.md` | `../../04_download_review_operations_manual.md` |
-| `10_operations_scripts.md` | `../../04_download_review_operations_manual.md` |
-| `11_readme_policy.md` | `../../readme.md`, `../../01_manual_index.md` |
-| `12_implementation_roadmap.md` | `../../00_next_step.md`, `../../02_open_decisions.md` |
-| `13_ui_mockup_design.md` | `../../05_developer_change_manual.md` |
-| `14_dependency_management.md` | `../../04_download_review_operations_manual.md` |
-| `16_backend_foundation_progress.md` | `../../00_next_step.md` |
-| `16_download_review_backend_decisions.md` | `../../02_open_decisions.md`, `../../13_db_schema.md` |
-| `17_llm_review_interface.md` | `../../02_open_decisions.md` |
-| `22_expected_value_display_mapping.md` | `../../03_inspection_rule_manual.md`, `../../../../gscert_review_core/result_display.py` |
-| `23_local_desktop_postgresql_design.md` | `../../06_postgresql_api_access_manual.md`, `../../13_db_schema.md` |
-| `29_download_review_split_server_deployment.md` | `../../12_http_ecm_source_decisions.md` |
-| `30_ecm_center_navigation_plan.md` | `../../11_artifact_source_boundary.md`, `../../12_http_ecm_source_decisions.md` |
-| `31_test_zip_ecm_flow_simulation.md` | `../../04_download_review_operations_manual.md`, `../../03_inspection_rule_manual.md` |
-| `32_ecm_integration_reference.md` | `../../12_http_ecm_source_decisions.md` |
-| `32_google_sheet_reference_project_postgres_sync.md` | `../../10_reference_project_sheet_sync.md`, `../../13_db_schema.md` |
+| `08_ui_api_design.md` | `../../03_developer_guide.md` |
+| `09_worker_process_design.md` | `../../01_operations.md` |
+| `10_operations_scripts.md` | `../../01_operations.md` |
+| `11_readme_policy.md` | `../../00_README.md` |
+| `12_implementation_roadmap.md` | `../../00_README.md`, `../../00_README.md` |
+| `13_ui_mockup_design.md` | `../../03_developer_guide.md` |
+| `14_dependency_management.md` | `../../01_operations.md` |
+| `16_backend_foundation_progress.md` | `../../00_README.md` |
+| `16_download_review_backend_decisions.md` | `../../00_README.md`, `../../04_data_and_api.md` |
+| `17_llm_review_interface.md` | `../../00_README.md` |
+| `22_expected_value_display_mapping.md` | `../../02_inspection_rules.md`, `../../../../gscert_review_core/result_display.py` |
+| `23_local_desktop_postgresql_design.md` | `../../04_data_and_api.md`, `../../04_data_and_api.md` |
+| `29_download_review_split_server_deployment.md` | `../ADR/2026-07-http-ecm-source.md` |
+| `30_ecm_center_navigation_plan.md` | `../../06_artifact_source_ecm.md`, `../ADR/2026-07-http-ecm-source.md` |
+| `31_test_zip_ecm_flow_simulation.md` | `../../01_operations.md`, `../../02_inspection_rules.md` |
+| `32_ecm_integration_reference.md` | `../ADR/2026-07-http-ecm-source.md` |
+| `32_google_sheet_reference_project_postgres_sync.md` | `../../04_data_and_api.md`, `../../04_data_and_api.md` |
 
 ## 사용 기준
 

@@ -4,7 +4,7 @@
 
 Google Sheets의 시험완료 히스토리 데이터를 PostgreSQL `reference_project` 테이블에 추가 동기화하는 수동 실행 유틸리티다.
 
-일상 운영에서는 `main/docs/10_reference_project_sheet_sync.md`의 관리 명령 `sync_reference_projects_from_sheet`를 우선 사용한다. 이 폴더의 `sync_sheets.py`는 OAuth 인증 파일을 직접 사용하는 보조 스크립트다.
+일상 운영에서는 `main/docs/04_data_and_api.md`의 관리 명령 `sync_reference_projects_from_sheet`를 우선 사용한다. 이 폴더의 `sync_sheets.py`는 OAuth 인증 파일을 직접 사용하는 보조 스크립트다.
 
 ## 파일
 

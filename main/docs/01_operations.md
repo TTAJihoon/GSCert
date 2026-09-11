@@ -1,8 +1,8 @@
-# Download Review 운영 매뉴얼
+# 운영 매뉴얼
 
 ## 목적
 
-이 문서는 `/download-review/` 기능을 실제로 실행하고 확인하는 절차를 정리한다. 설계 배경보다 “지금 무엇을 실행해야 하는지”에 초점을 둔다.
+`/download-review/` 기능을 실제로 실행하고 확인하는 절차를 정리한다. 설계 배경보다 "지금 무엇을 실행해야 하는지"에 초점을 둔다. 현재 남은 작업과 미결사항은 이 문서에 적지 않고 `00_README.md`에 둔다.
 
 ## 기본 URL
 
@@ -21,7 +21,7 @@
 .\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-기존 download-review `20:00-07:00` 작업 시작 제한은 폐기되어 코드와 설정에서 제거됐다. 새 작업은 항상 즉시 `queued` 상태가 되며, 기존 `scheduled` 작업은 migration에서 `queued`로 전환한다. 서버 시간이 임시 변경된 동안에는 워커가 새 작업을 claim하지 않고 정상 시각 복구가 검증될 때까지 `queued` 상태로 유지한다. 서버 시간 임시 변경 기능은 `15_server_time_control_design.md`를 본다.
+기존 download-review `20:00-07:00` 작업 시작 제한은 폐기되어 코드와 설정에서 제거됐다. 새 작업은 항상 즉시 `queued` 상태가 되며, 기존 `scheduled` 작업은 migration에서 `queued`로 전환한다. 서버 시간이 임시 변경된 동안에는 워커가 새 작업을 claim하지 않고 정상 시각 복구가 검증될 때까지 `queued` 상태로 유지한다. 서버 시간 임시 변경 기능은 `07_server_time_control.md`를 본다.
 
 ## worker 실행
 
@@ -57,12 +57,12 @@ dry-run으로 작업 상태 전이와 규칙 실행 경로를 먼저 확인한�
 
 관련 문서:
 
-- `12_http_ecm_source_decisions.md`
-- `11_artifact_source_boundary.md`
+- `archive/ADR/2026-07-http-ecm-source.md`
+- `06_artifact_source_ecm.md`
 
 ## DB 기준
 
-최신 DB 구조는 `13_db_schema.md`가 기준이다.
+최신 DB 구조는 `04_data_and_api.md`가 기준이다.
 
 | DB | 용도 | 관리 기준 |
 | --- | --- | --- |
@@ -89,7 +89,7 @@ Django 서버 재시작 후 `/download-review/`에서 수동 적합 처리와 �
 
 ## 기준 프로젝트 동기화
 
-Google Sheet 프로젝트 목록을 PostgreSQL `reference_project`에 적재할 때는 `10_reference_project_sheet_sync.md`를 따른다.
+Google Sheet 프로젝트 목록을 PostgreSQL `reference_project`에 적재할 때는 `04_data_and_api.md`를 따른다.
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py sync_reference_projects_from_sheet --dry-run
@@ -113,7 +113,7 @@ Google Sheet 프로젝트 목록을 PostgreSQL `reference_project`에 적재할 
 .\.venv\Scripts\python.exe manage.py seed_download_review_rules --only-real --enable --update-existing --settings=myproject.ui_mock_settings
 ```
 
-규칙을 수정하려면 `03_inspection_rule_manual.md`와 `09_rule_db_edit_quick_guide.md`를 먼저 본다.
+규칙을 수정하려면 `02_inspection_rules.md`를 먼저 본다.
 
 ## 샘플 zip 검증
 
@@ -145,12 +145,12 @@ git diff --check
 
 | 증상 | 확인 위치 |
 | --- | --- |
-| 프로젝트가 목록에 안 보임 | `reference_project`, `/api/projects/`, `06_postgresql_api_access_manual.md` |
+| 프로젝트가 목록에 안 보임 | `reference_project`, `/api/projects/`, `04_data_and_api.md` |
 | 기준정보 날짜가 비어 있음 | `reference_project` 일정 컬럼, `/api/local-review/projects/{project_number}/metadata/` |
-| 작업이 시작되지 않음 | 시간 제한, active job 수, `workflow.db` job 상태 |
+| 작업이 시작되지 않음 | 서버 시간 임시 변경 상태(`idle`이 아니면 워커가 claim하지 않음), active job 수, `automation_lock` 점유, 워커 프로세스 실행 여부, `workflow.db` job 상태 |
 | worker가 멈춘 것 같음 | heartbeat, `automation_lock`, worker process |
-| ECM 다운로드가 실패함 | `verify_ecm_http`, `12_http_ecm_source_decisions.md` |
-| 파일은 있는데 규칙이 실패함 | `inspection_result.raw_detail_json`, `03_inspection_rule_manual.md` |
+| ECM 다운로드가 실패함 | `verify_ecm_http`, `archive/ADR/2026-07-http-ecm-source.md` |
+| 파일은 있는데 규칙이 실패함 | `inspection_result.raw_detail_json`, `02_inspection_rules.md` |
 | 수동 적합 처리가 실패함 | `inspection_manual_override` migration, `/api/rule-results/{id}/manual-pass/`, 서버 로그 |
 | UI 결과 문구가 이상함 | `gscert_review_core/result_display.py`, `/api/job-projects/{id}/results/` |
 
@@ -163,13 +163,6 @@ Copy-Item main\data\workflow.db "main\data\workflow.db.bak-$(Get-Date -Format yy
 ```
 
 PostgreSQL `reference` DB는 운영 공유 DB이므로 직접 수정 전에 dump 또는 관리 도구 백업 절차를 따른다.
-
-## 다음 운영 체크포인트
-
-1. 센터별 `verify_ecm_http --download` 실측을 완료한다.
-2. 194 서버 worker가 `--source=ecm-http`로 세 센터 작업을 처리하는지 확인한다.
-3. 샘플 zip 또는 실제 정상 산출물로 1~18번 전체 PASS 여부를 확인한다.
-4. 서버 시간 변경 기능은 dry-run 검증 후 194 서버에서 NTP 복구를 포함한 live 검증을 수행한다.
 
 ## 서버 시간 제어 서비스
 

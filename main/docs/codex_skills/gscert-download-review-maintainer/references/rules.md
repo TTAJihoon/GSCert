@@ -24,7 +24,7 @@ Manual pass overrides live in shared PostgreSQL `reference` through `DownloadRev
 The source of truth for artifact rules is:
 
 ```text
-main/docs/03_inspection_rule_manual.md
+main/docs/02_inspection_rules.md
 ```
 
 That document manages every rule from 1 through 18. When a new rule is discussed, update the manual first, then implement code and seed changes.
@@ -207,10 +207,10 @@ Policy:
 
 ## Rule Implementation Checklist
 
-1. Update `main/docs/03_inspection_rule_manual.md`.
+1. Update `main/docs/02_inspection_rules.md`.
 2. Add or update rule evaluation code in `ecm_download_review_inspection.py`.
 3. Ensure each result has user-friendly `expected`, `actual`, and `message`.
 4. Keep internal details in `raw_detail_json` or admin logs.
 5. Map one actual rule to one artifact result key when applicable (`reference_project.artifact_results_json`, with legacy `ecm_list` compatibility where enabled).
 6. Add focused tests.
-7. Update `main/docs/00_next_step.md` with only the immediate next work.
+7. Update `main/docs/00_README.md` with only the immediate next work.

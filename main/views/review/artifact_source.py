@@ -389,11 +389,11 @@ def build_artifact_source(
     headless: bool = True,
     source_root: str | None = None,
 ) -> ArtifactSource:
-    """source 이름으로 구현체를 생성한다(기본: ecm).
+    """source 이름으로 구현체를 생성한다(기본: ecm-http).
 
-    - ecm: 현 운영 기본. Playwright + Windows Agent.
-    - ecm-http: 서버측 HTTP 직접연동(requests). Playwright/pywinauto 불필요. 자격증명/
-      root OID 는 센터 정의(settings) 에서 읽는다. 안정화 후 기본값으로 승격 예정.
+    - ecm-http: 운영 기본. 서버측 HTTP 직접연동(requests). Playwright/pywinauto 불필요.
+      자격증명/root OID 는 센터 정의(settings) 에서 읽는다.
+    - ecm: 레거시 별칭. 아래에서 ecm-http 로 매핑한다(Playwright source 는 제거됨).
     - local: `source_root/<프로젝트번호>` 를 다운로드 폴더로 복사(다른 저장소 연결 첫 구현
       이자 fake-live 테스트용). source_root 미지정 시 settings.LOCAL_ARTIFACT_SOURCE_ROOT 사용.
     """

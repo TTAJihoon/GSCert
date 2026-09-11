@@ -53,15 +53,15 @@
 - 관리자 권한의 별도 Windows 서비스가 실제 시간 변경, 단조 증가 타이머, 복구를 담당한다.
 - 브라우저 종료나 Django 재시작은 복구 타이머에 영향을 주지 않아야 한다.
 - 서비스 재시작 또는 서버 재부팅 시 미완료 lease가 있으면 정상 시간 복구를 우선 시도한다.
-- 정상 복구는 194 서버의 실제 시간 원본을 확인한 뒤 `w32tm /resync` 또는 확정된 사내 시간 원본을 사용한다.
+- 정상 복구는 194가 NTP(`SERVER_TIME_NTP_HOST`, 기본 `time.windows.com`)로 정상 기준시각을 구한 뒤, 85에서 `w32tm /resync`를 실행하고 85 자신의 시각을 그 기준시각과 비교해 검증한다.
 - 복구 후 시간 원본과의 차이가 허용 오차 안인지 검증한다.
 - 복구 실패 시 `recovery_failed` 잠금을 유지하고 운영자가 상태를 볼 수 있게 한다.
 - 감사 이력에는 이벤트 순번, 작업자 이름, 요청 IP, 변경 전 시각, 설정 시각, 조기 복구/재설정 여부, 복구 결과를 기록한다.
 - OS 시각 변경으로 로그 시간이 역행할 수 있으므로 이벤트 순번과 정상 기준시각 추정값을 별도로 기록한다.
 
-## 구현 전 필수 확인
+## 환경 진단 결과와 재확인 명령
 
-아래 항목만 우선 확인한다. 결과는 관리자 PowerShell에서 수집한다.
+환경 진단은 2026-08-06에 완료됐다. 아래 결과를 기준으로 보고, 서버 구성이 바뀌었을 때 같은 명령으로 다시 확인한다. 결과는 관리자 PowerShell에서 수집한다.
 
 ### 194 서버 확인 결과 (2026-08-06)
 
@@ -133,7 +133,7 @@ NTP는 UDP 123을 사용하므로 `Test-NetConnection -Port 123` 결과만으로
 
 ### 5. 재부팅 자동 복구 기반
 
-복구 서비스는 아직 구현 전이므로 지금 확인할 자동 시작 서비스는 없다. 구현 후 다음 기준을 검증한다.
+복구 서비스는 구현되어 있다(`main/windows_services/server_time_control_service.py`, 설치 스크립트 `setup/install_server_time_service.ps1`, `launcher.ps1`의 `CC` 메뉴). 194에서 다음 기준을 확인한다.
 
 ```powershell
 Get-Service GSCertTimeControl | Select-Object Name, Status, StartType
@@ -152,19 +152,32 @@ sc.exe qc GSCertTimeControl
 - 산출물 저장 경로는 기본적으로 `\\210.96.71.99\ecm` SMB 공유다. 194 서버가 도메인 계정으로 이 공유에 접속한다면 시간 변경 시 Kerberos/SMB 인증 영향을 반드시 실측해야 한다.
 - 웹 진입점에는 nginx HTTPS 구성이 있으므로 서버 시간 변경 중 HTTP 헤더, CSRF 쿠키 만료, 로그 시각 역행을 시험한다.
 
-## 다음 단계 진입 조건
+## 남은 live 검증
 
-필수 환경 진단은 완료됐다. 구현 후 실제 194 서버에서 다음을 검증한다.
+코드는 구현 완료 상태이고, 개발 PC dry-run과 194→85 WinRM 연결(인증, 85 시각 조회, W32Time 상태 조회)까지 확인했다. 아직 실행하지 않은 것은 **85에서의 실제 OS 시각 변경**이다(85는 실사용 ECM 시스템이라 별도 확인 후 진행). 검증 항목은 다음과 같다.
 
-1. 과거 시각 설정 후 W32Time이 3분 전에 임의 복구하지 않는지.
-2. 자동/조기 복구 후 `time.windows.com`과 허용 오차 안으로 동기화되는지.
+1. 85에서 과거 시각 설정 후 W32Time이 lease 만료 전에 임의 복구하지 않는지.
+2. 자동/조기 복구 후 `time.windows.com` 기준과 허용 오차(`SERVER_TIME_VERIFY_TOLERANCE_SECONDS`, 기본 10초) 안으로 동기화되는지.
 3. 시간 변경 중과 복구 후 `\\210.96.71.99\ecm` 접근이 유지되는지.
-4. 서버 재부팅 시 미완료 lease를 감지하고 즉시 복구하는지.
+4. 서비스 재시작 또는 85 재부팅 시 미완료 lease를 감지하고 즉시 복구하는지.
 
-## 구현 상태
+## 구성 요소
 
-- `GET /api/server-time/`: 서버 시각, lease 상태, revision, 설정자, 남은 시간 조회.
-- `POST /api/server-time/action/`: 최초 변경, 같은 이름/PIN 재설정, 조기 복구 요청.
+| 구성 | 위치 |
+| --- | --- |
+| 상태/액션 API | `main/views/review/server_time_control_api.py`, `main/urls.py` |
+| lease·PIN·revision 로직 | `main/server_time_control.py` |
+| 85 원격 제어 에이전트 | `main/management/commands/run_server_time_agent.py` |
+| Windows 서비스 | `main/windows_services/server_time_control_service.py` (`GSCertTimeControl`) |
+| 서비스 설치 스크립트 | `setup/install_server_time_service.ps1`, `launcher.ps1`의 `CC` 메뉴 |
+| 워커 차단 로직 | `main/views/review/ecm_download_review_worker.py` |
+| 화면 | `main/static/scripts/review/ecm_download_review.js` |
+
+설정값(`myproject/settings.py`): `SERVER_TIME_REMOTE_HOST`(기본 `210.96.71.85`), `SERVER_TIME_REMOTE_USER`, `SERVER_TIME_REMOTE_PASSWORD`, `SERVER_TIME_NTP_HOST`(기본 `time.windows.com`), `SERVER_TIME_LEASE_SECONDS`(180), `SERVER_TIME_VERIFY_TOLERANCE_SECONDS`(10). 원격 접속 정보 세 값 중 하나라도 없으면 에이전트가 실행 시점에 오류를 낸다.
+
+- `GET /api/server-time/`: 서버 시각, lease 상태, revision, 설정자, 남은 시간 조회. `changing` 상태에서는 85의 시각을 신뢰할 수 없으므로 `server_time`을 `null`로 응답한다.
+- `POST /api/server-time/action/`: `change`(최초 변경), `reset`(같은 이름/PIN 재설정), `restore`(조기 복구). 요청 본문은 `{action, revision, owner_name, pin, target_time}`이고 202로 응답한다. `target_time`은 분 단위 과거 시각만 허용한다.
+- PIN 실패는 60초에 5회로 제한하고 초과 시 `pin_rate_limited`(429)를 반환한다. revision이 오래되면 `stale_revision`(409)이다.
 - workflow DB의 `server_time_control`, `server_time_audit`: 원자적 lease와 감사 이력.
 - `run_server_time_agent`: 단조 3분 타이머·lease 상태는 194에서 관리하고, W32Time 중지/시작, 시스템
   시각 변경, `w32tm /resync`는 WinRM으로 85에 원격 실행한다. NTP 조회(정상 기준시각)는 194에서

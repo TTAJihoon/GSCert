@@ -11,11 +11,10 @@ Use this skill only inside the GSCert repository, especially on the `codex-job-r
 
 Start by reading:
 
-1. `main/docs/00_next_step.md`
-2. `main/docs/02_open_decisions.md`
+1. `main/docs/00_README.md`
 3. The specific reference in this skill that matches the task.
 
-Treat `main/docs/00_next_step.md` as the current handoff, not as a history log. Keep it focused on the latest completed work and immediate next steps.
+Treat `main/docs/00_README.md` as the current handoff, not as a history log. Keep it focused on the latest completed work and immediate next steps.
 
 ## Reference Map
 
@@ -35,7 +34,7 @@ Treat `main/docs/00_next_step.md` as the current handoff, not as a history log. 
 - Keep `GET` for reads and `POST` for state changes.
 - Do not expose server absolute paths, screenshots paths, or stack traces in user-facing API/UI responses.
 - Restart the local server after UI changes so the user can verify in the browser.
-- When committing, update `main/docs/00_next_step.md` with the latest handoff and next action.
+- When committing, update `main/docs/00_README.md` with the latest handoff and next action.
 
 ## Validation
 
