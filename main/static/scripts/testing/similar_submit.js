@@ -117,6 +117,8 @@ function renderSimilarResults(data, summaryContent, resultsContent, resultAnalys
 
     return `
       <div class="similar-product">
+        <button type="button" class="product-collapse-btn" aria-expanded="true"
+          aria-label="항목 접기" title="항목 접기"><i class="fas fa-chevron-up"></i></button>
         <div class="product-header">
           <div class="product-title">
             <table class="company-product-table">
