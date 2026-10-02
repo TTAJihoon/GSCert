@@ -1,14 +1,24 @@
 const maxRetryCount = 2;
 const jobListPageSize = 5;
+// KOLAS 페이지(/kolas/)는 같은 화면/스크립트를 쓰되 프로젝트 목록·PL 배정만 별도 API를 쓴다.
+// 점검 작업 생성/진행/결과 조회는 기존 ECM 점검 API를 그대로 쓰고, 작업 생성·목록에 source=kolas 를 붙인다.
+const pageConfig = readJsonScript("downloadReviewPageConfig", {}) || {};
+const isKolasMode = Boolean(pageConfig.kolas);
+const kolasReportMaxProjects = Number(pageConfig.reportMaxProjects) || 500;
+const kolasReportEndpoint = "/kolas/api/report-download/";
+const reportTasksEndpoint = "/kolas/api/report-tasks/?limit=20";
+const REPORT_TASK_FAST_POLL_MS = 1500;
+const REPORT_TASK_VISIBLE_AFTER_FINISH_MS = 10 * 60 * 1000;
+const REPORT_TASK_PENDING_WAIT_MS = 60 * 1000;
 const apiEndpoints = {
-  projects: "/api/projects/",
+  projects: isKolasMode ? "/kolas/api/projects/" : "/api/projects/",
   jobs: "/api/jobs/",
   activeJob: "/api/jobs/active/",
   jobsForceStop: "/api/jobs/force-stop/",
   serverTime: "/api/server-time/",
   serverTimeAction: "/api/server-time/action/",
-  plAssignments: "/api/pl-assignments/",
-  plAssignmentsApply: "/api/pl-assignments/apply/"
+  plAssignments: isKolasMode ? "/kolas/api/pl-assignments/" : "/api/pl-assignments/",
+  plAssignmentsApply: isKolasMode ? "/kolas/api/pl-assignments/apply/" : "/api/pl-assignments/apply/"
 };
 
 const centerLabels = {
@@ -16,6 +26,9 @@ const centerLabels = {
   bundang: "분당",
   yeongnam: "영남"
 };
+if (isKolasMode) {
+  centerLabels.unknown = "미배정";
+}
 
 // 'PL 배정 목록' 모달 상태. 서버에서 받은 원본은 plAssignOriginalCenterByName에,
 // 사용자가 좌/우 탭 사이에서 이동시키는 동안의 작업 중 상태는
@@ -45,6 +58,9 @@ const parsedAllowedCenters = readJsonScript("downloadReviewAllowedCenters", Obje
 const allowedCenters = new Set(Array.isArray(parsedAllowedCenters) && parsedAllowedCenters.length
   ? parsedAllowedCenters
   : Object.keys(centerLabels));
+if (isKolasMode) {
+  allowedCenters.add("unknown");
+}
 const initialCenter = readJsonScript("downloadReviewDefaultCenter", "sangam") || "sangam";
 
 const ruleNames = [
@@ -464,6 +480,9 @@ const projectRowsColumnLayout = {
 const tableColumnDefaults = {
   progressRows: [64, 145, 180, 220, 105, 260, 90, 105, 280],
   resultRows: [145, 180, 220, 105, 115, 80, 240, 145, 280],
+  // KOLAS 결과서 다운로드 표: '현재 단계' 칸에 progress bar 가 들어가므로 넓게 잡는다.
+  reportTaskProgressRows: [64, 145, 140, 160, 90, 400, 80, 100, 200],
+  reportTaskResultRows: [145, 140, 160, 90, 100, 70, 400, 110, 200],
   "규칙별 점검 결과": [60, 170, 76, 210, 230, 230, 250, 130]
 };
 
@@ -770,6 +789,9 @@ function jobsUrl() {
   if (state.resultJobCenter && state.resultJobCenter !== "all") {
     params.set("center", state.resultJobCenter);
   }
+  if (isKolasMode) {
+    params.set("source", "kolas");
+  }
   return `${apiEndpoints.jobs}?${params.toString()}`;
 }
 
@@ -998,8 +1020,16 @@ function hasInspectionResult(item) {
   return Boolean(item.review) && item.review !== "미점검";
 }
 
-function isProjectSelectable(item) {
+// 점검 작업을 요청할 수 있는 프로젝트(미완료·작업 중 아님). KOLAS 에서는 센터가 배정된 것만.
+function isProjectJobEligible(item) {
+  if (isKolasMode && item && item.centerCode === "unknown") return false;
   return Boolean(item) && item.selectable !== false && !isProjectLocked(item) && !isProjectCompleted(item);
+}
+
+// 체크박스로 선택할 수 있는 프로젝트. KOLAS 에서는 결과서 다운로드를 위해 완료/작업 중 프로젝트도 선택 가능하다.
+function isProjectSelectable(item) {
+  if (isKolasMode) return Boolean(item);
+  return isProjectJobEligible(item);
 }
 
 function projectWorkStatusLabel(item) {
@@ -1234,7 +1264,7 @@ function renderSelection() {
       : "현재 작업이 진행 중입니다. 요청하면 예약됨 상태로 등록됩니다.");
   const hasJobTarget = [...state.selected].some((number) => {
     const item = mockProjects.find((project) => project.number === number);
-    return isProjectSelectable(item);
+    return isProjectJobEligible(item);
   });
   qs("requestJob").disabled = !hasJobTarget;
 }
@@ -1638,7 +1668,7 @@ function setModalFullFolderDownload(project) {
     state.modalFullFolderProject = null;
     button.hidden = true;
     button.disabled = false;
-    button.innerHTML = `<i class="fa-solid fa-folder" aria-hidden="true"></i> 전체 산출물 다운로드`;
+    button.innerHTML = `<i class="fa-solid fa-folder-tree" aria-hidden="true"></i> 산출물 보기`;
     button.removeAttribute("title");
     return;
   }
@@ -1649,8 +1679,8 @@ function setModalFullFolderDownload(project) {
   };
   button.hidden = false;
   button.disabled = false;
-  button.title = "시험 이력 조회의 전체 문서 다운로드와 동일하게 ECM 전체 산출물을 다운로드합니다.";
-  button.innerHTML = `<i class="fa-solid fa-folder" aria-hidden="true"></i> 전체 산출물 다운로드`;
+  button.title = "ECM 산출물 폴더 구조를 열어 파일을 골라 내려받습니다. zip 은 안으로 들어가 볼 수 있습니다.";
+  button.innerHTML = `<i class="fa-solid fa-folder-tree" aria-hidden="true"></i> 산출물 보기`;
 }
 
 function setModalChangeNote(project, note) {
@@ -2039,21 +2069,12 @@ function downloadCurrentModalHtml(event) {
   URL.revokeObjectURL(url);
 }
 
-async function downloadCurrentProjectFullFolder(event) {
+function downloadCurrentProjectFullFolder(event) {
+  // 예전에는 여기서 바로 전체 zip 을 내려받았다. 이제는 폴더 구조 팝업을 열고, 전체 zip 은 팝업 안 버튼에서 받는다.
   event?.preventDefault();
   const project = state.modalFullFolderProject;
-  const button = qs("modalFullFolderDownload");
-  if (!project?.number || !button || button.disabled) return;
-
-  button.disabled = true;
-  button.innerHTML = `<i class="fa-solid fa-folder" aria-hidden="true"></i> 다운로드 시작`;
-  startFullProjectFolderDownload(project);
-  window.setTimeout(() => {
-    if (state.modalFullFolderProject?.number === project.number) {
-      button.disabled = false;
-      button.innerHTML = `<i class="fa-solid fa-folder" aria-hidden="true"></i> 전체 산출물 다운로드`;
-    }
-  }, 1500);
+  if (!project?.number) return;
+  openFolderBrowser(project);
 }
 
 async function openCurrentProjectChangeNote(event) {
@@ -2107,6 +2128,222 @@ function bulkDownloadSelected() {
   const params = new URLSearchParams({ center: state.center });
   downloadable.forEach((number) => params.append("pn", number));
   window.location.href = `/api/projects/bulk-download/?${params.toString()}`;
+}
+
+// KOLAS: 선택한 프로젝트의 시험성적서(Word/PDF)를 ECM 에서 받아 zip 으로 내려받는다.
+// 숨은 iframe 으로 form POST 하므로 현재 화면은 그대로 유지된다(프로젝트 수가 많아도 URL 길이 제한 없음).
+function downloadSelectedReports() {
+  const numbers = [...state.selected];
+  if (!numbers.length || numbers.length > kolasReportMaxProjects) {
+    openModal({
+      eyebrow: "결과서 다운로드",
+      title: numbers.length ? "선택 개수 초과" : "다운로드할 항목 없음",
+      body: `
+        <div class="modal-message warning">
+          <strong>${numbers.length
+            ? `한 번에 최대 ${kolasReportMaxProjects}개 프로젝트까지 다운로드할 수 있습니다. (선택 ${numbers.length}개)`
+            : "선택된 프로젝트가 없습니다."}</strong>
+          <p>${numbers.length ? "선택을 줄인 뒤 다시 시도하세요." : "프로젝트 목록에서 시험성적서를 받을 항목을 체크한 뒤 다시 시도하세요."}</p>
+        </div>
+      `
+    });
+    return;
+  }
+
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = kolasReportEndpoint;
+  form.target = "kolasReportFrame";
+  form.hidden = true;
+  const token = document.createElement("input");
+  token.type = "hidden";
+  token.name = "csrfmiddlewaretoken";
+  token.value = decodeURIComponent(getCookie("csrftoken"));
+  form.appendChild(token);
+  // 서버가 이 task_id 로 진행 상황 행을 만들고, 화면은 같은 id 가 나타나 끝날 때까지 폴링한다.
+  const taskId = newReportTaskId();
+  const taskInput = document.createElement("input");
+  taskInput.type = "hidden";
+  taskInput.name = "task_id";
+  taskInput.value = taskId;
+  form.appendChild(taskInput);
+  numbers.forEach((number) => {
+    const input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "pn";
+    input.value = number;
+    form.appendChild(input);
+  });
+  document.body.appendChild(form);
+  form.submit();
+  form.remove();
+
+  state.selectionMessage = `${numbers.length}개 프로젝트의 시험성적서를 받아 zip으로 전달합니다. 진행률은 '현재 작업 진행 상황' 탭과 '작업 조회' 탭에서 확인할 수 있습니다.`;
+  renderSelection();
+  trackReportTask(taskId);
+}
+
+// ---- 결과서 다운로드 진행률 (KOLAS) -------------------------------------------------
+function newReportTaskId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const random = Math.floor(Math.random() * 16);
+    return (char === "x" ? random : (random & 0x3) | 0x8).toString(16);
+  });
+}
+
+let reportTaskTimer = null;
+let reportTaskBusy = false;
+state.reportTasks = [];
+state.pendingReportTask = null; // { id, deadline } - 방금 시작한 다운로드의 행이 서버에 생길 때까지 기다린다
+
+function trackReportTask(taskId) {
+  state.pendingReportTask = { id: taskId, deadline: Date.now() + REPORT_TASK_PENDING_WAIT_MS };
+  ensureReportTaskPolling();
+  refreshReportTasks();
+}
+
+function ensureReportTaskPolling() {
+  if (reportTaskTimer) return;
+  reportTaskTimer = setInterval(refreshReportTasks, REPORT_TASK_FAST_POLL_MS);
+}
+
+function stopReportTaskPolling() {
+  if (reportTaskTimer) {
+    clearInterval(reportTaskTimer);
+    reportTaskTimer = null;
+  }
+}
+
+function reportTaskNeedsPolling() {
+  if (state.reportTasks.some((task) => task.status === "running")) return true;
+  const pending = state.pendingReportTask;
+  if (!pending) return false;
+  if (state.reportTasks.some((task) => task.id === pending.id)) {
+    state.pendingReportTask = null; // 행이 보였고 더 이상 실행 중이 아니다
+    return false;
+  }
+  if (Date.now() > pending.deadline) {
+    state.pendingReportTask = null;
+    return false;
+  }
+  return true;
+}
+
+async function refreshReportTasks() {
+  if (!isKolasMode || reportTaskBusy) return;
+  reportTaskBusy = true;
+  try {
+    const payload = await requestJson(reportTasksEndpoint);
+    state.reportTasks = Array.isArray(payload.items) ? payload.items : [];
+  } catch (error) {
+    // 진행률 표시는 보조 기능이다. 실패해도 다음 주기에 다시 시도한다.
+  } finally {
+    reportTaskBusy = false;
+  }
+  renderReportTasks();
+  if (reportTaskNeedsPolling()) {
+    ensureReportTaskPolling();
+  } else {
+    stopReportTaskPolling();
+  }
+}
+
+function clampPercent(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return 0;
+  return Math.max(0, Math.min(100, Math.round(number)));
+}
+
+function formatTaskClock(iso) {
+  if (!iso) return "";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+}
+
+function reportTaskProgressCell(task) {
+  const percent = clampPercent(task.percent);
+  const total = task.total_projects || 0;
+  const head = `결과서 다운로드 · ${task.status_label || task.status} · ${task.done_projects || 0}/${total}건`;
+  let detail;
+  if (task.status === "running") {
+    detail = [task.current_project, task.current_step].filter(Boolean).join(" · ") || "진행 중";
+  } else if (task.status === "completed") {
+    detail = `원본 word·pdf 모두 ${task.complete_count}건 · 일부만 ${task.partial_count}건 · 모두 없음 ${task.none_count}건 · 익명본 대체 ${task.anonymous_count}건`;
+  } else {
+    detail = task.error_message || task.current_step || "";
+  }
+  const started = formatTaskClock(task.started_at);
+  const finished = formatTaskClock(task.finished_at);
+  const times = [started && `시작 ${started}`, finished && `종료 ${finished}`].filter(Boolean).join(" · ");
+  return `
+    <div class="task-progress ${escapeHtml(task.status)}" role="progressbar" aria-valuemin="0" aria-valuemax="100"
+         aria-valuenow="${percent}" aria-label="${escapeHtml(head)}">
+      <div class="task-progress-head"><strong>${percent}%</strong><span>${escapeHtml(head)}</span></div>
+      <div class="task-progress-track"><div class="task-progress-fill" style="width:${percent}%"></div></div>
+      <div class="task-progress-detail">${escapeHtml([detail, times].filter(Boolean).join(" | "))}</div>
+    </div>
+  `;
+}
+
+// 요청: '현재 단계' 칸에만 progress bar 를 두고 나머지 열은 모두 '-' 로 표시한다.
+function reportTaskProgressRow(task, index) {
+  return `
+    <tr data-report-task="${escapeHtml(task.id)}">
+      <td>${index + 1}</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>${reportTaskProgressCell(task)}</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  `;
+}
+
+function reportTaskResultRow(task) {
+  return `
+    <tr data-report-task="${escapeHtml(task.id)}">
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>${reportTaskProgressCell(task)}</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+  `;
+}
+
+function renderReportTasks() {
+  if (!isKolasMode) return;
+  const tasks = state.reportTasks;
+
+  const progressBody = document.getElementById("reportTaskProgressRows");
+  const progressPanel = document.getElementById("reportTaskProgressPanel");
+  if (progressBody && progressPanel) {
+    const now = Date.now();
+    const visible = tasks.filter((task) => (
+      task.status === "running" ||
+      (task.finished_at && now - new Date(task.finished_at).getTime() < REPORT_TASK_VISIBLE_AFTER_FINISH_MS)
+    ));
+    progressPanel.hidden = visible.length === 0;
+    progressBody.innerHTML = visible.map(reportTaskProgressRow).join("");
+  }
+
+  const resultBody = document.getElementById("reportTaskResultRows");
+  if (resultBody) {
+    resultBody.innerHTML = tasks.length
+      ? tasks.map(reportTaskResultRow).join("")
+      : `<tr><td colspan="9" class="empty-cell">결과서 다운로드 내역이 없습니다.</td></tr>`;
+  }
 }
 
 function openRequestCompleteModal(payload, requestedCount) {
@@ -3238,7 +3475,7 @@ function bindControls() {
   qs("requestJob").addEventListener("click", async () => {
     const jobNumbers = [...state.selected].filter((number) => {
       const item = mockProjects.find((project) => project.number === number);
-      return isProjectSelectable(item);
+      return isProjectJobEligible(item);
     });
     const count = jobNumbers.length;
     if (count === 0) return;
@@ -3250,7 +3487,11 @@ function bindControls() {
     try {
       const payload = await requestJson(apiEndpoints.jobs, {
         method: "POST",
-        body: JSON.stringify({ center: state.center, project_numbers: jobNumbers })
+        body: JSON.stringify({
+          center: state.center,
+          project_numbers: jobNumbers,
+          ...(isKolasMode ? { source: "kolas" } : {})
+        })
       });
       state.selectionMessage = payload.message || `${count}개 프로젝트가 등록되었습니다.`;
       state.resultJobId = payload.job_id || state.resultJobId;
@@ -3269,6 +3510,8 @@ function bindControls() {
 
   qs("downloadJobResults").addEventListener("click", downloadJobResults);
   qs("bulkDownload").addEventListener("click", bulkDownloadSelected);
+  const reportButton = document.getElementById("downloadReports");
+  if (reportButton) reportButton.addEventListener("click", downloadSelectedReports);
 
   document.querySelectorAll("[data-job-center-tab]").forEach((button) => {
     button.addEventListener("click", async () => {
@@ -3315,6 +3558,7 @@ function bindControls() {
   qs("modalDownload").addEventListener("click", downloadCurrentModalHtml);
   qs("modalChangeNote").addEventListener("click", openCurrentProjectChangeNote);
   qs("modalFullFolderDownload").addEventListener("click", downloadCurrentProjectFullFolder);
+  bindFolderBrowser();
   qs("closeChangeNoteModal").addEventListener("click", closeChangeNotePopup);
   qs("closeManualOverrideModal").addEventListener("click", closeManualPassPopup);
   qs("cancelManualOverride").addEventListener("click", closeManualPassPopup);
@@ -3330,6 +3574,10 @@ function bindControls() {
   });
   document.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
+    if (!qs("folderBrowserModal").hidden) {
+      closeFolderBrowser();
+      return;
+    }
     if (!qs("serverTimeModal").hidden) {
       closeServerTimeModal();
       return;
@@ -3379,6 +3627,421 @@ function syncCenterTabs() {
   qs("openServerTime").hidden = state.center !== "sangam" && state.center !== "yeongnam";
 }
 
+// ---- 산출물 폴더 팝업 (ECM root 폴더 구조 / zip 안 구조를 한 단계씩 들어가며 보고 파일 단위로 내려받기) ----
+const folderBrowser = {
+  project: null,
+  stack: [],          // [{ label, ref }] root 부터 현재 위치까지 (경로 표시줄)
+  items: [],
+  selected: new Set(),
+  requestId: 0,
+  busy: false,
+  sid: "",        // 이 팝업의 세션 id: 서버가 '이 zip 을 보는 팝업이 있는지' 판단하는 데 쓴다
+  beatTimer: null,
+  position: null   // 창의 마지막 위치 {left, top}
+};
+
+function formatBytes(bytes) {
+  if (bytes === null || bytes === undefined || Number.isNaN(Number(bytes))) return "";
+  const value = Number(bytes);
+  if (value < 1024) return `${value} B`;
+  const units = ["KB", "MB", "GB", "TB"];
+  let size = value;
+  let unit = -1;
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit += 1;
+  }
+  return `${size >= 100 ? size.toFixed(0) : size.toFixed(1)} ${units[unit]}`;
+}
+
+function newFolderSessionId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return window.crypto.randomUUID().replace(/-/g, "");
+  }
+  return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join("");
+}
+
+// 팝업이 열려 있다는 신호(beat)와 닫혔다는 신호(close). 닫힘은 keepalive 로 보내 탭을 닫아도 전달된다.
+function postFolderWatch(action, projectNumber, sid, { keepalive = false } = {}) {
+  if (!projectNumber || !sid) return;
+  const headers = { "X-Requested-With": "XMLHttpRequest" };
+  const csrfToken = getCookie("csrftoken");
+  if (csrfToken) headers["X-CSRFToken"] = decodeURIComponent(csrfToken);
+  try {
+    fetch(`/api/projects/${encodeURIComponent(projectNumber)}/browse/watch/`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers,
+      body: new URLSearchParams({ sid, action }),
+      keepalive
+    }).catch(() => {});
+  } catch (error) {
+    // 신호는 최선 노력: 실패해도 서버가 몇 초 뒤 신호 끊김으로 판단한다
+  }
+}
+
+function stopFolderWatch({ sendClose }) {
+  if (folderBrowser.beatTimer) {
+    window.clearInterval(folderBrowser.beatTimer);
+    folderBrowser.beatTimer = null;
+  }
+  if (sendClose && folderBrowser.project && folderBrowser.sid) {
+    postFolderWatch("close", folderBrowser.project.number, folderBrowser.sid, { keepalive: true });
+  }
+}
+
+function folderBrowseUrl(ref) {
+  const params = new URLSearchParams();
+  if (folderBrowser.sid) params.set("sid", folderBrowser.sid);
+  if (ref) {
+    params.set("ref", ref);
+  } else {
+    if (folderBrowser.project.certDate) params.set("cert_date", folderBrowser.project.certDate);
+    if (state.center) params.set("center", state.center);
+  }
+  const query = params.toString();
+  const base = `/api/projects/${encodeURIComponent(folderBrowser.project.number)}/browse/`;
+  return query ? `${base}?${query}` : base;
+}
+
+function folderDownloadBase() {
+  return `/api/projects/${encodeURIComponent(folderBrowser.project.number)}/browse/download/`;
+}
+
+function setFolderBrowserMessage(text, isError = false) {
+  const node = qs("folderBrowserMessage");
+  node.textContent = text || "";
+  node.hidden = !text;
+  node.classList.toggle("error", Boolean(isError));
+}
+
+// 산출물 팝업은 떠 있는 창이다: 제목줄을 끌어 옮기고, 마지막 위치를 기억한다(뒤의 상세 팝업은 그대로 조작 가능).
+const FOLDER_WINDOW_MARGIN = 60;   // 창을 화면 밖으로 끌어도 이만큼은 보이게 둔다
+
+function folderBrowserPanel() {
+  return qs("folderBrowserModal").querySelector(".folder-browser-panel");
+}
+
+function folderViewport() {
+  // 숨겨진 창 등에서 크기가 0 으로 읽히면 기본값을 쓴다
+  return {
+    width: window.innerWidth || document.documentElement.clientWidth || 1280,
+    height: window.innerHeight || document.documentElement.clientHeight || 800
+  };
+}
+
+function placeFolderBrowserPanel(left, top) {
+  const panel = folderBrowserPanel();
+  const view = folderViewport();
+  const width = panel.offsetWidth || 640;
+  const x = Math.min(Math.max(left, FOLDER_WINDOW_MARGIN - width), view.width - FOLDER_WINDOW_MARGIN);
+  const y = Math.min(Math.max(top, 0), view.height - 40);
+  panel.style.left = `${Math.round(x)}px`;
+  panel.style.top = `${Math.round(y)}px`;
+  folderBrowser.position = { left: x, top: y };
+}
+
+function restoreFolderBrowserPosition() {
+  const panel = folderBrowserPanel();
+  const saved = folderBrowser.position;
+  if (saved) {
+    placeFolderBrowserPanel(saved.left, saved.top);
+    return;
+  }
+  // 처음에는 화면 가운데에서 살짝 오른쪽 아래에 열어 뒤의 상세 팝업이 함께 보이게 한다.
+  const width = panel.offsetWidth || 640;
+  const height = panel.offsetHeight || 420;
+  const view = folderViewport();
+  placeFolderBrowserPanel((view.width - width) / 2 + 40, Math.max(24, (view.height - height) / 2 + 24));
+}
+
+function bindFolderBrowserDrag() {
+  const panel = folderBrowserPanel();
+  const header = panel.querySelector(".modal-header");
+  header.addEventListener("pointerdown", (event) => {
+    if (event.button !== 0 || event.target.closest("button, a, input, select, textarea")) return;
+    const rect = panel.getBoundingClientRect();
+    const offsetX = event.clientX - rect.left;
+    const offsetY = event.clientY - rect.top;
+    header.setPointerCapture(event.pointerId);
+    const move = (moveEvent) => placeFolderBrowserPanel(moveEvent.clientX - offsetX, moveEvent.clientY - offsetY);
+    const stop = () => {
+      header.removeEventListener("pointermove", move);
+      header.removeEventListener("pointerup", stop);
+      header.removeEventListener("pointercancel", stop);
+    };
+    header.addEventListener("pointermove", move);
+    header.addEventListener("pointerup", stop);
+    header.addEventListener("pointercancel", stop);
+    event.preventDefault();
+  });
+  window.addEventListener("resize", () => {
+    if (!qs("folderBrowserModal").hidden && folderBrowser.position) {
+      placeFolderBrowserPanel(folderBrowser.position.left, folderBrowser.position.top);
+    }
+  });
+}
+
+function openFolderBrowser(project) {
+  folderBrowser.project = { number: project.number, certDate: project.certDate || "" };
+  folderBrowser.stack = [];
+  folderBrowser.items = [];
+  folderBrowser.selected = new Set();
+  stopFolderWatch({ sendClose: true }); // 다른 프로젝트 팝업이 이미 열려 있었다면 먼저 닫힘 신호
+  folderBrowser.sid = newFolderSessionId();
+  const watchedProject = project.number;
+  const watchedSid = folderBrowser.sid;
+  folderBrowser.beatTimer = window.setInterval(() => postFolderWatch("beat", watchedProject, watchedSid), 3000);
+  qs("folderBrowserTitle").textContent = `${project.number} 산출물 폴더`;
+  qs("folderBrowserModal").hidden = false;
+  restoreFolderBrowserPosition();
+  renderFolderBrowser();
+  loadFolderLocation(null, null);
+}
+
+function closeFolderBrowser() {
+  stopFolderWatch({ sendClose: true }); // 닫는 즉시 서버에 알려 받던 zip 을 정리하게 한다
+  qs("folderBrowserModal").hidden = true;
+  folderBrowser.requestId += 1; // 진행 중인 요청의 응답은 버린다
+  folderBrowser.project = null;
+  folderBrowser.sid = "";
+}
+
+window.addEventListener("pagehide", () => {
+  if (folderBrowser.project) stopFolderWatch({ sendClose: true });
+});
+
+async function loadFolderLocation(ref, label, { push = true, truncateTo = null, loadingText = "" } = {}) {
+  const requestId = ++folderBrowser.requestId;
+  folderBrowser.busy = true;
+  folderBrowser.selected = new Set();
+  setFolderBrowserMessage(loadingText || "폴더를 불러오는 중입니다.");
+  renderFolderBrowser();
+  const stopProgress = ref ? pollFolderZipProgress(ref, requestId, loadingText || "zip 파일을 읽는 중입니다.") : () => {};
+  try {
+    const payload = await requestJson(folderBrowseUrl(ref));
+    if (requestId !== folderBrowser.requestId) return;
+    const location = payload.location || {};
+    if (truncateTo !== null) {
+      folderBrowser.stack = folderBrowser.stack.slice(0, truncateTo + 1);
+    } else if (!ref) {
+      folderBrowser.stack = [{ label: location.label || folderBrowser.project.number, ref: location.ref }];
+    } else if (push) {
+      folderBrowser.stack.push({ label: label || location.label || "", ref: location.ref });
+    }
+    folderBrowser.items = payload.items || [];
+    setFolderBrowserMessage("");
+  } catch (error) {
+    if (requestId !== folderBrowser.requestId) return;
+    folderBrowser.items = [];
+    setFolderBrowserMessage(error.message || "폴더를 불러오지 못했습니다.", true);
+  } finally {
+    stopProgress();
+    if (requestId === folderBrowser.requestId) {
+      folderBrowser.busy = false;
+      renderFolderBrowser();
+    }
+  }
+}
+
+// zip 을 읽는 동안(서버가 ECM 에서 받는 중) 진행률을 안내 문구에 표시한다. 반환값은 중지 함수.
+function pollFolderZipProgress(ref, requestId, baseText) {
+  let stopped = false;
+  const tick = async () => {
+    if (stopped || requestId !== folderBrowser.requestId || !folderBrowser.project) return;
+    try {
+      const url = `/api/projects/${encodeURIComponent(folderBrowser.project.number)}/browse/progress/?ref=${encodeURIComponent(ref)}`;
+      const info = await requestJson(url);
+      if (!stopped && requestId === folderBrowser.requestId && info.state === "running" && info.total) {
+        setFolderBrowserMessage(`${baseText} ${info.percent}% (${formatBytes(info.written)} / ${formatBytes(info.total)})`);
+      }
+    } catch (error) {
+      // 진행률은 안내용이라 실패해도 무시한다
+    }
+    if (!stopped) timer = window.setTimeout(tick, 700);
+  };
+  let timer = window.setTimeout(tick, 700);
+  return () => {
+    stopped = true;
+    window.clearTimeout(timer);
+  };
+}
+
+function folderItemIcon(item) {
+  if (item.type === "folder" || item.type === "zipdir") return `<i class="fa-solid fa-folder fb-icon folder" aria-hidden="true"></i>`;
+  if (item.type === "zip") return `<i class="fa-solid fa-file-zipper fb-icon zip" aria-hidden="true"></i>`;
+  if (item.encrypted) return `<i class="fa-solid fa-lock fb-icon file" aria-hidden="true"></i>`;
+  return `<i class="fa-regular fa-file fb-icon file" aria-hidden="true"></i>`;
+}
+
+function folderItemKindLabel(item) {
+  return { folder: "폴더", zipdir: "폴더", zip: "zip", file: "파일", zipfile: "파일" }[item.type] || "";
+}
+
+// 체크박스/받기 버튼이 가리키는 ref: zip 은 zip 파일 자체(download_ref), 나머지는 항목 자신
+function folderItemDownloadRef(item) {
+  return item.download_ref || item.ref;
+}
+
+function renderFolderBrowser() {
+  const crumbs = qs("folderBrowserCrumbs");
+  crumbs.innerHTML = folderBrowser.stack.map((entry, index) => {
+    const last = index === folderBrowser.stack.length - 1;
+    return `${index ? '<span class="crumb-sep" aria-hidden="true">/</span>' : ""}
+      <button class="crumb" type="button" data-crumb="${index}" ${last || folderBrowser.busy ? "disabled" : ""}>${escapeHtml(entry.label)}</button>`;
+  }).join("");
+
+  const rows = qs("folderBrowserRows");
+  if (!folderBrowser.items.length) {
+    rows.innerHTML = `<tr><td colspan="5" class="fb-empty">${folderBrowser.busy ? "불러오는 중..." : "표시할 항목이 없습니다."}</td></tr>`;
+  } else {
+    rows.innerHTML = folderBrowser.items.map((item, index) => {
+      const opens = item.type === "folder" || item.type === "zipdir" || item.type === "zip";
+      const downloadable = item.downloadable !== false;
+      const ref = folderItemDownloadRef(item);
+      const checked = folderBrowser.selected.has(ref) ? "checked" : "";
+      const title = item.type === "zip" ? "클릭하면 zip 안으로 들어갑니다" : item.encrypted ? "암호화된 항목은 받을 수 없습니다" : "";
+      const downloadTitle = item.type === "zip" ? "zip 파일 자체 다운로드" : opens ? "폴더를 zip 으로 다운로드" : "다운로드";
+      return `
+        <tr data-fb-index="${index}">
+          <td class="fb-check"><input type="checkbox" data-fb-check="${index}" ${checked} ${item.selectable === false ? "disabled" : ""} aria-label="${escapeHtml(item.name)} 선택"></td>
+          <td class="fb-name">
+            <button class="fb-name-button" type="button" data-fb-open="${index}" ${!opens && !downloadable ? "disabled" : ""} title="${escapeHtml(title)}">
+              ${folderItemIcon(item)}<span class="fb-name-text">${escapeHtml(item.name)}</span>
+            </button>
+          </td>
+          <td class="fb-kind">${folderItemKindLabel(item)}</td>
+          <td class="fb-size">${item.size === null || item.size === undefined ? "" : formatBytes(item.size)}</td>
+          <td class="fb-action">
+            <button class="fb-download-button" type="button" data-fb-download="${index}" title="${downloadTitle}" aria-label="${escapeHtml(item.name)} ${downloadTitle}" ${downloadable ? "" : "disabled"}>
+              <i class="fa-solid ${opens && item.type !== "zip" ? "fa-file-zipper" : "fa-download"}" aria-hidden="true"></i>
+            </button>
+          </td>
+        </tr>`;
+    }).join("");
+  }
+  updateFolderSelectionUi();
+}
+
+function updateFolderSelectionUi() {
+  const selectable = folderBrowser.items.filter((item) => item.selectable !== false);
+  const count = folderBrowser.selected.size;
+  qs("folderBrowserSelectionInfo").textContent = `선택 ${count}개`;
+  qs("folderBrowserDownloadSelected").disabled = count === 0 || folderBrowser.busy;
+  qs("folderBrowserDownloadHere").disabled = folderBrowser.busy || !folderBrowser.stack.length;
+  qs("folderBrowserWholeZip").disabled = !folderBrowser.project;
+  const all = qs("folderBrowserSelectAll");
+  all.disabled = selectable.length === 0 || folderBrowser.busy;
+  all.checked = selectable.length > 0 && selectable.every((item) => folderBrowser.selected.has(folderItemDownloadRef(item)));
+}
+
+function openFolderItem(item) {
+  if (item.type === "folder" || item.type === "zipdir") {
+    loadFolderLocation(item.ref, item.name);
+  } else if (item.type === "zip") {
+    loadFolderLocation(item.ref, item.name, {
+      loadingText: `${item.name} 안의 구조를 읽는 중입니다. ECM 에서 zip 을 받아 목록만 추출하므로 크기에 따라 수 초 걸릴 수 있습니다.`
+    });
+  } else if (item.downloadable !== false) {
+    startFolderBrowserDownload([item.ref]);
+  }
+}
+
+// 다운로드는 숨은 iframe 으로 보내 현재 화면을 유지한다. 한 개는 GET, 여러 개는 POST(주소 길이 제한 회피).
+function startFolderBrowserDownload(refs) {
+  if (!refs.length || !folderBrowser.project) return;
+  if (refs.length === 1) {
+    const anchor = document.createElement("a");
+    anchor.href = `${folderDownloadBase()}?ref=${encodeURIComponent(refs[0])}`;
+    anchor.target = "folderDownloadFrame";
+    anchor.hidden = true;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  } else {
+    const form = document.createElement("form");
+    form.method = "POST";
+    form.action = folderDownloadBase();
+    form.target = "folderDownloadFrame";
+    form.hidden = true;
+    const token = document.createElement("input");
+    token.type = "hidden";
+    token.name = "csrfmiddlewaretoken";
+    token.value = decodeURIComponent(getCookie("csrftoken"));
+    form.appendChild(token);
+    refs.forEach((ref) => {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "ref";
+      input.value = ref;
+      form.appendChild(input);
+    });
+    document.body.appendChild(form);
+    form.submit();
+    form.remove();
+  }
+  setFolderBrowserMessage(
+    refs.length === 1
+      ? "다운로드를 시작했습니다. zip 안의 파일은 ECM 에서 zip 을 받으며 찾으므로 크기에 따라 시작까지 수 초 걸릴 수 있습니다."
+      : `${refs.length}개 항목을 zip 으로 묶어 전달합니다. 크기에 따라 시간이 걸리며, 준비되면 브라우저 다운로드가 시작됩니다.`
+  );
+}
+
+function bindFolderBrowser() {
+  qs("closeFolderBrowser").addEventListener("click", closeFolderBrowser);
+  bindFolderBrowserDrag();
+  qs("folderBrowserWholeZip").addEventListener("click", () => {
+    if (!folderBrowser.project) return;
+    startFullProjectFolderDownload(folderBrowser.project);
+    setFolderBrowserMessage("프로젝트 root 폴더 전체를 zip 으로 받습니다. 크기에 따라 시작까지 시간이 걸릴 수 있습니다.");
+  });
+  qs("folderBrowserCrumbs").addEventListener("click", (event) => {
+    const button = event.target.closest("[data-crumb]");
+    if (!button || folderBrowser.busy) return;
+    const index = Number(button.dataset.crumb);
+    const entry = folderBrowser.stack[index];
+    if (entry) loadFolderLocation(entry.ref, entry.label, { truncateTo: index });
+  });
+  qs("folderBrowserRows").addEventListener("click", (event) => {
+    const open = event.target.closest("[data-fb-open]");
+    const download = event.target.closest("[data-fb-download]");
+    const check = event.target.closest("[data-fb-check]");
+    if (check) return;
+    if (open) {
+      const item = folderBrowser.items[Number(open.dataset.fbOpen)];
+      if (item) openFolderItem(item);
+    } else if (download) {
+      const item = folderBrowser.items[Number(download.dataset.fbDownload)];
+      if (item && item.downloadable !== false) startFolderBrowserDownload([folderItemDownloadRef(item)]);
+    }
+  });
+  qs("folderBrowserRows").addEventListener("change", (event) => {
+    const check = event.target.closest("[data-fb-check]");
+    if (!check) return;
+    const item = folderBrowser.items[Number(check.dataset.fbCheck)];
+    if (!item) return;
+    const ref = folderItemDownloadRef(item);
+    if (check.checked) folderBrowser.selected.add(ref);
+    else folderBrowser.selected.delete(ref);
+    updateFolderSelectionUi();
+  });
+  qs("folderBrowserSelectAll").addEventListener("change", (event) => {
+    folderBrowser.items.filter((item) => item.selectable !== false).forEach((item) => {
+      const ref = folderItemDownloadRef(item);
+      if (event.target.checked) folderBrowser.selected.add(ref);
+      else folderBrowser.selected.delete(ref);
+    });
+    renderFolderBrowser();
+  });
+  qs("folderBrowserDownloadSelected").addEventListener("click", () => {
+    startFolderBrowserDownload([...folderBrowser.selected]);
+  });
+  qs("folderBrowserDownloadHere").addEventListener("click", () => {
+    const current = folderBrowser.stack[folderBrowser.stack.length - 1];
+    if (current) startFolderBrowserDownload([current.ref]);
+  });
+}
+
 async function init() {
   updateClock();
   bindControls();
@@ -3392,6 +4055,7 @@ async function init() {
   fitVisibleResizableTables();
   await refreshActiveJob();
   await loadResultJobs();
+  await refreshReportTasks();
   setInterval(updateClock, 1000);
 }
 

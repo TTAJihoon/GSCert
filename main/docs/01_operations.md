@@ -9,9 +9,11 @@
 | 환경 | URL |
 | --- | --- |
 | 개발 PC | `http://127.0.0.1:8000/download-review/` |
-| 운영 대표 서버 | `http://210.96.71.194/download-review/` |
+| 운영 대표 서버 | `https://gsai.tta.or.kr/download-review/` (KOLAS: `https://gsai.tta.or.kr/kolas/`) |
 
 194 서버가 download-review의 기준 진입점이다. 241 서버는 download-review 요청을 194로 넘기는 보조 경로로 본다.
+
+**IP 주소로는 접속할 수 없다.** `SERVER_DOMAIN`(`env.ps1`, `gsai.tta.or.kr`)이 설정돼 있으면 `CanonicalDomainRedirectMiddleware`(`main/canonical_host.py`)가 IP 호스트 요청(`210.96.71.194`, `127.0.0.1`, 포트 8000 포함)을 모두 `https://gsai.tta.or.kr` 로 308 리다이렉트한다. 사람·스크립트 모두 도메인 주소를 쓴다. 서버 안에서 Django 포트로 직접 확인하고 싶으면 Host 헤더를 도메인으로 지정한다: `curl.exe -H "Host: gsai.tta.or.kr" http://127.0.0.1:8000/api/jobs/active/`.
 
 ## 서버 실행
 

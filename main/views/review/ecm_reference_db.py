@@ -5,10 +5,10 @@ from datetime import date
 from pathlib import Path
 
 from django.conf import settings
-from django.db import DatabaseError
+from django.db import DatabaseError, transaction
 from django.utils import timezone
 
-from main.models import ReferenceProject, SwData
+from main.models import KolasProject, ReferenceProject, SwData
 from main.utils.cert_date import format_cert_date, parse_cert_date
 from main.views.review.ecm_download_review_centers import (
     DownloadReviewCenterError,
@@ -73,6 +73,7 @@ SORT_NAMES = {
     "project_number_desc",
     "project_number_asc",
 }
+UNASSIGNED_CENTER_CODE = "unknown"
 DEFAULT_LIMIT = 100
 MAX_LIMIT = 500
 MAX_QUERY_LENGTH = 100
@@ -222,16 +223,20 @@ def write_project_review_result(project_number, review, artifact_results=None, i
     }
 
 
-def parse_project_query(query_params):
+def parse_project_query(query_params, *, allow_unassigned=False):
     unknown = set(query_params.keys()) - QUERY_PARAM_NAMES
     if unknown:
         names = ", ".join(sorted(unknown))
         raise ReferenceQueryError(f"지원하지 않는 조회 조건입니다: {names}")
 
-    try:
-        center_code = normalize_center_code(query_params.get("center"))
-    except DownloadReviewCenterError as exc:
-        raise ReferenceQueryError(str(exc)) from exc
+    raw_center = _clean(query_params.get("center")).lower()
+    if allow_unassigned and raw_center == UNASSIGNED_CENTER_CODE:
+        center_code = UNASSIGNED_CENTER_CODE
+    else:
+        try:
+            center_code = normalize_center_code(query_params.get("center"))
+        except DownloadReviewCenterError as exc:
+            raise ReferenceQueryError(str(exc)) from exc
     filters = {
         "project_number": _clean(query_params.get("project_number")),
         "company": _clean(query_params.get("company")),
@@ -267,10 +272,10 @@ def _reference_db_alias():
     return getattr(settings, "REFERENCE_DATABASE_ALIAS", "reference")
 
 
-def _list_projects_pg(query):
+def _list_projects_pg(query, model=ReferenceProject):
     try:
         qs = _apply_pg_filters(
-            ReferenceProject.objects.using(_reference_db_alias()).filter(center_code=query.center_code),
+            model.objects.using(_reference_db_alias()).filter(center_code=query.center_code),
             query.filters,
         )
         total = qs.count()
@@ -292,12 +297,12 @@ def _list_projects_pg(query):
     }
 
 
-def _get_projects_by_numbers_pg(project_numbers, center_code):
+def _get_projects_by_numbers_pg(project_numbers, center_code, model=ReferenceProject):
     if not project_numbers:
         return []
 
     try:
-        rows = ReferenceProject.objects.using(_reference_db_alias()).filter(
+        rows = model.objects.using(_reference_db_alias()).filter(
             center_code=center_code,
             project_number__in=project_numbers,
         )
@@ -313,25 +318,45 @@ def _get_projects_by_numbers_pg(project_numbers, center_code):
 
 
 def _write_project_review_result_pg(project_number, review_value, artifact_results, inspected_at, center_code):
+    """점검결과를 기존 DB(ReferenceProject)와 KOLAS DB(KolasProject)에 함께 기록한다.
+
+    - 기존 DB에 프로젝트가 있으면: 기존 DB를 갱신하고, KOLAS DB에도 같은 값을 복사한다
+      (KOLAS 목록에 있는 프로젝트일 때만).
+    - 기존 DB에 없고 KOLAS DB에만 있으면: KOLAS DB에만 저장한다.
+    - 둘 다 없으면 오류.
+    기존 ECM 점검 페이지에서 돌린 작업도 KOLAS 목록에 있는 프로젝트면 같은 경로로 공유된다.
+    """
     alias = _reference_db_alias()
-    updates = {
-        "review_result": review_value,
-    }
-    if inspected_at:
-        updates["inspection_date"] = _format_inspection_date(inspected_at)
+    inspection_date = _format_inspection_date(inspected_at) if inspected_at else None
 
     try:
-        project = ReferenceProject.objects.using(alias).get(
-            center_code=center_code,
-            project_number=project_number,
-        )
-        merged_artifacts = dict(project.artifact_results_json or {})
-        for column, value in artifact_results.items():
-            merged_artifacts[column] = _normalize_artifact_write_value(value, column)
-        updates["artifact_results_json"] = merged_artifacts
-        for field, value in updates.items():
-            setattr(project, field, value)
-        project.save(using=alias, update_fields=[*updates.keys(), "updated_at"])
+        with transaction.atomic(using=alias):
+            reference = ReferenceProject.objects.using(alias).select_for_update().filter(
+                center_code=center_code,
+                project_number=project_number,
+            ).first()
+            kolas = KolasProject.objects.using(alias).select_for_update().filter(
+                project_number=project_number,
+            ).first()
+            if reference is None and kolas is None:
+                raise ReferenceProject.DoesNotExist
+
+            # 병합 기준은 기존 DB 값(없으면 KOLAS 자체 값).
+            base = reference if reference is not None else kolas
+            merged_artifacts = dict(base.artifact_results_json or {})
+            for column, value in artifact_results.items():
+                merged_artifacts[column] = _normalize_artifact_write_value(value, column)
+
+            for target in (reference, kolas):
+                if target is None:
+                    continue
+                target.review_result = review_value
+                target.artifact_results_json = dict(merged_artifacts)
+                update_fields = ["review_result", "artifact_results_json", "updated_at"]
+                if inspection_date is not None:
+                    target.inspection_date = inspection_date
+                    update_fields.append("inspection_date")
+                target.save(using=alias, update_fields=update_fields)
     except ReferenceProject.DoesNotExist as exc:
         raise ReferenceDbError("reference_project에서 프로젝트번호를 찾을 수 없습니다.") from exc
     except DatabaseError as exc:
@@ -342,6 +367,58 @@ def _write_project_review_result_pg(project_number, review_value, artifact_resul
         "project_number": project_number,
         "updated_columns": ["점검결과", *artifact_results.keys()],
     }
+
+
+def list_kolas_projects(query_params):
+    """KOLAS 점검 페이지(/kolas/)의 프로젝트 목록. KolasProject 만 조회한다."""
+    query = parse_project_query(query_params, allow_unassigned=True)
+    return _list_projects_pg(query, model=KolasProject)
+
+
+def get_kolas_projects_by_numbers(project_numbers, center_code=None):
+    center_code = _kolas_center_code(center_code)
+    return _get_projects_by_numbers_pg(project_numbers, center_code, model=KolasProject)
+
+
+def _kolas_center_code(center_code):
+    if _clean(center_code).lower() == UNASSIGNED_CENTER_CODE:
+        return UNASSIGNED_CENTER_CODE
+    return normalize_center_code(center_code)
+
+
+def copy_reference_results_to_kolas(project_numbers=None):
+    """기존 DB(ReferenceProject)에 점검결과가 있는 프로젝트의 결과를 KOLAS DB로 복사한다.
+
+    동기화 직후 호출한다. 기존 DB에 결과가 없으면 KOLAS DB 값은 건드리지 않는다.
+    반환: 복사한 프로젝트 수.
+    """
+    alias = _reference_db_alias()
+    kolas_qs = KolasProject.objects.using(alias)
+    if project_numbers is not None:
+        kolas_qs = kolas_qs.filter(project_number__in=list(project_numbers))
+    numbers = list(kolas_qs.values_list("project_number", flat=True))
+    if not numbers:
+        return 0
+
+    references = {
+        row.project_number: row
+        for row in ReferenceProject.objects.using(alias)
+        .filter(project_number__in=numbers)
+        .exclude(review_result="")
+    }
+    copied = 0
+    with transaction.atomic(using=alias):
+        for kolas in kolas_qs.filter(project_number__in=list(references)):
+            reference = references[kolas.project_number]
+            kolas.review_result = reference.review_result
+            kolas.inspection_date = reference.inspection_date
+            kolas.artifact_results_json = dict(reference.artifact_results_json or {})
+            kolas.save(
+                using=alias,
+                update_fields=["review_result", "inspection_date", "artifact_results_json", "updated_at"],
+            )
+            copied += 1
+    return copied
 
 
 def _apply_pg_filters(qs, filters):

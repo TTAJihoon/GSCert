@@ -6475,8 +6475,12 @@ def _word_element_text(element, ns):
 
 def _docx_root(file_info):
     data = _read_file_bytes(file_info)
-    with ZipFile(BytesIO(data)) as docx_file:
-        return etree.fromstring(docx_file.read("word/document.xml"))
+    try:
+        with ZipFile(BytesIO(data)) as docx_file:
+            return etree.fromstring(docx_file.read("word/document.xml"))
+    except (KeyError, BadZipFile, etree.XMLSyntaxError) as exc:
+        # 깨진 docx 가 작업 전체를 중단시키지 않도록 점검 오류로 바꾼다.
+        raise DownloadReviewInspectionError("docx 본문을 읽을 수 없습니다(파일이 손상되었을 수 있습니다).") from exc
 
 
 def _docx_paragraphs(file_info):

@@ -41,6 +41,7 @@ from main.views.review.ecm_manual_override import (
 )
 from main.views.review.ecm_reference_db import (
     ARTIFACT_REVIEW_COLUMNS,
+    get_kolas_projects_by_numbers,
     get_projects_by_numbers,
     is_completed_review_value,
     write_project_review_result,
@@ -50,7 +51,8 @@ from main.views.review.ecm_download_review_centers import center_label, normaliz
 
 logger = logging.getLogger(__name__)
 
-PROJECT_NUMBER_RE = re.compile(r"^TTA-\d{2}-\d{5}$")
+# TTA-26-00009 (신규 형식) / GS-A-25-0077 (2025년 이전 형식, KOLAS 페이지 대상)
+PROJECT_NUMBER_RE = re.compile(r"^(?:TTA-\d{2}-\d{5}|[A-Z]{2,5}(?:-[A-Z])?-\d{2}-\d{4,5})$")
 ACTIVE_JOB_STATUSES = (
     DownloadReviewJobStatus.SCHEDULED,
     DownloadReviewJobStatus.QUEUED,
@@ -60,7 +62,10 @@ CANCELABLE_JOB_STATUSES = (
     DownloadReviewJobStatus.SCHEDULED,
     DownloadReviewJobStatus.QUEUED,
 )
-JOB_LIST_PARAM_NAMES = {"status", "limit", "offset", "center"}
+JOB_LIST_PARAM_NAMES = {"status", "limit", "offset", "center", "source"}
+JOB_SOURCE_ECM = "ecm"
+JOB_SOURCE_KOLAS = "kolas"
+JOB_SOURCES = {JOB_SOURCE_ECM, JOB_SOURCE_KOLAS}
 JOB_LIST_STATUS_FILTERS = {
     "all": None,
     "finished": (
@@ -125,9 +130,13 @@ class JobSchedule:
 
 
 def create_download_review_job(payload, request_ip=None, now=None):
+    source = parse_job_source(payload.get("source"))
     center_code = parse_center_code(payload.get("center"))
     project_numbers = parse_project_numbers(payload)
-    projects = get_projects_by_numbers(project_numbers, center_code=center_code)
+    if source == JOB_SOURCE_KOLAS:
+        projects = get_kolas_projects_by_numbers(project_numbers, center_code=center_code)
+    else:
+        projects = get_projects_by_numbers(project_numbers, center_code=center_code)
     _validate_projects_found(project_numbers, projects)
     _validate_not_completed(projects)
 
@@ -139,6 +148,7 @@ def create_download_review_job(payload, request_ip=None, now=None):
         schedule = build_job_schedule(now=now)
         job = DownloadReviewJob.objects.create(
             center_code=center_code,
+            source=source,
             status=schedule.status,
             available_after=schedule.available_after,
             queued_at=schedule.queued_at,
@@ -199,7 +209,7 @@ def get_active_job_payload():
 
 def get_jobs_payload(query_params):
     query = parse_job_list_query(query_params)
-    qs = DownloadReviewJob.objects.all()
+    qs = DownloadReviewJob.objects.filter(source=query["source"])
     if query["center"]:
         qs = qs.filter(center_code=query["center"])
     statuses = JOB_LIST_STATUS_FILTERS[query["status"]]
@@ -1084,9 +1094,18 @@ def parse_job_list_query(query_params):
     return {
         "status": status,
         "center": center,
+        "source": parse_job_source(query_params.get("source")),
         "limit": limit,
         "offset": offset,
     }
+
+
+def parse_job_source(value):
+    """작업 요청 화면 구분. 생략하면 기존 ECM 점검 페이지(ecm)."""
+    source = str(value or JOB_SOURCE_ECM).strip().lower()
+    if source not in JOB_SOURCES:
+        raise DownloadReviewJobRequestError(f"지원하지 않는 작업 구분입니다: {value}")
+    return source
 
 
 def parse_project_numbers(payload):
@@ -1094,7 +1113,7 @@ def parse_project_numbers(payload):
     if not isinstance(project_numbers, list) or not project_numbers:
         raise DownloadReviewJobRequestError("project_numbers는 1개 이상의 프로젝트번호 배열이어야 합니다.")
 
-    max_projects = getattr(settings, "DOWNLOAD_REVIEW_MAX_PROJECTS_PER_JOB", 100)
+    max_projects = getattr(settings, "DOWNLOAD_REVIEW_MAX_PROJECTS_PER_JOB", 500)
     if len(project_numbers) > max_projects:
         raise DownloadReviewJobRequestError(f"한 작업에는 최대 {max_projects}개 프로젝트만 요청할 수 있습니다.")
 

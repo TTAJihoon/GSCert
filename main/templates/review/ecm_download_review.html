@@ -1,19 +1,19 @@
 {% extends 'header.html' %}
 {% load static %}
 
-{% block title %}ECM 제출물 자동 점검{% endblock %}
+{% block title %}{% if kolas_mode %}KOLAS 시험성적서 점검{% else %}ECM 제출물 자동 점검{% endif %}{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=46">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=46" defer></script>
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=57">
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=57" defer></script>
 {% endblock %}
 
 {% block content %}
 <main class="content-area download-review-page">
   <section class="review-status-bar" aria-label="시스템 상태">
     <div>
-      <p class="eyebrow">ECM download review</p>
-      <h1>ECM 제출물 자동 점검</h1>
+      <p class="eyebrow">{% if kolas_mode %}KOLAS download review{% else %}ECM download review{% endif %}</p>
+      <h1>{% if kolas_mode %}KOLAS 시험성적서 점검{% else %}ECM 제출물 자동 점검{% endif %}</h1>
     </div>
     <div class="status-side">
       <div class="status-strip">
@@ -45,6 +45,10 @@
   {{ download_review_default_center|json_script:"downloadReviewDefaultCenter" }}
   {{ download_review_allowed_centers|json_script:"downloadReviewAllowedCenters" }}
   {{ download_review_center_routes|json_script:"downloadReviewCenterRoutes" }}
+  {% if kolas_mode %}
+  <script id="downloadReviewPageConfig" type="application/json">{"kolas": true, "reportMaxProjects": {{ kolas_report_max_projects|default:500 }}}</script>
+  <iframe name="kolasReportFrame" title="결과서 다운로드" hidden style="display:none"></iframe>
+  {% endif %}
 
   <nav class="tabs" aria-label="화면 탭">
     <button class="tab-button active" type="button" data-tab="projects">
@@ -76,7 +80,7 @@
         <div class="panel-header">
           <div>
             <h2>프로젝트 목록</h2>
-            <p>선택한 센터의 ecmlist DB를 다시 조회합니다.</p>
+            <p>{% if kolas_mode %}종료예정일 2025-05-14 ~ 2026-09-23 프로젝트 목록(KOLAS 전용 DB)입니다.{% else %}선택한 센터의 ecmlist DB를 다시 조회합니다.{% endif %}</p>
           </div>
           <div class="panel-actions">
             <button
@@ -101,6 +105,12 @@
                 <i class="fa-solid fa-building-user"></i>
                 영남
               </button>
+              {% if kolas_mode %}
+              <button class="center-tab-button" type="button" data-center-tab="unknown" title="PL이 센터에 배정되지 않은 프로젝트">
+                <i class="fa-solid fa-circle-question"></i>
+                미배정
+              </button>
+              {% endif %}
             </nav>
             <button class="secondary-button compact-action project-toolbar-action" type="button" id="bulkDownload">
               <i class="fa-solid fa-file-excel"></i>
@@ -110,6 +120,12 @@
               <i class="fa-solid fa-people-arrows"></i>
               PL 배정 목록
             </button>
+            {% if kolas_mode %}
+            <button class="secondary-button compact-action project-toolbar-action" type="button" id="downloadReports" title="체크한 프로젝트의 시험성적서(Word/PDF)를 ECM에서 받아 zip으로 내려받습니다">
+              <i class="fa-solid fa-file-zipper"></i>
+              결과서 다운로드
+            </button>
+            {% endif %}
           </div>
         </div>
 
@@ -121,28 +137,37 @@
             </span>
             <i class="fa-solid fa-chevron-down help-chevron" aria-hidden="true"></i>
           </summary>
-          <div class="help-grid">
+          <div class="help-grid{% if kolas_mode %} help-grid-3{% endif %}">
             <article class="help-item">
               <span class="help-icon"><i class="fa-solid fa-list-check" aria-hidden="true"></i></span>
               <div>
                 <strong>프로젝트 선택</strong>
-                <p>프로젝트 목록에서 센터를 선택하고 점검할 항목을 체크한 뒤 작업 요청 버튼으로 점검을 시작합니다.</p>
+                <p>프로젝트 목록에서 센터를 선택하고 점검할 항목을 체크한 뒤 작업 요청 버튼으로 점검을 시작합니다.{% if kolas_mode %} 완료·작업 중인 프로젝트도 체크할 수 있으며, 이 경우 작업 요청에서는 자동으로 제외됩니다.{% endif %}</p>
               </div>
             </article>
             <article class="help-item">
               <span class="help-icon"><i class="fa-solid fa-people-arrows" aria-hidden="true"></i></span>
               <div>
                 <strong>PL 배정 목록</strong>
-                <p>각 시험소별로 PL 이름을 배정하여 프로젝트 목록의 센터 구분을 설정합니다.</p>
+                <p>각 시험소별로 PL 이름을 배정하여 프로젝트 목록의 센터 구분을 설정합니다.{% if kolas_mode %} 센터에 배정되지 않은(미배정) 프로젝트는 PL을 배정해야 점검 작업을 요청할 수 있습니다. 배정 정보는 ECM 점검 페이지와 공유됩니다.{% endif %}</p>
               </div>
             </article>
+            {% if kolas_mode %}
+            <article class="help-item">
+              <span class="help-icon"><i class="fa-solid fa-file-zipper" aria-hidden="true"></i></span>
+              <div>
+                <strong>결과서 다운로드</strong>
+                <p>체크한 프로젝트의 시험성적서(Word·PDF)를 ECM에서 받아 word / pdf 폴더로 나눈 zip으로 내려받습니다. 찾지 못한 프로젝트는 zip 안의 _다운로드_결과.txt에 기록됩니다.</p>
+              </div>
+            </article>
+            {% endif %}
           </div>
         </details>
 
         <div class="filters" aria-label="프로젝트 필터">
           <label>
             <span>프로젝트번호</span>
-            <input id="filterProject" type="search" placeholder="TTA-26-00009">
+            <input id="filterProject" type="search" placeholder="{% if kolas_mode %}GS-A-25-0077{% else %}TTA-26-00009{% endif %}">
           </label>
           <label>
             <span>회사명</span>
@@ -211,6 +236,34 @@
   </section>
 
   <section class="tab-panel" id="tab-progress">
+    {% if kolas_mode %}
+    <section class="panel report-task-panel" id="reportTaskProgressPanel" hidden>
+      <div class="panel-header">
+        <div>
+          <h2>결과서 다운로드 진행 상황</h2>
+          <p>진행률은 처리한 프로젝트 수와 현재 단계를 기준으로 한 대략적인 값입니다. 끝난 작업은 10분 동안 표시됩니다.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table report-task-table" aria-label="결과서 다운로드 진행 상황">
+          <thead>
+          <tr>
+            <th>순번</th>
+            <th>프로젝트번호</th>
+            <th>회사명</th>
+            <th>제품명</th>
+            <th>상태</th>
+            <th>현재 단계</th>
+            <th>재시도</th>
+            <th>점검 상세</th>
+            <th>오류</th>
+          </tr>
+          </thead>
+          <tbody id="reportTaskProgressRows"></tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
 
     <div id="activeProgressView">
       <div class="summary-grid">
@@ -344,6 +397,35 @@
         </div>
       </section>
     </div>
+
+    {% if kolas_mode %}
+    <section class="panel report-task-panel" id="reportTaskResultsPanel">
+      <div class="panel-header">
+        <div>
+          <h2>결과서 다운로드 내역</h2>
+          <p>최근 20건. 진행률은 처리한 프로젝트 수와 현재 단계를 기준으로 한 대략적인 값입니다.</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table class="data-table report-task-table" aria-label="결과서 다운로드 내역">
+          <thead>
+          <tr>
+            <th>프로젝트번호</th>
+            <th>회사명</th>
+            <th>제품명</th>
+            <th>상태</th>
+            <th>점검결과</th>
+            <th>상세</th>
+            <th>현재 단계</th>
+            <th>실패 단계</th>
+            <th>오류</th>
+          </tr>
+          </thead>
+          <tbody id="reportTaskResultRows"></tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
   </section>
 </main>
 
@@ -412,8 +494,8 @@
           수정 내용
         </button>
         <button class="mini-button modal-folder-download-button" type="button" id="modalFullFolderDownload" hidden>
-          <i class="fa-solid fa-folder" aria-hidden="true"></i>
-          전체 산출물 다운로드
+          <i class="fa-solid fa-folder-tree" aria-hidden="true"></i>
+          산출물 보기
         </button>
         <a class="mini-button modal-download-button" id="modalDownload" href="#" hidden>
           <i class="fa-solid fa-file-code"></i>
@@ -467,6 +549,61 @@
     </div>
   </section>
 </div>
+
+<div class="modal-backdrop note-modal-backdrop folder-browser-backdrop" id="folderBrowserModal" hidden>
+  <section class="modal-panel folder-browser-panel" role="dialog" aria-modal="false" aria-labelledby="folderBrowserTitle">
+    <div class="modal-header">
+      <div>
+        <p class="eyebrow">ECM 산출물 · 제목줄을 끌어 옮길 수 있습니다</p>
+        <h2 id="folderBrowserTitle">산출물 폴더</h2>
+      </div>
+      <div class="modal-header-actions">
+        <button class="mini-button" type="button" id="folderBrowserWholeZip" title="프로젝트 root 폴더 전체를 zip 하나로 내려받습니다.">
+          <i class="fa-solid fa-file-zipper" aria-hidden="true"></i>
+          전체 zip 다운로드
+        </button>
+        <button class="icon-button" type="button" id="closeFolderBrowser" aria-label="닫기">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+    </div>
+    <div class="modal-body folder-browser-body">
+      <nav class="folder-browser-crumbs" id="folderBrowserCrumbs" aria-label="폴더 경로"></nav>
+      <div class="folder-browser-toolbar">
+        <label class="folder-browser-checkall">
+          <input type="checkbox" id="folderBrowserSelectAll" aria-label="현재 목록 전체 선택">
+          전체 선택
+        </label>
+        <span class="folder-browser-selection" id="folderBrowserSelectionInfo">선택 0개</span>
+        <button class="mini-button" type="button" id="folderBrowserDownloadSelected" disabled
+                title="체크한 항목을 zip 하나로 내려받습니다. 하나만 체크하면 그 파일 그대로 받습니다.">
+          <i class="fa-solid fa-download" aria-hidden="true"></i>
+          선택 항목 다운로드
+        </button>
+        <button class="mini-button" type="button" id="folderBrowserDownloadHere" title="지금 보고 있는 폴더 전체를 zip 으로 내려받습니다.">
+          <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
+          현재 폴더 zip 다운로드
+        </button>
+      </div>
+      <p class="folder-browser-message" id="folderBrowserMessage" role="status" hidden></p>
+      <div class="folder-browser-table-wrap">
+        <table class="folder-browser-table" aria-label="산출물 폴더 내용">
+          <thead>
+          <tr>
+            <th class="fb-check"></th>
+            <th class="fb-name">이름</th>
+            <th class="fb-kind">종류</th>
+            <th class="fb-size">크기</th>
+            <th class="fb-action">받기</th>
+          </tr>
+          </thead>
+          <tbody id="folderBrowserRows"></tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+<iframe name="folderDownloadFrame" title="산출물 다운로드" hidden style="display:none"></iframe>
 
 <div class="modal-backdrop note-modal-backdrop" id="plAssignmentModal" hidden>
   <section class="modal-panel pl-assignment-panel" role="dialog" aria-modal="true" aria-labelledby="plAssignmentTitle">

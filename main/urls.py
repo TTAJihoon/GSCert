@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path, include
 from django.views.generic import RedirectView
-from main.views.init import similar, security, consultation, prdinfo, checkreport, test, download_review
+from main.views.init import similar, security, consultation, prdinfo, checkreport, test, download_review, kolas_review
 
 from main.views.testing.history import history
 from main.views.testing.history_report import download_report, download_report_document
@@ -17,6 +17,19 @@ from main.views.certy.prdinfo_db import lookup_cert_info
 from main.views.review.checkreport import parse_view
 from main.views.reference_search import reference_search, reference_google_sheet_lookup
 
+from main.views.review.ecm_folder_browser_api import (
+    browse as folder_browse,
+    browse_download as folder_browse_download,
+    browse_progress as folder_browse_progress,
+    browse_watch as folder_browse_watch,
+)
+from main.views.review.kolas_api import (
+    kolas_pl_assignments,
+    kolas_pl_assignments_apply,
+    kolas_projects,
+    kolas_report_download,
+    kolas_report_tasks,
+)
 from main.views.review.ecm_download_review_api import (
     active_job as download_review_active_job,
     bulk_download_projects_zip as download_review_bulk_download,
@@ -69,6 +82,13 @@ urlpatterns = [
     path('checkreport/', checkreport, name='checkreport'),
     path("parse/", parse_view, name="parse_view"),
     path('download-review/', download_review, name='download_review'),
+    path('kolas/', kolas_review, name='kolas_review'),
+    path('KOLAS/', RedirectView.as_view(url='/kolas/', query_string=True), name='kolas_review_upper'),
+    path('kolas/api/projects/', kolas_projects, name='kolas_projects'),
+    path('kolas/api/pl-assignments/', kolas_pl_assignments, name='kolas_pl_assignments'),
+    path('kolas/api/pl-assignments/apply/', kolas_pl_assignments_apply, name='kolas_pl_assignments_apply'),
+    path('kolas/api/report-download/', kolas_report_download, name='kolas_report_download'),
+    path('kolas/api/report-tasks/', kolas_report_tasks, name='kolas_report_tasks'),
     path('api/projects/', download_review_projects, name='download_review_projects'),
     path('api/pl-assignments/', download_review_pl_assignments, name='download_review_pl_assignments'),
     path('api/pl-assignments/apply/', download_review_pl_assignments_apply, name='download_review_pl_assignments_apply'),
@@ -87,6 +107,10 @@ urlpatterns = [
     path('api/rule-results/<uuid:result_id>/manual-pass/', download_review_rule_result_manual_pass, name='download_review_rule_result_manual_pass'),
     path('api/rule-results/<uuid:result_id>/artifacts/<str:artifact_id>/', download_review_rule_result_artifact, name='download_review_rule_result_artifact'),
     path('api/projects/bulk-download/', download_review_bulk_download, name='download_review_bulk_download'),
+    path('api/projects/<str:project_number>/browse/', folder_browse, name='folder_browse'),
+    path('api/projects/<str:project_number>/browse/watch/', folder_browse_watch, name='folder_browse_watch'),
+    path('api/projects/<str:project_number>/browse/progress/', folder_browse_progress, name='folder_browse_progress'),
+    path('api/projects/<str:project_number>/browse/download/', folder_browse_download, name='folder_browse_download'),
     path('api/projects/<str:project_number>/full-documents-download/', download_review_project_full_documents_download, name='download_review_project_full_documents_download'),
     path('api/projects/<str:project_number>/latest-results/', download_review_latest_project_results, name='download_review_latest_project_results'),
     path('api/local-review/health/', local_review_health, name='local_review_health'),

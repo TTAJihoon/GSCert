@@ -120,6 +120,7 @@ WORKFLOW_MODEL_NAMES = {
     'downloadreviewlock',
     'servertimecontrol',
     'servertimeaudit',
+    'kolasreporttask',
 }
 
 SERVER_TIME_LEASE_SECONDS = 180
@@ -149,6 +150,7 @@ REFERENCE_MODEL_NAMES = {
     'swdata',
     'referencecenterpl',
     'referenceproject',
+    'kolasproject',
     'downloadreviewrule',
     'downloadreviewmanualoverride',
 }
@@ -231,7 +233,21 @@ DOWNLOAD_REVIEW_CENTER_ROUTES_BY_HOST = {
     },
 }
 DOWNLOAD_REVIEW_ACTIVE_JOB_LIMIT = 5
-DOWNLOAD_REVIEW_MAX_PROJECTS_PER_JOB = 100
+# KOLAS 결과서(시험성적서) 서버 저장소: 프로젝트번호별 폴더에 보관해 재요청 때 ECM 없이 전달한다.
+KOLAS_REPORT_CACHE_DIR = os.environ.get('KOLAS_REPORT_CACHE_DIR', r'C:\Users\Administrator\kolas')
+# 시험성적서가 zip 안에 있을 때 프로젝트 1건당 ECM 에서 흘려받아 훑는 최대 용량(MB). 초과하면 나머지 zip 은 열지 않는다.
+KOLAS_ZIP_SCAN_MAX_MB = int(os.environ.get('KOLAS_ZIP_SCAN_MAX_MB', '1024'))
+# 산출물 폴더 팝업(ECM 점검·KOLAS 공용): zip 임시 보관. 폴더는 언제 비워도 된다.
+FOLDER_BROWSER_ZIP_CACHE = os.environ.get('FOLDER_BROWSER_ZIP_CACHE', '1') != '0'
+FOLDER_BROWSER_ZIP_CACHE_DIR = os.environ.get('FOLDER_BROWSER_ZIP_CACHE_DIR', r'C:\Users\Administrator\zip_cache')
+FOLDER_BROWSER_ZIP_CACHE_MAX_GB = float(os.environ.get('FOLDER_BROWSER_ZIP_CACHE_MAX_GB', '50'))
+# 매시 정각에 폴더를 비운다. 정각 직전 이 분(分) 안에 받은 것은 다음 정각까지 남긴다(예: 2:57 에 받음 -> 4:00 삭제).
+FOLDER_BROWSER_ZIP_CACHE_GRACE_MINUTES = float(os.environ.get('FOLDER_BROWSER_ZIP_CACHE_GRACE_MINUTES', '5'))
+# 팝업을 열 때 root 바로 아래의 가장 큰 zip 1개를 미리 받는다(이 크기 이상일 때만).
+FOLDER_BROWSER_PREFETCH = os.environ.get('FOLDER_BROWSER_PREFETCH', '1') != '0'
+FOLDER_BROWSER_PREFETCH_MIN_MB = float(os.environ.get('FOLDER_BROWSER_PREFETCH_MIN_MB', '30'))
+FOLDER_BROWSER_PREFETCH_WORKERS = int(os.environ.get('FOLDER_BROWSER_PREFETCH_WORKERS', '2'))
+DOWNLOAD_REVIEW_MAX_PROJECTS_PER_JOB = 500
 DOWNLOAD_REVIEW_NAV_HOME_BY_HOST = {
     MAIN_SERVER_IP: '',                          # 메인(분당)이 웹 네비게이션 홈
     SUB_SERVER_IP: f'http://{MAIN_SERVER_IP}',   # 서브(상암/영남)는 메인으로 리다이렉트

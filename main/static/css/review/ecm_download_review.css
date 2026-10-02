@@ -440,6 +440,17 @@
   padding: 0 12px 12px;
 }
 
+/* KOLAS 페이지는 도움말 항목이 3개라 한 줄(3열)로 배치한다. 좁은 화면에서는 2열로 접는다. */
+.help-grid.help-grid-3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+@media (max-width: 1100px) {
+  .help-grid.help-grid-3 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 .help-item {
   display: grid;
   grid-template-columns: 28px minmax(0, 1fr);
@@ -1977,4 +1988,313 @@
     flex-wrap: wrap;
   }
 
+}
+
+/* KOLAS 결과서 다운로드 진행률 (현재 단계 칸의 progress bar) */
+.report-task-panel {
+  margin-bottom: 16px;
+}
+
+.task-progress {
+  display: grid;
+  gap: 4px;
+  min-width: 260px;
+}
+
+.task-progress-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.task-progress-head strong {
+  min-width: 38px;
+  color: var(--review-text);
+  font-size: 13px;
+}
+
+.task-progress-head span {
+  color: var(--review-muted);
+}
+
+.task-progress-track {
+  height: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e4e7ec;
+}
+
+.task-progress-fill {
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--review-primary);
+  transition: width .4s ease;
+}
+
+.task-progress.completed .task-progress-fill {
+  background: var(--review-success);
+}
+
+.task-progress.failed .task-progress-fill {
+  background: var(--review-danger);
+}
+
+.task-progress.canceled .task-progress-fill {
+  background: var(--review-warning);
+}
+
+.task-progress-detail {
+  color: var(--review-muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.task-progress.failed .task-progress-detail {
+  color: var(--review-danger);
+}
+
+.report-task-table td {
+  vertical-align: middle;
+}
+
+/* 산출물 폴더 팝업 (ECM root 폴더 / zip 안 구조 탐색) */
+/* 모달이 아니라 떠 있는 창: 뒤의 점검결과 상세 팝업과 화면을 가리지 않고 따로 조작할 수 있다.
+   바깥 막은 클릭을 통과시키고(pointer-events: none), 창(panel)만 클릭을 받는다. 제목줄을 끌어 옮기고 모서리로 크기를 바꾼다. */
+.folder-browser-backdrop {
+  z-index: 1020;
+  display: block;
+  padding: 0;
+  background: transparent;
+  pointer-events: none;
+}
+
+.folder-browser-panel {
+  position: fixed;
+  left: 120px;
+  top: 60px;
+  width: min(980px, calc(100vw - 48px));
+  height: min(680px, calc(100vh - 48px));
+  min-width: min(640px, calc(100vw - 48px));
+  min-height: min(420px, calc(100vh - 48px));
+  max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  resize: both;
+  pointer-events: auto;
+  border: 1px solid var(--review-line);
+  box-shadow: 0 18px 48px rgba(15, 23, 42, .34);
+}
+
+.folder-browser-panel .modal-header {
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.folder-browser-panel .modal-header button,
+.folder-browser-panel .modal-header a {
+  cursor: pointer;
+}
+
+.folder-browser-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+.folder-browser-crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 4px;
+  font-size: 13px;
+}
+
+.folder-browser-crumbs .crumb {
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--review-primary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.folder-browser-crumbs .crumb:hover:not(:disabled) {
+  background: var(--review-primary-soft);
+}
+
+.folder-browser-crumbs .crumb:disabled {
+  color: var(--review-text);
+  cursor: default;
+  font-weight: 800;
+}
+
+.folder-browser-crumbs .crumb-sep {
+  color: var(--review-muted);
+}
+
+.folder-browser-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+
+.folder-browser-checkall {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.folder-browser-selection {
+  margin-right: auto;
+  color: var(--review-muted);
+  font-size: 12px;
+}
+
+.folder-browser-message {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  background: var(--review-primary-soft);
+  color: var(--review-primary);
+  font-size: 13px;
+}
+
+.folder-browser-message.error {
+  background: var(--review-danger-soft);
+  color: var(--review-danger);
+}
+
+.folder-browser-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  border: 1px solid var(--review-line);
+  border-radius: 8px;
+}
+
+.folder-browser-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--review-surface);
+  font-size: 13px;
+}
+
+.folder-browser-table th,
+.folder-browser-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #edf0f4;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.folder-browser-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--review-soft);
+  color: var(--review-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.folder-browser-table .fb-check {
+  width: 36px;
+  text-align: center;
+}
+
+.folder-browser-table .fb-kind {
+  width: 80px;
+}
+
+.folder-browser-table .fb-size {
+  width: 100px;
+  text-align: right;
+}
+
+.folder-browser-table .fb-action {
+  width: 70px;
+  text-align: center;
+}
+
+.folder-browser-table tbody tr:hover {
+  background: #f8fbff;
+}
+
+.folder-browser-table td.fb-size {
+  color: var(--review-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.fb-name-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--review-text);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.fb-name-button:hover:not(:disabled) .fb-name-text {
+  color: var(--review-primary);
+  text-decoration: underline;
+}
+
+.fb-name-button:disabled {
+  color: var(--review-muted);
+  cursor: not-allowed;
+}
+
+.fb-icon {
+  flex: 0 0 auto;
+  width: 18px;
+  text-align: center;
+}
+
+.fb-icon.folder {
+  color: #d99a1c;
+}
+
+.fb-icon.zip {
+  color: #7e22ce;
+}
+
+.fb-icon.file {
+  color: #667085;
+}
+
+.fb-download-button {
+  padding: 4px 8px;
+  border: 1px solid var(--review-line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--review-text);
+  cursor: pointer;
+}
+
+.fb-download-button:hover:not(:disabled) {
+  border-color: var(--review-primary);
+  color: var(--review-primary);
+}
+
+.fb-download-button:disabled {
+  opacity: .4;
+  cursor: not-allowed;
+}
+
+.fb-empty {
+  padding: 28px 12px;
+  color: var(--review-muted);
+  text-align: center;
 }

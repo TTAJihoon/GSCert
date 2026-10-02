@@ -91,6 +91,9 @@ class DownloadReviewLogLevel(models.TextChoices):
 class DownloadReviewJob(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     center_code = models.CharField(max_length=20, default="sangam", db_index=True)
+    # 작업을 요청한 화면: "ecm"(기존 ECM 점검 페이지) / "kolas"(/kolas/). 작업 목록 분리용이며
+    # 워커 처리 흐름에는 영향이 없다(단일 워커·단일 대기열 공유).
+    source = models.CharField(max_length=20, default="ecm", db_index=True)
     status = models.CharField(
         max_length=20,
         choices=DownloadReviewJobStatus.choices,
@@ -422,6 +425,100 @@ class ReferenceProject(models.Model):
 
     def __str__(self):
         return f"{self.project_number} {self.company} {self.product}"
+
+
+class KolasProject(models.Model):
+    """KOLAS 점검 페이지(/kolas/) 전용 프로젝트 목록.
+
+    ReferenceProject(기존 ECM 점검 페이지 목록)와 완전히 분리된 테이블이다. 목록은
+    sync_kolas_projects 명령이 구글시트(2025/2026)에서 '종료예정일' 기준으로 적재하고,
+    점검결과(review_result/inspection_date/artifact_results_json)만 ReferenceProject와
+    공유한다(ecm_reference_db 의 write/copy 로직 참고). 필드명은 ReferenceProject 와
+    맞춰 serialize 로직을 재사용한다.
+    """
+
+    project_number = models.CharField(max_length=32, unique=True, db_index=True)
+    center_code = models.CharField(max_length=20, db_index=True)
+    center_label = models.CharField(max_length=20, blank=True, default='')
+    cert_date = models.CharField(max_length=20, blank=True, default='')
+    cert_committee_date = models.DateField(blank=True, null=True, db_index=True)
+    company = models.TextField(blank=True, default='')
+    product = models.TextField(blank=True, default='')
+    pl = models.TextField(blank=True, default='')
+    primary_tester = models.CharField(max_length=50, blank=True, default='', db_index=True)
+    wd = models.TextField(blank=True, default='')
+    request_date = models.TextField(blank=True, default='')
+    contract_date = models.TextField(blank=True, default='')
+    start_date = models.TextField(blank=True, default='')
+    expected_end_date = models.TextField(blank=True, default='')
+    expected_end_on = models.DateField(blank=True, null=True, db_index=True)
+    review_result = models.CharField(max_length=20, blank=True, default='')
+    inspection_date = models.TextField(blank=True, default='')
+    artifact_results_json = models.JSONField(default=dict, blank=True)
+    raw_company_product = models.TextField(blank=True, default='')
+    source_spreadsheet_id = models.CharField(max_length=120, blank=True, default='')
+    source_gid = models.CharField(max_length=40, blank=True, default='')
+    source_row_number = models.PositiveIntegerField(blank=True, null=True)
+    source_payload_json = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        app_label = 'main'
+        db_table = 'kolas_project'
+        ordering = ['-expected_end_on', 'project_number']
+        indexes = [
+            models.Index(fields=['center_code', 'expected_end_on'], name='kolas_project_center_end_idx'),
+            models.Index(fields=['center_code', 'project_number'], name='kolas_project_center_num_idx'),
+        ]
+
+    def __str__(self):
+        return f"{self.project_number} {self.company} {self.product}"
+
+
+class KolasReportTaskStatus(models.TextChoices):
+    RUNNING = "running", "Running"
+    COMPLETED = "completed", "Completed"
+    FAILED = "failed", "Failed"
+    CANCELED = "canceled", "Canceled"
+
+
+class KolasReportTask(models.Model):
+    """KOLAS '결과서 다운로드' 1회의 진행 상황(workflow DB).
+
+    zip 이 브라우저로 스트리밍되는 동안 서버가 프로젝트 단위로 진행률을 갱신하고, 화면(현재 작업 진행 상황 /
+    작업 조회 탭)이 폴링해 progress bar 로 보여준다. 정확한 바이트 진행률이 아니라 '처리한 프로젝트 수 + 현재
+    프로젝트의 단계'로 얼추 계산한 0~100 값이다.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    status = models.CharField(
+        max_length=20,
+        choices=KolasReportTaskStatus.choices,
+        default=KolasReportTaskStatus.RUNNING,
+        db_index=True,
+    )
+    requested_ip = models.GenericIPAddressField(blank=True, null=True)
+    total_projects = models.PositiveIntegerField(default=0)
+    done_projects = models.PositiveIntegerField(default=0)
+    percent = models.PositiveSmallIntegerField(default=0)
+    current_project = models.CharField(max_length=32, blank=True)
+    current_step = models.CharField(max_length=255, blank=True)
+    complete_count = models.PositiveIntegerField(default=0)
+    partial_count = models.PositiveIntegerField(default=0)
+    none_count = models.PositiveIntegerField(default=0)
+    anonymous_count = models.PositiveIntegerField(default=0)
+    error_message = models.TextField(blank=True)
+    started_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    finished_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        db_table = "kolas_report_task"
+        ordering = ["-started_at", "id"]
+
+    def __str__(self):
+        return f"{self.id} ({self.status}, {self.percent}%)"
 
 
 class DownloadReviewLock(models.Model):

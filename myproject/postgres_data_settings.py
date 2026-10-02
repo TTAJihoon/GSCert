@@ -35,6 +35,7 @@ REFERENCE_MODEL_NAMES = {
     "swdata",
     "referencecenterpl",
     "referenceproject",
+    "kolasproject",
     "downloadreviewmanualoverride",
 }
 DOWNLOAD_REVIEW_PROJECT_SOURCE = os.environ.get("DOWNLOAD_REVIEW_PROJECT_SOURCE", "postgres")

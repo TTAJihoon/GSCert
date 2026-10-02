@@ -6,7 +6,7 @@
 
 | 항목 | 현재 기준 |
 | --- | --- |
-| 운영 진입점 | 194 서버(`210.96.71.194`)의 `/download-review/`. 241 서버는 요청을 194로 넘기는 보조 경로 |
+| 운영 진입점 | 194 서버의 `https://gsai.tta.or.kr/download-review/`(KOLAS는 `/kolas/`). IP 주소 접속은 도메인으로 308 리다이렉트된다(`01_operations.md`). 241 서버는 요청을 194로 넘기는 보조 경로 |
 | 산출물 source | `ecm-http`(서버측 `requests` HTTP 직접연동)가 기본값. `local`은 ECM 없이 전체 흐름을 돌리는 fake-live용. 레거시 Playwright source는 코드에서 제거됐고 `ecm` 값은 `ecm-http` 별칭 |
 | 워커 | 194 워커 1개가 분당·상암·영남 세 센터를 모두 처리 |
 | DB | `reference`(PostgreSQL, 공유 기준정보·규칙·수동 적합 메모) / `workflow`(SQLite, 서버 로컬 실행 상태) / `default`(SQLite, Django 기본) |
@@ -29,6 +29,7 @@
 | 산출물 source(ECM/로컬) 구조를 확인하거나 새 저장소를 붙이기 | `06_artifact_source_ecm.md` |
 | ECM 서버 시간 임시 변경을 점검 | `07_server_time_control.md` |
 | 산출물 자동 입력 기능을 설계·진행 | `08_artifact_autofill.md` |
+| KOLAS 점검 페이지(`/kolas/`)·시험성적서 zip 다운로드를 운영·수정 | `09_kolas_page.md` |
 | 과거에 왜 그렇게 결정했는지 찾기 | `archive/ADR/` |
 | 과거 완료 내역을 찾기 | `archive/changelog/`, `git log` |
 

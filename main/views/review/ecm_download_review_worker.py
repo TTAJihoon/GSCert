@@ -323,10 +323,14 @@ async def _run_live_job(job, *, headless=True, source_name=None):
                             verify_result,
                             file_summary,
                         )
-                    except DownloadReviewInspectionError as exc:
+                    except Exception as exc:
+                        # 손상된 파일(BadZipFile 등) 같은 예상 밖 예외도 그 프로젝트만 실패시키고
+                        # 나머지 프로젝트는 계속 처리한다(작업 전체가 worker 오류로 끝나지 않게).
+                        if not isinstance(exc, DownloadReviewInspectionError):
+                            logger.exception("점검 중 예상 밖 오류: %s", project.project_number)
                         await _run_sync(
                             _fail_project,
-                            job, project, "점검규칙 검사", str(exc),
+                            job, project, "점검규칙 검사", str(exc) or exc.__class__.__name__,
                             event_code="inspection_failed",
                             detail_json=file_summary,
                             download_dir=ecm_result.download_dir,

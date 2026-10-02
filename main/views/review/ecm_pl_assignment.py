@@ -9,7 +9,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Count
 
-from main.models import ReferenceCenterPl, ReferenceProject
+from main.models import KolasProject, ReferenceCenterPl, ReferenceProject
 from main.utils.ecm_reference_sheet import normalize_person_name
 from main.views.review.ecm_download_review_centers import center_choices
 
@@ -36,8 +36,13 @@ def _center_label_map():
     return labels
 
 
-def get_pl_assignment_payload():
-    """센터(+미배정)별 PL 목록과 각 PL이 담당 중인 프로젝트 개수를 반환한다."""
+def get_pl_assignment_payload(*, kolas=False):
+    """센터(+미배정)별 PL 목록과 각 PL이 담당 중인 프로젝트 개수를 반환한다.
+
+    kolas=True 면 프로젝트 개수를 KOLAS 목록(KolasProject) 기준으로 센다. PL-센터 매핑
+    (ReferenceCenterPl) 자체는 두 화면이 공유한다.
+    """
+    project_model = KolasProject if kolas else ReferenceProject
     alias = _reference_db_alias()
     label_map = _center_label_map()
     centers = [{"code": code, "label": label} for code, label in label_map.items()]
@@ -46,7 +51,7 @@ def get_pl_assignment_payload():
     project_counts = {
         (normalize_person_name(row["primary_tester"]), row["center_code"]): row["project_count"]
         for row in (
-            ReferenceProject.objects.using(alias)
+            project_model.objects.using(alias)
             .exclude(primary_tester="")
             .values("primary_tester", "center_code")
             .annotate(project_count=Count("id"))
@@ -67,7 +72,7 @@ def get_pl_assignment_payload():
     # review_result가 비어있지 않은(이미 점검된) 프로젝트는 세지 않는다 - PL을
     # 센터에 배정할 때 함께 따라가지 않고 그대로 남기 때문(아래 apply 쪽 주석 참고).
     unassigned_rows = (
-        ReferenceProject.objects.using(alias)
+        project_model.objects.using(alias)
         .filter(center_code=UNASSIGNED_CENTER_CODE, review_result="")
         .exclude(primary_tester="")
         .values("primary_tester")
@@ -85,7 +90,7 @@ def get_pl_assignment_payload():
     return {"success": True, "centers": centers, "assignments": assignments}
 
 
-def apply_pl_assignment_changes(changes):
+def apply_pl_assignment_changes(changes, *, kolas=False):
     """PL 배정 변경 목록을 적용한다.
 
     changes: [{"name": str, "from_center": str, "to_center": str}, ...]
@@ -100,6 +105,10 @@ def apply_pl_assignment_changes(changes):
     - 센터 -> 다른 센터: 매핑만 갱신한다. 기존 프로젝트는 그대로 두고 다음 시트
       동기화부터 새 센터로 적재된다.
     - 센터 -> 미배정: 매핑을 삭제한다(기존 프로젝트는 그대로 둠).
+
+    PL-센터 매핑은 기존 ECM 점검 페이지와 KOLAS 페이지가 공유하므로, 미배정 -> 센터
+    이동은 두 목록(ReferenceProject, KolasProject) 모두에 같은 규칙으로 적용한다.
+    응답의 moved_project_count 는 호출한 화면(kolas 여부)의 목록 기준이다.
     """
     if not isinstance(changes, list) or not changes:
         raise PlAssignmentError("적용할 변경 사항이 없습니다.")
@@ -161,13 +170,16 @@ def apply_pl_assignment_changes(changes):
                 updated_pl_count += 1
 
             if from_center == UNASSIGNED_CENTER_CODE:
-                moved_project_count += (
-                    ReferenceProject.objects.using(alias)
-                    .filter(center_code=UNASSIGNED_CENTER_CODE, primary_tester=name, review_result="")
-                    .update(center_code=to_center, center_label=to_label)
-                )
+                moved_by_model = {}
+                for model in (ReferenceProject, KolasProject):
+                    moved_by_model[model] = (
+                        model.objects.using(alias)
+                        .filter(center_code=UNASSIGNED_CENTER_CODE, primary_tester=name, review_result="")
+                        .update(center_code=to_center, center_label=to_label)
+                    )
+                moved_project_count += moved_by_model[KolasProject if kolas else ReferenceProject]
 
-    payload = get_pl_assignment_payload()
+    payload = get_pl_assignment_payload(kolas=kolas)
     payload.update({
         "updated_pl_count": updated_pl_count,
         "moved_project_count": moved_project_count,

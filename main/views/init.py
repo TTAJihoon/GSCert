@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
 from django.views.decorators.csrf import ensure_csrf_cookie
@@ -44,6 +45,16 @@ def test(request):
 
 @ensure_csrf_cookie
 def download_review(request):
+    return _download_review_response(request)
+
+
+@ensure_csrf_cookie
+def kolas_review(request):
+    """KOLAS 점검 페이지(/kolas/). ECM 점검 페이지 템플릿/JS 를 재사용하되 별도 프로젝트 목록을 쓴다."""
+    return _download_review_response(request, kolas=True)
+
+
+def _download_review_response(request, kolas=False):
     host = request.get_host()
     default_center = default_center_for_client_ip(_client_ip(request)) or default_center_for_host(host)
     if not is_center_allowed_for_host(default_center, host):
@@ -58,15 +69,22 @@ def download_review(request):
     if not is_center_allowed_for_host(center, host):
         center = default_center
 
-    return render(
-        request,
-        'review/ecm_download_review.html',
-        {
-            "download_review_default_center": center,
-            "download_review_allowed_centers": sorted(allowed_centers_for_host(host)),
-            "download_review_center_routes": center_routes_for_host(host),
-        },
-    )
+    center_routes = center_routes_for_host(host)
+    context = {
+        "download_review_default_center": center,
+        "download_review_allowed_centers": sorted(allowed_centers_for_host(host)),
+        "download_review_center_routes": center_routes,
+    }
+    if kolas:
+        # 다른 서버로 넘기는 센터 라우트도 ECM 점검 페이지가 아니라 그 서버의 KOLAS 페이지로 보낸다.
+        context["download_review_center_routes"] = {
+            code: url.replace("/download-review/", "/kolas/") if url else url
+            for code, url in center_routes.items()
+        }
+        context["kolas_mode"] = True
+        context["kolas_report_max_projects"] = getattr(settings, "KOLAS_REPORT_MAX_PROJECTS", 500)
+
+    return render(request, 'review/ecm_download_review.html', context)
 
 
 def _client_ip(request):

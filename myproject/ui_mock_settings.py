@@ -65,6 +65,7 @@ WORKFLOW_MODEL_NAMES = {
     "downloadreviewlock",
     "servertimecontrol",
     "servertimeaudit",
+    "kolasreporttask",
 }
 
 SERVER_TIME_LEASE_SECONDS = 180
@@ -76,6 +77,7 @@ REFERENCE_MODEL_NAMES = {
     "swdata",
     "referencecenterpl",
     "referenceproject",
+    "kolasproject",
     "downloadreviewmanualoverride",
 }
 DOWNLOAD_REVIEW_PROJECT_SOURCE = "postgres"
@@ -125,7 +127,7 @@ DOWNLOAD_REVIEW_CENTER_ROUTES_BY_HOST = {
     },
 }
 DOWNLOAD_REVIEW_ACTIVE_JOB_LIMIT = 5
-DOWNLOAD_REVIEW_MAX_PROJECTS_PER_JOB = 100
+DOWNLOAD_REVIEW_MAX_PROJECTS_PER_JOB = 500
 ECM_BASE_URL = os.environ.get("ECM_BASE_URL", "http://210.96.71.85")
 ECM_BASE_URL_BUNDANG = os.environ.get("ECM_BASE_URL_BUNDANG", "http://210.104.181.10")
 # HTTP 직접연동(ecm-http) 자격증명/ root OID — 환경변수로만 주입.

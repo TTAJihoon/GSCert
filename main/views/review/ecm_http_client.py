@@ -36,6 +36,10 @@ class EcmSessionExpired(EcmClientError):
     """세션 만료/끊김(401 또는 로그인 페이지 리다이렉트)을 알리는 신호."""
 
 
+class EcmRangeUnsupported(EcmClientError):
+    """/servlet/blob 이 Range(부분 읽기) 요청을 지원하지 않아 전체(200)로 응답한 경우."""
+
+
 def xor_encrypt(plain: str, key: str = XOR_KEY) -> str:
     """로그인 비밀번호 XOR + Base64 인코딩(가이드 §2)."""
     parts = [str(ord(c) ^ ord(key[i % len(key)])) for i, c in enumerate(plain)]
@@ -180,6 +184,48 @@ class DestinyECM:
 
     # ----- 다운로드 -----
     def download_bytes(self, file_meta: dict) -> bytes:
+        r = self._blob_request(file_meta)
+        if r.status_code != 200:
+            raise EcmClientError(f"다운로드 실패: HTTP {r.status_code}")
+        return r.content
+
+    def blob_stream(self, file_meta: dict):
+        """파일 전체를 스트리밍 응답으로 연다(본문은 호출자가 iter_content 로 조금씩 읽고 close 한다).
+
+        큰 zip 을 디스크에 저장하지 않고 흘려받으며 필요한 부분만 꺼낼 때 쓴다(ecm_zip_stream).
+        """
+        r = self._blob_request(file_meta, stream=True)
+        if r.status_code != 200:
+            status = r.status_code
+            r.close()
+            raise EcmClientError(f"다운로드 실패: HTTP {status}")
+        return r
+
+    def blob_range(self, file_meta: dict, start: int, end: int) -> bytes:
+        """파일의 [start, end](양끝 포함) 바이트만 받는다. zip 내부 조회처럼 큰 파일의 일부만 필요할 때 쓴다.
+
+        서버가 Range 를 지원하면 206 으로 그 구간만 온다. 무시하고 200(전체)으로 응답하면 본문을
+        읽지 않고 연결을 닫은 뒤 EcmRangeUnsupported 를 던진다(전체를 내려받지 않기 위해).
+        """
+        r = self._blob_request(
+            file_meta,
+            extra_headers={"Range": f"bytes={int(start)}-{int(end)}"},
+            stream=True,
+        )
+        try:
+            if r.status_code == 206:
+                return r.content
+            raise EcmRangeUnsupported(
+                f"Range 요청에 HTTP {r.status_code} 응답 "
+                f"(Content-Range={r.headers.get('Content-Range')!r}, "
+                f"Accept-Ranges={r.headers.get('Accept-Ranges')!r}, "
+                f"Content-Length={r.headers.get('Content-Length')!r})"
+            )
+        finally:
+            r.close()
+
+    def _blob_request(self, file_meta: dict, *, extra_headers: dict | None = None, stream: bool = False):
+        """/servlet/blob 호출 1회(세션 만료 시 1회 재로그인). 응답 객체를 그대로 반환한다."""
         session_key = self.sess().cookies.get("SESSION_KEY", "")
         file_name = file_meta["fileName"]
         file_ext = file_name.rsplit(".", 1)[-1] if "." in file_name else ""
@@ -210,22 +256,23 @@ class DestinyECM:
                 ).decode(),
                 "User-Agent": "DestinyECM",
                 "Content-Type": "application/x-www-form-urlencoded",
+                **(extra_headers or {}),
             }
             return self.session.post(
                 self.base_url + "/servlet/blob?" + urllib.parse.urlencode(params),
                 headers=headers,
                 data="",
                 timeout=DOWNLOAD_TIMEOUT,
+                stream=stream,
             )
 
         self.sess()  # 세션 보장
         r = _do_download()
         if self._looks_like_login(r):
+            r.close()
             self.login()
             r = _do_download()
-        if r.status_code != 200:
-            raise EcmClientError(f"다운로드 실패: HTTP {r.status_code}")
-        return r.content
+        return r
 
     # ----- 프로젝트 폴더 자동 탐색 (test_no 기반, 결정 4·5) -----
     @staticmethod
