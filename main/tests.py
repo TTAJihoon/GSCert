@@ -826,6 +826,50 @@ class DownloadReviewInspectionCompareTests(SimpleTestCase):
         product_check = next(item for item in checks if item["name"] == "product_name")
         self.assertTrue(product_check["passed"], product_check)
 
+    def test_build_context_splits_dual_product_name_separated_only_by_newline(self):
+        # 실제 사례(TTA-26-01573): 괄호 없이 'Gymus v1.0\nGymus v1.0'처럼 줄바꿈으로만
+        # 국문명/영문명이 병기된다. 줄바꿈을 공백으로 합친 뒤 파싱하면 제품명이
+        # 'Gymus v1.0 Gymus'가 되어 시험계획서에 'Gymus'만 적혀 있어도 부적합이었다.
+        context = engine.build_context(
+            project_number="TTA-26-01573",
+            product_name="Gymus v1.0\nGymus v1.0",
+        )
+        self.assertEqual(context.product, "Gymus")
+        self.assertEqual(context.product_alt, "Gymus")
+        self.assertEqual(context.version, "v1.0")
+        self.assertEqual(engine._test_plan_product_name_candidates(context), ["Gymus"])
+
+        table = [
+            ["소프트웨어 명", "Gymus", "버전", "1.0"],
+            ["시험신청번호", "TTA-26-01573"],
+        ]
+        checks = engine._test_plan_product_checks(table, {}, context)
+        product_check = next(item for item in checks if item["name"] == "product_name")
+        self.assertTrue(product_check["passed"], product_check)
+
+    def test_build_context_keeps_single_name_wrapped_across_lines(self):
+        # 한 이름이 줄바꿈된 것뿐이면(두 번째 줄에 버전이 없음) 국문/영문으로 나누지 않는다.
+        context = engine.build_context(
+            project_number="TTA-26-00001",
+            product_name="자료분석 플랫폼\nEnterprise",
+        )
+        self.assertEqual(context.product_alt, "")
+
+    def test_period_segment_ignores_table_of_contents_occurrence_of_label(self):
+        # 실제 사례(TTA-26-02442 품질평가보고서): 목차에 '4.제품시험평가 결과5'가 먼저 나와,
+        # 첫 등장 위치부터 자르면 설립일/사업자등록번호 같은 엉뚱한 날짜가 딸려 들어왔다.
+        text = (
+            "목 차 1.신청 회사 현황4 4.제품시험평가 결과5 5.종합의견7 "
+            "회사(기관)명 ㈜에스에스알 설 립 일 2010년 8월 27일 사업자등록번호 113-86-42090 "
+            "신청일자 : 2026년 7월 13일 계약일자 : 2026년 8월 10일 "
+            "제품시험평가 : 2026년 9월 16일 ~ 2026년 9월 18일 "
+            "품질인증심의위원회 : 2026년 9월 28일"
+        )
+        self.assertEqual(
+            engine._extract_labeled_date_list(text, "제품시험평가", "품질인증심의위원회"),
+            ["2026.09.16.", "2026.09.18."],
+        )
+
     def test_test_plan_product_check_accepts_either_korean_or_english_name(self):
         context = engine.build_context(
             project_number="TTA-26-00010",

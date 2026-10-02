@@ -1289,6 +1289,10 @@ def _test_plan_product_name_candidates(context):
     # 분리 전에 괄호로 먼저 안팎을 나눠 이 문제를 막는다.
     raw_paren_match = re.match(r"^(.*?)\s*[\(（]([^()（）]+)[\)）]\s*$", _normalize_spaces(raw))
     raw_segments = raw_paren_match.groups() if raw_paren_match else (raw,)
+    if getattr(context, "product_alt", ""):
+        # 국문명/영문명이 이미 분리되어 있으면 원본을 다시 쪼갤 필요가 없다(줄바꿈이
+        # 공백으로 합쳐진 원본을 그대로 넣으면 'Gymus v1.0 Gymus' 같은 잘못된 후보가 생김).
+        raw_segments = ()
     for outer_segment in raw_segments:
         for segment in re.split(r"[\r\n/／|]+", outer_segment):
             add(segment)
@@ -4486,6 +4490,21 @@ def _extract_text_segment(text, start_label, end_label):
     end_label이 없거나 start_label 뒤에서 찾지 못하면 문서 끝까지를 반환한다.
     """
     text = str(text or "")
+    if end_label:
+        # 목차에 같은 문구가 먼저 나오는 서식이 있다(예: '4.제품시험평가 결과5'). 첫
+        # 등장 위치부터 자르면 목차~본문 사이의 설립일/사업자등록번호 같은 엉뚱한
+        # 날짜까지 끌려 들어오므로, 끝 라벨마다 그 바로 앞에 있는 시작 라벨을 잡아
+        # 가장 짧은(=끝 라벨에 가장 붙어 있는) 구간을 쓴다.
+        best = None
+        for end_match in re.finditer(re.escape(end_label), text):
+            candidate_start = text.rfind(start_label, 0, end_match.start())
+            if candidate_start == -1:
+                continue
+            segment = text[candidate_start + len(start_label):end_match.start()]
+            if best is None or len(segment) < len(best):
+                best = segment
+        if best is not None:
+            return best
     start_index = text.find(start_label)
     if start_index == -1:
         return ""
@@ -5229,6 +5248,17 @@ def _split_dual_product_name(product_name):
     각각 버전을 뺀 형태로 분리한다. 시험계획서 등 산출물에는 국문명 또는 영문명 중
     하나만 적힐 수 있어 둘 다 기준값으로 인정해야 한다. 괄호가 없으면(영문명 병기
     없이 단일 명칭만 있는 경우) 영문명은 빈 문자열로 반환한다."""
+    # 괄호 없이 'Gymus v1.0\nGymus v1.0'처럼 줄바꿈으로만 국문명/영문명을 병기하는
+    # 서식도 있다(TTA-26-01573). 줄바꿈이 공백으로 합쳐지기 전에 두 줄이 모두
+    # 버전을 가진 이름일 때만 국문명/영문명으로 나눈다(한 이름이 폭 때문에 줄바꿈된
+    # 경우를 둘로 오인하지 않기 위함).
+    lines = [line.strip() for line in re.split(r"[\r\n]+", str(product_name or "")) if line.strip()]
+    if len(lines) == 2 and not re.match(r"^[\(（]", lines[1]):
+        korean_product, korean_version = _split_product_and_version(_normalize_spaces(lines[0]))
+        english_product, english_version = _split_product_and_version(_normalize_spaces(lines[1]))
+        if re.search(r"\d", korean_version) and re.search(r"\d", english_version):
+            return korean_product, english_product, korean_version
+
     value = _normalize_spaces(product_name)
     if not value:
         return "", "", ""
@@ -6771,7 +6801,7 @@ def build_context(*, project_number="", product_name="", company="", pl="", wd="
     # 시험계획서에 영문명만 적힌 제출물이 항상 부적합 처리되므로, 줄바꿈을 공백으로
     # 합친 전체 값을 그대로 이중명칭 파서에 넘긴다.
     product_raw = _normalize_spaces(product_name)
-    product, product_alt, version = _split_dual_product_name(product_raw)
+    product, product_alt, version = _split_dual_product_name(product_name)
     # 회사명도 제품명과 마찬가지로 '국문명\n영문명' 형식으로 병기되는 경우가 있어,
     # 국문명(company)/영문명(company_alt)을 모두 기준값으로 남긴다.
     company_name, company_alt = _split_dual_company_name(company)
