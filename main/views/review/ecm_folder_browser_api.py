@@ -54,6 +54,7 @@ def browse(request, project_number):
             center_hint=str(request.GET.get("center") or "").strip().lower(),
             cert_date=str(request.GET.get("cert_date") or "").strip(),
             sid=_clean_sid(request.GET.get("sid")),
+            source="ecm" if request.GET.get("source") == "ecm" else "",
         )
     except BrowseError as exc:
         return _json({"success": False, "message": exc.message}, exc.status)

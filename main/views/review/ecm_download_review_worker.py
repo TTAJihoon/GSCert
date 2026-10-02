@@ -5,6 +5,7 @@ import socket
 import sys
 import time
 import unicodedata
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 import logging
@@ -39,6 +40,7 @@ from main.views.review.ecm_download_review_inspection import (
 )
 from main.views.review.ecm_download_review_centers import worker_allowed_centers
 from main.views.review.ecm_change_note import record_change_note_if_present
+from main.views.review import ecm_archive
 from main.views.review.artifact_source import JobCanceledError, build_artifact_source
 
 
@@ -631,15 +633,25 @@ def _cleanup_download_dir_safely(job, project):
 
 
 def _archive_download_dir_safely(job, project, download_dir):
-    """다운로드 폴더를 ecm 보관 경로로 복사한다. 실패해도 점검을 중단하지 않는다."""
+    """다운로드 폴더를 ecm 보관 경로로 복사한다. 실패해도 점검을 중단하지 않는다.
+
+    점검할 때마다 어차피 ECM 에서 새로 받으므로 보관 폴더는 **매번 통째로 교체**한다(합치지 않는다).
+    임시 폴더에 먼저 다 복사한 뒤 기존 폴더를 지우고 이름을 바꾸므로, 복사 도중에는 이전 보관본이 그대로 남는다.
+    교체에 실패하면 오래된 내용이 최신처럼 보이지 않도록 이전 보관본도 지운다(산출물 보기는 ECM 에서 읽는다).
+    """
     archive_base = getattr(settings, "AGENT_ARCHIVE_BASE_DIR", "")
     if not archive_base:
         return
 
     src = Path(download_dir)
     dst = Path(archive_base) / project.project_number
+    tmp = Path(archive_base) / f".tmp-{project.project_number}-{uuid.uuid4().hex[:8]}"
     try:
-        shutil.copytree(str(src), str(dst), dirs_exist_ok=True)
+        shutil.copytree(str(src), str(tmp))
+        ecm_archive.write_marker(tmp, job=str(job.id))
+        if dst.exists():
+            shutil.rmtree(dst)
+        os.replace(str(tmp), str(dst))
         DownloadReviewLog.objects.create(
             job=job,
             job_project=project,
@@ -649,6 +661,8 @@ def _archive_download_dir_safely(job, project, download_dir):
             detail_json={"download_dir": str(src), "archive_dir": str(dst)},
         )
     except Exception as exc:
+        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.rmtree(dst, ignore_errors=True)
         DownloadReviewLog.objects.create(
             job=job,
             job_project=project,

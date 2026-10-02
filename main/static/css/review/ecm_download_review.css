@@ -2104,6 +2104,27 @@
   min-height: 0;
 }
 
+.folder-browser-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--review-line);
+  border-radius: 8px;
+  background: var(--review-soft);
+  color: var(--review-muted);
+  font-size: 12px;
+}
+
+.folder-browser-source[hidden] {
+  display: none;
+}
+
+.folder-browser-source strong {
+  color: var(--review-text, inherit);
+}
+
 .folder-browser-crumbs {
   display: flex;
   flex-wrap: wrap;

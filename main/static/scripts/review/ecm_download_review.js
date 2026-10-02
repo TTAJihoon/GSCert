@@ -3637,7 +3637,9 @@ const folderBrowser = {
   busy: false,
   sid: "",        // 이 팝업의 세션 id: 서버가 '이 zip 을 보는 팝업이 있는지' 판단하는 데 쓴다
   beatTimer: null,
-  position: null   // 창의 마지막 위치 {left, top}
+  position: null,  // 창의 마지막 위치 {left, top}
+  source: null,    // 지금 보는 출처 {kind: "archive"|"ecm", archived_at, archive_available}
+  sourcePref: ""   // "ecm" 이면 보관본이 있어도 ECM 최신본으로 연다
 };
 
 function formatBytes(bytes) {
@@ -3696,6 +3698,7 @@ function folderBrowseUrl(ref) {
   if (ref) {
     params.set("ref", ref);
   } else {
+    if (folderBrowser.sourcePref === "ecm") params.set("source", "ecm");
     if (folderBrowser.project.certDate) params.set("cert_date", folderBrowser.project.certDate);
     if (state.center) params.set("center", state.center);
   }
@@ -3787,6 +3790,8 @@ function openFolderBrowser(project) {
   folderBrowser.stack = [];
   folderBrowser.items = [];
   folderBrowser.selected = new Set();
+  folderBrowser.source = null;
+  folderBrowser.sourcePref = "";
   stopFolderWatch({ sendClose: true }); // 다른 프로젝트 팝업이 이미 열려 있었다면 먼저 닫힘 신호
   folderBrowser.sid = newFolderSessionId();
   const watchedProject = project.number;
@@ -3830,6 +3835,7 @@ async function loadFolderLocation(ref, label, { push = true, truncateTo = null, 
       folderBrowser.stack.push({ label: label || location.label || "", ref: location.ref });
     }
     folderBrowser.items = payload.items || [];
+    if (payload.source) folderBrowser.source = payload.source;
     setFolderBrowserMessage("");
   } catch (error) {
     if (requestId !== folderBrowser.requestId) return;
@@ -3883,7 +3889,34 @@ function folderItemDownloadRef(item) {
   return item.download_ref || item.ref;
 }
 
+// 어디서 읽고 있는지 표시한다: 점검 때 보관한 산출물(점검 시점 기준) 또는 ECM 최신본.
+function renderFolderSource() {
+  const box = qs("folderBrowserSource");
+  const text = qs("folderBrowserSourceText");
+  const toggle = qs("folderBrowserSourceToggle");
+  const source = folderBrowser.source;
+  if (!source) {
+    box.hidden = true;
+    return;
+  }
+  box.hidden = false;
+  if (source.kind === "archive") {
+    const when = source.archived_at ? ` (${escapeHtml(source.archived_at)} 점검 기준)` : "";
+    text.innerHTML = `<strong>점검 보관본</strong>${when} - 마지막 점검에서 받은 산출물입니다. 이후 ECM 에 올라온 파일은 보이지 않을 수 있습니다.`;
+    toggle.textContent = "ECM 최신본으로 보기";
+    toggle.hidden = false;
+  } else {
+    text.innerHTML = source.archive_available
+      ? "<strong>ECM 최신본</strong> - 점검 보관본이 있습니다."
+      : "<strong>ECM 최신본</strong> - 점검 보관본이 없어 ECM 에서 읽습니다.";
+    toggle.textContent = "점검 보관본으로 보기";
+    toggle.hidden = !source.archive_available;
+  }
+  toggle.disabled = folderBrowser.busy;
+}
+
 function renderFolderBrowser() {
+  renderFolderSource();
   const crumbs = qs("folderBrowserCrumbs");
   crumbs.innerHTML = folderBrowser.stack.map((entry, index) => {
     const last = index === folderBrowser.stack.length - 1;
@@ -3990,8 +4023,18 @@ function startFolderBrowserDownload(refs) {
 function bindFolderBrowser() {
   qs("closeFolderBrowser").addEventListener("click", closeFolderBrowser);
   bindFolderBrowserDrag();
+  qs("folderBrowserSourceToggle").addEventListener("click", () => {
+    if (!folderBrowser.project || folderBrowser.busy || !folderBrowser.source) return;
+    folderBrowser.sourcePref = folderBrowser.source.kind === "archive" ? "ecm" : "";
+    loadFolderLocation(null, null);   // root 부터 다시 연다(출처가 바뀌면 항목 토큰이 달라진다)
+  });
   qs("folderBrowserWholeZip").addEventListener("click", () => {
     if (!folderBrowser.project) return;
+    if (folderBrowser.source && folderBrowser.source.kind === "archive" && folderBrowser.stack.length) {
+      // 보관본이면 root 폴더 전체를 보관본에서 바로 zip 으로 묶는다(ECM 전체 전송보다 훨씬 빠르다).
+      startFolderBrowserDownload([folderBrowser.stack[0].ref]);
+      return;
+    }
     startFullProjectFolderDownload(folderBrowser.project);
     setFolderBrowserMessage("프로젝트 root 폴더 전체를 zip 으로 받습니다. 크기에 따라 시작까지 시간이 걸릴 수 있습니다.");
   });

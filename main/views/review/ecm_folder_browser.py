@@ -8,6 +8,9 @@ ECM 점검 페이지(/download-review/)와 KOLAS 페이지(/kolas/)의 상세 �
 - 파일 하나: ECM 파일은 그대로 중계하고, zip 안의 파일은 zip 을 다시 흘려받으며 그 항목만 골라 보낸다.
 - 중첩 zip: 바깥 zip 의 항목 데이터를 그대로 안쪽 zip 해석기에 먹인다(파이프라인). 임시 파일이 필요 없다.
 - 폴더/여러 항목: 선택한 것들을 하나의 zip 으로 스트리밍한다. 같은 zip 에서 고른 항목은 한 번만 받는다.
+- 보관본 우선: 점검 때 보관한 산출물(`AGENT_ARCHIVE_BASE_DIR`/<프로젝트번호>)이 있으면 ECM 이 아니라 그 폴더에서 읽는다
+  (ecm_archive.ArchiveClient). 공유 폴더는 중간부터 읽을 수 있어 큰 zip 도 목록 0.1초, 파일 하나는 즉시 나온다.
+  보관본이 없거나 읽을 수 없으면 ECM 에서 읽고, 화면에서 `source=ecm` 으로 ECM 최신본을 직접 볼 수도 있다.
 - 보안: 화면에는 ECM OID 를 그대로 주지 않고 서버가 서명한 항목 토큰(ref)만 준다. 토큰은 만료되고 프로젝트 번호가
   묶여 있어, 목록에서 받은 항목(= 그 프로젝트 root 아래)만 열 수 있다.
 """
@@ -28,6 +31,7 @@ from django.conf import settings
 from django.core import signing
 from django.core.cache import cache
 
+from main.views.review import ecm_archive
 from main.views.review import ecm_zip_cache as zc
 from main.views.review import ecm_zip_stream
 from main.views.review.ecm_zip_cache import EntryRec, zip_cache
@@ -110,7 +114,12 @@ _CLIENTS = {}
 _CLIENT_LOCK = threading.Lock()
 
 
-def get_client(center):
+def get_client(center, project_number=None):
+    if center == ecm_archive.ARCHIVE_CENTER:
+        try:
+            return ecm_archive.ArchiveClient(project_number)
+        except ecm_archive.ArchiveError as exc:
+            raise BrowseError(str(exc), 502) from exc
     now = time.monotonic()
     with _CLIENT_LOCK:
         entry = _CLIENTS.get(center)
@@ -131,8 +140,13 @@ def reset_clients():
         _CLIENTS.clear()
 
 
-def open_root(project_number, cert_date="", center_hint=""):
-    """프로젝트 root 폴더를 센터 ECM 에서 찾는다. 반환: (center, folder{oid,name})."""
+def open_root(project_number, cert_date="", center_hint="", source=""):
+    """프로젝트 root 폴더를 찾는다. 반환: (center, folder{oid,name}).
+
+    점검 때 보관한 산출물이 있으면 그것을 우선한다(center == "archive"). source="ecm" 이면 항상 ECM 최신본을 쓴다.
+    """
+    if source != "ecm" and ecm_archive.find_project_archive(project_number) is not None:
+        return ecm_archive.ARCHIVE_CENTER, {"oid": "", "name": project_number}
     errors = []
     for center in center_try_order(center_hint):
         try:
@@ -186,26 +200,26 @@ def _zip_max_bytes():
 # ---------------------------------------------------------------------------
 # 목록
 # ---------------------------------------------------------------------------
-def list_location(project_number, ref=None, *, center_hint="", cert_date="", sid=""):
+def list_location(project_number, ref=None, *, center_hint="", cert_date="", sid="", source=""):
     """위치(root / ECM 폴더 / zip 안 폴더) 한 곳의 항목 목록. sid 는 요청을 보낸 팝업의 세션 id(받기 취소 판단용)."""
     token = _current_sid.set(sid or "")
     try:
-        return _list_location(project_number, ref, center_hint=center_hint, cert_date=cert_date)
+        return _list_location(project_number, ref, center_hint=center_hint, cert_date=cert_date, source=source)
     finally:
         _current_sid.reset(token)
 
 
-def _list_location(project_number, ref=None, *, center_hint="", cert_date=""):
+def _list_location(project_number, ref=None, *, center_hint="", cert_date="", source=""):
     if ref:
         payload = read_ref(ref, project_number)
     else:
-        center, folder = open_root(project_number, cert_date, center_hint)
+        center, folder = open_root(project_number, cert_date, center_hint, source)
         payload = {"k": "folder", "c": center, "p": project_number, "oid": folder["oid"], "label": folder.get("name", "")}
 
     kind = payload.get("k")
     if kind == "folder":
         items = _list_ecm_folder(payload)
-        if not ref:
+        if not ref and not _is_archive(payload):
             _maybe_prefetch(project_number, items)
     elif kind == "zip":
         items = _list_zip_level(payload)
@@ -213,8 +227,30 @@ def _list_location(project_number, ref=None, *, center_hint="", cert_date=""):
         raise BrowseError("폴더나 zip 이 아닌 항목은 열 수 없습니다.", 400)
     return {
         "location": {"ref": make_ref(payload), "label": payload.get("label", ""), "kind": kind, "center": payload["c"]},
+        "source": _source_info(project_number, payload),
         "items": items,
     }
+
+
+def _source_info(project_number, payload):
+    """화면에 보여줄 출처: 보관본(점검 시점) 또는 ECM 최신본."""
+    if payload["c"] == ecm_archive.ARCHIVE_CENTER:
+        return {"kind": "archive", "archived_at": ecm_archive.archived_at(project_number)}
+    return {"kind": "ecm", "archive_available": ecm_archive.find_project_archive(project_number) is not None}
+
+
+def _is_archive(payload):
+    return payload.get("c") == ecm_archive.ARCHIVE_CENTER
+
+
+def _archive_zip_path(payload):
+    """보관본 안의 zip(최상위)의 실제 파일 경로. 보관본이 아니면 None."""
+    if not _is_archive(payload):
+        return None
+    try:
+        return ecm_archive.ArchiveClient(payload["p"]).file_path(payload["meta"]["s"])
+    except ecm_archive.ArchiveError as exc:
+        raise BrowseError(str(exc), 502) from exc
 
 
 def _child_ref(payload, **changes):
@@ -224,7 +260,7 @@ def _child_ref(payload, **changes):
 
 
 def _list_ecm_folder(payload):
-    client = get_client(payload["c"])
+    client = get_client(payload["c"], payload["p"])
     try:
         contents = client.folder_contents(payload["oid"])
     except Exception as exc:
@@ -278,7 +314,19 @@ def open_zip_chunks(payload, *, budget=None):
             yield chunks
         return
 
-    client = get_client(payload["c"])
+    local = _archive_zip_path(payload)
+    if local is not None:
+        # 보관본: 공유 폴더의 파일을 직접 읽는다(중첩이면 바깥 zip 에서 그 항목만 꺼내 안쪽으로 먹인다).
+        if chain:
+            chunks = ecm_zip_stream.iter_file_entry_chunks(local, chain[0], chunk_size=STREAM_CHUNK_BYTES)
+            for name in chain[1:]:
+                chunks = ecm_zip_stream.iter_entry_chunks(chunks, name, max_stream_bytes=budget, chunk_size=STREAM_CHUNK_BYTES)
+        else:
+            chunks = ecm_zip_stream.iter_file_chunks(local, chunk_size=STREAM_CHUNK_BYTES)
+        yield chunks
+        return
+
+    client = get_client(payload["c"], payload["p"])
     try:
         response = client.blob_stream(_meta_from_token(payload["meta"]))
     except Exception as exc:
@@ -296,7 +344,7 @@ def open_zip_chunks(payload, *, budget=None):
 # 임시 보관: 받으면서 목록 만들기 + 사본 저장
 # ---------------------------------------------------------------------------
 def _job_for(payload):
-    if not zc.enabled():
+    if not zc.enabled() or _is_archive(payload):
         return None
     return zip_cache.lookup(payload["c"], _meta_from_token(payload["meta"]))
 
@@ -310,7 +358,7 @@ def _complete_job(payload):
 
 def _ensure_spool(payload, budget=None, priority=2):
     """이 zip(ECM 파일)의 받기 작업을 시작하거나 진행 중인 것을 돌려준다. 임시 보관을 쓸 수 없으면 None."""
-    if not zc.enabled() or payload.get("chain"):
+    if not zc.enabled() or payload.get("chain") or _is_archive(payload):
         return None
     budget = _zip_max_bytes() if budget is None else budget
     return zip_cache.ensure(
@@ -414,7 +462,13 @@ def _maybe_prefetch(project_number, items):
 
 def _zip_cache_key(payload):
     meta = payload["meta"]
-    raw = f"{payload['c']}|{meta['s']}|{meta['z']}|{'/'.join(payload.get('chain') or [])}"
+    version = ""
+    if _is_archive(payload):
+        try:
+            version = str(os.stat(_archive_zip_path(payload)).st_mtime_ns)  # 다시 점검해 교체되면 다른 키
+        except OSError:
+            version = ""
+    raw = f"{payload['c']}|{payload['p'] if _is_archive(payload) else ''}|{meta['s']}|{meta['z']}|{version}|{'/'.join(payload.get('chain') or [])}"
     return "gscert:zip-list:" + hashlib.sha1(raw.encode("utf-8")).hexdigest()
 
 
@@ -442,7 +496,9 @@ def zip_entries(payload):
     budget = _zip_max_bytes()
     try:
         entries = None
-        if not payload.get("chain"):
+        if not payload.get("chain") and _is_archive(payload):
+            entries = ecm_zip_stream.list_entries_from_file(_archive_zip_path(payload))  # 중앙 디렉터리만 읽는다
+        elif not payload.get("chain"):
             entries = _spooled_entries(payload, budget)
         if entries is None:
             try:
@@ -537,7 +593,7 @@ def describe_single_download(project_number, ref):
 
 
 def iter_ecm_file(payload):
-    client = get_client(payload["c"])
+    client = get_client(payload["c"], payload["p"])
     try:
         response = client.blob_stream(_meta_from_token(payload["meta"]))
     except Exception as exc:
@@ -569,6 +625,11 @@ def iter_zip_entry(payload):
     """zip 안의 파일 하나의 풀린 내용. 서버 사본이 있으면 거기서, 없으면 zip 을 흘려받다가 그 항목만 보낸다."""
     budget = _zip_max_bytes()
     try:
+        if not payload.get("chain") and _is_archive(payload):
+            yield from ecm_zip_stream.iter_file_entry_chunks(
+                _archive_zip_path(payload), payload["name"], chunk_size=STREAM_CHUNK_BYTES,
+            )
+            return
         if not payload.get("chain"):
             served = yield from _serve_from_spool(payload)
             if served:
@@ -670,13 +731,13 @@ def iter_selection_zip(project_number, refs):
         for payload in folders:
             label = _safe_zip_part(payload.get("label") or "folder")
             try:
-                client = get_client(payload["c"])
+                client = get_client(payload["c"], payload["p"])
                 for rel, meta in client.walk_files(payload["oid"]):
                     if written >= max_files:
                         errors.append(f"{label}: 파일이 {max_files}개를 넘어 나머지는 건너뜁니다.")
                         break
                     parts = [label] + [_safe_zip_part(part) for part in rel] + [_safe_zip_part(meta.get("fileName", "download"))]
-                    file_payload = {"c": payload["c"], "meta": _meta_to_token(meta)}
+                    file_payload = {"c": payload["c"], "p": payload["p"], "meta": _meta_to_token(meta)}
                     try:
                         yield from _write_entry(zf, sink, "/".join(parts), iter_ecm_file(file_payload), seen)
                         written += 1
@@ -690,9 +751,16 @@ def iter_selection_zip(project_number, refs):
             state = {"done": set()}
             try:
                 try:
-                    for item in _iter_zip_group(zf, sink, group, seen, errors, max_files - written, state):
-                        written += 1
-                        yield from item
+                    local_zip = None if group["payload"].get("chain") else _archive_zip_path(group["payload"])
+                    if local_zip is not None:
+                        # 보관본의 최상위 zip: 공유 폴더에서 필요한 항목만 직접 읽는다(전체를 흘려받지 않는다).
+                        for item in _iter_zip_group_from_path(zf, sink, group, seen, errors, max_files - written, state, local_zip):
+                            written += 1
+                            yield from item
+                    else:
+                        for item in _iter_zip_group(zf, sink, group, seen, errors, max_files - written, state):
+                            written += 1
+                            yield from item
                 except ecm_zip_stream.ZipStreamUnsupported:
                     # 순차 해석이 불가능한 zip: 임시 파일로 받아 아직 쓰지 않은 항목만 이어서 쓴다.
                     for item in _iter_zip_group_via_tempfile(zf, sink, group, seen, errors, max_files - written, state):
@@ -763,37 +831,42 @@ def _iter_zip_group(zf, sink, group, seen, errors, remaining, state):
 
 def _iter_zip_group_via_tempfile(zf, sink, group, seen, errors, remaining, state):
     """대체 경로: zip 을 임시 파일로 받아 아직 쓰지 않은(state["done"] 에 없는) 항목만 쓴다."""
-    match, _has_prefixes = _group_matcher(group)
     budget = _zip_max_bytes()
     with open_zip_chunks(group["payload"], budget=budget) as chunks:
         path = ecm_zip_stream.spool_to_tempfile(chunks, max_stream_bytes=budget)
     try:
-        with zipfile.ZipFile(path) as source:
-            for info in source.infolist():
-                name = info.filename if info.flag_bits & 0x800 else ecm_zip_stream._cp949_from_cp437(info.filename)
-                if name in state["done"]:
-                    continue
-                arcname = match(name, info.is_dir())
-                if arcname is None:
-                    continue
-                if info.flag_bits & 0x1:
-                    errors.append(f"{name}: 암호화된 항목이라 건너뜁니다.")
-                    state["done"].add(name)
-                    continue
-                if remaining <= 0:
-                    errors.append("파일이 너무 많아 나머지는 건너뜁니다.")
-                    return
-
-                remaining -= 1
-
-                def read_chunks(info=info):
-                    with source.open(info) as handle:
-                        while True:
-                            data = handle.read(STREAM_CHUNK_BYTES)
-                            if not data:
-                                return
-                            yield data
-
-                yield _tracked(_write_entry(zf, sink, arcname, read_chunks(), seen), state, name)
+        yield from _iter_zip_group_from_path(zf, sink, group, seen, errors, remaining, state, path)
     finally:
         _remove(path)
+
+
+def _iter_zip_group_from_path(zf, sink, group, seen, errors, remaining, state, path):
+    """디스크의 zip 파일(임시 파일 또는 보관본)에서 선택한 항목만 골라 쓴다(중앙 디렉터리로 바로 찾아 읽는다)."""
+    match, _has_prefixes = _group_matcher(group)
+    with zipfile.ZipFile(path) as source:
+        for info in source.infolist():
+            name = info.filename if info.flag_bits & 0x800 else ecm_zip_stream._cp949_from_cp437(info.filename)
+            if name in state["done"]:
+                continue
+            arcname = match(name, info.is_dir())
+            if arcname is None:
+                continue
+            if info.flag_bits & 0x1:
+                errors.append(f"{name}: 암호화된 항목이라 건너뜁니다.")
+                state["done"].add(name)
+                continue
+            if remaining <= 0:
+                errors.append("파일이 너무 많아 나머지는 건너뜁니다.")
+                return
+
+            remaining -= 1
+
+            def read_chunks(info=info):
+                with source.open(info) as handle:
+                    while True:
+                        data = handle.read(STREAM_CHUNK_BYTES)
+                        if not data:
+                            return
+                        yield data
+
+            yield _tracked(_write_entry(zf, sink, arcname, read_chunks(), seen), state, name)

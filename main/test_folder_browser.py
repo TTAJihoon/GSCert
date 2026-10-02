@@ -97,6 +97,10 @@ class BrowserTestCase(SimpleTestCase):
         cache.clear()
         fb.reset_clients()
         # zip 임시 보관은 테스트마다 임시 폴더를 쓰고, 받기 작업은 호출 스레드에서 바로 실행한다(실제 서버 폴더를 건드리지 않음).
+        # 점검 보관본(실제 공유 폴더)을 읽지 않도록 비워 둔다. 보관본 테스트는 임시 폴더로 따로 지정한다.
+        archive_off = override_settings(AGENT_ARCHIVE_BASE_DIR="")
+        archive_off.enable()
+        self.addCleanup(archive_off.disable)
         self._cache_tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self._cache_tmp.cleanup)
         self.cache_dir = Path(self._cache_tmp.name) / "zip_cache"
@@ -1341,3 +1345,286 @@ class WatchApiTests(SpoolBase):
                 self.assertEqual(job.state, zc.CANCELED)
                 gate.set()
                 self.wait_until(lambda: self.cached_files() == [])
+
+
+# ---------------------------------------------------------------------------
+# 점검 보관본(AGENT_ARCHIVE_BASE_DIR)에서 읽기 / 보관 폴더 통째 교체
+# ---------------------------------------------------------------------------
+from types import SimpleNamespace as _NS
+
+from main.views.review import ecm_archive
+from main.views.review import ecm_download_review_worker as worker
+
+
+class ArchiveBase(BrowserTestCase):
+    def setUp(self):
+        super().setUp()
+        self._archive_tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._archive_tmp.cleanup)
+        self.archive_base = Path(self._archive_tmp.name)
+        override = override_settings(AGENT_ARCHIVE_BASE_DIR=str(self.archive_base))
+        override.enable()
+        self.addCleanup(override.disable)
+        self.project_dir = self.archive_base / PROJECT
+        self.inner = _build_zip([("z.txt", b"inner z")])
+        self.outer = _stream_zip([
+            ("docs/a.txt", b"alpha"),
+            ("docs/b.txt", b"beta"),
+            ("img/c.png", b"png-data"),
+            ("inner.zip", self.inner),
+        ])
+        self.write("1.신청/신청서.docx", b"application")
+        self.write("4.시험/라.종료/성적서.pdf", b"%PDF report")
+        self.write("rawdata.zip", self.outer)
+        self.write(ecm_archive.MARKER_NAME, json.dumps({"archived_at": "2026-10-01 17:01:54"}).encode("utf-8"))
+
+    def write(self, rel, data):
+        path = self.project_dir / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        return path
+
+    def root_archive(self, **kwargs):
+        return fb.list_location(PROJECT, center_hint="yeongnam", cert_date="2026-01-19", **kwargs)
+
+
+class ArchiveListingTests(ArchiveBase):
+    def test_root_comes_from_the_archive_without_touching_ecm(self):
+        listing = self.root_archive()
+
+        self.assertEqual(listing["location"]["center"], "archive")
+        self.assertEqual(listing["source"], {"kind": "archive", "archived_at": "2026-10-01 17:01:54"})
+        self.assertEqual([i["name"] for i in listing["items"]], ["1.신청", "4.시험", "rawdata.zip"])
+        self.assertEqual(self.ecm.streams, [])
+        self.assertEqual(self.cached_files(), [])  # 서버 임시 보관·미리 받기는 쓰지 않는다
+
+    def test_marker_file_is_hidden_from_listings(self):
+        names = [i["name"] for i in self.root_archive()["items"]]
+
+        self.assertNotIn(ecm_archive.MARKER_NAME, names)
+
+    def test_archive_without_marker_still_works_and_reports_no_time(self):
+        (self.project_dir / ecm_archive.MARKER_NAME).unlink()
+
+        listing = self.root_archive()
+
+        self.assertEqual(listing["source"], {"kind": "archive", "archived_at": ""})
+
+    def test_navigating_folders_and_files_in_the_archive(self):
+        root = self.by_name(self.root_archive())
+        exam = self.by_name(self.open_item(root["4.시험"]))
+        end = self.by_name(self.open_item(exam["라.종료"]))
+
+        self.assertEqual(self.download(end["성적서.pdf"]["ref"]), ("성적서.pdf", b"%PDF report"))
+        self.assertEqual(self.ecm.streams, [])
+
+    def test_zip_listing_and_entry_download_read_the_archive_directly(self):
+        root = self.by_name(self.root_archive())
+        zip_level = self.open_item(root["rawdata.zip"])
+        docs = self.by_name(self.open_item(self.by_name(zip_level)["docs"]))
+
+        self.assertEqual(sorted(self.by_name(zip_level)), ["docs", "img", "inner.zip"])
+        self.assertEqual(self.download(docs["a.txt"]["ref"]), ("a.txt", b"alpha"))
+        self.assertEqual(self.ecm.streams, [])
+        self.assertEqual(self.cached_files(), [])
+
+    def test_nested_zip_inside_an_archived_zip(self):
+        root = self.by_name(self.root_archive())
+        zip_level = self.by_name(self.open_item(root["rawdata.zip"]))
+        inner = self.by_name(self.open_item(zip_level["inner.zip"]))
+
+        self.assertEqual(self.download(inner["z.txt"]["ref"]), ("z.txt", b"inner z"))
+
+    def test_zip_file_itself_downloads_from_the_archive(self):
+        root = self.by_name(self.root_archive())
+
+        name, data = self.download(root["rawdata.zip"]["download_ref"])
+
+        self.assertEqual((name, data), ("rawdata.zip", self.outer))
+
+    def test_selection_zip_from_archive_folder_zip_entries_and_files(self):
+        root = self.by_name(self.root_archive())
+        zip_level = self.by_name(self.open_item(root["rawdata.zip"]))
+        docs_dir = zip_level["docs"]
+
+        zf, names = SelectionZipTests.names(self, [root["1.신청"]["ref"], docs_dir["ref"], root["rawdata.zip"]["download_ref"]])
+
+        self.assertEqual(names, ["1.신청/신청서.docx", "docs/a.txt", "docs/b.txt", "rawdata.zip"])
+        self.assertEqual(zf.read("docs/b.txt"), b"beta")
+        self.assertEqual(self.ecm.streams, [])
+
+    def test_whole_project_root_zip_from_the_archive(self):
+        location = self.root_archive()["location"]
+
+        zf, names = SelectionZipTests.names(self, [location["ref"]])
+
+        self.assertIn(f"{PROJECT}/1.신청/신청서.docx".replace(PROJECT, location["label"]), names)
+        self.assertFalse([n for n in names if ecm_archive.MARKER_NAME in n])
+
+    def test_replaced_archive_zip_is_listed_again_instead_of_a_stale_cached_list(self):
+        root = self.by_name(self.root_archive())
+        before = self.open_item(root["rawdata.zip"])
+        self.assertIn("docs", [i["name"] for i in before["items"]])
+
+        replaced = self.write("rawdata.zip", _stream_zip([("new/only.txt", b"x" * 5), ("pad.txt", b"y" * 5)]))
+        stat = replaced.stat()
+        _os.utime(replaced, ns=(stat.st_atime_ns, stat.st_mtime_ns + 5_000_000_000))
+        root = self.by_name(self.root_archive())
+        after = self.open_item(root["rawdata.zip"])
+
+        self.assertEqual(sorted(i["name"] for i in after["items"]), ["new", "pad.txt"])
+
+
+class ArchiveFallbackTests(ArchiveBase):
+    def test_ecm_is_used_when_there_is_no_archive_for_the_project(self):
+        import shutil
+
+        shutil.rmtree(self.project_dir)
+
+        listing = self.root_archive()
+
+        self.assertEqual(listing["location"]["center"], "yeongnam")
+        self.assertEqual(listing["source"]["kind"], "ecm")
+        self.assertFalse(listing["source"]["archive_available"])
+
+    def test_archive_folder_with_nothing_but_the_marker_counts_as_missing(self):
+        import shutil
+
+        shutil.rmtree(self.project_dir)
+        self.write(ecm_archive.MARKER_NAME, b"{}")
+
+        self.assertEqual(self.root_archive()["location"]["center"], "yeongnam")
+
+    def test_ecm_latest_can_be_chosen_even_when_an_archive_exists(self):
+        listing = self.root_archive(source="ecm")
+
+        self.assertEqual(listing["location"]["center"], "yeongnam")
+        self.assertEqual(listing["source"], {"kind": "ecm", "archive_available": True})
+
+    def test_unreadable_archive_base_falls_back_to_ecm(self):
+        with override_settings(AGENT_ARCHIVE_BASE_DIR=str(self.archive_base / "missing" / "share")):
+            listing = self.root_archive()
+
+        self.assertEqual(listing["location"]["center"], "yeongnam")
+
+    def test_archive_disabled_by_empty_setting(self):
+        with override_settings(AGENT_ARCHIVE_BASE_DIR=""):
+            self.assertEqual(self.root_archive()["location"]["center"], "yeongnam")
+
+    def test_archive_refs_do_not_open_under_another_project(self):
+        ref = self.root_archive()["location"]["ref"]
+
+        with self.assertRaises(fb.BrowseError):
+            fb.list_location("GS-C-25-0999", ref)
+
+
+class ArchivePathSafetyTests(ArchiveBase):
+    def archive_client(self):
+        return ecm_archive.ArchiveClient(PROJECT)
+
+    def test_parent_directory_absolute_and_hidden_paths_are_refused(self):
+        client = self.archive_client()
+        for bad in ("../secret.txt", "4.시험/../../x", "C:/Windows/win.ini", "..", f"{ecm_archive.MARKER_NAME}"):
+            with self.subTest(path=bad):
+                with self.assertRaises(ecm_archive.ArchiveError):
+                    client.resolve(bad)
+
+    def test_blob_and_folder_listing_cannot_leave_the_project_archive(self):
+        outside = self.archive_base / "OTHER-PROJECT"
+        outside.mkdir()
+        (outside / "secret.txt").write_text("secret")
+        client = self.archive_client()
+
+        with self.assertRaises(ecm_archive.ArchiveError):
+            client.blob_stream({"storageFileID": "../OTHER-PROJECT/secret.txt"})
+        with self.assertRaises(ecm_archive.ArchiveError):
+            client.folder_contents("../OTHER-PROJECT")
+
+    def test_project_number_with_path_characters_has_no_archive(self):
+        for bad in ("..", "a/b", "a\\b", ""):
+            with self.subTest(project=bad):
+                self.assertIsNone(ecm_archive.project_dir(bad))
+
+
+class ArchiveReplaceTests(SimpleTestCase):
+    """워커: 점검할 때마다 보관 폴더를 통째로 교체한다(합치지 않는다)."""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self._tmp.cleanup)
+        root = Path(self._tmp.name)
+        self.archive = root / "archive"
+        self.archive.mkdir()
+        self.download = root / "download" / PROJECT
+        self.download.mkdir(parents=True)
+        override = override_settings(AGENT_ARCHIVE_BASE_DIR=str(self.archive))
+        override.enable()
+        self.addCleanup(override.disable)
+        log = mock.patch.object(worker, "DownloadReviewLog")
+        self.log = log.start()
+        self.addCleanup(log.stop)
+        self.job = _NS(id="job-1")
+        self.project = _NS(project_number=PROJECT)
+
+    def archived(self):
+        folder = self.archive / PROJECT
+        return sorted(str(p.relative_to(folder)).replace("\\", "/") for p in folder.rglob("*") if p.is_file())
+
+    def run_archive(self):
+        worker._archive_download_dir_safely(self.job, self.project, str(self.download))
+
+    def test_old_archive_content_is_removed_and_replaced_by_the_new_download(self):
+        old = self.archive / PROJECT
+        (old / "삭제된폴더").mkdir(parents=True)
+        (old / "삭제된폴더" / "옛파일.txt").write_text("stale")
+        (old / "공통.txt").write_text("old version")
+        (self.download / "공통.txt").write_text("new version")
+        (self.download / "신규.txt").write_text("new")
+
+        self.run_archive()
+
+        self.assertEqual(self.archived(), [ecm_archive.MARKER_NAME, "공통.txt", "신규.txt"])
+        self.assertEqual((old / "공통.txt").read_text(), "new version")
+        self.assertFalse((old / "삭제된폴더").exists())
+
+    def test_marker_records_when_the_archive_was_made(self):
+        (self.download / "a.txt").write_text("a")
+
+        self.run_archive()
+
+        with override_settings(AGENT_ARCHIVE_BASE_DIR=str(self.archive)):
+            self.assertRegex(ecm_archive.archived_at(PROJECT), r"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$")
+
+    def test_no_temporary_folder_is_left_behind(self):
+        (self.download / "a.txt").write_text("a")
+
+        self.run_archive()
+
+        self.assertEqual(sorted(p.name for p in self.archive.iterdir()), [PROJECT])
+
+    def test_first_archive_for_a_project_without_a_previous_one(self):
+        (self.download / "sub").mkdir()
+        (self.download / "sub" / "a.txt").write_text("a")
+
+        self.run_archive()
+
+        self.assertEqual(self.archived(), [ecm_archive.MARKER_NAME, "sub/a.txt"])
+
+    def test_failed_copy_removes_the_old_archive_so_stale_content_is_never_shown(self):
+        old = self.archive / PROJECT
+        old.mkdir()
+        (old / "옛파일.txt").write_text("stale")
+        (self.download / "a.txt").write_text("a")
+
+        with mock.patch.object(worker.shutil, "copytree", side_effect=OSError("share down")):
+            self.run_archive()
+
+        self.assertFalse(old.exists())
+        self.assertEqual(sorted(p.name for p in self.archive.iterdir()), [])
+        self.assertEqual(self.log.objects.create.call_args.kwargs["event_code"], "archive_failed")
+
+    def test_nothing_happens_when_archiving_is_not_configured(self):
+        with override_settings(AGENT_ARCHIVE_BASE_DIR=""):
+            self.run_archive()
+
+        self.assertEqual(list(self.archive.iterdir()), [])

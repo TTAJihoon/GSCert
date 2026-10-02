@@ -1942,11 +1942,12 @@ def _test_case_failed_result_rows(sheet, *, start_row, column):
     return failed_rows
 
 
-def _files_under_keyword_folder(files, keywords):
+def _files_under_keyword_folder(files, keywords, include_zip_names=False):
     """경로의 어떤 폴더명이든 keywords 중 하나를 포함하면 그 파일을 선택한다(OR 매칭).
 
     반환: (선택된 파일 목록, 처음 매칭된 폴더 경로 라벨).
     '설계' 폴더가 없을 때 '스크린샷'/'형상' 등 대체 폴더로 폴백하는 용도.
+    include_zip_names=True 이면 중첩 zip 의 이름(예: '최초 제품형상 이미지.zip')도 폴더 이름처럼 매칭한다.
     """
     needles = [str(k).strip() for k in (keywords or []) if str(k).strip()]
     if not needles:
@@ -1954,7 +1955,7 @@ def _files_under_keyword_folder(files, keywords):
     selected = []
     label = ""
     for file_info in files:
-        segments = _folder_segments(file_info.path)
+        segments = _name_segments(file_info.path) if include_zip_names else _folder_segments(file_info.path)
         for index, segment in enumerate(segments):
             if any(needle in segment for needle in needles):
                 selected.append(file_info)
@@ -1970,13 +1971,11 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
     min_images = int(config.get("min_images_per_folder") or 5)
     required_folder_count = int(config.get("required_candidate_folder_count") or 2)
 
-    def _find_candidates(files):
-        selected_files, selected_folder = _select_folder_chain_files(files, config.get("folder_keyword_chain"))
-        # '설계' 폴더가 없으면 '스크린샷'/'형상' 등 대체 폴더로 폴백한다.
-        if not selected_folder:
-            selected_files, selected_folder = _files_under_keyword_folder(
-                files, config.get("fallback_folder_keywords")
-            )
+    first_keywords = _form_keywords(config.get("first_form_keywords"), DEFAULT_FIRST_FORM_KEYWORDS)
+    final_keywords = _form_keywords(config.get("final_form_keywords"), DEFAULT_FINAL_FORM_KEYWORDS)
+
+    def _group_candidates(selected_files):
+        """선택된 파일 중 이미지에서 최초/최종형상 후보 2개를 고른다. 반환: (후보 목록, 부모 경로, 후보 폴더들)."""
         image_files = [
             file_info
             for file_info in selected_files
@@ -1993,8 +1992,15 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
             if len(folder_files) >= min_images
         }
 
-        # 후보 폴더(이미지 min_images개 이상)들을 상위 폴더 기준으로 묶어
-        # required_folder_count개 이상 형제가 있는지 찾는다. 대부분은 같은
+        # 폴더/zip 이름에 최초·최종(패치 전·후 등)이 드러나면 그 이름으로 두 단위를 먼저 고른다.
+        # 각 단위는 그 이름 아래 모든 이미지(하위 폴더·플랫폼별 폴더 포함)를 합친 것이다.
+        # 예) 최초 제품형상 이미지.zip(패치 전 스크린샷/Android·iOS) + 패치 후 제품형상 이미지.zip
+        named = _first_final_units(image_files, first_keywords, final_keywords, min_images)
+        if named is not None and required_folder_count == 2:
+            return named, (), candidate_folders
+
+        # 이름으로 구분되지 않으면 구조로 찾는다: 후보 폴더(이미지 min_images개 이상)들을 상위 폴더 기준으로
+        # 묶어 required_folder_count개 이상 형제가 있는지 찾는다. 대부분은 같은
         # 바로 위 폴더(부모) 아래 나란히 있지만('형상/최초형상', '형상/최종형상'),
         # '패치 전/기존 제품 형상', '패치 후/재인증 제품 형상'처럼 각 후보 폴더가
         # 서로 다른 한 단계 상위 폴더 아래 하나씩만 있는 구조도 실제로 쓰인다.
@@ -2011,27 +2017,45 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
             for ancestor, candidates in sorted(ancestor_candidates.items(), key=lambda item: "/".join(item[0])):
                 if len(candidates) >= required_folder_count:
                     selected = sorted(candidates, key=lambda item: "/".join(item[0]))[:required_folder_count]
-                    return selected, ancestor, selected_folder, candidate_folders
-        return [], None, selected_folder, candidate_folders
+                    return selected, ancestor, candidate_folders
+        return [], None, candidate_folders
 
-    # 원래 규칙대로 먼저 전체 파일에서 직접 '설계'(또는 대체) 폴더를 찾는다.
-    selected_candidates, selected_parent, selected_folder, candidate_folders = _find_candidates(all_files)
-    used_rawdata_scope = False
-    rawdata_files = []
+    def _find_candidates(files):
+        # 1) 시험>설계 폴더(원래 위치)에서 찾는다.
+        chain_files, chain_folder = _select_folder_chain_files(files, config.get("folder_keyword_chain"))
+        selected, parent, candidate_folders = _group_candidates(chain_files)
+        if selected:
+            return selected, parent, chain_folder, candidate_folders
+        # 2) 설계 폴더가 없거나, 있어도 거기에 후보가 없으면(예: 이미지 없는 '나.설계' 문서 폴더만 있는 경우)
+        #    '스크린샷'/'형상' 등 대체 폴더(중첩 zip 이름 포함)에서 다시 찾는다.
+        fallback_files, fallback_folder = _files_under_keyword_folder(
+            files, config.get("fallback_folder_keywords"), include_zip_names=True
+        )
+        if fallback_files:
+            selected, parent, fallback_candidates = _group_candidates(fallback_files)
+            if selected:
+                return selected, parent, fallback_folder, fallback_candidates
+        # 실패 사유는 첫 시도(설계 폴더)를 기준으로 하되, 설계 폴더가 없었으면 대체 폴더 정보를 쓴다.
+        if not chain_folder:
+            return [], None, fallback_folder, candidate_folders
+        return [], None, chain_folder, candidate_folders
 
-    # 못 찾으면 이름에 'rawdata'가 든 폴더/zip 안에서 다시 찾는다
-    # (ECM이 원시자료를 별도의 rawdata.zip으로만 내려준 경우 대비. 대소문자/공백 무시).
-    # rawdata 스코프에서도 못 찾으면, 더 유용한 직접 탐색 실패 사유를 그대로 유지한다
+    # 기본 순서: 프로젝트 root 에 별도로 내려온 rawdata(rawdata.zip 형태)를 먼저 찾고, 없으면
+    # 원래 위치(시험>설계)에서 찾는다. 이름에 'rawdata'가 든 폴더/zip 이면 된다(대소문자/공백 무시).
+    # 어느 쪽에서도 못 찾으면, 더 유용한 직접 탐색 실패 사유를 그대로 유지한다
     # (rawdata 스코프 실패 사유로 덮어쓰면 오히려 헷갈리는 메시지가 될 수 있음).
+    rawdata_files = [file_info for file_info in all_files if _is_rawdata_file(file_info, "rawdata")]
+    selected_candidates, selected_parent, selected_folder, candidate_folders = [], None, "", {}
+    used_rawdata_scope = False
+    if rawdata_files:
+        rd_candidates, rd_parent, rd_folder, rd_candidate_folders = _find_candidates(rawdata_files)
+        if rd_candidates:
+            selected_candidates, selected_parent, selected_folder, candidate_folders = (
+                rd_candidates, rd_parent, rd_folder, rd_candidate_folders
+            )
+            used_rawdata_scope = True
     if not selected_candidates:
-        rawdata_files = [file_info for file_info in all_files if _is_rawdata_file(file_info, "rawdata")]
-        if rawdata_files:
-            rd_candidates, rd_parent, rd_folder, rd_candidate_folders = _find_candidates(rawdata_files)
-            if rd_candidates:
-                selected_candidates, selected_parent, selected_folder, candidate_folders = (
-                    rd_candidates, rd_parent, rd_folder, rd_candidate_folders
-                )
-                used_rawdata_scope = True
+        selected_candidates, selected_parent, selected_folder, candidate_folders = _find_candidates(all_files)
 
     raw_detail = {
         "selected_folder": selected_folder,
@@ -2122,6 +2146,59 @@ def _evaluate_image_screenshot_folder_date_check(rule, sequence, project, contex
         file_name="",
         raw_detail=raw_detail,
     )
+
+
+DEFAULT_FIRST_FORM_KEYWORDS = ("최초", "패치 전", "패치전", "기존", "변경 전", "변경전")
+DEFAULT_FINAL_FORM_KEYWORDS = ("최종", "패치 후", "패치후", "재인증", "변경 후", "변경후")
+
+
+def _form_keywords(configured, default):
+    items = [str(item).strip() for item in (configured or default) if str(item).strip()]
+    return tuple(items) or tuple(default)
+
+
+def _name_segments(path):
+    """경로의 폴더 이름과 중첩 zip 이름(.zip 제외)을 위에서부터 나열한다. 마지막(파일 이름)은 뺀다."""
+    pieces = str(path or "").replace("\\", "/").split("::")
+    names = []
+    for index, piece in enumerate(pieces):
+        parts = [part for part in piece.split("/") if part]
+        if index == len(pieces) - 1:
+            parts = parts[:-1]
+        elif parts and parts[-1].lower().endswith(".zip"):
+            parts[-1] = parts[-1][:-4]
+        names.extend(parts)
+    return names
+
+
+def _first_final_units(image_files, first_keywords, final_keywords, min_images):
+    """폴더/zip 이름으로 최초형상·최종형상 이미지 묶음을 고른다. 구분할 수 없으면 None.
+
+    경로를 위에서부터 보며 처음으로 최초(또는 최종) 이름이 나오는 곳 아래의 이미지를 한 묶음으로 모은다.
+    한 이름에 최초와 최종이 같이 있으면(예: '최초/최종 형상') 이름으로 구분할 수 없으니 건너뛴다.
+    두 묶음 모두 이미지가 min_images 개 이상일 때만 반환한다: [(라벨, 파일들), (라벨, 파일들)].
+    """
+    groups = {"first": {}, "final": {}}
+    for file_info in image_files:
+        names = _name_segments(file_info.path)
+        for index, name in enumerate(names):
+            is_first = any(keyword in name for keyword in first_keywords)
+            is_final = any(keyword in name for keyword in final_keywords)
+            if is_first == is_final:
+                continue
+            groups["first" if is_first else "final"].setdefault(tuple(names[: index + 1]), []).append(file_info)
+            break
+    if not groups["first"] or not groups["final"]:
+        return None
+    selected = []
+    for kind in ("first", "final"):
+        units = groups[kind]
+        files = [file_info for unit_files in units.values() for file_info in unit_files]
+        if len(files) < min_images:
+            return None
+        biggest = max(units, key=lambda key: len(units[key]))
+        selected.append(("/".join(biggest[-3:]), files))
+    return [(tuple(label.split("/")), files) for label, files in selected]
 
 
 def _image_out_of_range_message(start_date, end_date, out_of_range):

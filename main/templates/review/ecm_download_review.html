@@ -4,8 +4,8 @@
 {% block title %}{% if kolas_mode %}KOLAS 시험성적서 점검{% else %}ECM 제출물 자동 점검{% endif %}{% endblock %}
 
 {% block head %}
-<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=57">
-<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=57" defer></script>
+<link rel="stylesheet" href="{% static 'css/review/ecm_download_review.css' %}?v=58">
+<script src="{% static 'scripts/review/ecm_download_review.js' %}?v=58" defer></script>
 {% endblock %}
 
 {% block content %}
@@ -568,6 +568,10 @@
       </div>
     </div>
     <div class="modal-body folder-browser-body">
+      <div class="folder-browser-source" id="folderBrowserSource" hidden>
+        <span id="folderBrowserSourceText"></span>
+        <button class="mini-button" type="button" id="folderBrowserSourceToggle" hidden></button>
+      </div>
       <nav class="folder-browser-crumbs" id="folderBrowserCrumbs" aria-label="폴더 경로"></nav>
       <div class="folder-browser-toolbar">
         <label class="folder-browser-checkall">
